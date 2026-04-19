@@ -1,0 +1,138 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: leads
+// Document ID: auto-generated
+// Fields:
+//   - studentName: string (required)
+//   - fatherName: string (required)
+//   - fatherPhone: string (required)
+//   - ... (other optional fields)
+//
+// Collection: admissions
+// Document ID: auto-generated
+// Fields:
+//   - fullName: string (required)
+//   - fatherName: string (required)
+//   - contactNumber: string (required)
+//   - category: string (required)
+//   - ... (other optional fields)
+//
+// Collection: students
+// Document ID: SGC-J-2026-XXXX
+// Fields:
+//   - fullName: string (required)
+//   - fatherName: string (required)
+//   - category: string (required)
+//   - ... (other optional fields)
+//
+// Collection: staff
+// Document ID: SGC-T-XXX
+// Fields:
+//   - fullName: string (required)
+//   - role: string (required)
+//   - salary: number (required)
+//   - ... (other optional fields)
+//
+// Collection: expenses
+// Document ID: auto-generated
+// Fields:
+//   - date: string (required)
+//   - category: string (required)
+//   - amount: number (required)
+//
+// Collection: income
+// Document ID: auto-generated
+// Fields:
+//   - studentId: string (required)
+//   - amount: number (required)
+//   - date: string (required)
+//
+// Collection: settings
+// Document ID: config
+// Fields:
+//   - collegeName: string
+//   - campusName: string
+//   - ...
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "mughalazam1964@gmail.com" || 
+         get(/databases/$(database)/documents/permissions/$(request.auth.token.email)).data.isAdmin == true);
+    }
+
+    function isValidString(val, min, max) {
+      return val is string && val.size() >= min && val.size() <= max;
+    }
+
+    function isValidNumber(val, min, max) {
+      return val is number && val >= min && val <= max;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /leads/{leadId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /admissions/{admissionId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /students/{studentId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /staff/{staffId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /expenses/{expenseId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /income/{incomeId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /academicRecords/{recordId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /salaryPayments/{paymentId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /settings/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.token.email == "mughalazam1964@gmail.com";
+    }
+
+    match /permissions/{email} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.token.email == "mughalazam1964@gmail.com";
+    }
+
+    match /notifications/{notifId} {
+      allow read: if isAdmin();
+      allow write: if isAuthenticated();
+    }
+  }
+}

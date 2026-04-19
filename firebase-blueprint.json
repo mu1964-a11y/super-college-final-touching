@@ -1,0 +1,248 @@
+{
+  "entities": {
+    "Lead": {
+      "title": "Lead",
+      "description": "Potential student lead",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentName": { "type": "string" },
+        "fatherName": { "type": "string" },
+        "cnic": { "type": "string" },
+        "previousSchool": { "type": "string" },
+        "areaVillage": { "type": "string" },
+        "city": { "type": "string" },
+        "fatherPhone": { "type": "string" },
+        "grade": { "type": "string" },
+        "currentClass": { "type": "string" },
+        "dateAdded": { "type": "string", "format": "date-time" },
+        "isConverted": { "type": "boolean" }
+      },
+      "required": ["studentName", "fatherName", "fatherPhone"]
+    },
+    "Admission": {
+      "title": "Admission",
+      "description": "Admission record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "fullName": { "type": "string" },
+        "fatherName": { "type": "string" },
+        "previousMarks": { "type": "number" },
+        "previousInstitute": { "type": "string" },
+        "category": { "type": "string" },
+        "group": { "type": "string" },
+        "section": { "type": "string" },
+        "subjects": { "type": "array", "items": { "type": "string" } },
+        "address": { "type": "string" },
+        "admissionFee": { "type": "number" },
+        "totalFeeFinalized": { "type": "number" },
+        "feeReceived": { "type": "number" },
+        "paymentPlan": { "type": "string" },
+        "paidMonths": { "type": "array", "items": { "type": "string" } },
+        "paidInstallments": { "type": "number" },
+        "totalInstallments": { "type": "number" },
+        "nextInstallmentDate": { "type": "string" },
+        "totalSemesters": { "type": "number" },
+        "feePerSemester": { "type": "number" },
+        "nextSemesterDueDate": { "type": "string" },
+        "contactNumber": { "type": "string" },
+        "fatherContact": { "type": "string" },
+        "secondaryContact": { "type": "string" },
+        "reference": { "type": "string" },
+        "gender": { "type": "string" },
+        "photo": { "type": "string" },
+        "status": { "type": "string" },
+        "isAdmitted": { "type": "boolean" }
+      },
+      "required": ["fullName", "fatherName", "contactNumber", "category"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Enrolled student record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "admissionId": { "type": "string" },
+        "category": { "type": "string" },
+        "group": { "type": "string" },
+        "section": { "type": "string" },
+        "fullName": { "type": "string" },
+        "fatherName": { "type": "string" },
+        "contact": { "type": "string" },
+        "address": { "type": "string" },
+        "gender": { "type": "string" },
+        "photo": { "type": "string" },
+        "subjects": { "type": "array", "items": { "type": "string" } },
+        "classTeacherId": { "type": "string" },
+        "admissionFee": { "type": "number" },
+        "monthlyFee": { "type": "number" },
+        "totalPackage": { "type": "number" },
+        "feeLedger": { "type": "object" },
+        "otherFees": { "type": "array" },
+        "feeHistory": { "type": "array" },
+        "performance": { "type": "array" },
+        "attendance": { "type": "object" },
+        "notes": { "type": "array" }
+      },
+      "required": ["fullName", "fatherName", "category"]
+    },
+    "Staff": {
+      "title": "Staff",
+      "description": "Staff member record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "fatherName": { "type": "string" },
+        "cnic": { "type": "string" },
+        "contact": { "type": "string" },
+        "address": { "type": "string" },
+        "dob": { "type": "string" },
+        "joinDate": { "type": "string" },
+        "qualification": { "type": "string" },
+        "specialization": { "type": "array", "items": { "type": "string" } },
+        "role": { "type": "string" },
+        "salary": { "type": "number" },
+        "status": { "type": "string" },
+        "photo": { "type": "string" },
+        "assignedStudentIds": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "array" }
+      },
+      "required": ["fullName", "role", "salary"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Expense record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "category": { "type": "string" },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "addedBy": { "type": "string" }
+      },
+      "required": ["date", "category", "amount"]
+    },
+    "Income": {
+      "title": "Income",
+      "description": "Income record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "photo": { "type": "string" },
+        "feeType": { "type": "string" },
+        "amount": { "type": "number" },
+        "month": { "type": "string" },
+        "year": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" },
+        "status": { "type": "string" },
+        "gender": { "type": "string" }
+      },
+      "required": ["studentId", "amount", "date"]
+    },
+    "AcademicRecord": {
+      "title": "AcademicRecord",
+      "description": "Student academic performance record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "class": { "type": "string" },
+        "section": { "type": "string" },
+        "testName": { "type": "string" },
+        "testType": { "type": "string", "enum": ["Daily", "15-Day", "Monthly", "Mid-Term", "Final"] },
+        "date": { "type": "string", "format": "date" },
+        "subject": { "type": "string" },
+        "totalMarks": { "type": "number" },
+        "obtainedMarks": { "type": "number" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "remarks": { "type": "string" }
+      },
+      "required": ["studentId", "testName", "subject", "totalMarks", "obtainedMarks"]
+    },
+    "SalaryPayment": {
+      "title": "SalaryPayment",
+      "description": "Staff salary payment record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "staffId": { "type": "string" },
+        "staffName": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date" },
+        "month": { "type": "string" },
+        "year": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "status": { "type": "string" },
+        "receiptNumber": { "type": "string" }
+      },
+      "required": ["staffId", "amount", "date", "month", "year"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Application settings",
+      "type": "object",
+      "properties": {
+        "collegeName": { "type": "string" },
+        "campusName": { "type": "string" },
+        "logo": { "type": "string" },
+        "address": { "type": "string" },
+        "contactNumber": { "type": "string" },
+        "email": { "type": "string" },
+        "website": { "type": "string" },
+        "principalName": { "type": "string" },
+        "themeColor": { "type": "string" },
+        "currencySymbol": { "type": "string" }
+      }
+    },
+    "UserPermission": {
+      "title": "UserPermission",
+      "description": "User access permissions",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "sections": { "type": "array", "items": { "type": "string" } },
+        "isAdmin": { "type": "boolean" },
+        "customPassword": { "type": "string" },
+        "displayName": { "type": "string" }
+      },
+      "required": ["email", "sections"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System notification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "type": { "type": "string" },
+        "actorName": { "type": "string" },
+        "isRead": { "type": "boolean" }
+      },
+      "required": ["title", "message", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/leads": { "schema": "Lead", "description": "Collection of leads" },
+    "/admissions": { "schema": "Admission", "description": "Collection of admissions" },
+    "/students": { "schema": "Student", "description": "Collection of students" },
+    "/staff": { "schema": "Staff", "description": "Collection of staff" },
+    "/expenses": { "schema": "Expense", "description": "Collection of expenses" },
+    "/income": { "schema": "Income", "description": "Collection of income" },
+    "/academicRecords": { "schema": "AcademicRecord", "description": "Collection of academic records" },
+    "/salaryPayments": { "schema": "SalaryPayment", "description": "Collection of salary payments" },
+    "/settings/config": { "schema": "AppSettings", "description": "Application settings document" },
+    "/permissions": { "schema": "UserPermission", "description": "Collection of user permissions" },
+    "/notifications": { "schema": "Notification", "description": "Collection of system notifications" }
+  }
+}
