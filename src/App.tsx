@@ -354,32 +354,48 @@ export default function App() {
   
   // Filter out dashboard from allowed sections if not super admin
   const allowedSections = useMemo(() => {
-    // Only 4 main modules enabled for initial college launch
-    const modulesFromSettings = data.settings?.enabledModules || ['dashboard', 'leads', 'admissions', 'accounts'];
+    const modulesFromSettings = data.settings?.enabledModules && data.settings.enabledModules.length > 0 
+      ? data.settings.enabledModules 
+      : ['dashboard', 'leads', 'admissions', 'students', 'staff', 'accounts', 'reports', 'settings', 'academic'];
     
-    const baseAllowed = isSuperAdmin 
-      ? modulesFromSettings 
-      : (userPermission?.sections || []).filter(s => modulesFromSettings.includes(s));
-      
-    return baseAllowed;
+    const parentMap: Record<string, string> = {
+      'admissions-fsc': 'admissions', 'admissions-ukl3': 'admissions', 'admissions-dit': 'admissions', 'admissions-bs': 'admissions',
+      'fee-boys': 'accounts', 'fee-girls': 'accounts', 'fee-ukl3': 'accounts', 'fee-dit': 'accounts', 'fee-bs': 'accounts',
+      'students-boys': 'students', 'students-girls': 'students', 'students-ukl3': 'students', 'students-dit': 'students', 'students-bs': 'students',
+    };
+
+    if (isSuperAdmin) {
+      return [...modulesFromSettings, ...Object.keys(parentMap)];
+    }
+
+    return (userPermission?.sections || []).filter(s => {
+      const parent = parentMap[s] || s;
+      return modulesFromSettings.includes(parent);
+    });
   }, [isSuperAdmin, userPermission?.sections, data.settings?.enabledModules]);
 
   // Auto-redirect unauthorized users away from Dashboard
   React.useEffect(() => {
     if (user && !authLoading && !isSuperAdmin) {
-      // If user is on dashboard or an unauthorized page, move them to their first allowed section
-      const isCurrentlyUnauthorized = activePage === 'dashboard' || !allowedSections.includes(activePage);
+      const parentMap: Record<string, string> = {
+        'admissions-fsc': 'admissions', 'admissions-ukl3': 'admissions', 'admissions-dit': 'admissions', 'admissions-bs': 'admissions',
+        'fee-boys': 'accounts', 'fee-girls': 'accounts', 'fee-ukl3': 'accounts', 'fee-dit': 'accounts', 'fee-bs': 'accounts',
+        'students-boys': 'students', 'students-girls': 'students', 'students-ukl3': 'students', 'students-dit': 'students', 'students-bs': 'students',
+      };
+      
+      const parent = parentMap[activePage] || activePage;
+      const isCurrentlyUnauthorized = activePage === 'dashboard' || (!allowedSections.includes(activePage) && !allowedSections.includes(parent));
       
       if (isCurrentlyUnauthorized && allowedSections.length > 0) {
-        // Redirect to the first available section in their specific role
-        let firstSection = allowedSections[0] as Page;
+        let firstSection = allowedSections.filter(s => s !== 'dashboard')[0] || allowedSections[0];
         
-        // Handle students sub-item mapping if "students" is the base section
-        if (firstSection === 'students' as any) {
-          firstSection = 'students-boys';
-        } 
+        const defaultPages: Record<string, Page> = {
+          'admissions': 'admissions-fsc',
+          'students': 'students-boys',
+          'accounts': 'fee-boys',
+        };
         
-        setActivePage(firstSection);
+        setActivePage(defaultPages[firstSection] || firstSection as Page);
       }
     }
   }, [user, authLoading, isSuperAdmin, activePage, allowedSections]);
