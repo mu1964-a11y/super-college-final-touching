@@ -46,19 +46,10 @@ export default function AccessControlDialog({
 }: AccessControlDialogProps) {
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [password, setPassword] = useState('');
   const [selectedSections, setSelectedSections] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showPasswordList, setShowPasswordList] = useState<string[]>([]);
   const [isConfirming, setIsConfirming] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-
-  const togglePasswordVisibility = (email: string) => {
-    setShowPasswordList(prev => 
-      prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email]
-    );
-  };
 
   const handleAdd = () => {
     if (!email) return;
@@ -71,13 +62,11 @@ export default function AccessControlDialog({
       email,
       displayName,
       sections: isAdmin ? SECTIONS.map(s => s.id) : selectedSections,
-      isAdmin,
-      customPassword: password || '123456'
+      isAdmin
     });
     // Reset
     setEmail('');
     setDisplayName('');
-    setPassword('');
     setSelectedSections([]);
     setIsAdmin(false);
     setIsConfirming(false);
@@ -92,7 +81,6 @@ export default function AccessControlDialog({
   const handleEdit = (p: UserPermission) => {
     setEmail(p.email || '');
     setDisplayName(p.displayName || '');
-    setPassword(p.customPassword || '');
     setSelectedSections(p.sections || []);
     setIsAdmin(p.isAdmin || false);
     setIsConfirming(false);
@@ -137,27 +125,6 @@ export default function AccessControlDialog({
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
                     />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] font-black uppercase tracking-widest text-slate-400 ml-1">Access Password</Label>
-                  <div className="relative">
-                    <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                    <Input 
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Security password"
-                      className="pl-12 pr-12 h-12 rounded-2xl bg-white border-slate-100 shadow-sm font-bold focus:ring-superior-teal/20"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-                    <button 
-                      type="button"
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-superior-teal transition-colors flex items-center gap-2 bg-white/50 backdrop-blur-sm p-1 rounded-lg"
-                      onClick={() => setShowPassword(!showPassword)}
-                    >
-                      {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </button>
                   </div>
                 </div>
 
@@ -310,18 +277,6 @@ export default function AccessControlDialog({
                       </div>
                       <div className="flex items-center gap-3 mb-2">
                         <p className="text-[10px] text-slate-400 font-medium truncate">{p.email}</p>
-                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-50 rounded-lg border border-slate-100">
-                          <Key size={10} className="text-slate-400" />
-                          <p className="text-[9px] font-black text-slate-600 tracking-wider">
-                            {showPasswordList.includes(p.email) ? p.customPassword : '••••••'}
-                          </p>
-                          <button 
-                            onClick={() => togglePasswordVisibility(p.email)}
-                            className="text-slate-400 hover:text-superior-teal transition-colors"
-                          >
-                            {showPasswordList.includes(p.email) ? <EyeOff size={10} /> : <Eye size={10} />}
-                          </button>
-                        </div>
                       </div>
                       
                       <div className="flex flex-wrap gap-1 mb-2">

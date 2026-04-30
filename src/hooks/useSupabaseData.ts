@@ -1441,7 +1441,6 @@ export function useSupabaseData(user: any) {
           display_name: permission.displayName,
           sections: permission.sections,
           is_admin: permission.isAdmin,
-          custom_password: permission.customPassword,
           status: 'offline',
           last_active: new Date().toISOString()
         }, { onConflict: 'email' });
