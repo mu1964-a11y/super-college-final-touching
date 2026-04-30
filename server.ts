@@ -37,25 +37,26 @@ async function startServer() {
       );
 
       // 1. Create or retrieve user identity in Auth
-      const { data, error } = await supabaseAdmin.auth.admin.createUser({
-        email: email,
-        password: password,
-        email_confirm: true,
-        user_metadata: { display_name: displayName }
-      });
+      if (password) {
+        const { data, error } = await supabaseAdmin.auth.admin.createUser({
+          email: email,
+          password: password,
+          email_confirm: true,
+          user_metadata: { display_name: displayName }
+        });
 
-      if (error) {
-        // If user already exists, Supabase throws error, which we can catch or ignore based on code
-        if (error.status === 422 && error.message.includes("already registered")) {
-           // We can optionally update their password if they already exist
-           // We need their ID, this requires a list request. For now, just return ok since they exist
-           // Real production might want a dedicated update path
-           return res.json({ message: "User already exists in Auth, updating permissions..." });
+        if (error) {
+          // If user already exists, Supabase throws error, which we can catch or ignore based on code
+          if (error.message && (error.message.includes("already registered") || error.message.includes("already exists"))) {
+             return res.json({ message: "User already exists in Auth, updating permissions..." });
+          }
+          return res.status(400).json({ error: error.message });
         }
-        return res.status(400).json({ error: error.message });
+        return res.json({ message: "User created successfully", user: data.user });
+      } else {
+        // No password provided, so assume user was created manually and just return success to proceed with permission update
+        return res.json({ message: "No password provided, assuming user already exists in Auth, updating permissions..." });
       }
-
-      res.json({ message: "User created successfully", user: data.user });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

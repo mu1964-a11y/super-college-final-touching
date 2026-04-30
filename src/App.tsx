@@ -368,10 +368,15 @@ export default function App() {
       return [...modulesFromSettings, ...Object.keys(parentMap)];
     }
 
-    return (userPermission?.sections || []).filter(s => {
+    const allowed = (userPermission?.sections || []).filter(s => {
       const parent = parentMap[s] || s;
       return modulesFromSettings.includes(parent);
     });
+    
+    // Add parent sections implicitly so that UI checks like allowedSections.includes('admissions') will work
+    // if 'admissions-fsc' is allowed
+    const parentsToAdd = allowed.map(s => parentMap[s]).filter(Boolean) as string[];
+    return Array.from(new Set([...allowed, ...parentsToAdd]));
   }, [isSuperAdmin, userPermission?.sections, data.settings?.enabledModules]);
 
   // Auto-redirect unauthorized users away from Dashboard
