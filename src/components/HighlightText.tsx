@@ -10,7 +10,7 @@ export function HighlightText({ text, search }: HighlightTextProps) {
   if (!search || !search.trim()) return <>{text}</>;
   
   // Escape special characters and create a case-insensitive regex
-  const escapedSearch = search.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+  const escapedSearch = search.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
   const regex = new RegExp(`(${escapedSearch})`, 'gi');
   const parts = text.split(regex);
   

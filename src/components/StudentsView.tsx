@@ -69,8 +69,9 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { HighlightText } from './HighlightText';
 import FeeReceipt from './FeeReceipt';
+import { compressImage, base64ToBlob } from '../lib/imageUtils';
 
-export default function StudentsView({ data, gender }: { data: any, gender: Gender }) {
+export default function StudentsView({ data, gender, program }: { data: any, gender?: Gender, program?: string }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [monthlyFeeFilter, setMonthlyFeeFilter] = useState('all');
   const [defaulterFilter, setDefaulterFilter] = useState('all');
@@ -81,14 +82,36 @@ export default function StudentsView({ data, gender }: { data: any, gender: Gend
   const [payConfig, setPayConfig] = useState<{ month?: string, year?: number }>({});
 
   const mergedStudents = React.useMemo(() => {
-    const rawStudents = [...data.students];
+    const rawStudents = [...data.students].map(s => {
+      let derivedGender = s.gender;
+      if (!derivedGender) {
+        const identifier = (`${s.category || ''} ${s.group || ''}`).toLowerCase();
+        if (identifier.includes('girl') || identifier.includes('female')) {
+          derivedGender = 'Female';
+        } else {
+          derivedGender = 'Male';
+        }
+      }
+      return { ...s, gender: derivedGender };
+    });
     
     // Add confirmed admissions that don't have a matching student record yet
     data.admissions.forEach((a: any) => {
-      const isAdmitted = a.isAdmitted || a.status === 'Admitted/Confirmed';
-      const existsInStudents = data.students.some((s: any) => s.admissionId === a.id || s.id === a.studentId);
+      // User Request: A student is considered enrolled only upon fee receipt.
+      const isEnrolled = a.isAdmitted || a.status === 'Admitted/Confirmed' || (a.feeReceived > 0);
+      const existsInStudents = rawStudents.some((s: any) => s.admissionId === a.id || s.id === a.studentId);
       
-      if (isAdmitted && !existsInStudents) {
+      if (isEnrolled && !existsInStudents) {
+        let derivedGender = a.gender;
+        if (!derivedGender) {
+          const identifier = (`${a.category || ''} ${a.group || ''}`).toLowerCase();
+          if (identifier.includes('girl') || identifier.includes('female')) {
+            derivedGender = 'Female';
+          } else {
+            derivedGender = 'Male';
+          }
+        }
+
         // Map Admission to a Student model for display
         rawStudents.push({
           id: a.studentId || a.id,
@@ -97,7 +120,7 @@ export default function StudentsView({ data, gender }: { data: any, gender: Gend
           fatherName: a.fatherName,
           contact: a.contactNumber,
           address: a.address || '',
-          gender: a.gender || 'Male',
+          gender: derivedGender,
           category: a.category || 'Inter Part-1 Boys',
           group: a.group || 'Pending',
           section: a.section || 'A',
@@ -126,17 +149,34 @@ export default function StudentsView({ data, gender }: { data: any, gender: Gend
           monthlyFee: Math.round((a.totalPackage || 0) / (a.totalInstallments || 12)),
           totalPackage: a.totalPackage || 0,
           feeReceived: a.feeReceived || 0,
-          isPendingSync: true
+          session: a.session,
+          sessionStartDate: a.sessionStartDate,
+          sessionEndDate: a.sessionEndDate,
+          academicPart: a.academicPart || 'Part-1',
+          programType: a.programType || 'Yearly',
+          currentSemester: a.currentSemester || 0
         } as any);
       }
     });
 
-    return rawStudents;
-  }, [data.students, data.admissions]);
+    // Filter by Gender and Program
+    return rawStudents.filter((s: any) => {
+      let matchesGender = true;
+      if (gender) matchesGender = s.gender === gender;
+      
+      let matchesProgram = true;
+      if (program) {
+        const identifier = (`${s.category || ''} ${s.group || ''}`).toLowerCase();
+        if (program === 'fsc') matchesProgram = !identifier.includes('dit') && !identifier.includes('level 3') && !identifier.includes('uk') && !identifier.includes('bs ');
+        else if (program === 'dit') matchesProgram = identifier.includes('dit');
+        else if (program === 'ukl3') matchesProgram = identifier.includes('level 3') || identifier.includes('uk');
+        else if (program === 'bs') matchesProgram = identifier.includes('bs');
+      }
+      return matchesGender && matchesProgram;
+    });
+  }, [data.students, data.admissions, gender, program]);
 
   const filteredStudents = mergedStudents.filter((s: any) => {
-    if (s.gender !== gender) return false;
-    
     const matchesSearch = s.fullName.toLowerCase().includes(searchTerm.toLowerCase()) || 
                          s.id.toLowerCase().includes(searchTerm.toLowerCase());
     
@@ -213,6 +253,52 @@ export default function StudentsView({ data, gender }: { data: any, gender: Gend
         </div>
       </div>
 
+      {/* Bulk Actions Bar */}
+      {selectedStudents.length > 0 && (
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="sticky top-4 z-30 flex items-center justify-between p-4 bg-superior-teal rounded-2xl shadow-2xl text-white mb-6 border border-white/10"
+        >
+          <div className="flex items-center gap-4 pl-2">
+            <Checkbox 
+              checked={selectedStudents.length === filteredStudents.length} 
+              onCheckedChange={toggleSelectAll} 
+              className="border-white data-[state=checked]:bg-white data-[state=checked]:text-superior-teal"
+            />
+            <div className="flex flex-col">
+              <p className="text-sm font-black uppercase tracking-widest">
+                {selectedStudents.length} student{selectedStudents.length > 1 ? 's' : ''} selected
+              </p>
+              {selectedStudents.length < filteredStudents.length && (
+                <button 
+                  onClick={() => setSelectedStudents(filteredStudents.map(s => s.id))}
+                  className="text-[10px] font-black underline uppercase tracking-tighter opacity-70 hover:opacity-100 text-left"
+                >
+                  Select all {filteredStudents.length} matching students
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setSelectedStudents([])}
+              className="h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 font-black text-[10px] uppercase tracking-widest px-6"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleBulkDelete}
+              variant="destructive" 
+              className="h-10 rounded-xl bg-white text-rose-600 hover:bg-rose-50 border-none font-black text-[10px] uppercase tracking-widest px-6 shadow-lg shadow-black/20"
+            >
+              <Trash2 size={14} className="mr-2" /> Delete
+            </Button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Filters Bar */}
       <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-wrap items-center gap-5 mb-10 hover:border-superior-teal/20 transition-all duration-500">
         <div className="flex items-center gap-3 pr-5 border-r border-slate-100">
@@ -224,18 +310,6 @@ export default function StudentsView({ data, gender }: { data: any, gender: Gend
           />
           <Label htmlFor="select-all-students" className="text-[10px] font-black text-superior-teal/60 cursor-pointer uppercase tracking-[0.2em]">Select All</Label>
         </div>
-
-        {selectedStudents.length > 0 && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="flex items-center gap-3 pr-5 border-r border-slate-100"
-          >
-            <Button variant="destructive" size="sm" onClick={handleBulkDelete} className="rounded-xl gap-2 font-black uppercase tracking-widest text-[10px] h-10 px-4 shadow-lg shadow-rose-500/10">
-              <Trash2 size={14} /> Delete ({selectedStudents.length})
-            </Button>
-          </motion.div>
-        )}
 
         <div className="relative flex-1 min-w-[280px]">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-superior-teal/40" size={18} />
@@ -301,10 +375,18 @@ export default function StudentsView({ data, gender }: { data: any, gender: Gend
               <div className="absolute -bottom-14 left-8">
                 <div className="w-28 h-28 rounded-3xl border-4 border-white bg-slate-100 overflow-hidden shadow-xl shadow-superior-teal/10">
                   {student.photo ? (
-                    <img src={student.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <img 
+                      src={student.photo} 
+                      alt="" 
+                      className="w-full h-full object-cover" 
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                      }}
+                    />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-slate-200 text-slate-400">
-                      <User size={48} />
+                    <div className="w-full h-full flex items-center justify-center bg-slate-200 text-slate-400 font-bold text-2xl">
+                      {student.fullName.charAt(0)}
                     </div>
                   )}
                 </div>
@@ -378,11 +460,8 @@ export default function StudentsView({ data, gender }: { data: any, gender: Gend
                   </Button>
 
                   <DropdownMenu>
-                    <DropdownMenuTrigger nativeButton={true} render={
-                      <button className="h-11 w-11 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all flex items-center justify-center text-slate-400">
-                        <MoreHorizontal size={18} />
-                      </button>
-                    }>
+                    <DropdownMenuTrigger className="h-11 w-11 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all flex items-center justify-center text-slate-400 outline-hidden">
+                      <MoreHorizontal size={18} />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="rounded-2xl p-2 min-w-[200px] border-slate-100 shadow-2xl">
                       <DropdownMenuItem 
@@ -470,11 +549,11 @@ export default function StudentsView({ data, gender }: { data: any, gender: Gend
           </div>
           <DialogFooter className="gap-3">
             <Button variant="ghost" onClick={() => setDialogType(null)} className="rounded-xl h-12 px-6 font-bold">Cancel</Button>
-            <Button variant="destructive" className="rounded-xl h-12 px-8 font-black uppercase tracking-widest text-xs" onClick={() => {
-              data.bulkDeleteStudents(selectedStudents);
-              setSelectedStudents([]);
+            <Button variant="destructive" className="rounded-xl h-12 px-8 font-black uppercase tracking-widest text-xs" onClick={async () => {
+              const idsToDelete = [...selectedStudents];
               setDialogType(null);
-              toast.success(`${selectedStudents.length} records deleted successfully!`);
+              setSelectedStudents([]);
+              await data.bulkDeleteStudents(idsToDelete);
             }}>Delete All Selected</Button>
           </DialogFooter>
         </DialogContent>
@@ -536,15 +615,20 @@ function StudentProfile({ student, data, onEdit, onPay, onDownloadReceipt }: { s
   const totalAttendance = student.attendance.present + student.attendance.absent;
   const attendanceRatio = totalAttendance > 0 ? student.attendance.present / totalAttendance : 0;
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        data.updateStudent(student.id, { photo: reader.result as string });
+      const toastId = toast.loading("Processing photo...");
+      try {
+        const compressedBase64 = await compressImage(file);
+        await data.updateStudent(student.id, { photo: compressedBase64 });
+        toast.dismiss(toastId);
         toast.success("Photo updated successfully!");
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Photo upload error:', err);
+        toast.dismiss(toastId);
+        toast.error("Failed to upload photo.");
+      }
     }
   };
 
@@ -555,7 +639,7 @@ function StudentProfile({ student, data, onEdit, onPay, onDownloadReceipt }: { s
           <div className="relative group shrink-0">
             <div className="w-32 h-32 md:w-44 md:h-44 rounded-2xl border-4 border-white/20 bg-white/10 backdrop-blur-md overflow-hidden">
               {student.photo ? (
-                <img src={student.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <img src={student.photo} alt="" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-white/40">
                   <User size={64} />
@@ -583,6 +667,11 @@ function StudentProfile({ student, data, onEdit, onPay, onDownloadReceipt }: { s
                 <span className="hidden md:block opacity-30">|</span>
                 <div className="flex items-center gap-2">
                   <Calendar size={16} className="text-superior-gold" />
+                  <span>{student.academicPart} - {student.session}</span>
+                </div>
+                <span className="hidden md:block opacity-30">|</span>
+                <div className="flex items-center gap-2">
+                  <Filter size={16} className="text-superior-gold" />
                   <span>{student.category} - Section {student.section}</span>
                 </div>
               </div>
@@ -619,10 +708,10 @@ function StudentProfile({ student, data, onEdit, onPay, onDownloadReceipt }: { s
           
           <TabsContent value="overview" className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+              <InfoCard title="Academic Stage" value={student.academicPart || 'Part-1'} icon={GraduationCap} />
+              <InfoCard title="Session" value={student.session || 'N/A'} icon={Calendar} />
               <InfoCard title="Category" value={student.category} icon={GraduationCap} />
               <InfoCard title="Section" value={student.section} icon={Filter} />
-              <InfoCard title="Academic Group" value={student.group} icon={GraduationCap} />
-              <InfoCard title="Monthly Installment" value={`Rs. ${(student.monthlyFee || 0).toLocaleString()}`} icon={Wallet} />
             </div>
 
             <div className="space-y-4">
@@ -927,7 +1016,11 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
     category: student.category || 'Inter Part-1 Boys',
     group: student.group || '',
     section: student.section || '',
-    photo: student.photo || ''
+    photo: student.photo || '',
+    session: student.session || '',
+    sessionStartDate: student.sessionStartDate || '',
+    sessionEndDate: student.sessionEndDate || '',
+    academicPart: student.academicPart || 'Part-1'
   });
 
   const handleGroupChange = (groupName: string) => {
@@ -938,15 +1031,20 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
     }
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, photo: reader.result as string }));
+      const toastId = toast.loading("Processing photo...");
+      try {
+        const compressedBase64 = await compressImage(file);
+        setFormData(prev => ({ ...prev, photo: compressedBase64 }));
+        toast.dismiss(toastId);
         toast.success("Photo uploaded!");
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Photo upload error:', err);
+        toast.dismiss(toastId);
+        toast.error("Failed to upload photo.");
+      }
     }
   };
 
@@ -1009,7 +1107,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
           <div className="relative group">
             <div className="w-32 h-32 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center overflow-hidden transition-colors group-hover:border-superior-teal">
               {formData.photo ? (
-                <img src={formData.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <img src={formData.photo} alt="" className="w-full h-full object-cover" />
               ) : (
                 <>
                   <Camera className="text-slate-400 mb-2" size={24} />
@@ -1025,7 +1123,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Admission Category</Label>
-            <Select value={formData.category} onValueChange={(v: any) => setFormData({...formData, category: v})}>
+            <Select value={formData.category || ""} onValueChange={(v: any) => setFormData({...formData, category: v})}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -1038,15 +1136,42 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
           </div>
           <div className="space-y-2">
             <Label>Full Name</Label>
-            <Input value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} />
+            <Input value={formData.fullName || ""} onChange={e => setFormData({...formData, fullName: e.target.value})} />
           </div>
           <div className="space-y-2">
             <Label>Father's Name</Label>
-            <Input value={formData.fatherName} onChange={e => setFormData({...formData, fatherName: e.target.value})} />
+            <Input value={formData.fatherName || ""} onChange={e => setFormData({...formData, fatherName: e.target.value})} />
+          </div>
+          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 col-span-2 space-y-4">
+            <h4 className="text-xs font-black text-superior-teal uppercase tracking-widest">Academic & Session Details</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Academic Stage</Label>
+                <Select value={formData.academicPart || "Part-1"} onValueChange={v => setFormData({...formData, academicPart: v as any})}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Part-1">Inter Part-1</SelectItem>
+                    <SelectItem value="Part-2">Inter Part-2</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Session (e.g. 2026-28)</Label>
+                <Input value={formData.session || ""} onChange={e => setFormData({...formData, session: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Session Start</Label>
+                <Input type="date" value={formData.sessionStartDate || ""} onChange={e => setFormData({...formData, sessionStartDate: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Session End</Label>
+                <Input type="date" value={formData.sessionEndDate || ""} onChange={e => setFormData({...formData, sessionEndDate: e.target.value})} />
+              </div>
+            </div>
           </div>
           <div className="space-y-2">
             <Label>Contact Number</Label>
-            <Input value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} />
+            <Input value={formData.contact || ""} onChange={e => setFormData({...formData, contact: e.target.value})} />
           </div>
           <div className="space-y-2">
             <Label>Monthly Installment (Auto-Calc)</Label>
@@ -1056,7 +1181,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
           </div>
           <div className="space-y-2">
             <Label>Total Installments Plan (Months)</Label>
-            <Select value={String(formData.totalInstallments)} onValueChange={(v) => setFormData({...formData, totalInstallments: Number(v)})}>
+            <Select value={String(formData.totalInstallments ?? 12)} onValueChange={(v) => setFormData({...formData, totalInstallments: Number(v)})}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -1069,19 +1194,19 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
           </div>
           <div className="space-y-2">
             <Label>Tuition Fee (Total)</Label>
-            <Input type="number" value={formData.totalFeeFinalized} onChange={e => setFormData({...formData, totalFeeFinalized: Number(e.target.value)})} />
+            <Input type="number" value={formData.totalFeeFinalized || ""} onChange={e => setFormData({...formData, totalFeeFinalized: Number(e.target.value)})} />
           </div>
           <div className="space-y-2">
             <Label>Admission Fee</Label>
-            <Input type="number" value={formData.admissionFee} onChange={e => setFormData({...formData, admissionFee: Number(e.target.value)})} />
+            <Input type="number" value={formData.admissionFee || ""} onChange={e => setFormData({...formData, admissionFee: Number(e.target.value)})} />
           </div>
           <div className="space-y-2">
             <Label>Misc Funds</Label>
-            <Input type="number" value={formData.miscFunds} onChange={e => setFormData({...formData, miscFunds: Number(e.target.value)})} />
+            <Input type="number" value={formData.miscFunds || ""} onChange={e => setFormData({...formData, miscFunds: Number(e.target.value)})} />
           </div>
           <div className="space-y-2">
             <Label>Academic Group</Label>
-            <Select value={formData.group} onValueChange={handleGroupChange}>
+            <Select value={formData.group || ""} onValueChange={handleGroupChange}>
               <SelectTrigger>
                 <SelectValue placeholder="Select Group" />
               </SelectTrigger>
@@ -1094,12 +1219,12 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
           </div>
           <div className="space-y-2">
             <Label>Section</Label>
-            <Input value={formData.section} onChange={e => setFormData({...formData, section: e.target.value.toUpperCase()})} />
+            <Input value={formData.section || ""} onChange={e => setFormData({...formData, section: e.target.value.toUpperCase()})} />
           </div>
         </div>
         <div className="space-y-2">
           <Label>Address</Label>
-          <Input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+          <Input value={formData.address || ""} onChange={e => setFormData({...formData, address: e.target.value})} />
         </div>
         <div className="space-y-4">
           <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">

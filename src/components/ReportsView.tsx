@@ -210,12 +210,52 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
       hoverColor: "hover:bg-emerald-50 hover:border-emerald-100",
       columns: ["Date", "Type", "Category", "Amount", "Status"],
       getData: () => {
+        const activeStudentIds = new Set(data.students.map((s: any) => s.id));
+        const activeAdmissionIdsForStudents = new Set(data.students.map((s: any) => s.admissionId).filter(Boolean));
+        const activeStudentNames = new Set(data.students.map((s: any) => s.fullName?.toLowerCase().trim()).filter(Boolean));
+
+        const validAdmissionsForIncome = data.admissions.filter((a: any) => {
+          if (activeAdmissionIdsForStudents.has(a.id)) return true;
+          if (a.studentId && !activeStudentIds.has(a.studentId)) return false;
+          return !a.studentId;
+        });
+
+        const activeIds = new Set([
+            ...activeStudentIds,
+            ...validAdmissionsForIncome.map((a: any) => a.id)
+        ]);
+        const activeNames = new Set([
+            ...activeStudentNames,
+            ...validAdmissionsForIncome.map((a: any) => a.fullName?.toLowerCase().trim()).filter(Boolean)
+        ]);
+        const activeIncomes = data.incomes.filter((inc: any) => {
+            if (inc.studentId && inc.studentId.trim() !== '') return activeIds.has(inc.studentId);
+            if (inc.studentName && inc.studentName.trim() !== '') return activeNames.has(inc.studentName.toLowerCase().trim());
+            return true;
+        });
+
         const financialData: any[] = [];
-        data.incomes
+        activeIncomes
           .filter((i: any) => monthFilter === 'all' || i.month === monthFilter)
           .forEach((i: any) => {
             financialData.push([i.date, "Income", i.feeType, `Rs. ${i.amount}`, i.status]);
           });
+
+        // Add additional admission fees not in ledgers
+        validAdmissionsForIncome.forEach((a: any) => {
+           const studentIncomesTotal = activeIncomes
+              .filter((inc: any) => inc.studentId === a.studentId || (inc.studentName === a.fullName))
+              .reduce((sum: number, inc: any) => sum + (inc.amount || 0), 0);
+           
+           const excess = Math.max(0, Number(a.feeReceived) - studentIncomesTotal);
+           if (excess > 0) {
+             const admMonth = months[new Date(a.date).getMonth()] || 'N/A';
+             if (monthFilter === 'all' || admMonth === monthFilter) {
+                financialData.push([a.date, "Income (Adm)", "Admission Fee", `Rs. ${excess}`, "Received"]);
+             }
+           }
+        });
+
         data.expenses
           .filter((e: any) => monthFilter === 'all' || months[new Date(e.date).getMonth()] === monthFilter)
           .forEach((e: any) => {
@@ -371,7 +411,7 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
               <div className="flex justify-between items-start border-b-4 border-superior-teal pb-12 mb-12">
                 <div className="flex gap-8 items-center">
                   <div className="w-28 h-28 rounded-3xl bg-white shadow-inner border border-slate-100 flex items-center justify-center overflow-hidden p-2">
-                    {data.settings.logo ? (
+                    {data.settings?.logo ? (
                       <img src={data.settings.logo} alt="Logo" className="w-full h-full object-contain" />
                     ) : (
                       <div className="bg-superior-teal w-full h-full flex items-center justify-center text-white rounded-2xl">
@@ -380,17 +420,17 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
                     )}
                   </div>
                   <div>
-                    <h1 className="text-5xl font-display font-black text-superior-teal mb-2 uppercase tracking-tight" style={{ color: data.settings.themeColor }}>{data.settings.collegeName}</h1>
-                    <p className="text-superior-gold font-black tracking-[0.3em] text-base uppercase">{data.settings.campusName}</p>
+                    <h1 className="text-5xl font-display font-black text-superior-teal mb-2 uppercase tracking-tight" style={{ color: data.settings?.themeColor }}>{data.settings?.collegeName || 'Superior College'}</h1>
+                    <p className="text-superior-gold font-black tracking-[0.3em] text-base uppercase">{data.settings?.campusName || 'Main Campus'}</p>
                     <div className="mt-6 text-slate-500 text-xs space-y-1.5 font-medium">
-                      <p className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-superior-gold"></span> {data.settings.address}</p>
-                      <p className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-superior-gold"></span> Contact: {data.settings.contactNumber}</p>
-                      <p className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-superior-gold"></span> Email: {data.settings.email}</p>
+                      <p className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-superior-gold"></span> {data.settings?.address || 'N/A'}</p>
+                      <p className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-superior-gold"></span> Contact: {data.settings?.contactNumber || 'N/A'}</p>
+                      <p className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-superior-gold"></span> Email: {data.settings?.email || 'N/A'}</p>
                     </div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="bg-superior-teal text-white px-6 py-3 rounded-2xl inline-block mb-6 shadow-lg shadow-superior-teal/20" style={{ backgroundColor: data.settings.themeColor }}>
+                  <div className="bg-superior-teal text-white px-6 py-3 rounded-2xl inline-block mb-6 shadow-lg shadow-superior-teal/20" style={{ backgroundColor: data.settings?.themeColor || '#1e293b' }}>
                     <h2 className="text-2xl font-display font-black uppercase tracking-widest">{selectedReport.title}</h2>
                   </div>
                   <div className="space-y-1">

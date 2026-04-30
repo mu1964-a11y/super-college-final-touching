@@ -1,7 +1,7 @@
 
 export type Gender = 'Male' | 'Female';
 
-export type StudentCategory = 'Inter Part-1 Boys' | 'Inter Part-2 Boys' | 'Inter Part-1 Girls' | 'Inter Part-2 Girls';
+export type StudentCategory = string | 'Inter Part-1 Boys' | 'Inter Part-2 Boys' | 'Inter Part-1 Girls' | 'Inter Part-2 Girls';
 
 export type AdmissionStatus = 'Prospective' | 'Admitted/Confirmed' | 'Full Paid' | 'Partial Paid' | 'Not Paid' | 'Overdue';
 
@@ -36,6 +36,8 @@ export interface Lead {
   id: string;
   studentName: string;
   fatherName: string;
+  finalizedFee?: number;
+  finalizedBy?: string;
   cnic?: string;
   previousSchool: string;
   areaVillage: string;
@@ -46,6 +48,7 @@ export interface Lead {
   subjects?: string[];
   dateAdded: string;
   isConverted?: boolean;
+  session?: string;
 }
 
 export interface Admission {
@@ -54,6 +57,8 @@ export interface Admission {
   date: string;
   fullName: string;
   fatherName: string;
+  email?: string;
+  bloodGroup?: string;
   previousMarks: number;
   previousInstitute: string;
   collegeNo?: string;
@@ -87,6 +92,14 @@ export interface Admission {
   photo?: string;
   status: AdmissionStatus;
   isAdmitted: boolean;
+  session?: string;
+  sessionStartDate?: string;
+  sessionEndDate?: string;
+  academicPart?: 'Part-1' | 'Part-2';
+  programType?: 'Yearly' | 'Semester';
+  currentSemester?: number;
+  feeHistory?: FeePayment[];
+  feeLedger?: FeeLedger;
 }
 
 export interface Student {
@@ -122,6 +135,13 @@ export interface Student {
   performance: AcademicRecord[];
   attendance: { present: number; absent: number };
   notes?: { date: string; content: string; type: 'Award' | 'Warning' | 'General' }[];
+  session?: string;
+  sessionStartDate?: string;
+  sessionEndDate?: string;
+  academicPart?: 'Part-1' | 'Part-2';
+  programType?: 'Yearly' | 'Semester';
+  currentSemester?: number;
+  totalSemesters?: number;
 }
 
 export interface FeePayment {
@@ -133,6 +153,8 @@ export interface FeePayment {
   status: 'Paid' | 'Partial' | 'Unpaid';
   datePaid?: string;
   receiptId?: string;
+  feeType?: string;
+  collectedBy?: string;
 }
 
 export interface AcademicRecord {
@@ -200,6 +222,8 @@ export interface AppSettings {
   fontFamily?: 'Inter' | 'Outfit' | 'Space Grotesk' | 'Playfair Display' | 'JetBrains Mono';
   cardRadius?: 'none' | 'sm' | 'md' | 'lg' | '2xl' | '3xl';
   glassEffect?: boolean;
+  admissionSlipCustomText?: string;
+  feeReceiptCustomText?: string;
   
   // Module Controls
   enabledModules: string[]; // ['dashboard', 'leads', 'admissions', 'students', 'staff', 'accounts', 'reports', 'settings', 'academic']
@@ -241,6 +265,7 @@ export interface Expense {
   description: string;
   addedBy: string;
   paymentMethod?: 'Cash' | 'Bank Transfer' | 'Cheque';
+  session?: string;
 }
 
 export interface Income {
@@ -257,6 +282,7 @@ export interface Income {
   gender?: Gender;
   recordedBy?: string;
   paymentMethod?: 'Cash' | 'Bank Transfer' | 'Cheque';
+  session?: string;
 }
 
 export interface UserPermission {

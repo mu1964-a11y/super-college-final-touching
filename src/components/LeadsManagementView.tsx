@@ -75,9 +75,11 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
   const [schoolFilter, setSchoolFilter] = useState('all');
   const [areaFilter, setAreaFilter] = useState('all');
   const [classFilter, setClassFilter] = useState('all');
+  const [convertedFilter, setConvertedFilter] = useState('all');
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [dialogType, setDialogType] = useState<'add' | 'edit' | 'delete' | 'bulkDelete' | 'convert' | null>(null);
+  const [convertTargetProgram, setConvertTargetProgram] = useState<string>('fsc');
   
   const deferredSearchTerm = useDeferredValue(searchTerm);
 
@@ -106,6 +108,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
       // Defensive string conversion to prevent crashes if data contains non-string types
       const studentName = String(lead.studentName || '').toLowerCase();
       const fatherName = String(lead.fatherName || '').toLowerCase();
+      const finalizedBy = String(lead.finalizedBy || '').toLowerCase();
       const school = String(lead.previousSchool || '').toLowerCase();
       const area = String(lead.areaVillage || '').toLowerCase();
       const city = String(lead.city || '').toLowerCase();
@@ -115,6 +118,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
       const matchesSearch = 
         studentName.includes(searchLower) ||
         fatherName.includes(searchLower) ||
+        finalizedBy.includes(searchLower) ||
         school.includes(searchLower) ||
         area.includes(searchLower) ||
         city.includes(searchLower) ||
@@ -129,10 +133,13 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
       const matchesSchool = schoolFilter === 'all' || leadSchool === schoolFilter;
       const matchesArea = areaFilter === 'all' || leadArea === areaFilter;
       const matchesClass = classFilter === 'all' || leadClass === classFilter;
+      const matchesConverted = convertedFilter === 'all' || 
+                              (convertedFilter === 'converted' && lead.isConverted) || 
+                              (convertedFilter === 'pending' && !lead.isConverted);
 
-      return matchesSearch && matchesSchool && matchesArea && matchesClass;
+      return matchesSearch && matchesSchool && matchesArea && matchesClass && matchesConverted;
     });
-  }, [leads, deferredSearchTerm, schoolFilter, areaFilter, classFilter]);
+  }, [leads, deferredSearchTerm, schoolFilter, areaFilter, classFilter, convertedFilter]);
 
   const toggleSelectAll = () => {
     if (selectedLeads.length === filteredLeads.length) {
@@ -165,6 +172,8 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
           id: `lead-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           studentName: row['Student Name'] || row['Name'] || '',
           fatherName: row['Father Name'] || '',
+          finalizedFee: Number(row['Package'] || row['Finalized Fee'] || 0),
+          finalizedBy: row['Finalized By'] || '',
           cnic: row['CNIC'] || '',
           previousSchool: row['Previous School'] || row['School'] || '',
           areaVillage: row['Area/Village'] || row['Area'] || '',
@@ -192,6 +201,8 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
       {
         'Student Name': 'Ahmad Ali',
         'Father Name': 'Muhammad Ali',
+        'Package': 55000,
+        'Finalized By': 'Director Azam',
         'CNIC': '36101-0000000-0',
         'Previous School': 'Superior School',
         'Area/Village': 'Jahanian City',
@@ -212,6 +223,8 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
     const exportData = filteredLeads.map(l => ({
       'Student Name': l.studentName,
       'Father Name': l.fatherName,
+      'Package': l.finalizedFee,
+      'Finalized By': l.finalizedBy,
       'CNIC': l.cnic,
       'Previous School': l.previousSchool,
       'Area/Village': l.areaVillage,
@@ -237,6 +250,8 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
     const tableData = filteredLeads.map(l => [
       l.studentName,
       l.fatherName,
+      l.finalizedFee || 0,
+      l.finalizedBy || '-',
       l.previousSchool,
       l.areaVillage,
       l.fatherPhone,
@@ -245,7 +260,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
     ]);
 
     autoTable(doc, {
-      head: [['Student Name', 'Father Name', 'School', 'Area', 'Phone', 'Grade', 'Subjects']],
+      head: [['Student Name', 'Father Name', 'Package', 'By', 'School', 'Area', 'Phone', 'Grade', 'Subjects']],
       body: tableData,
       startY: 30,
     });
@@ -306,16 +321,16 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
   };
 
   const handleConvert = async () => {
-    await data.convertLeadsToApplicants(selectedLeads);
+    await data.convertLeadsToApplicants(selectedLeads, convertTargetProgram);
     setSelectedLeads([]);
     setDialogType(null);
     
     // Auto-conversion interlinking logic
     if (data.settings?.autoLeadConversion && onNavigate) {
-      toast.info("Navigating to Admissions pool...", {
+      toast.info(`Navigating to ${convertTargetProgram.toUpperCase()} Admissions pool...`, {
         description: "Checking converted applicants in processing queue."
       });
-      setTimeout(() => onNavigate('admissions', 'Not Paid'), 1000);
+      setTimeout(() => onNavigate(`admissions-${convertTargetProgram}`, 'Not Paid'), 1000);
     }
   };
 
@@ -344,11 +359,11 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
   }, [filteredLeads]);
 
   // Handle pagination for better performance
-  const [displayCount, setDisplayCount] = useState(50);
+  const [displayCount, setDisplayCount] = useState(100);
 
   // Reset pagination when search or filters change
   React.useEffect(() => {
-    setDisplayCount(50);
+    setDisplayCount(100);
   }, [deferredSearchTerm, schoolFilter, areaFilter, classFilter]);
 
   const visibleLeads = useMemo(() => filteredLeads.slice(0, displayCount), [filteredLeads, displayCount]);
@@ -357,23 +372,75 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-        <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-3xl font-display font-black text-superior-teal tracking-tight">
-              Leads Pipeline
-            </h2>
-            <span className="text-slate-300 text-2xl">/</span>
-            <span className="urdu-text text-2xl text-superior-gold font-medium">مارکیٹنگ ڈیٹا</span>
-          </div>
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-8">
+        <div className="shrink-0 flex items-center gap-3">
+          <h2 className="text-3xl font-display font-black text-superior-teal tracking-tight whitespace-nowrap">
+            Leads Pipeline
+          </h2>
+          <span className="text-slate-300 text-2xl">/</span>
+          <span className="urdu-text text-2xl text-superior-gold font-medium whitespace-nowrap mt-1">مارکیٹنگ ڈیٹا</span>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="bg-white px-8 py-4 rounded-[2rem] border border-slate-100 flex items-center gap-6 shadow-sm">
-            <div className="text-right">
-              <p className="text-sm font-black text-superior-teal leading-none">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+
+        {/* Horizontal Insights */}
+        <div className="flex-1 w-full bg-white px-6 py-4 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 transition-all duration-500 hover:border-superior-teal/20 hover:shadow-md">
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 md:gap-8 flex-1">
+              <div className="flex items-center gap-3">
+                 <div className="w-10 h-10 rounded-2xl bg-emerald-50 flex items-center justify-center shrink-0">
+                    <BarChart3 className="text-emerald-600" size={18} />
+                 </div>
+                 <div>
+                   <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest leading-none mb-1.5">Total Leads</p>
+                   <p className="text-xl font-black text-slate-800 leading-none">{filteredLeads.length}</p>
+                 </div>
+              </div>
+
+              <div className="hidden sm:block h-8 w-px bg-slate-100"></div>
+
+              <div className="flex items-center gap-3">
+                 <div className="w-10 h-10 rounded-2xl bg-orange-50 flex items-center justify-center shrink-0">
+                    <School className="text-orange-600" size={18} />
+                 </div>
+                 <div>
+                   <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest leading-none mb-1.5">Schools</p>
+                   <p className="text-xl font-black text-slate-800 leading-none">{uniqueSchoolsInSearchCount}</p>
+                 </div>
+              </div>
+
+              <div className="hidden md:block h-8 w-px bg-slate-100"></div>
+
+              <div className="hidden lg:flex flex-col justify-center max-w-[200px]">
+                 <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest leading-none mb-2">Top Schools</p>
+                 <div className="flex flex-wrap gap-1">
+                   {leadsBySchool.slice(0, 2).map(([school]) => (
+                     <Badge key={school} variant="outline" className="text-[9px] bg-slate-50 text-slate-500 border-slate-100 px-1.5 py-0 whitespace-nowrap truncate max-w-[120px]">
+                       {school}
+                     </Badge>
+                   ))}
+                   {leadsBySchool.length > 2 && (
+                     <Badge variant="outline" className="text-[9px] bg-slate-50 text-slate-500 border-slate-100 px-1.5 py-0">
+                       +{leadsBySchool.length - 2}
+                     </Badge>
+                   )}
+                 </div>
+              </div>
             </div>
-            <div className="w-14 h-14 rounded-2xl bg-superior-teal/5 flex items-center justify-center text-superior-teal shadow-inner">
-              <Database size={28} />
+
+            <Button 
+               onClick={generateFullReport}
+               variant="outline"
+               className="shrink-0 h-11 rounded-xl border-slate-200 text-xs font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 gap-2 shadow-sm px-5"
+            >
+               <FileText size={16} className="text-superior-teal" /> Full Report
+            </Button>
+        </div>
+
+        <div className="shrink-0 flex items-center gap-4">
+          <div className="bg-white px-6 py-4 rounded-[2rem] border border-slate-100 flex items-center gap-4 shadow-sm">
+            <div className="text-right whitespace-nowrap hidden md:block">
+              <p className="text-xs font-black text-superior-teal leading-none uppercase tracking-widest">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+            </div>
+            <div className="w-12 h-12 rounded-2xl bg-superior-teal/5 flex items-center justify-center text-superior-teal shadow-inner shrink-0">
+              <Database size={24} />
             </div>
           </div>
         </div>
@@ -401,7 +468,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
         </div>
 
         {/* Row 2: Expanded Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 pt-2">
           <div className="space-y-2">
             <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Filter by School</Label>
             <Select value={schoolFilter} onValueChange={setSchoolFilter}>
@@ -440,6 +507,20 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
               </SelectContent>
             </Select>
           </div>
+
+          <div className="space-y-2">
+            <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Conversion Status</Label>
+            <Select value={convertedFilter} onValueChange={setConvertedFilter}>
+              <SelectTrigger className="h-14 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-slate-700 shadow-sm">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent className="rounded-2xl border-slate-100 shadow-2xl">
+                <SelectItem value="all" className="font-bold text-slate-700">All Records</SelectItem>
+                <SelectItem value="converted" className="font-bold text-emerald-600">Converted (Admission Taken)</SelectItem>
+                <SelectItem value="pending" className="font-bold text-amber-600">Pending Leads</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
@@ -466,11 +547,9 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
               <button onClick={downloadSampleExcel} className="text-[9px] font-black uppercase tracking-widest text-slate-300 hover:text-superior-gold hover:underline mt-1">Download Format</button>
             </div>
             <DropdownMenu>
-              <DropdownMenuTrigger nativeButton={true} render={
-                <button className="rounded-xl text-slate-400 hover:text-superior-teal hover:bg-superior-teal/5 gap-2 font-black uppercase tracking-widest text-[10px] h-10 px-4 flex items-center justify-center border border-transparent">
-                  <Download size={14} /> Export
-                </button>
-              } />
+              <DropdownMenuTrigger className="rounded-xl text-slate-400 hover:text-superior-teal hover:bg-superior-teal/5 gap-2 font-black uppercase tracking-widest text-[10px] h-10 px-4 flex items-center justify-center border border-transparent outline-hidden transition-all">
+                <Download size={14} /> Export
+              </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="rounded-2xl border-slate-100 shadow-xl p-2">
                 <DropdownMenuItem onClick={exportToExcel} className="gap-3 p-3 rounded-xl font-bold text-emerald-600 cursor-pointer">
                   <FileSpreadsheet size={16} /> Export to Excel
@@ -484,37 +563,63 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-        {/* Table Section */}
-        <div className="xl:col-span-3 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xl font-serif font-bold text-slate-800">Leads Data Grid</h3>
-            <div className="flex items-center gap-3">
-              <AnimatePresence>
-                {selectedLeads.length > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    className="flex items-center gap-3"
-                  >
-                    <Button 
-                      variant="destructive" 
-                      className="rounded-xl gap-2 h-12 px-6 font-black uppercase tracking-widest text-[10px] shadow-lg shadow-red-100"
-                      onClick={() => setDialogType('bulkDelete')}
-                    >
-                      <Trash2 size={18} /> Delete Selected ({selectedLeads.length})
-                    </Button>
-                    <Button 
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl gap-2 h-12 px-6 font-black uppercase tracking-widest text-[10px] shadow-lg shadow-emerald-100"
-                      onClick={() => setDialogType('convert')}
-                    >
-                      <UserPlus size={18} /> Convert Selected ({selectedLeads.length})
-                    </Button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+      {/* Bulk Actions Bar */}
+      {selectedLeads.length > 0 && (
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="sticky top-4 z-30 flex items-center justify-between p-4 bg-superior-teal rounded-2xl shadow-2xl text-white mb-6 border border-white/10"
+        >
+          <div className="flex items-center gap-4 pl-2">
+            <Checkbox 
+              checked={selectedLeads.length === filteredLeads.length} 
+              onCheckedChange={toggleSelectAll} 
+              className="border-white data-[state=checked]:bg-white data-[state=checked]:text-superior-teal"
+            />
+            <div className="flex flex-col">
+              <p className="text-sm font-black uppercase tracking-widest">
+                {selectedLeads.length} lead{selectedLeads.length > 1 ? 's' : ''} selected
+              </p>
+              {selectedLeads.length < filteredLeads.length && (
+                <button 
+                  onClick={() => setSelectedLeads(filteredLeads.map(l => l.id))}
+                  className="text-[10px] font-black underline uppercase tracking-tighter opacity-70 hover:opacity-100 text-left"
+                >
+                  Select all {filteredLeads.length} matching leads
+                </button>
+              )}
             </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setSelectedLeads([])}
+              className="h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 font-black text-[10px] uppercase tracking-widest px-6"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => setDialogType('convert')}
+              className="h-10 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 border-none font-black text-[10px] uppercase tracking-widest px-6 shadow-lg shadow-black/20"
+            >
+              <UserPlus size={14} className="mr-2" /> Convert
+            </Button>
+            <Button 
+              onClick={() => setDialogType('bulkDelete')}
+              variant="destructive" 
+              className="h-10 rounded-xl bg-white text-rose-600 hover:bg-rose-50 border-none font-black text-[10px] uppercase tracking-widest px-6 shadow-lg shadow-black/20"
+            >
+              <Trash2 size={14} className="mr-2" /> Delete
+            </Button>
+          </div>
+        </motion.div>
+      )}
+
+      <div className="space-y-4">
+        {/* Table Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-2">
+            <h3 className="text-xl font-serif font-bold text-slate-800">Leads Data Grid</h3>
           </div>
 
           <div className="bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden transition-all duration-500 hover:border-slate-200">
@@ -527,6 +632,8 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
                   </TableHead>
                   <TableHead className="font-bold text-slate-400 uppercase tracking-widest text-[10px]">Student Name</TableHead>
                   <TableHead className="font-bold text-slate-400 uppercase tracking-widest text-[10px]">Father Name</TableHead>
+                  <TableHead className="font-bold text-slate-400 uppercase tracking-widest text-[10px]">Package</TableHead>
+                  <TableHead className="font-bold text-slate-400 uppercase tracking-widest text-[10px]">Finalized By</TableHead>
                   <TableHead className="font-bold text-slate-400 uppercase tracking-widest text-[10px]">Previous School</TableHead>
                   <TableHead className="font-bold text-slate-400 uppercase tracking-widest text-[10px]">Area/Village</TableHead>
                   <TableHead className="font-bold text-slate-400 uppercase tracking-widest text-[10px]">Subjects</TableHead>
@@ -548,23 +655,43 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
                     </TableCell>
                   </TableRow>
                 ) : (
-                  visibleLeads.map((lead) => (
-                    <TableRow key={lead.id} className={cn(
-                      "group transition-colors border-slate-50",
-                      selectedLeads.includes(lead.id) ? "bg-slate-50" : "hover:bg-slate-50/50",
-                      lead.isConverted ? "bg-superior-teal/10 border-l-2 border-l-superior-teal" : ""
-                    )}>
-                      <TableCell className="pl-6">
+                  visibleLeads.map((lead) => {
+                    const leadObj = lead as any;
+                    const isNew = data.isNewRecord?.(lead.id, lead.dateAdded || leadObj.date_added);
+                    return (
+                    <TableRow 
+                      key={lead.id} 
+                      onClick={() => {
+                        data.markActioned?.(lead.id);
+                        toggleSelectLead(lead.id);
+                      }}
+                      className={cn(
+                        "group transition-colors border-slate-50 cursor-pointer relative",
+                        selectedLeads.includes(lead.id) ? "bg-slate-50" : "hover:bg-slate-50/50",
+                        lead.isConverted ? "bg-superior-teal/5 border-l-[3px] border-l-superior-teal" : "",
+                        isNew && !lead.isConverted ? "bg-red-50/20 border-l-[3px] border-l-red-500 hover:bg-red-50" : ""
+                      )}>
+                      <TableCell className="pl-6 relative">
+                        {isNew && !lead.isConverted && (
+                           <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] animate-pulse" />
+                        )}
                         <Checkbox checked={selectedLeads.includes(lead.id)} onCheckedChange={() => toggleSelectLead(lead.id)} />
                       </TableCell>
                       <TableCell className={cn("font-bold text-slate-600 group-hover:text-slate-900 transition-colors", lead.isConverted && "text-emerald-700")}>
                         <div className="flex items-center gap-2">
                           <HighlightText text={lead.studentName} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
                           {lead.isConverted && <CheckCircle2 size={14} className="text-emerald-500" />}
+                          {isNew && !lead.isConverted && <span className="text-[9px] font-black uppercase text-red-500 tracking-widest bg-red-100 px-2 py-0.5 rounded-md">New</span>}
                         </div>
                       </TableCell>
                       <TableCell className="text-slate-500 font-medium">
                         <HighlightText text={lead.fatherName} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
+                      </TableCell>
+                      <TableCell className="font-black text-superior-teal">
+                        Rs. {lead.finalizedFee?.toLocaleString() || 0}
+                      </TableCell>
+                      <TableCell className="text-slate-500 font-bold italic">
+                        <HighlightText text={lead.finalizedBy || '-'} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -607,50 +734,35 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
                         )}
                       </TableCell>
                       <TableCell className="text-right pr-6">
-                        <div className="flex items-center justify-end gap-2">
-                          {!lead.isConverted ? (
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => {
-                                setSelectedLeads([lead.id]);
-                                setDialogType('convert');
-                              }}
-                              className="h-9 px-3 rounded-lg border-emerald-200 text-emerald-600 hover:bg-emerald-50 font-bold text-[10px] uppercase tracking-wider"
-                            >
-                              <UserPlus size={14} className="mr-1.5" /> Convert
-                            </Button>
-                          ) : (
-                            <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-100 font-bold">Converted</Badge>
-                          )}
-                          
-                          <Button 
-                            variant="outline" 
-                            size="icon" 
-                            onClick={() => {
-                              setSelectedLead(lead);
-                              setDialogType('edit');
-                            }}
-                            className="h-9 w-9 rounded-lg border-slate-200 text-slate-400 hover:text-superior-teal hover:border-superior-teal/30"
-                          >
-                            <Edit size={14} />
-                          </Button>
- 
-                          <Button 
-                            variant="outline" 
-                            size="icon" 
-                            onClick={() => {
-                              setSelectedLead(lead);
-                              setDialogType('delete');
-                            }}
-                            className="h-9 w-9 rounded-lg border-red-100 text-red-400 hover:text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 size={14} />
-                          </Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger className="h-8 w-8 p-0 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 outline-hidden transition-all">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-[200px] rounded-2xl shadow-xl border-slate-100 p-2">
+                            <DropdownMenuItem className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" onClick={() => { setSelectedLead(lead); setDialogType('edit'); }}>
+                              <Edit size={16} className="text-superior-teal" /> Edit Details
+                            </DropdownMenuItem>
+                            {!lead.isConverted && (
+                              <DropdownMenuItem className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-emerald-600" onClick={() => { setSelectedLeads([lead.id]); setDialogType('convert'); }}>
+                                <UserPlus size={16} /> Convert to Admission
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-400 opacity-50">
+                              <FileText size={16} /> View Lead Sheet
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-400 opacity-50">
+                              <Info size={16} /> Add Private Note
+                            </DropdownMenuItem>
+                            <Separator className="my-1" />
+                            <DropdownMenuItem className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-red-600 hover:bg-red-50" onClick={() => { setSelectedLead(lead); setDialogType('delete'); }}>
+                              <Trash2 size={16} /> Delete Record
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                  ))
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
@@ -661,7 +773,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
             <div className="flex justify-center pt-4">
               <Button 
                 variant="outline" 
-                onClick={() => setDisplayCount(prev => prev + 50)}
+                onClick={() => setDisplayCount(prev => prev + 500)}
                 className="rounded-2xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-8"
               >
                 Load More Records ({filteredLeads.length - displayCount} remaining)
@@ -669,76 +781,6 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
             </div>
           )}
         </div>
-
-        {/* Summary Panel */}
-        <div className="space-y-6">
-          <div className="bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden sticky top-24 transition-all duration-500 hover:border-slate-200">
-            <div className="bg-slate-900 text-white p-6">
-              <h3 className="text-lg font-sans font-black flex items-center gap-2">
-                <BarChart3 size={20} className="text-slate-400" />
-                {searchTerm || schoolFilter !== 'all' || areaFilter !== 'all' || classFilter !== 'all' 
-                  ? "Search Insights" 
-                  : "Overall Insights"}
-              </h3>
-            </div>
-            <div className="p-6 space-y-6">
-              <div className="space-y-4">
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">
-                    {searchTerm || schoolFilter !== 'all' || areaFilter !== 'all' || classFilter !== 'all' ? "Search Context" : "Data Context"}
-                  </p>
-                  <p className="text-sm font-bold text-slate-800 truncate">
-                    {searchTerm || (schoolFilter !== 'all' ? `School: ${schoolFilter}` : '') || (areaFilter !== 'all' ? `Area: ${areaFilter}` : '') || 'All Records'}
-                  </p>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100">
-                    <p className="text-[10px] text-emerald-600 uppercase font-bold tracking-widest mb-1">Leads Found</p>
-                    <p className="text-2xl font-black text-emerald-700">{filteredLeads.length}</p>
-                  </div>
-                  <div className="p-4 bg-orange-50/50 rounded-2xl border border-orange-100">
-                    <p className="text-[10px] text-orange-600 uppercase font-bold tracking-widest mb-1">Schools</p>
-                    <p className="text-2xl font-black text-orange-700">
-                      {uniqueSchoolsInSearchCount}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Top Schools:</p>
-                  <div className="flex flex-wrap gap-1">
-                    {leadsBySchool.map(([school, count]) => (
-                      <Badge key={school} variant="outline" className="text-[10px] bg-slate-50 text-slate-500 border-slate-100 font-bold px-2 py-0.5 rounded-lg">
-                        {school} ({count})
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-
-                <Separator className="bg-slate-100" />
-
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Conversion Potential</span>
-                    <span className="text-xs font-bold text-emerald-600">High</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-emerald-500 h-full w-[65%]"></div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4">
-                <Button 
-                  onClick={generateFullReport}
-                  className="w-full bg-slate-900 text-white hover:bg-slate-800 font-bold rounded-2xl h-12 gap-2 transition-all"
-                >
-                  Generate Full Report <ArrowRight size={16} />
-                </Button>
-              </div>
-            </div>
-          </div>
 
       {/* Centralized Dialogs */}
       <Dialog open={dialogType === 'add'} onOpenChange={(open) => !open && setDialogType(null)}>
@@ -755,7 +797,6 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
             onUpdate={(updates) => {
               data.updateLead(selectedLead.id, updates);
               setDialogType(null);
-              toast.success("Lead updated successfully!");
             }} 
           />
         )}
@@ -783,7 +824,6 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
               if (selectedLead) {
                 data.deleteLead(selectedLead.id);
                 setDialogType(null);
-                toast.success("Lead deleted successfully!");
               }
             }}>Confirm Delete</Button>
           </DialogFooter>
@@ -808,11 +848,11 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
           </div>
           <DialogFooter className="gap-3">
             <Button variant="ghost" onClick={() => setDialogType(null)} className="rounded-xl h-12 px-6 font-bold">Cancel</Button>
-            <Button variant="destructive" className="rounded-xl h-12 px-8 font-black uppercase tracking-widest text-xs" onClick={() => {
-              data.bulkDeleteLeads(selectedLeads);
-              setSelectedLeads([]);
+            <Button variant="destructive" className="rounded-xl h-12 px-8 font-black uppercase tracking-widest text-xs" onClick={async () => {
+              const idsToDelete = [...selectedLeads];
               setDialogType(null);
-              toast.success(`${selectedLeads.length} leads deleted successfully!`);
+              setSelectedLeads([]);
+              await data.bulkDeleteLeads(idsToDelete);
             }}>Delete All Selected</Button>
           </DialogFooter>
         </DialogContent>
@@ -826,35 +866,42 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
               You are about to move {selectedLeads.length} records from Raw Leads to the Admissions module. This action will create applicant profiles for all selected students.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-bold text-slate-700">Select Target Program</Label>
+              <Select value={convertTargetProgram} onValueChange={setConvertTargetProgram}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="fsc">FSC / General Science</SelectItem>
+                  <SelectItem value="ukl3">UK Level 3</SelectItem>
+                  <SelectItem value="dit">DIT</SelectItem>
+                  <SelectItem value="bs">BS Program</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
               <p className="text-sm font-bold text-slate-700">Conversion Summary:</p>
               <ul className="text-xs text-slate-600 space-y-1">
                 <li>• Source: Raw Marketing Data</li>
-                <li>• Destination: Admissions (All Applicants)</li>
+                <li>• Destination: {convertTargetProgram.toUpperCase()} Admissions</li>
                 <li>• Status: Pending Review</li>
               </ul>
             </div>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="ghost" onClick={() => setDialogType(null)}>Cancel</Button>
-            <Button className="bg-superior-teal text-white" onClick={handleConvert}>Proceed with Conversion</Button>
+            <Button className="bg-superior-teal text-white" onClick={async () => {
+              const idsToConvert = [...selectedLeads];
+              setDialogType(null);
+              setSelectedLeads([]);
+              await data.convertLeadsToApplicants(idsToConvert, convertTargetProgram);
+            }}>Proceed with Conversion</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-          <div className="p-6 bg-superior-gold/10 rounded-3xl border border-superior-gold/20 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-superior-gold rounded-lg">
-                <GraduationCap className="text-superior-teal" size={20} />
-              </div>
-              <h4 className="font-serif font-bold text-superior-teal">Marketing Tip</h4>
-            </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Focus your marketing efforts on <strong>{topSchools[0]?.[0] || 'Top Schools'}</strong> this week. They represent the highest density of prospective leads in your current data.
-            </p>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -864,6 +911,8 @@ function AddLeadDialog({ onAdd }: { onAdd: (lead: Lead) => void }) {
   const [formData, setFormData] = useState({
     studentName: '',
     fatherName: '',
+    finalizedFee: 0,
+    finalizedBy: '',
     previousSchool: '',
     areaVillage: '',
     city: 'Jahanian',
@@ -901,7 +950,6 @@ function AddLeadDialog({ onAdd }: { onAdd: (lead: Lead) => void }) {
     };
 
     onAdd(newLead);
-    toast.success("Lead added successfully!");
   };
 
   return (
@@ -919,6 +967,16 @@ function AddLeadDialog({ onAdd }: { onAdd: (lead: Lead) => void }) {
           <div className="space-y-2">
             <Label>Father Name</Label>
             <Input value={formData.fatherName} onChange={e => setFormData({...formData, fatherName: e.target.value})} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Package</Label>
+            <Input type="number" value={formData.finalizedFee} onChange={e => setFormData({...formData, finalizedFee: Number(e.target.value)})} />
+          </div>
+          <div className="space-y-2">
+            <Label>Finalized By</Label>
+            <Input value={formData.finalizedBy} onChange={e => setFormData({...formData, finalizedBy: e.target.value})} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
@@ -989,6 +1047,8 @@ function EditLeadDialog({ lead, onUpdate }: { lead: Lead, onUpdate: (updates: Pa
     ...lead,
     studentName: lead.studentName || '',
     fatherName: lead.fatherName || '',
+    finalizedFee: lead.finalizedFee || 0,
+    finalizedBy: lead.finalizedBy || '',
     previousSchool: lead.previousSchool || '',
     areaVillage: lead.areaVillage || '',
     city: lead.city || 'Jahanian',
@@ -998,6 +1058,25 @@ function EditLeadDialog({ lead, onUpdate }: { lead: Lead, onUpdate: (updates: Pa
     subjects: lead.subjects || [],
     cnic: lead.cnic || ''
   });
+
+  // Sync state with lead prop if it changes
+  React.useEffect(() => {
+    setFormData({
+      ...lead,
+      studentName: lead.studentName || '',
+      fatherName: lead.fatherName || '',
+      finalizedFee: lead.finalizedFee || 0,
+      finalizedBy: lead.finalizedBy || '',
+      previousSchool: lead.previousSchool || '',
+      areaVillage: lead.areaVillage || '',
+      city: lead.city || 'Jahanian',
+      fatherPhone: lead.fatherPhone || '',
+      grade: lead.grade || '',
+      currentClass: lead.currentClass || '',
+      subjects: lead.subjects || [],
+      cnic: lead.cnic || ''
+    });
+  }, [lead]);
 
   const [subjectInput, setSubjectInput] = useState('');
 
@@ -1031,6 +1110,16 @@ function EditLeadDialog({ lead, onUpdate }: { lead: Lead, onUpdate: (updates: Pa
           <div className="space-y-2">
             <Label>Father Name</Label>
             <Input value={formData.fatherName} onChange={e => setFormData({...formData, fatherName: e.target.value})} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Package</Label>
+            <Input type="number" value={formData.finalizedFee} onChange={e => setFormData({...formData, finalizedFee: Number(e.target.value)})} />
+          </div>
+          <div className="space-y-2">
+            <Label>Finalized By</Label>
+            <Input value={formData.finalizedBy} onChange={e => setFormData({...formData, finalizedBy: e.target.value})} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">

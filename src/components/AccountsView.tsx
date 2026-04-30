@@ -52,11 +52,20 @@ import {
   DialogTitle, 
   DialogDescription,
 } from '@/components/ui/dialog';
-import { Income, Expense, Student, Installment, FeeTransaction } from '../types';
+import FeeReceipt from './FeeReceipt';
+import AdmissionSlip from './AdmissionSlip';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
+import { 
+  Student, 
+  Income, 
+  Expense, 
+  FeeTransaction, 
+  Installment,
+  Admission
+} from '../types';
 
 export default function AccountsView({ data, initialTab }: { data: any, initialTab?: string | null }) {
   const [activeTab, setActiveTab] = useState(initialTab || 'summary');
@@ -77,18 +86,59 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
     }
   }, [initialTab]);
 
+  // Filter out incomes from deleted students
+  const activeIncomes = React.useMemo(() => {
+    const activeStudentIds = new Set(data.students.map((s: any) => s.id));
+    const activeAdmissionIdsForStudents = new Set(data.students.map((s: any) => s.admissionId).filter(Boolean));
+    const activeStudentNames = new Set(data.students.map((s: any) => s.fullName?.toLowerCase().trim()).filter(Boolean));
+
+    const validAdmissions = data.admissions.filter((a: any) => {
+      if (activeAdmissionIdsForStudents.has(a.id)) return true;
+      if (a.studentId && !activeStudentIds.has(a.studentId)) return false;
+      return !a.studentId;
+    });
+
+    const activeIds = new Set([
+      ...activeStudentIds,
+      ...validAdmissions.map((a: any) => a.id)
+    ]);
+    const activeNames = new Set([
+        ...activeStudentNames,
+        ...validAdmissions.map((a: any) => a.fullName?.toLowerCase().trim()).filter(Boolean)
+    ]);
+
+    return data.incomes.filter((inc: any) => {
+      if (inc.studentId && inc.studentId.trim() !== '') {
+          return activeIds.has(inc.studentId);
+      }
+      if (inc.studentName && inc.studentName.trim() !== '') {
+          return activeNames.has(inc.studentName.toLowerCase().trim());
+      }
+      return true; 
+    });
+  }, [data.incomes, data.students, data.admissions]);
+
   const totalIncome = React.useMemo(() => {
-    const fromIncomes = data.incomes.reduce((acc: number, curr: Income) => acc + (curr.amount || 0), 0);
+    const fromIncomes = activeIncomes.reduce((acc: number, curr: Income) => acc + (curr.amount || 0), 0);
+    const activeStudentIds = new Set(data.students.map((s: any) => s.id));
+    const activeAdmissionIdsForStudents = new Set(data.students.map((s: any) => s.admissionId).filter(Boolean));
+
     // Add admission fees that aren't in incomes yet
     const fromPendingAdmissions = data.admissions.reduce((acc: number, curr: any) => {
-      const hasIncomeRecord = data.incomes.some((inc: any) => inc.studentId === curr.studentId || (inc.studentName === curr.fullName && inc.amount === curr.feeReceived));
-      if (!hasIncomeRecord && curr.feeReceived > 0) {
-        return acc + Number(curr.feeReceived);
-      }
-      return acc;
+      const isCurrentlyActive = activeAdmissionIdsForStudents.has(curr.id) || (curr.studentId && activeStudentIds.has(curr.studentId));
+      const isPendingCandidate = !curr.studentId;
+
+      if (!isCurrentlyActive && !isPendingCandidate) return acc;
+
+      const studentIncomesTotal = activeIncomes
+          .filter((inc: any) => inc.studentId === curr.studentId || (inc.studentName === curr.fullName))
+          .reduce((sum: number, inc: any) => sum + (inc.amount || 0), 0);
+
+      const excessInAdmission = Math.max(0, Number(curr.feeReceived) - studentIncomesTotal);
+      return acc + excessInAdmission;
     }, 0);
     return fromIncomes + fromPendingAdmissions;
-  }, [data.incomes, data.admissions]);
+  }, [activeIncomes, data.students, data.admissions]);
 
   const totalExpenses = data.expenses.reduce((acc: number, curr: Expense) => acc + (curr.amount || 0), 0);
   const netBalance = totalIncome - totalExpenses;
@@ -288,7 +338,7 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.incomes
+                {activeIncomes
                   .filter((inc: Income) => {
                     const matchesSearch = inc.studentName.toLowerCase().includes(incomeSearch.toLowerCase()) || 
                                           (inc.studentId && inc.studentId.toLowerCase().includes(incomeSearch.toLowerCase()));
@@ -300,7 +350,7 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
                     <TableCell colSpan={6} className="h-40 text-center text-slate-400 italic">No income records found.</TableCell>
                   </TableRow>
                 ) : (
-                  data.incomes
+                  activeIncomes
                     .filter((inc: Income) => {
                       const matchesSearch = inc.studentName.toLowerCase().includes(incomeSearch.toLowerCase()) || 
                                             (inc.studentId && inc.studentId.toLowerCase().includes(incomeSearch.toLowerCase()));
@@ -512,10 +562,15 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
   const [isEditingPackage, setIsEditingPackage] = useState(false);
   const [newPackage, setNewPackage] = useState(String(student.feeLedger?.totalPackage || 0));
   const [isAddingTransaction, setIsAddingTransaction] = useState(false);
+  
+  const group = (student.group || student.category || '').toLowerCase();
+  const isSemester = group.includes('uk') || group.includes('level 3') || group.includes('dit') || group.includes('bs');
+  const termLabel = isSemester ? 'Semester' : 'Monthly';
+
   const [txData, setTxData] = useState({
     amount: '',
     paymentMethod: 'Cash' as any,
-    description: 'Monthly Installment'
+    description: isSemester ? 'Semester Installment' : 'Monthly Installment'
   });
 
   const receiptRef = React.useRef<HTMLDivElement>(null);
@@ -541,7 +596,7 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
     });
 
     setIsAddingTransaction(false);
-    setTxData({ amount: '', paymentMethod: 'Cash', description: 'Monthly Installment' });
+    setTxData({ amount: '', paymentMethod: 'Cash', description: isSemester ? 'Semester Installment' : 'Monthly Installment' });
     toast.success("Payment recorded successfully!");
   };
 
@@ -614,6 +669,8 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
     return <Badge className="bg-slate-100 text-slate-700 font-bold">Not Paid</Badge>;
   };
 
+  const [dialogType, setDialogType] = useState<'receipt' | 'slip' | null>(null);
+
   return (
     <div className="flex flex-col h-full">
       <CardHeader className="border-b border-slate-100 p-8 bg-slate-50/30">
@@ -635,9 +692,29 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
               </div>
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1.5">Payment Status</p>
-            {getBalanceStatus()}
+          <div className="flex items-center gap-3">
+            <div className="text-right mr-4">
+              <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1.5">Payment Status</p>
+              {getBalanceStatus()}
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="rounded-xl border-superior-teal/20 text-superior-teal hover:bg-superior-teal hover:text-white font-bold h-10 px-4 transition-all shadow-sm"
+                onClick={() => setDialogType('slip')}
+              >
+                <Download size={14} className="mr-2" /> Slip
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="rounded-xl border-superior-gold/20 text-superior-gold hover:bg-superior-gold hover:text-superior-teal font-bold h-10 px-4 transition-all shadow-sm"
+                onClick={() => setDialogType('receipt')}
+              >
+                <Receipt size={14} className="mr-2" /> Receipt
+              </Button>
+            </div>
           </div>
         </div>
       </CardHeader>
@@ -725,7 +802,7 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
                     <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Amount Paid (Rs.)</Label>
                     <Input 
                       type="number" 
-                      value={txData.amount} 
+                      value={txData.amount || ""} 
                       onChange={e => setTxData({...txData, amount: e.target.value})}
                       placeholder="0.00"
                       className="h-12 rounded-2xl bg-white border-slate-200 focus:border-superior-teal/30 font-bold text-lg"
@@ -733,7 +810,7 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
                   </div>
                   <div className="space-y-2.5">
                     <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Payment Method</Label>
-                    <Select value={txData.paymentMethod} onValueChange={v => setTxData({...txData, paymentMethod: v})}>
+                    <Select value={txData.paymentMethod || ""} onValueChange={v => setTxData({...txData, paymentMethod: v})}>
                       <SelectTrigger className="h-12 rounded-2xl bg-white border-slate-200 focus:border-superior-teal/30 font-bold">
                         <SelectValue />
                       </SelectTrigger>
@@ -809,6 +886,22 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
             <InstallmentBuilder student={student} data={data} />
           </TabsContent>
         </Tabs>
+
+        {/* Slips & Receipts Dialogs */}
+        <Dialog open={dialogType === 'receipt'} onOpenChange={(open) => !open && setDialogType(null)}>
+          <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] overflow-y-auto p-0 border-none bg-white rounded-3xl">
+            <FeeReceipt student={student} settings={data.settings} />
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={dialogType === 'slip'} onOpenChange={(open) => !open && setDialogType(null)}>
+          <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] overflow-y-auto p-0 border-none bg-white rounded-3xl">
+             <AdmissionSlip 
+               admission={data.admissions.find((a: any) => a.id === student.admissionId) || student} 
+               settings={data.settings} 
+             />
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </div>
   );
@@ -848,10 +941,14 @@ function InstallmentBuilder({ student, data }: { student: Student, data: any }) 
     return new Date(dueDate) < new Date() && new Date(dueDate).toDateString() !== new Date().toDateString();
   };
 
+  const group = (student.group || student.category || '').toLowerCase();
+  const isSemester = group.includes('uk') || group.includes('level 3') || group.includes('dit') || group.includes('bs');
+  const termLabel = isSemester ? 'Semester' : 'Monthly';
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h4 className="font-bold text-slate-800">Installment Plan</h4>
+        <h4 className="font-bold text-slate-800">{termLabel} Plan</h4>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={addRow}>
             <Plus size={16} className="mr-2" /> Add Row
@@ -885,7 +982,7 @@ function InstallmentBuilder({ student, data }: { student: Student, data: any }) 
                   <TableCell>
                     <Input 
                       type="date" 
-                      value={inst.dueDate} 
+                      value={inst.dueDate || ""} 
                       onChange={e => updateRow(inst.id, { dueDate: e.target.value })}
                       className="h-9 w-40"
                     />
@@ -893,13 +990,13 @@ function InstallmentBuilder({ student, data }: { student: Student, data: any }) 
                   <TableCell>
                     <Input 
                       type="number" 
-                      value={inst.amount} 
+                      value={inst.amount ?? 0} 
                       onChange={e => updateRow(inst.id, { amount: Number(e.target.value) })}
                       className="h-9 w-40 font-bold"
                     />
                   </TableCell>
                   <TableCell>
-                    <Select value={inst.status} onValueChange={v => updateRow(inst.id, { status: v as any })}>
+                    <Select value={inst.status || ""} onValueChange={v => updateRow(inst.id, { status: v as any })}>
                       <SelectTrigger className="h-9 w-32">
                         <SelectValue />
                       </SelectTrigger>
@@ -1035,7 +1132,7 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
 
         <div className="space-y-2">
           <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Category</Label>
-          <Select value={formData.category} onValueChange={v => setFormData({...formData, category: v})}>
+          <Select value={formData.category || ""} onValueChange={v => setFormData({...formData, category: v})}>
             <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
               <SelectValue placeholder="Select category..." />
             </SelectTrigger>
@@ -1071,7 +1168,7 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
 
         <div className="space-y-2">
           <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Payment Method</Label>
-          <Select value={formData.paymentMethod} onValueChange={v => setFormData({...formData, paymentMethod: v})}>
+          <Select value={formData.paymentMethod || ""} onValueChange={v => setFormData({...formData, paymentMethod: v})}>
             <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
               <SelectValue />
             </SelectTrigger>

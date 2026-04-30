@@ -412,7 +412,7 @@ function RecordMarksDialog({ data }: { data: any }) {
       <div className="grid grid-cols-2 gap-6 py-6">
         <div className="space-y-2">
           <Label>Select Student</Label>
-          <Select value={formData.studentId} onValueChange={(v) => setFormData({...formData, studentId: v})}>
+          <Select value={formData.studentId || ""} onValueChange={(v) => setFormData({...formData, studentId: v})}>
             <SelectTrigger className="h-12 rounded-2xl bg-slate-50 border-transparent">
               <SelectValue placeholder="Choose Student" />
             </SelectTrigger>
@@ -436,7 +436,7 @@ function RecordMarksDialog({ data }: { data: any }) {
 
         <div className="space-y-2">
           <Label>Test Type</Label>
-          <Select value={formData.testType} onValueChange={(v: any) => setFormData({...formData, testType: v})}>
+          <Select value={formData.testType || ""} onValueChange={(v: any) => setFormData({...formData, testType: v})}>
             <SelectTrigger className="h-12 rounded-2xl bg-slate-50 border-transparent">
               <SelectValue />
             </SelectTrigger>
@@ -549,9 +549,9 @@ function ResultCardDialog({ record, data }: { record: AcademicRecord, data: any 
       <div id="result-card" className="p-10 bg-white">
         {/* College Header */}
         <div className="text-center border-b-2 border-superior-teal pb-6 mb-8">
-          <h2 className="text-2xl font-serif font-black text-superior-teal uppercase tracking-tight">{settings.collegeName}</h2>
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-[0.3em] mt-1">{settings.campusName}</p>
-          <p className="text-[10px] text-slate-400 mt-2">{settings.address} | {settings.contactNumber}</p>
+          <h2 className="text-2xl font-serif font-black text-superior-teal uppercase tracking-tight">{settings?.collegeName || 'Superior College'}</h2>
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-[0.3em] mt-1">{settings?.campusName || 'Main Campus'}</p>
+          <p className="text-[10px] text-slate-400 mt-2">{settings?.address || 'City Name'} | {settings?.contactNumber || 'Contact'}</p>
         </div>
 
         <div className="flex justify-between items-start mb-8">

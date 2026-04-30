@@ -18,7 +18,8 @@ export const ACADEMIC_GROUPS = [
   { name: 'Humanities (Eco, Isl, H&P Edu)', subjects: ['Economics', 'Islamic Studies', 'Health & Physical Education'] },
   { name: 'I. Com', subjects: ['Accounting', 'Commerce', 'Economics'] },
   { name: 'UK Level 3', subjects: ['UK Level 3 Subjects'] },
-  { name: 'DIT', subjects: ['Diploma in IT Subjects'] }
+  { name: 'DIT', subjects: ['Diploma in IT Subjects'] },
+  { name: 'BS Program', subjects: ['BS Subjects'] }
 ];
 
 export const COMPULSORY_SUBJECTS = ['English', 'Urdu', 'Islamic Studies', 'Pakistan Studies'];
@@ -26,7 +27,7 @@ export const COMPULSORY_SUBJECTS = ['English', 'Urdu', 'Islamic Studies', 'Pakis
 export const SUBJECTS = [
   'Biology', 'Physics', 'Chemistry', 'Math', 'Computer Science', 
   'Statistics', 'Economics', 'Accounting', 'Commerce', 'Civics', 'Education',
-  'Islamic Studies', 'Punjabi', 'Health & Physical Education', 'UK Level 3 Subjects', 'Diploma in IT Subjects'
+  'Islamic Studies', 'Punjabi', 'Health & Physical Education', 'UK Level 3 Subjects', 'Diploma in IT Subjects', 'BS Subjects'
 ];
 
 export const STAFF_ROLES = [
@@ -54,11 +55,11 @@ export const INITIAL_SETTINGS: AppSettings = {
   email: 'info@superiorjahanian.edu.pk',
   website: 'www.superiorjahanian.edu.pk',
   principalName: 'Prof. Muhammad Azam',
-  themeColor: '#10b981', // Emerald 500
+  themeColor: '#085a4e', // Superior Teal
   currencySymbol: 'Rs.',
   
   // Customization Defaults
-  sidebarColor: '#0c2d2d', // Superior Teal Dark
+  sidebarColor: '#085a4e', // Superior Teal
   sidebarTextColor: '#ffffff',
   headerColor: '#ffffff',
   headerTextColor: '#0f172a', // Slate 900

@@ -28,7 +28,8 @@ import {
   Activity,
   Layers,
   Link2,
-  X
+  X,
+  FileText
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -38,6 +39,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   Select,
   SelectContent,
@@ -48,16 +50,23 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { AppSettings } from '../types';
+import { INITIAL_SETTINGS } from '../constants';
+import { supabase } from '../lib/supabase';
+import { compressImage, base64ToBlob } from '../lib/imageUtils';
 
 export default function SettingsView({ data }: { data: any }) {
   const { settings, updateSettings } = data;
-  const [formData, setFormData] = useState<AppSettings>(settings);
+  const [formData, setFormData] = useState<AppSettings>(settings || INITIAL_SETTINGS);
   const [isSaving, setIsSaving] = useState(false);
 
   // Sync with Firebase settings when they load or change
   React.useEffect(() => {
     if (settings) {
-      setFormData(settings);
+      const fixedSettings = { ...settings };
+      // Proactively fix bad default emerald colors from previous bug
+      if (fixedSettings.themeColor === '#10b981') fixedSettings.themeColor = '#085a4e';
+      if (fixedSettings.sidebarColor === '#0c2d2d') fixedSettings.sidebarColor = '#085a4e';
+      setFormData(prev => ({ ...prev, ...fixedSettings }));
     }
   }, [settings]);
 
@@ -84,15 +93,18 @@ export default function SettingsView({ data }: { data: any }) {
     });
   };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, logo: reader.result as string }));
-        toast.success("Logo preview updated!");
-      };
-      reader.readAsDataURL(file);
+      const toastId = toast.loading("Processing logo...");
+      try {
+        const compressedBase64 = await compressImage(file);
+        setFormData(prev => ({ ...prev, logo: compressedBase64 }));
+        toast.success("Logo uploaded successfully!", { id: toastId });
+      } catch (err) {
+        console.error("Logo processing failed:", err);
+        toast.error("Failed to process logo.", { id: toastId });
+      }
     }
   };
 
@@ -105,6 +117,22 @@ export default function SettingsView({ data }: { data: any }) {
       toast.error("Failed to save settings.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleResetDefaults = async () => {
+    if(confirm("Are you sure you want to reset all visual settings back to original defaults?")) {
+      const resetData = { ...formData, ...INITIAL_SETTINGS, contactNumber: formData.contactNumber, email: formData.email, address: formData.address };
+      setFormData(resetData);
+      setIsSaving(true);
+      try {
+        await updateSettings(resetData);
+        toast.success("Settings reset to defaults!");
+      } catch (error) {
+        toast.error("Failed to reset settings.");
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -149,10 +177,10 @@ export default function SettingsView({ data }: { data: any }) {
         <div className="flex items-center gap-3">
           <Button 
             variant="outline"
-            onClick={() => setFormData(settings)}
+            onClick={handleResetDefaults}
             className="h-12 px-6 rounded-2xl font-bold border-slate-200"
           >
-            Reset Defaults
+            Reset Colors
           </Button>
           <Button 
             onClick={handleSave} 
@@ -172,6 +200,7 @@ export default function SettingsView({ data }: { data: any }) {
             { id: 'themes', label: 'Custom Themes', icon: MousePointer2 },
             { id: 'modules', label: 'Core Modules', icon: AppWindow },
             { id: 'interlinks', label: 'System Logic', icon: Link2 },
+            { id: 'documents', label: 'Forms & Documents', icon: FileText },
             { id: 'contact', label: 'Legal & Contact', icon: Globe },
           ].map(tab => (
             <TabsTrigger 
@@ -274,7 +303,7 @@ export default function SettingsView({ data }: { data: any }) {
               <CardContent className="p-8">
                 <div className="space-y-4">
                   <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Interface Font Family</Label>
-                  <Select value={formData.fontFamily} onValueChange={(v) => handleSelectChange('fontFamily', v)}>
+                  <Select value={formData.fontFamily || 'Inter'} onValueChange={(v) => handleSelectChange('fontFamily', v)}>
                     <SelectTrigger className="h-14 rounded-2xl bg-slate-50 border-transparent font-bold">
                       <SelectValue placeholder="Select Font" />
                     </SelectTrigger>
@@ -302,7 +331,7 @@ export default function SettingsView({ data }: { data: any }) {
               <CardContent className="p-8">
                 <div className="space-y-4">
                   <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Card Border Radius</Label>
-                  <Select value={formData.cardRadius} onValueChange={(v) => handleSelectChange('cardRadius', v)}>
+                  <Select value={formData.cardRadius || '3xl'} onValueChange={(v) => handleSelectChange('cardRadius', v)}>
                     <SelectTrigger className="h-14 rounded-2xl bg-slate-50 border-transparent font-bold">
                       <SelectValue placeholder="Select Radius" />
                     </SelectTrigger>
@@ -317,7 +346,7 @@ export default function SettingsView({ data }: { data: any }) {
                   
                   <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 mt-4">
                     <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Glassmorphism Effect</Label>
-                    <Checkbox checked={formData.glassEffect} onCheckedChange={(v) => handleCheckboxChange('glassEffect', !!v)} />
+                    <Checkbox checked={!!formData.glassEffect} onCheckedChange={(v) => handleCheckboxChange('glassEffect', !!v)} />
                   </div>
                 </div>
               </CardContent>
@@ -496,21 +525,21 @@ export default function SettingsView({ data }: { data: any }) {
                     <p className="text-[11px] font-black uppercase tracking-widest text-slate-800">Auto-convert Leads</p>
                     <p className="text-[9px] font-bold text-slate-400">Open Admission form instantly on conversion.</p>
                   </div>
-                  <Checkbox checked={formData.autoLeadConversion} onCheckedChange={(v) => handleCheckboxChange('autoLeadConversion', !!v)} />
+                  <Checkbox checked={!!formData.autoLeadConversion} onCheckedChange={(v) => handleCheckboxChange('autoLeadConversion', !!v)} />
                 </div>
                 <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
                   <div className="space-y-1">
                     <p className="text-[11px] font-black uppercase tracking-widest text-slate-800">Global Quick Navigation</p>
                     <p className="text-[9px] font-bold text-slate-400">Force display of Top Shortcut Bar across all views.</p>
                   </div>
-                  <Checkbox checked={formData.allowQuickNav} onCheckedChange={(v) => handleCheckboxChange('allowQuickNav', !!v)} />
+                  <Checkbox checked={!!formData.allowQuickNav} onCheckedChange={(v) => handleCheckboxChange('allowQuickNav', !!v)} />
                 </div>
                 <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
                   <div className="space-y-1">
                     <p className="text-[11px] font-black uppercase tracking-widest text-slate-800">Search Term Highlighting</p>
                     <p className="text-[9px] font-bold text-slate-400">Visually highlight searched words in results.</p>
                   </div>
-                  <Checkbox checked={formData.enableHighlighting} onCheckedChange={(v) => handleCheckboxChange('enableHighlighting', !!v)} />
+                  <Checkbox checked={!!formData.enableHighlighting} onCheckedChange={(v) => handleCheckboxChange('enableHighlighting', !!v)} />
                 </div>
                 <div className="space-y-2 pt-2">
                   <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Fee Alert Threshold (Months)</Label>
@@ -552,6 +581,42 @@ export default function SettingsView({ data }: { data: any }) {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="documents" className="space-y-8">
+          <Card className="bg-white border-none shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden">
+            <CardHeader className="bg-slate-50/50 px-8 py-6">
+              <CardTitle className="text-[11px] font-black uppercase tracking-widest text-superior-teal flex items-center gap-2">
+                <FileText size={16} /> Print Document Configurations
+              </CardTitle>
+              <CardDescription className="text-xs font-bold text-slate-400">Custom text/notes attached to generated PDF documents.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-8 space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="admissionSlipCustomText" className="text-[10px] font-black uppercase tracking-widest text-slate-400">Admission Slip Custom Text / Rules</Label>
+                <Textarea 
+                  id="admissionSlipCustomText" 
+                  name="admissionSlipCustomText"
+                  value={formData.admissionSlipCustomText || ''} 
+                  onChange={(e) => handleInputChange(e as any)}
+                  className="min-h-[120px] rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 focus:ring-0 transition-all font-medium py-4 px-4"
+                  placeholder="Enter any additional rules, guidelines, or notice you want to appear on the generated Admission Slip..."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="feeReceiptCustomText" className="text-[10px] font-black uppercase tracking-widest text-slate-400">Fee Receipt Custom Text / Remarks</Label>
+                <Textarea 
+                  id="feeReceiptCustomText" 
+                  name="feeReceiptCustomText"
+                  value={formData.feeReceiptCustomText || ''} 
+                  onChange={(e) => handleInputChange(e as any)}
+                  className="min-h-[120px] rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 focus:ring-0 transition-all font-medium py-4 px-4"
+                  placeholder="Enter payment policies, conditions, or footers you want to appear on printed fee receipts..."
+                />
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="contact" className="space-y-8">

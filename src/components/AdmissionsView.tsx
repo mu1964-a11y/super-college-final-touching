@@ -22,7 +22,20 @@ import {
   Users,
   AlertCircle,
   Info,
-  Receipt
+  Receipt,
+  Clock,
+  Shield,
+  Wallet,
+  TrendingUp,
+  ArrowRight,
+  AlertTriangle,
+  Globe,
+  Layers,
+  Calendar,
+  Phone,
+  Mail,
+  MapPin,
+  Heart
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
@@ -42,6 +55,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { 
   Dialog, 
@@ -70,9 +84,12 @@ import { HighlightText } from './HighlightText';
 import { toast } from 'sonner';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
+import * as XLSX from 'xlsx';
 import FeeReceipt from './FeeReceipt';
+import AdmissionSlip from './AdmissionSlip';
+import { compressImage, base64ToBlob } from '../lib/imageUtils';
 
-export default function AdmissionsView({ data, initialFilter, selectedSession }: { data: any, initialFilter?: string | null, selectedSession?: string }) {
+export default function AdmissionsView({ data, initialFilter, selectedSession, program }: { data: any, initialFilter?: string | null, selectedSession?: string, program?: string }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [feeFilter, setFeeFilter] = useState<string>(initialFilter || 'all');
   const [admittedFilter, setAdmittedFilter] = useState<string>('all');
@@ -98,10 +115,23 @@ export default function AdmissionsView({ data, initialFilter, selectedSession }:
                              (a.studentId && a.studentId.toLowerCase().includes(searchTerm.toLowerCase()));
         const matchesFee = feeFilter === 'all' || a.status === feeFilter;
         const matchesGender = genderFilter === 'all' || a.gender === genderFilter;
+        
+        let matchesProgram = true;
+        if (program) {
+             const groupLower = (a.group || '').toLowerCase();
+             if (program === 'fsc') matchesProgram = !groupLower.includes('dit') && !groupLower.includes('level 3') && !groupLower.includes('bs ');
+             else if (program === 'dit') matchesProgram = groupLower.includes('dit');
+             else if (program === 'ukl3') matchesProgram = groupLower.includes('level 3');
+             else if (program === 'bs') matchesProgram = groupLower.includes('bs ');
+        }
+        
+        // Diversion Logic: Only show students who are NOT yet fully admitted (haven't paid initial fee)
+        const isFullyEnrolled = a.isAdmitted || (a.feeReceived > 0);
         const matchesAdmitted = admittedFilter === 'all' || 
-                               (admittedFilter === 'Admitted' && a.isAdmitted) ||
-                               (admittedFilter === 'Prospective' && !a.isAdmitted);
-        return matchesSearch && matchesFee && matchesGender && matchesAdmitted;
+                               (admittedFilter === 'Admitted' && isFullyEnrolled) ||
+                               (admittedFilter === 'Prospective' && !isFullyEnrolled);
+        
+        return matchesSearch && matchesFee && matchesGender && matchesAdmitted && matchesProgram;
       })
       .sort((a: Admission, b: Admission) => {
         if (sortBy === 'date-new') return new Date(b.date).getTime() - new Date(a.date).getTime();
@@ -148,7 +178,6 @@ export default function AdmissionsView({ data, initialFilter, selectedSession }:
 
   const handleConfirm = (id: string) => {
     data.confirmAdmission(id, data.currentUser?.email);
-    toast.success("Student confirmed and moved to Student Management!");
   };
 
   const toggleSelectAll = () => {
@@ -169,6 +198,69 @@ export default function AdmissionsView({ data, initialFilter, selectedSession }:
     setDialogType('bulkDelete');
   };
 
+  const handleExportCSV = () => {
+    const exportData = filteredAdmissions.map(a => ({
+      'Student ID': a.studentId || 'PENDING',
+      'Registration #': a.id,
+      'Name': a.fullName,
+      'Father Name': a.fatherName,
+      'Gender': a.gender,
+      'DOB': a.dob,
+      'CNIC': a.cnic,
+      'Category': a.category,
+      'Program/Group': a.group,
+      'Session': a.session,
+      'Total Package': a.totalPackage || '',
+      'Status': a.status
+    }));
+    
+    if (exportData.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+    
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const csv = XLSX.utils.sheet_to_csv(ws);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `admissions_export_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const handleExportExcel = () => {
+    const exportData = filteredAdmissions.map(a => ({
+      'Student ID': a.studentId || 'PENDING',
+      'Registration #': a.id,
+      'Name': a.fullName,
+      'Father Name': a.fatherName,
+      'Gender': a.gender,
+      'DOB': a.dob,
+      'CNIC': a.cnic,
+      'Category': a.category,
+      'Program/Group': a.group,
+      'Session': a.session,
+      'Total Package': a.totalPackage || '',
+      'Status': a.status
+    }));
+    
+    if (exportData.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+    
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Admissions");
+    XLSX.writeFile(wb, `admissions_export_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   return (
     <div className="space-y-8 pb-12">
       {/* Page Header */}
@@ -183,8 +275,11 @@ export default function AdmissionsView({ data, initialFilter, selectedSession }:
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Button variant="outline" className="rounded-xl border-slate-200 font-black uppercase tracking-widest text-[10px] h-12 px-6 shadow-sm hover:bg-slate-50 transition-all">
+          <Button onClick={handleExportCSV} variant="outline" className="rounded-xl border-slate-200 font-black uppercase tracking-widest text-[10px] h-12 px-6 shadow-sm hover:bg-slate-50 transition-all">
             <Download size={16} className="mr-2 text-superior-gold" /> Export CSV
+          </Button>
+          <Button onClick={handleExportExcel} variant="outline" className="rounded-xl border-slate-200 font-black uppercase tracking-widest text-[10px] h-12 px-6 shadow-sm hover:bg-slate-50 transition-all">
+            <Download size={16} className="mr-2 text-emerald-600" /> Export Excel
           </Button>
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger nativeButton={true} render={
@@ -204,9 +299,16 @@ export default function AdmissionsView({ data, initialFilter, selectedSession }:
                   <p className="text-white/60 text-xs font-black uppercase tracking-[0.3em] mt-2">Session 2026–2027 · Jahanian Campus</p>
                 </DialogHeader>
               </div>
-              <div className="p-10">
-                <AdmissionForm data={data} onClose={() => setIsAddDialogOpen(false)} selectedSession={selectedSession} />
-              </div>
+            <div className="p-10">
+              {isAddDialogOpen && (
+                <AdmissionForm 
+                  data={data} 
+                  onClose={() => setIsAddDialogOpen(false)} 
+                  selectedSession={selectedSession} 
+                  program={program} 
+                />
+              )}
+            </div>
             </DialogContent>
           </Dialog>
         </div>
@@ -301,6 +403,52 @@ export default function AdmissionsView({ data, initialFilter, selectedSession }:
         </div>
       </div>
 
+      {/* Bulk Actions Bar */}
+      {selectedAdmissions.length > 0 && (
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="sticky top-4 z-30 flex items-center justify-between p-4 bg-superior-teal rounded-2xl shadow-2xl text-white mb-6 border border-white/10"
+        >
+          <div className="flex items-center gap-4 pl-2">
+            <Checkbox 
+              checked={selectedAdmissions.length === filteredAdmissions.length} 
+              onCheckedChange={toggleSelectAll} 
+              className="border-white data-[state=checked]:bg-white data-[state=checked]:text-superior-teal"
+            />
+            <div className="flex flex-col">
+              <p className="text-sm font-black uppercase tracking-widest">
+                {selectedAdmissions.length} record{selectedAdmissions.length > 1 ? 's' : ''} selected
+              </p>
+              {selectedAdmissions.length < filteredAdmissions.length && (
+                <button 
+                  onClick={() => setSelectedAdmissions(filteredAdmissions.map(a => a.id))}
+                  className="text-[10px] font-black underline uppercase tracking-tighter opacity-70 hover:opacity-100 text-left"
+                >
+                  Select all {filteredAdmissions.length} matching records
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setSelectedAdmissions([])}
+              className="h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 font-black text-[10px] uppercase tracking-widest px-6"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleBulkDelete}
+              variant="destructive" 
+              className="h-10 rounded-xl bg-white text-rose-600 hover:bg-rose-50 border-none font-black text-[10px] uppercase tracking-widest px-6 shadow-lg shadow-black/20"
+            >
+              <Trash2 size={14} className="mr-2" /> Delete All Selected
+            </Button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Admissions Table */}
       <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
@@ -314,6 +462,7 @@ export default function AdmissionsView({ data, initialFilter, selectedSession }:
                     className="rounded-md border-slate-300"
                   />
                 </TableHead>
+                <TableHead className="font-black text-slate-400 uppercase tracking-widest text-[10px] py-5">Student ID</TableHead>
                 <TableHead className="font-black text-slate-400 uppercase tracking-widest text-[10px] py-5">Applicant</TableHead>
                 <TableHead className="font-black text-slate-400 uppercase tracking-widest text-[10px] py-5">Father Name</TableHead>
                 <TableHead className="font-black text-slate-400 uppercase tracking-widest text-[10px] py-5">Contact</TableHead>
@@ -336,30 +485,66 @@ export default function AdmissionsView({ data, initialFilter, selectedSession }:
                   </TableCell>
                 </TableRow>
               ) : (
-                visibleAdmissions.map((admission: Admission) => (
-                  <TableRow key={admission.id} className={cn(
-                    "group transition-all border-slate-50",
-                    selectedAdmissions.includes(admission.id) ? "bg-superior-bg-teal" : "hover:bg-slate-50/50"
+                visibleAdmissions.map((admission: Admission) => {
+                  const isNew = data.isNewRecord?.(admission.id, admission.date);
+                  return (
+                  <TableRow 
+                    key={admission.id} 
+                    onClick={() => {
+                        data.markActioned?.(admission.id);
+                        toggleSelectAdmission(admission.id);
+                    }}
+                    className={cn(
+                    "group transition-all border-slate-50 cursor-pointer relative",
+                    selectedAdmissions.includes(admission.id) ? "bg-superior-bg-teal" : "hover:bg-slate-50/50",
+                    isNew && !admission.isAdmitted ? "bg-red-50/20 border-l-[3px] border-l-red-500 hover:bg-red-50" : ""
                   )}>
-                    <TableCell className="pl-8">
+                    <TableCell className="pl-8 relative">
+                      {isNew && !admission.isAdmitted && (
+                         <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] animate-pulse" />
+                      )}
                       <Checkbox 
                         checked={selectedAdmissions.includes(admission.id)} 
                         onCheckedChange={() => toggleSelectAdmission(admission.id)} 
                         className="rounded-md border-slate-300"
                       />
                     </TableCell>
+                    <TableCell>
+                      {admission.studentId ? (
+                        <div className="flex flex-col">
+                          <span className="text-[11px] font-mono font-black text-superior-teal tracking-tighter leading-none mb-1">{admission.studentId}</span>
+                          <span className="text-[9px] text-slate-300 font-medium">#{admission.id.slice(-6)}</span>
+                        </div>
+                      ) : (
+                        <Badge variant="outline" className="text-[9px] font-black uppercase bg-slate-50 text-slate-300 border-slate-100 px-2 py-0">Pending</Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="py-4">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-sm font-black text-superior-teal overflow-hidden border border-slate-200">
                           {admission.photo ? (
-                            <img src={admission.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            <img 
+                              src={admission.photo} 
+                              alt="" 
+                              className="w-full h-full object-cover" 
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                const parent = target.parentElement;
+                                if (parent) {
+                                  // Use standard DOM or better yet, just hide it and show nothing
+                                  // But for now, let's just make it hidden and let CSS handle default
+                                }
+                              }}
+                            />
                           ) : (
                             admission.fullName.charAt(0)
                           )}
                         </div>
                         <div>
-                          <p className="font-black text-slate-800 text-sm uppercase tracking-tight">
+                          <p className="font-black text-slate-800 text-sm uppercase tracking-tight flex items-center gap-2">
                             <HighlightText text={admission.fullName} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
+                            {isNew && !admission.isAdmitted && <span className="text-[9px] font-black uppercase text-red-500 tracking-widest bg-red-100 px-2 py-0.5 rounded-md">New</span>}
                           </p>
                           <p className="text-[10px] text-slate-400 font-bold mt-0.5">{admission.date}</p>
                         </div>
@@ -371,17 +556,15 @@ export default function AdmissionsView({ data, initialFilter, selectedSession }:
                     <TableCell className="text-slate-500 text-xs font-bold">
                       <HighlightText text={admission.contactNumber} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
                     </TableCell>
-                    <TableCell className="text-right font-black text-slate-800 text-sm">Rs. {(admission.totalFeeFinalized || 0).toLocaleString()}</TableCell>
+                    <TableCell className="text-right font-black text-slate-800 text-sm">Rs. {(admission.totalPackage || admission.totalFeeFinalized || 0).toLocaleString()}</TableCell>
                     <TableCell className="text-right text-emerald-600 font-black text-sm">Rs. {(admission.feeReceived || 0).toLocaleString()}</TableCell>
-                    <TableCell className="text-right text-rose-600 font-black text-sm">Rs. {((admission.totalFeeFinalized || 0) - (admission.feeReceived || 0)).toLocaleString()}</TableCell>
+                    <TableCell className="text-right text-rose-600 font-black text-sm">Rs. {((admission.totalPackage || admission.totalFeeFinalized || 0) - (admission.feeReceived || 0)).toLocaleString()}</TableCell>
                     <TableCell>{getStatusBadge(admission.status, admission.isAdmitted)}</TableCell>
                     <TableCell className="text-right pr-8">
                       <DropdownMenu>
-                        <DropdownMenuTrigger nativeButton={true} render={
-                          <button className="h-10 w-10 rounded-xl hover:bg-white hover:border-slate-200 border border-transparent transition-all flex items-center justify-center text-slate-400">
-                            <MoreHorizontal size={18} />
-                          </button>
-                        } />
+                        <DropdownMenuTrigger className="h-10 w-10 rounded-xl hover:bg-white hover:border-slate-200 border border-transparent transition-all flex items-center justify-center text-slate-400 outline-hidden">
+                          <MoreHorizontal size={18} />
+                        </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="rounded-2xl p-2 min-w-[200px] border-slate-200 shadow-xl">
                           <DropdownMenuItem 
                             className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
@@ -433,8 +616,9 @@ export default function AdmissionsView({ data, initialFilter, selectedSession }:
                       </DropdownMenu>
                     </TableCell>
                   </TableRow>
-                )
-              ))}
+                  );
+                })
+              )}
             </TableBody>
           </Table>
         </div>
@@ -475,7 +659,6 @@ export default function AdmissionsView({ data, initialFilter, selectedSession }:
               if (activeAdmission) {
                 data.deleteAdmission(activeAdmission.id);
                 setDialogType(null);
-                toast.success("Admission record deleted successfully!");
               }
             }}>Confirm Delete</Button>
           </DialogFooter>
@@ -500,11 +683,11 @@ export default function AdmissionsView({ data, initialFilter, selectedSession }:
           </div>
           <DialogFooter className="gap-3">
             <Button variant="ghost" onClick={() => setDialogType(null)} className="rounded-xl h-12 px-6 font-bold">Cancel</Button>
-            <Button variant="destructive" className="rounded-xl h-12 px-8 font-black uppercase tracking-widest text-xs" onClick={() => {
-              data.bulkDeleteAdmissions(selectedAdmissions);
-              setSelectedAdmissions([]);
+            <Button variant="destructive" className="rounded-xl h-12 px-8 font-black uppercase tracking-widest text-xs" onClick={async () => {
+              const idsToDelete = [...selectedAdmissions];
               setDialogType(null);
-              toast.success(`${selectedAdmissions.length} records deleted successfully!`);
+              setSelectedAdmissions([]);
+              await data.bulkDeleteAdmissions(idsToDelete);
             }}>Delete All Selected</Button>
           </DialogFooter>
         </DialogContent>
@@ -582,6 +765,8 @@ function EditAdmissionDialog({ admission, data, onClose, onDelete }: { admission
     contactNumber: admission.contactNumber || '',
     fatherContact: admission.fatherContact || '',
     secondaryContact: admission.secondaryContact || '',
+    email: admission.email || '',
+    bloodGroup: admission.bloodGroup || '',
     reference: admission.reference || '',
     gender: admission.gender || 'Male',
     category: admission.category || 'Inter Part-1 Boys',
@@ -589,8 +774,55 @@ function EditAdmissionDialog({ admission, data, onClose, onDelete }: { admission
     section: admission.section || '',
     photo: admission.photo || '',
     studentId: admission.studentId || '',
-    status: admission.status || 'Prospective'
+    status: admission.status || 'Prospective',
+    programType: admission.programType || (String(admission.group).toLowerCase().includes('dit') || String(admission.group).toLowerCase().includes('uk') || String(admission.group).toLowerCase().includes('level 3') ? 'Semester' : 'Yearly'),
+    currentSemester: admission.currentSemester || ( (String(admission.group).toLowerCase().includes('dit') || String(admission.group).toLowerCase().includes('uk') || String(admission.group).toLowerCase().includes('level 3')) ? 1 : 0 )
   });
+
+  // Sync form data when admission changes to prevent data leakage between records
+  React.useEffect(() => {
+    setFormData({
+      fullName: admission.fullName || '',
+      fatherName: admission.fatherName || '',
+      collegeNo: admission.collegeNo || '',
+      bayFormNo: admission.bayFormNo || '',
+      dob: admission.dob || '',
+      previousClass: admission.previousClass || '10th',
+      boardRollNo: admission.boardRollNo || '',
+      previousMarks: String(admission.previousMarks || 0),
+      previousInstitute: admission.previousInstitute || '',
+      subjects: admission.subjects || [],
+      address: admission.address || '',
+      admissionFee: String(admission.admissionFee || 0),
+      miscFunds: String(admission.miscFunds || 0),
+      totalFeeFinalized: String(admission.totalFeeFinalized || 0),
+      totalPackage: admission.totalPackage || 0,
+      feeReceived: String(admission.feeReceived || 0),
+      paymentPlan: admission.paymentPlan || 'Installments',
+      paidMonths: admission.paidMonths || [],
+      paidInstallments: admission.paidInstallments || 0,
+      totalInstallments: admission.totalInstallments || 12,
+      nextInstallmentDate: admission.nextInstallmentDate || '',
+      totalSemesters: admission.totalSemesters || 0,
+      feePerSemester: admission.feePerSemester || 0,
+      nextSemesterDueDate: admission.nextSemesterDueDate || '',
+      contactNumber: admission.contactNumber || '',
+      fatherContact: admission.fatherContact || '',
+      secondaryContact: admission.secondaryContact || '',
+      email: admission.email || '',
+      bloodGroup: admission.bloodGroup || '',
+      reference: admission.reference || '',
+      gender: admission.gender || 'Male',
+      category: admission.category || 'Inter Part-1 Boys',
+      group: admission.group || '',
+      section: admission.section || '',
+      photo: admission.photo || '',
+      studentId: admission.studentId || '',
+      status: admission.status || 'Prospective',
+      programType: admission.programType || (String(admission.group).toLowerCase().includes('dit') || String(admission.group).toLowerCase().includes('uk') || String(admission.group).toLowerCase().includes('level 3') ? 'Semester' : 'Yearly'),
+      currentSemester: admission.currentSemester || ( (String(admission.group).toLowerCase().includes('dit') || String(admission.group).toLowerCase().includes('uk') || String(admission.group).toLowerCase().includes('level 3')) ? 1 : 0 )
+    });
+  }, [admission.id]);
 
   // Auto-calculate Total Package
   React.useEffect(() => {
@@ -600,29 +832,68 @@ function EditAdmissionDialog({ admission, data, onClose, onDelete }: { admission
     setFormData(prev => ({ ...prev, totalPackage: total }));
   }, [formData.admissionFee, formData.miscFunds, formData.totalFeeFinalized]);
 
+  // Auto-confirm admission and allot ID when received amount is entered in Edit Dialog
+  React.useEffect(() => {
+    if (Number(formData.feeReceived) > 0 && !formData.studentId) {
+      const studentId = data.generateStudentId(formData.group);
+      setFormData(prev => ({ 
+        ...prev, 
+        studentId: studentId,
+        status: 'Admitted/Confirmed'
+      }));
+      toast.success(`Official Student ID Allotted: ${studentId}`);
+    }
+  }, [formData.feeReceived]);
+
   const handleGroupChange = (groupName: string) => {
     const group = ACADEMIC_GROUPS.find(g => g.name === groupName);
     if (group) {
       const newSubjects = Array.from(new Set([...COMPULSORY_SUBJECTS, ...group.subjects]));
-      setFormData(prev => ({ ...prev, group: groupName, subjects: newSubjects }));
+      
+      // Auto-logic for Semester Programs
+      let paymentPlan = formData.paymentPlan;
+      let totalSemesters = formData.totalSemesters;
+      let programType = 'Yearly' as 'Yearly' | 'Semester';
+      let currentSemester = formData.currentSemester;
+      
+      const lowerGroupName = groupName.toLowerCase();
+      if (lowerGroupName.includes('dit') || lowerGroupName.includes('uk') || lowerGroupName.includes('level 3')) {
+        paymentPlan = 'Semester';
+        totalSemesters = lowerGroupName.includes('dit') ? 4 : 3;
+        programType = 'Semester';
+        currentSemester = currentSemester || 1;
+        toast.info(`${groupName} follows a Semester System. Plan adjusted automatically.`);
+      }
+
+      setFormData(prev => ({ 
+        ...prev, 
+        group: groupName, 
+        subjects: newSubjects,
+        paymentPlan,
+        totalSemesters,
+        programType,
+        currentSemester
+      }));
     }
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const studentId = data.generateStudentId();
+      const toastId = toast.loading("Processing photo...");
+      try {
+        const compressedBase64 = await compressImage(file);
         setFormData(prev => ({ 
           ...prev, 
-          photo: reader.result as string,
-          studentId: studentId,
-          status: 'Admitted/Confirmed'
+          photo: compressedBase64
         }));
-        toast.success(`Photo uploaded! Student ID Generated: ${studentId}`);
-      };
-      reader.readAsDataURL(file);
+        toast.dismiss(toastId);
+        toast.success(`Photo updated successfully`);
+      } catch (err) {
+        console.error('Photo processing error:', err);
+        toast.dismiss(toastId);
+        toast.error("Failed to process photo.");
+      }
     }
   };
 
@@ -656,169 +927,276 @@ function EditAdmissionDialog({ admission, data, onClose, onDelete }: { admission
       isAdmitted: formData.status === 'Admitted/Confirmed' || received > 0,
       status
     });
-    toast.success("Admission details updated successfully!");
     if (onClose) onClose();
   };
 
   return (
     <DialogContent className="max-w-[90vw] w-[90vw] max-h-[92vh] overflow-y-auto p-6 bg-white rounded-3xl">
-      <DialogHeader>
-        <DialogTitle className="text-2xl font-serif text-superior-teal">Edit Admission Details</DialogTitle>
+      <DialogHeader className="border-b border-slate-100 pb-4">
+        <DialogTitle className="text-3xl font-black text-superior-teal uppercase tracking-tight flex items-center gap-3">
+           <Edit className="text-superior-gold" /> Edit Admission Instance
+        </DialogTitle>
+        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Refining Student Enrollment & Financial Data</p>
       </DialogHeader>
-      <div className="space-y-6 py-4">
-        <div className="flex justify-center mb-6">
+      
+      <div className="max-h-[75vh] overflow-y-auto pr-2 custom-scrollbar">
+      <div className="space-y-10 py-6">
+        <div className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-3xl border border-slate-100">
           <div className="relative group">
-            <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center overflow-hidden transition-colors group-hover:border-superior-teal">
+            <div className="w-28 h-28 rounded-3xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center overflow-hidden transition-all group-hover:border-superior-teal shadow-inner">
               {formData.photo ? (
-                <img src={formData.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <img 
+                  src={formData.photo} 
+                  alt="" 
+                  className="w-full h-full object-cover" 
+                  referrerPolicy="no-referrer" 
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                    const parent = target.parentElement;
+                    if (parent) {
+                      parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-superior-gold/10 text-superior-gold font-bold text-3xl">${formData.fullName.charAt(0)}</div>`;
+                    }
+                  }}
+                />
               ) : (
                 <>
-                  <Camera className="text-slate-400 mb-1" size={20} />
-                  <span className="text-[8px] text-slate-500 font-bold uppercase text-center">Photo</span>
+                  <Camera className="text-slate-300 mb-1" size={24} />
+                  <span className="text-[9px] text-slate-400 font-black uppercase text-center px-4">Upload Photo</span>
                 </>
               )}
             </div>
             <label className="absolute inset-0 cursor-pointer">
               <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
             </label>
+            {formData.studentId && (
+              <div className="absolute -bottom-2 -right-2 bg-emerald-500 text-white p-1.5 rounded-full border-2 border-white shadow-lg">
+                <CheckCircle2 size={16} />
+              </div>
+            )}
+          </div>
+          <div className="mt-4 text-center">
+            <h4 className="text-lg font-black text-slate-800 uppercase tracking-tight">
+              {formData.fullName || "Student Name"}
+            </h4>
+            <div className="flex items-center gap-2 mt-1 justify-center">
+              {formData.studentId ? (
+                <Badge className="bg-superior-teal text-white font-mono text-xs px-3">{formData.studentId}</Badge>
+              ) : (
+                <Badge variant="outline" className="text-[10px] font-black uppercase text-slate-400">ID Pending Admission</Badge>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label>Admission Category</Label>
-            <Select value={formData.category} onValueChange={(v: any) => {
-              const gender = v.includes('Girls') ? 'Female' : 'Male';
-              setFormData({...formData, category: v, gender});
-            }}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {['Inter Part-1 Boys', 'Inter Part-2 Boys', 'Inter Part-1 Girls', 'Inter Part-2 Girls'].map(cat => (
-                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        {/* Section 1: Personal Details */}
+        <div className="space-y-6">
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+             <div className="w-10 h-10 rounded-xl bg-superior-teal/10 flex items-center justify-center text-superior-teal">
+                <User size={20} />
+             </div>
+             <div>
+                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Personal Profile</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Legal Identity & Personal Info</p>
+             </div>
           </div>
-          <div className="space-y-2">
-            <Label>Gender (Auto-set)</Label>
-            <Select disabled value={formData.gender}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Male">Male</SelectItem>
-                <SelectItem value="Female">Female</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>College No.</Label>
-            <Input value={formData.collegeNo} onChange={e => setFormData({...formData, collegeNo: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Student Full Name</Label>
-            <Input value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Father's Name</Label>
-            <Input value={formData.fatherName} onChange={e => setFormData({...formData, fatherName: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>B-Form No.</Label>
-            <Input value={formData.bayFormNo} onChange={e => setFormData({...formData, bayFormNo: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Date of Birth</Label>
-            <Input type="date" value={formData.dob} onChange={e => setFormData({...formData, dob: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Contact Number</Label>
-            <Input value={formData.contactNumber} onChange={e => setFormData({...formData, contactNumber: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Father's Contact</Label>
-            <Input value={formData.fatherContact} onChange={e => setFormData({...formData, fatherContact: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Previous Class</Label>
-            <Select value={formData.previousClass} onValueChange={v => setFormData({...formData, previousClass: v as any})}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="9th">9th Class</SelectItem>
-                <SelectItem value="10th">10th Class</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Board Roll No.</Label>
-            <Input value={formData.boardRollNo} onChange={e => setFormData({...formData, boardRollNo: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Marks Obtained</Label>
-            <Input type="number" value={formData.previousMarks} onChange={e => setFormData({...formData, previousMarks: e.target.value})} />
-          </div>
-          <div className="space-y-2 col-span-md-2">
-            <Label>Previous Institute</Label>
-            <Input value={formData.previousInstitute} onChange={e => setFormData({...formData, previousInstitute: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Academic Group</Label>
-            <Select value={formData.group} onValueChange={handleGroupChange}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select Group" />
-              </SelectTrigger>
-              <SelectContent>
-                {ACADEMIC_GROUPS.map(group => (
-                  <SelectItem key={group.name} value={group.name}>{group.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Section</Label>
-            <Input value={formData.section} onChange={e => setFormData({...formData, section: e.target.value.toUpperCase()})} />
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="space-y-2">
-              <Label className="text-superior-teal font-bold">Compulsory Subjects</Label>
+              <Label className="text-xs font-black text-slate-500 uppercase">Admission Category</Label>
+              <Select value={formData.category || ""} onValueChange={(v: any) => {
+                const gender = v.includes('Girls') ? 'Female' : 'Male';
+                setFormData({...formData, category: v, gender});
+              }}>
+                <SelectTrigger className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {['Inter Part-1 Boys', 'Inter Part-2 Boys', 'Inter Part-1 Girls', 'Inter Part-2 Girls'].map(cat => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Gender (Auto-set)</Label>
+              <Select disabled value={formData.gender || ""}>
+                <SelectTrigger className="h-12 bg-slate-50/50 border-slate-100 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Male">Male</SelectItem>
+                  <SelectItem value="Female">Female</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Full Name</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl font-bold" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Father's Name</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl font-bold" value={formData.fatherName} onChange={e => setFormData({...formData, fatherName: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">B-Form / CNIC</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl font-mono" value={formData.bayFormNo} onChange={e => setFormData({...formData, bayFormNo: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Date of Birth</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl" type="date" value={formData.dob} onChange={e => setFormData({...formData, dob: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Blood Group</Label>
+              <Select value={formData.bloodGroup || ""} onValueChange={v => setFormData({...formData, bloodGroup: v})}>
+                <SelectTrigger className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl">
+                  <SelectValue placeholder="Select" />
+                </SelectTrigger>
+                <SelectContent>
+                  {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bg => (
+                     <SelectItem key={bg} value={bg}>{bg}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Permanent Address</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 2: Contact Details */}
+        <div className="space-y-6">
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+             <div className="w-10 h-10 rounded-xl bg-superior-gold/10 flex items-center justify-center text-superior-gold">
+                <Receipt size={20} />
+             </div>
+             <div>
+                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Communication</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Connect with Student & Parents</p>
+             </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Student Mobile</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl font-bold" value={formData.contactNumber} onChange={e => setFormData({...formData, contactNumber: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Father's Mobile</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl font-bold" value={formData.fatherContact} onChange={e => setFormData({...formData, fatherContact: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Email Address (Optional)</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl" type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 3: Academic History */}
+        <div className="space-y-6">
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+             <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-600">
+                <GraduationCap size={20} />
+             </div>
+             <div>
+                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Academic Profile</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Enrollment & Past Performance</p>
+             </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Enrollment Group</Label>
+              <Select value={formData.group || ""} onValueChange={handleGroupChange}>
+                <SelectTrigger className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl font-bold">
+                  <SelectValue placeholder="Select Group" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACADEMIC_GROUPS.map(group => (
+                    <SelectItem key={group.name} value={group.name}>{group.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Assigned Section</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl font-black text-lg" value={formData.section || ""} onChange={e => setFormData({...formData, section: e.target.value.toUpperCase()})} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">College Roll #</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl" value={formData.collegeNo || ""} onChange={e => setFormData({...formData, collegeNo: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Previous Class</Label>
+              <Select value={formData.previousClass || ""} onValueChange={v => setFormData({...formData, previousClass: v as any})}>
+                <SelectTrigger className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="9th">9th Class</SelectItem>
+                  <SelectItem value="10th">10th Class</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Matric / Board Roll #</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl" value={formData.boardRollNo || ""} onChange={e => setFormData({...formData, boardRollNo: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Obtained Marks</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl font-bold" type="number" value={formData.previousMarks || ""} onChange={e => setFormData({...formData, previousMarks: e.target.value})} />
+            </div>
+            <div className="space-y-2 md:col-span-3">
+              <Label className="text-xs font-black text-slate-500 uppercase">Previous Institute</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl" value={formData.previousInstitute || ""} onChange={e => setFormData({...formData, previousInstitute: e.target.value})} />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 4: Subjects */}
+        <div className="space-y-6">
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+             <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                <Eye size={20} />
+             </div>
+             <div>
+                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Course Selection</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Registered Subjects</p>
+             </div>
+          </div>
+          <div className="p-6 bg-slate-50/50 rounded-2xl border border-slate-100 flex flex-col gap-6">
+            <div className="space-y-2">
+              <Label className="text-[10px] font-black text-superior-teal uppercase tracking-widest">Compulsory Subjects</Label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {COMPULSORY_SUBJECTS.map(subject => (
-                  <div key={subject} className="flex items-center space-x-2 bg-white p-2 rounded border border-slate-100">
+                  <div key={subject} className="flex items-center space-x-2 bg-white p-3 rounded-lg border border-slate-100/50 hover:border-superior-teal transition-all">
                     <Checkbox 
                       id={`edit-comp-subject-${subject}`} 
                       checked={(formData.subjects || []).includes(subject)}
                       onCheckedChange={() => toggleSubject(subject)}
                     />
-                    <label htmlFor={`edit-comp-subject-${subject}`} className="text-xs font-medium leading-none cursor-pointer">
+                    <Label htmlFor={`edit-comp-subject-${subject}`} className="text-[11px] font-black leading-none cursor-pointer text-slate-600">
                       {subject}
-                    </label>
+                    </Label>
                   </div>
                 ))}
               </div>
             </div>
 
-            <Separator />
+            <Separator className="bg-slate-100" />
 
             <div className="space-y-2">
-              <Label className="text-superior-teal font-bold">Elective & Group Subjects</Label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <Label className="text-[10px] font-black text-superior-teal uppercase tracking-widest">Elective / Group Subjects</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {SUBJECTS.filter(s => !COMPULSORY_SUBJECTS.includes(s)).map(subject => (
-                  <div key={subject} className="flex items-center space-x-2 bg-white p-2 rounded border border-slate-100">
+                  <div key={subject} className="flex items-center space-x-2 bg-white p-3 rounded-lg border border-slate-100/50 hover:border-superior-teal transition-all">
                     <Checkbox 
                       id={`edit-subject-${subject}`} 
                       checked={(formData.subjects || []).includes(subject)}
                       onCheckedChange={() => toggleSubject(subject)}
                     />
-                    <label htmlFor={`edit-subject-${subject}`} className="text-sm font-medium leading-none cursor-pointer">
+                    <Label htmlFor={`edit-subject-${subject}`} className="text-[11px] font-bold leading-none cursor-pointer text-slate-700">
                       {subject}
-                    </label>
+                    </Label>
                   </div>
                 ))}
               </div>
@@ -826,106 +1204,125 @@ function EditAdmissionDialog({ admission, data, onClose, onDelete }: { admission
           </div>
         </div>
 
-        <div className="space-y-2">
-          <Label>Address</Label>
-          <Input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label>Admission Fee</Label>
-            <Input type="number" value={formData.admissionFee} onChange={e => setFormData({...formData, admissionFee: e.target.value})} />
+        {/* Section 5: Financials */}
+        <div className="space-y-6">
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+             <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+                <CreditCard size={20} />
+             </div>
+             <div>
+                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Financial Commitment</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Pricing & Installment Plans</p>
+             </div>
           </div>
-          <div className="space-y-2">
-            <Label>Misc Funds</Label>
-            <Input type="number" value={formData.miscFunds} onChange={e => setFormData({...formData, miscFunds: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Total Finalized Tution Fee</Label>
-            <Input type="number" value={formData.totalFeeFinalized} onChange={e => setFormData({...formData, totalFeeFinalized: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-emerald-600 font-black">Total Package (Auto)</Label>
-            <div className="h-10 bg-emerald-50 border border-emerald-100 rounded-lg flex items-center px-3 font-bold text-emerald-700">
-              Rs. {formData.totalPackage.toLocaleString()}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Admission Fee</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl font-bold" type="number" value={formData.admissionFee || ""} onChange={e => setFormData({...formData, admissionFee: e.target.value})} />
             </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Received Amount</Label>
-            <Input type="number" value={formData.feeReceived} onChange={e => setFormData({...formData, feeReceived: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Payment Plan</Label>
-            <Select value={formData.paymentPlan} onValueChange={(v: any) => setFormData({...formData, paymentPlan: v})}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Semester">Semester</SelectItem>
-                <SelectItem value="Installments">Installments</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {formData.paymentPlan === 'Installments' && (
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
-             <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-500">
-              <span>Installments Count ({formData.totalInstallments} Months)</span>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Misc / Lab Funds</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl font-bold" type="number" value={formData.miscFunds || ""} onChange={e => setFormData({...formData, miscFunds: e.target.value})} />
             </div>
-            <input 
-              type="range" 
-              min="1" 
-              max="12" 
-              value={formData.totalInstallments} 
-              onChange={(e) => setFormData({...formData, totalInstallments: Number(e.target.value)})}
-              className="w-full accent-superior-teal"
-            />
-            
-            <div className="grid grid-cols-2 gap-4 pt-2">
-              <div className="space-y-2">
-                <Label className="text-[10px] font-black uppercase text-slate-400">Paid Installments</Label>
-                <Select value={String(formData.paidInstallments)} onValueChange={(v) => setFormData({...formData, paidInstallments: Number(v)})}>
-                  <SelectTrigger className="h-10 bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: formData.totalInstallments + 1 }, (_, i) => (
-                      <SelectItem key={i} value={String(i)}>{i} Paid</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Finalized Tuition Fee</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl font-black text-superior-teal" type="number" value={formData.totalFeeFinalized || ""} onChange={e => setFormData({...formData, totalFeeFinalized: e.target.value})} />
+            </div>
+            <div className="space-y-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+              <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Package (Auto)</Label>
+              <div className="text-xl font-black text-slate-800">
+                Rs. {formData.totalPackage.toLocaleString()}
               </div>
-              <div className="bg-white p-3 rounded-lg border border-slate-100 flex flex-col justify-center">
-                <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Status</p>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-rose-500">Rem: {Math.max(0, formData.totalInstallments - formData.paidInstallments)}</span>
-                  <span className="text-xs font-bold text-superior-teal">Amt: Rs. {Math.round(Number(formData.totalPackage || 0) / (formData.totalInstallments || 1)).toLocaleString()}</span>
+            </div>
+          </div>
+
+          <div className="p-6 bg-superior-teal/5 rounded-3xl border border-superior-teal/10 grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs font-black text-superior-teal uppercase">Fee Received So Far</Label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">Rs.</span>
+                  <Input 
+                    className="h-14 pl-12 border-superior-teal/30 bg-white rounded-2xl text-2xl font-black text-emerald-600 focus:ring-4 focus:ring-superior-teal/5 transition-all" 
+                    type="number" 
+                    value={formData.feeReceived || ""} 
+                    onChange={e => setFormData({...formData, feeReceived: e.target.value})} 
+                  />
                 </div>
               </div>
+              <div className="flex items-center gap-3">
+                <Badge className="bg-emerald-500 text-white font-black px-3 py-1">
+                  Balance: Rs. {(formData.totalPackage - Number(formData.feeReceived)).toLocaleString()}
+                </Badge>
+                {Number(formData.feeReceived) > 0 && <span className="text-[10px] font-black text-emerald-600 uppercase">Official Payment Logged</span>}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <Label className="text-xs font-black text-slate-500 uppercase">Billing Strategy</Label>
+              <Select value={formData.paymentPlan || ""} onValueChange={(v: any) => setFormData({...formData, paymentPlan: v})}>
+                <SelectTrigger className="h-14 bg-white border-slate-200 rounded-2xl font-bold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Semester">Semester Plan</SelectItem>
+                  <SelectItem value="Installments">Installment Plan</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
-        )}
-
-        <div className="space-y-2">
-          <Label>Reference</Label>
-          <Input value={formData.reference} onChange={e => setFormData({...formData, reference: e.target.value})} />
         </div>
 
-        <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+        {/* Section 6: Others */}
+        <div className="space-y-6">
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+             <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                <Search size={20} />
+             </div>
+             <div>
+                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Administrative Info</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Sourcing & Operational Status</p>
+             </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Referral / Source</Label>
+              <Input className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl" value={formData.reference || ""} onChange={e => setFormData({...formData, reference: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-black text-slate-500 uppercase">Record Status</Label>
+              <Select value={formData.status || ""} onValueChange={(v: any) => setFormData({...formData, status: v})}>
+                <SelectTrigger className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl font-bold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Prospective">Prospective (Applicant)</SelectItem>
+                  <SelectItem value="Admitted/Confirmed">Admitted (Full Enrollment)</SelectItem>
+                  <SelectItem value="Not Paid">Financial: Not Paid</SelectItem>
+                  <SelectItem value="Partial Paid">Financial: Partial Paid</SelectItem>
+                  <SelectItem value="Full Paid">Financial: Full Paid</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-white pt-6 pb-2 border-t border-slate-100 flex justify-between items-center z-10">
           <Button 
             variant="destructive" 
             type="button"
+            className="h-12 rounded-xl font-bold uppercase tracking-widest text-[10px] px-6"
             onClick={() => {
               if (onDelete) onDelete();
             }}
           >
             <Trash2 size={16} className="mr-2" /> Delete Record
           </Button>
-          <div className="flex gap-3">
-            <Button variant="outline" type="button" onClick={onClose}>Cancel</Button>
-            <Button className="bg-superior-teal text-white hover:bg-superior-teal/90" onClick={handleSave}>
-              Save Changes
+          <div className="flex gap-4">
+            <Button variant="ghost" type="button" onClick={onClose} className="h-12 rounded-xl font-bold px-8">Cancel</Button>
+            <Button className="h-12 rounded-xl bg-superior-teal text-white hover:bg-superior-teal/90 px-10 font-black uppercase tracking-widest text-[11px] shadow-xl shadow-superior-teal/20" onClick={handleSave}>
+              Save All Changes
             </Button>
           </div>
         </div>
@@ -934,360 +1331,217 @@ function EditAdmissionDialog({ admission, data, onClose, onDelete }: { admission
   );
 }
 
-function AdmissionProfile({ admission, data, onEdit, onDownloadReceipt }: { admission: Admission, data: any, onEdit?: () => void, onDownloadReceipt?: () => void }) {
+function SectionHeading({ icon: Icon, title }: { icon: any, title: string }) {
   return (
-    <div className="w-full">
-      <div className="bg-slate-800 p-6 md:p-10 text-white relative">
-        <div className="flex flex-col md:flex-row gap-6 md:gap-10 items-center md:items-center relative z-10">
-          <div className="relative group shrink-0">
-            <div className="w-32 h-32 md:w-44 md:h-44 rounded-2xl border-4 border-white/20 bg-white/10 backdrop-blur-md overflow-hidden">
-              {admission.photo ? (
-                <img src={admission.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-white/40">
-                  <User size={64} />
-                </div>
-              )}
-            </div>
-          </div>
-          
-          <div className="text-center md:text-left flex-1">
-            <div className="inline-flex items-center gap-2 bg-superior-gold/20 text-superior-gold border border-superior-gold/30 mb-3 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">
-              <School size={12} /> Admission Applicant Profile
-            </div>
-            <h2 className="text-3xl md:text-5xl font-serif font-bold mb-2 tracking-tight">{admission.fullName}</h2>
-            <div className="flex flex-wrap justify-center md:justify-start gap-3 md:gap-6 text-sm md:text-base opacity-90">
-              <p className="font-mono font-bold text-superior-gold">{admission.id}</p>
-              <span className="hidden md:block opacity-30">|</span>
-              <div className="flex items-center gap-2">
-                <User size={16} className="text-superior-gold" />
-                <span>Father: {admission.fatherName}</span>
-              </div>
-              <span className="hidden md:block opacity-30">|</span>
-              <div className="flex items-center gap-2">
-                <CalendarIcon size={16} className="text-superior-gold" />
-                <span>Applied: {admission.date}</span>
-              </div>
-            </div>
-          </div>
-        </div>
+    <div className="flex items-center gap-3 mb-6">
+      <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
+        <Icon size={20} />
       </div>
-
-      <div className="p-6 md:p-10 space-y-10">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12">
-          <div className="space-y-6">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-3 text-lg">
-              <User size={20} className="text-superior-teal" /> Personal Information
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <InfoItem label="Father's Name" value={admission.fatherName} />
-              <InfoItem label="Contact" value={admission.contactNumber} />
-              <InfoItem label="College No." value={admission.collegeNo || 'N/A'} />
-              <InfoItem label="B-Form No." value={admission.bayFormNo || 'N/A'} />
-              <InfoItem label="Date of Birth" value={admission.dob || 'N/A'} />
-              <InfoItem label="Gender" value={admission.gender} />
-              <InfoItem label="Board Roll No." value={admission.boardRollNo || 'N/A'} />
-              <InfoItem label="Marks Obtained" value={String(admission.previousMarks || 0)} />
-              <div className="sm:col-span-2">
-                <InfoItem label="Address" value={admission.address} />
-              </div>
-              <div className="sm:col-span-2">
-                <InfoItem label="Previous Institute" value={admission.previousInstitute} />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-3 text-lg">
-              <GraduationCap size={20} className="text-superior-teal" /> Academic Details
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <InfoItem label="Category" value={admission.category} />
-              <InfoItem label="Group" value={admission.group || 'Not Assigned'} />
-              <InfoItem label="Previous Class" value={admission.previousClass || 'N/A'} />
-              <InfoItem label="Section" value={admission.section || 'Not Assigned'} />
-              <InfoItem label="Status" value={admission.status} />
-              <div className="sm:col-span-2">
-                <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2">Selected Subjects</p>
-                <div className="flex flex-wrap gap-2">
-                  {(admission.subjects || []).map(s => (
-                    <Badge key={s} variant="outline" className="bg-slate-50">{s}</Badge>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-6 pt-6 border-t border-slate-100">
-          <h3 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
-            <CreditCard size={20} className="text-superior-teal" /> Financial Summary
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-              <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Tuition Fee</p>
-              <p className="text-xl font-bold text-slate-800">Rs. {(admission.totalFeeFinalized || 0).toLocaleString()}</p>
-            </div>
-            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-              <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Misc Funds</p>
-              <p className="text-xl font-bold text-slate-800">Rs. {(admission.miscFunds || 0).toLocaleString()}</p>
-            </div>
-            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-              <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Admission Fee</p>
-              <p className="text-xl font-bold text-slate-800">Rs. {(admission.admissionFee || 0).toLocaleString()}</p>
-            </div>
-            <div className="p-4 bg-superior-bg-teal rounded-xl border border-superior-teal/20">
-              <p className="text-[10px] text-superior-teal uppercase font-bold mb-1">Total Package</p>
-              <p className="text-xl font-bold text-superior-teal">Rs. {(admission.totalPackage || 0).toLocaleString()}</p>
-            </div>
-            <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-              <p className="text-[10px] text-emerald-600 uppercase font-bold mb-1">Received</p>
-              <p className="text-xl font-bold text-emerald-700">Rs. {(admission.feeReceived || 0).toLocaleString()}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-4 pt-8 border-t border-slate-100">
-          <Button variant="outline" className="border-superior-gold text-superior-gold" onClick={onDownloadReceipt}>
-            <Receipt size={16} className="mr-2" /> Download Fee Receipt
-          </Button>
-          {!admission.isAdmitted && (
-            <Button 
-              className="bg-emerald-600 text-white hover:bg-emerald-700 font-bold"
-              onClick={() => {
-                data.confirmAdmission(admission.id, data.currentUser?.email);
-                toast.success("Admission confirmed!");
-              }}
-            >
-              <CheckCircle2 size={18} className="mr-2" /> Confirm Admission
-            </Button>
-          )}
-          <Button 
-            className="bg-superior-teal text-white hover:bg-superior-teal/90 font-bold"
-            onClick={onEdit}
-          >
-            Edit Details
-          </Button>
-        </div>
-      </div>
+      <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">{title}</h3>
     </div>
   );
 }
 
-function AdmissionSlip({ admission, settings }: { admission: Admission, settings: any }) {
-  const slipRef = React.useRef<HTMLDivElement>(null);
+function ProfileItem({ label, value, isFull = false }: { label: string, value: string, isFull?: boolean }) {
+  return (
+    <div className={isFull ? "col-span-full" : ""}>
+      <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">{label}</p>
+      <p className="text-[15px] font-bold text-slate-800 leading-tight">{value || '---'}</p>
+    </div>
+  );
+}
 
-  const downloadSlip = async () => {
-    if (!slipRef.current) return;
-    const toastId = toast.loading("Generating High-Fidelity Slip...");
-    try {
-      const dataUrl = await toPng(slipRef.current, {
-        quality: 1.0,
-        pixelRatio: 2,
-        backgroundColor: '#ffffff'
-      });
-      
-      const imgProps = new Image();
-      imgProps.src = dataUrl;
-      await new Promise((resolve) => { imgProps.onload = resolve; });
-      
-      const pdfWidth = 210; // A4 width in mm
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
-      // Use dynamic height if content is longer than A4
-      const pdf = new jsPDF('p', 'mm', [pdfWidth, Math.max(297, pdfHeight)]);
-      
-      pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Admission_Slip_${admission.fullName.replace(/\s+/g, '_')}.pdf`);
-      toast.dismiss(toastId);
-      toast.success("Admission Slip downloaded!");
-    } catch (err) {
-      console.error(err);
-      toast.dismiss(toastId);
-      toast.error("Failed to download slip");
-    }
+function FinanceCard({ label, value, sub, color = 'slate' }: { label: string, value: number | string, sub: string, color?: 'slate' | 'emerald' | 'amber' }) {
+  const colors = {
+    slate: "bg-slate-50 text-slate-900 border-slate-100",
+    emerald: "bg-emerald-50 text-emerald-900 border-emerald-100",
+    amber: "bg-amber-50 text-amber-900 border-amber-100"
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50">
-        <h3 className="text-xl font-serif font-bold text-superior-teal">Admission Slip Preview</h3>
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={() => window.print()}>
-            <Download size={16} className="mr-2" /> Print
-          </Button>
-          <Button className="bg-superior-teal text-white" onClick={downloadSlip}>
-            <Download size={16} className="mr-2" /> Download PDF
-          </Button>
+    <div className={cn("p-8 rounded-[2.5rem] border shadow-sm", colors[color])}>
+      <p className="text-[10px] font-black uppercase tracking-widest mb-1 opacity-60">{label}</p>
+      <h4 className="text-3xl font-black tracking-tight">Rs. {Number(value || 0).toLocaleString()}</h4>
+      <p className="text-[10px] font-bold uppercase tracking-widest mt-3 opacity-40">{sub}</p>
+    </div>
+  );
+}
+
+function AdmissionProfile({ admission, data, onEdit, onDownloadReceipt }: { admission: Admission, data: any, onEdit?: () => void, onDownloadReceipt?: () => void }) {
+  return (
+    <div className="w-full bg-slate-50/30 rounded-[3rem] overflow-hidden border border-slate-100 shadow-xl shadow-slate-200/50">
+      <div className="bg-slate-900 p-10 md:p-14 text-white relative overflow-hidden">
+        {/* Background Accents */}
+        <div className="absolute top-0 right-0 w-80 h-80 bg-superior-gold/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2" />
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-superior-teal/10 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/2" />
+        
+        <div className="flex flex-col md:flex-row gap-10 md:gap-14 items-center relative z-10">
+          <div className="shrink-0 flex flex-col items-center">
+            <div className="w-40 h-40 md:w-56 md:h-56 rounded-[3rem] border-8 border-white/5 bg-white/10 backdrop-blur-xl overflow-hidden shadow-2xl transition-transform hover:scale-105 duration-500">
+              {admission.photo ? (
+                <img 
+                  src={admission.photo} 
+                  alt="" 
+                  className="w-full h-full object-cover" 
+                  referrerPolicy="no-referrer" 
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                    const parent = target.parentElement;
+                    if (parent) {
+                      parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-superior-gold/10 text-superior-gold font-bold text-5xl">${admission.fullName.charAt(0)}</div>`;
+                    }
+                  }}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-white/10">
+                  <User size={100} />
+                </div>
+              )}
+            </div>
+            {admission.studentId && (
+              <div className="mt-6 bg-superior-gold text-superior-teal font-black text-base px-6 py-2.5 rounded-2xl shadow-xl shadow-superior-gold/20 border-2 border-white/20 transform -rotate-1">
+                {admission.studentId}
+              </div>
+            )}
+          </div>
+          
+          <div className="text-center md:text-left flex-1 space-y-6">
+            <div className="inline-flex items-center gap-2.5 bg-white/10 text-superior-gold border border-white/10 px-5 py-2 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-inner">
+              <Shield size={16} /> Verified Academic record
+            </div>
+            <h2 className="text-4xl md:text-7xl font-black tracking-tight uppercase leading-[0.9]">{admission.fullName}</h2>
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
+               <div className="flex items-center gap-3 text-white/50 font-bold text-lg">
+                 <Badge variant="outline" className="border-white/20 text-white/80 py-1.5 px-4 rounded-xl">{admission.category}</Badge>
+                 <span className="w-1.5 h-1.5 rounded-full bg-superior-gold shadow-[0_0_10px_rgba(201,168,76,0.6)]" />
+                 <span className="text-white/70">{admission.group}</span>
+               </div>
+               <Badge className={cn(
+                 "font-black tracking-[0.15em] uppercase text-[10px] px-5 py-2 rounded-xl shadow-lg",
+                 admission.status === 'Admitted/Confirmed' ? "bg-emerald-500 text-white" : "bg-superior-gold text-superior-teal"
+               )}>
+                 {admission.status}
+               </Badge>
+            </div>
+          </div>
         </div>
       </div>
-      
-      <div className="flex-1 overflow-auto p-10 bg-slate-100 flex justify-center">
-        <div 
-          ref={slipRef}
-          className="w-[210mm] min-h-[297mm] bg-white p-12 relative"
-          style={{ fontFamily: "'Inter', sans-serif" }}
-        >
-          {/* Header */}
-          <div className="flex justify-between items-start border-b-4 border-superior-teal pb-8 mb-10">
-            <div className="flex gap-6 items-center">
-              <div className="w-24 h-24 rounded-2xl flex items-center justify-center overflow-hidden border border-slate-100 bg-slate-50 shadow-inner">
-                {settings.logo ? (
-                  <img src={settings.logo} alt="Logo" className="w-full h-full object-contain" />
-                ) : (
-                  <div className="bg-superior-teal w-full h-full flex items-center justify-center text-white">
-                    <School size={48} />
-                  </div>
-                )}
-              </div>
-              <div>
-                <h1 className="text-4xl font-serif font-bold text-superior-teal tracking-tight uppercase" style={{ color: settings.themeColor }}>{settings.collegeName}</h1>
-                <p className="text-superior-gold font-black tracking-[0.3em] text-sm mt-1 uppercase">{settings.campusName}</p>
-                <div className="mt-3 flex gap-4 text-[10px] text-slate-500 font-black uppercase tracking-widest">
-                  <span>Tel: {settings.contactNumber}</span>
-                  <span>|</span>
-                  <span>Email: {settings.email}</span>
-                </div>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="bg-superior-gold text-superior-teal px-8 py-3 rounded-2xl font-black text-sm mb-2 inline-block shadow-sm">
-                ADMISSION SLIP
-              </div>
-              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Date: {admission.date}</p>
-              <div className="flex flex-col gap-1 mt-3">
-                <p className="text-lg font-mono font-black text-superior-teal">ID: {admission.studentId || 'PENDING'}</p>
-                <p className="text-xs font-mono font-black text-slate-400">CLN: {admission.collegeNo || '---'}</p>
-              </div>
+
+      <div className="p-10 md:p-14 space-y-16 bg-white/80 backdrop-blur-sm">
+        {/* Profile Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
+          {/* Column 1: Identity */}
+          <div className="space-y-10 group">
+            <SectionHeading icon={User} title="Student Identity" />
+            <div className="space-y-8 pl-4 border-l-2 border-slate-50 group-hover:border-superior-teal/30 transition-colors">
+              <ProfileItem label="Father's Name" value={admission.fatherName} />
+              <ProfileItem label="Date of Birth" value={admission.dob || 'N/A'} />
+              <ProfileItem label="B-Form / CNIC" value={admission.bayFormNo || 'N/A'} />
+              <ProfileItem label="Blood Group" value={admission.bloodGroup || 'N/A'} />
+              <ProfileItem label="Gender" value={admission.gender} />
             </div>
           </div>
 
-          {/* Student Info Section */}
-          <div className="grid grid-cols-12 gap-10 mb-12">
-            <div className="col-span-9 space-y-8">
-              <div className="grid grid-cols-2 gap-y-6 gap-x-10">
-                <PreviewItem label="Student Full Name" value={admission.fullName} />
-                <PreviewItem label="Father's Name" value={admission.fatherName} />
-                <PreviewItem label="B-Form / CNIC" value={admission.bayFormNo || '---'} />
-                <PreviewItem label="Date of Birth" value={admission.dob || '---'} />
-                <PreviewItem label="Contact (Primary)" value={admission.contactNumber} />
-                <PreviewItem label="Gender" value={admission.gender} />
-                <PreviewItem label="Permanent Address" value={admission.address} isFull />
-              </div>
-            </div>
-            <div className="col-span-3 flex flex-col items-center justify-start">
-              <div className="w-full aspect-[3/4] border-2 border-slate-200 rounded-3xl overflow-hidden bg-slate-50 flex items-center justify-center relative shadow-inner">
-                {admission.photo ? (
-                  <img src={admission.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                ) : (
-                  <div className="text-slate-200 flex flex-col items-center gap-2">
-                    <User size={60} />
-                    <span className="text-[8px] font-black uppercase tracking-widest">Passport Photo</span>
-                  </div>
-                )}
-              </div>
+          {/* Column 2: Academic */}
+          <div className="space-y-10 group">
+            <SectionHeading icon={GraduationCap} title="Academic Stats" />
+            <div className="space-y-8 pl-4 border-l-2 border-slate-50 group-hover:border-superior-gold/30 transition-colors">
+              <ProfileItem label="College No." value={admission.collegeNo || 'N/A'} />
+              <ProfileItem label="Section" value={admission.section || 'Not Assigned'} />
+              <ProfileItem label="Board Roll #" value={admission.boardRollNo || 'N/A'} />
+              <ProfileItem label="SSC Marks" value={String(admission.previousMarks || 0)} />
+              <ProfileItem label="Previous Institute" value={admission.previousInstitute || 'N/A'} />
             </div>
           </div>
 
-          {/* Academic Details */}
-          <section className="bg-slate-50 rounded-[2.5rem] p-10 border border-slate-100 mb-10 shadow-sm">
-            <h3 className="text-[10px] font-black text-superior-teal uppercase tracking-[0.3em] mb-8 border-b border-slate-200 pb-3">Academic Enrollment & Subjects</h3>
-            <div className="grid grid-cols-3 gap-8">
-              <PreviewItem label="Category" value={admission.category} />
-              <PreviewItem label="Academic Group" value={admission.group || '---'} />
-              <PreviewItem label="Proposed Section" value={admission.section || '---'} />
-              <PreviewItem label="Board Roll No" value={admission.boardRollNo || '---'} />
-              <PreviewItem label="Previous Class" value={admission.previousClass || '---'} />
-              <PreviewItem label="Grade / Marks" value={String(admission.previousMarks || '---')} />
+          {/* Column 3: Contact & Subjects */}
+          <div className="space-y-10 group">
+            <SectionHeading icon={CreditCard} title="Communication" />
+            <div className="space-y-8 pl-4 border-l-2 border-slate-50 group-hover:border-blue-300 transition-colors">
+              <ProfileItem label="Personal Mobile" value={admission.contactNumber} />
+              <ProfileItem label="Father's Mobile" value={admission.fatherContact || 'N/A'} />
+              <ProfileItem label="Residential Address" value={admission.address} isFull />
             </div>
-            <div className="mt-8">
-              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-4">Course Subjects Authorized</p>
-              <div className="flex flex-wrap gap-2">
-                {(admission.subjects || []).map(subject => (
-                  <div key={subject} className="px-4 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-slate-600 shadow-sm">
-                    {subject}
-                  </div>
+            <div className="pt-6">
+              <div className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-4 flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-superior-teal" /> Enrolled Subjects
+              </div>
+              <div className="flex flex-wrap gap-2.5">
+                {(admission.subjects || []).map(s => (
+                  <Badge key={s} variant="outline" className="bg-slate-50/50 text-slate-700 border-slate-200 font-black text-[10px] uppercase tracking-wider px-4 py-2 rounded-xl hover:bg-white hover:border-superior-teal transition-all">{s}</Badge>
                 ))}
               </div>
             </div>
-          </section>
-
-          {/* Fee Breakdown */}
-          <section className="space-y-6 mb-12">
-            <h3 className="text-[10px] font-black text-superior-teal uppercase tracking-[0.3em] mb-4 border-b border-slate-200 pb-3">Financial Structure & Payment Records</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="p-5 p-5 bg-slate-50 rounded-2xl border border-slate-100">
-                <p className="text-[8px] text-slate-400 font-black uppercase mb-1">Tuition Fee</p>
-                <p className="text-lg font-black text-slate-700">Rs. {(admission.totalFeeFinalized || 0).toLocaleString()}</p>
-              </div>
-              <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
-                <p className="text-[8px] text-slate-400 font-black uppercase mb-1">Misc Funds</p>
-                <p className="text-lg font-black text-slate-700">Rs. {(admission.miscFunds || 0).toLocaleString()}</p>
-              </div>
-              <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
-                <p className="text-[8px] text-slate-400 font-black uppercase mb-1">Admission Fee</p>
-                <p className="text-lg font-black text-slate-700">Rs. {(admission.admissionFee || 0).toLocaleString()}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-12 gap-8 items-center bg-superior-teal rounded-[2.5rem] p-10 text-white shadow-xl">
-              <div className="col-span-5">
-                <p className="text-[10px] font-black uppercase opacity-60 mb-2">Total Package Value</p>
-                <p className="text-4xl font-black">Rs. {(admission.totalPackage || 0).toLocaleString()}</p>
-              </div>
-              <div className="col-span-3 border-l border-white/20 pl-8">
-                <p className="text-[10px] font-black uppercase opacity-60 mb-2">Payment Plan</p>
-                <p className="text-xl font-black">{admission.paymentPlan}</p>
-                {admission.paymentPlan === 'Installments' && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full">{admission.totalInstallments} Terms</span>
-                  </div>
-                )}
-              </div>
-              <div className="col-span-4 border-l border-white/20 pl-8 text-right">
-                <p className="text-[10px] font-black uppercase opacity-60 mb-2">Installment Term</p>
-                <p className="text-2xl font-black">Rs. {Math.round((admission.totalPackage || 0) / (admission.totalInstallments || 1)).toLocaleString()}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-              <div className="p-6 bg-emerald-50 rounded-[2rem] border border-emerald-100 flex justify-between items-center shadow-sm">
-                <div>
-                  <p className="text-[10px] text-emerald-600 font-black uppercase">Paid Amount</p>
-                  <p className="text-3xl font-black text-emerald-700">Rs. {(admission.feeReceived || 0).toLocaleString()}</p>
-                </div>
-                <CheckCircle2 size={40} className="text-emerald-200" />
-              </div>
-              <div className="p-6 bg-rose-50 rounded-[2rem] border border-rose-100 flex justify-between items-center shadow-sm">
-                <div>
-                  <p className="text-[10px] text-rose-600 font-black uppercase">Outstanding</p>
-                  <p className="text-3xl font-black text-rose-700">Rs. {((admission.totalPackage || 0) - (admission.feeReceived || 0)).toLocaleString()}</p>
-                </div>
-                <Info size={40} className="text-rose-200" />
-              </div>
-            </div>
-          </section>
-
-          {/* Footer Signatures */}
-          <div className="mt-20 pt-10 border-t-2 border-slate-100 flex justify-between items-end">
-            <div className="text-[10px] text-slate-400 max-w-sm leading-relaxed font-medium">
-              This slip confirms the admission of {admission.fullName}. Please keep this document safe for all future academic and financial references at {settings.collegeName}.
-            </div>
-            <div className="flex gap-12">
-              <div className="text-center w-44">
-                <div className="h-0.5 w-full bg-slate-300 mb-2"></div>
-                <p className="text-[8px] font-black uppercase text-slate-400">Accountant</p>
-              </div>
-              <div className="text-center w-44">
-                <div className="h-0.5 w-full bg-slate-800 mb-2"></div>
-                <p className="text-[8px] font-black uppercase text-slate-800">Authorized Official</p>
-              </div>
-            </div>
           </div>
+        </div>
 
-          {/* Watermark */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.03] pointer-events-none -rotate-12">
-             <School size={500} />
+        {/* Financial Section - Redesigned as a Bento Box */}
+        <div className="space-y-8">
+           <div className="flex items-center gap-3">
+             <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+               <Wallet size={24} />
+             </div>
+             <div>
+               <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Financial Ledger</h3>
+               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Real-time payment tracking</p>
+             </div>
+           </div>
+
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+             <FinanceCard label="Overall Package" value={admission.totalPackage} sub="Official Finalized Fee" />
+             <FinanceCard label="Total Received" value={admission.feeReceived} sub="Logged to date" color="emerald" />
+             <div className="lg:col-span-2 p-8 rounded-[2.5rem] bg-slate-900 text-white flex justify-between items-center relative overflow-hidden shadow-2xl">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
+                <div className="relative z-10">
+                  <p className="text-[10px] text-white/50 font-black uppercase tracking-widest mb-1">Outstanding Balance</p>
+                  <h4 className="text-4xl font-black text-rose-400">Rs. {(admission.totalPackage - admission.feeReceived).toLocaleString()}</h4>
+                </div>
+                <div className="w-16 h-16 rounded-3xl bg-white/10 flex items-center justify-center text-rose-400 border border-white/10 relative z-10">
+                  <AlertTriangle size={32} />
+                </div>
+             </div>
+             <FinanceCard label="Admission Fee" value={admission.admissionFee} sub="Registration Cost" />
+             <FinanceCard label="Misc / Lab Funds" value={admission.miscFunds} sub="Operational Charges" />
+             <div className="lg:col-span-2 p-8 rounded-[2.5rem] border-2 border-dashed border-slate-100 flex items-center gap-6">
+                <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 shrink-0">
+                  <CreditCard size={28} />
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Billing Strategy</p>
+                  <h4 className="text-lg font-black text-slate-700 uppercase">{admission.paymentPlan || 'Standard'} Plan</h4>
+                </div>
+             </div>
+           </div>
+        </div>
+
+        {/* Action Bar */}
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-8 pt-10 border-t border-slate-100/50">
+          <Button 
+            variant="outline" 
+            className="h-16 px-10 border-slate-200 text-slate-600 font-black uppercase tracking-widest text-[11px] rounded-[1.5rem] hover:bg-slate-50 hover:border-superior-teal transition-all shadow-sm" 
+            onClick={onDownloadReceipt}
+          >
+            <Receipt size={20} className="mr-3 text-slate-400" /> Print Fee Receipt
+          </Button>
+          
+          <div className="flex items-center gap-4">
+            {!admission.isAdmitted && (
+              <Button 
+                className="h-16 px-12 bg-emerald-600 text-white hover:bg-emerald-700 font-black uppercase tracking-widest text-[11px] rounded-[1.5rem] shadow-2xl shadow-emerald-500/30 transition-all active:scale-95"
+                onClick={() => {
+                  data.confirmAdmission(admission.id, data.currentUser?.email);
+                }}
+              >
+                <CheckCircle2 size={20} className="mr-3" /> Enroll Student
+              </Button>
+            )}
+            <Button 
+              className="h-16 px-12 bg-superior-teal text-white hover:bg-superior-teal/90 font-black uppercase tracking-widest text-[11px] rounded-[1.5rem] shadow-2xl shadow-superior-teal/30 transition-all active:scale-95"
+              onClick={onEdit}
+            >
+              <Edit size={20} className="mr-3 text-white/50" /> Update Details
+            </Button>
           </div>
         </div>
       </div>
@@ -1304,7 +1558,16 @@ function InfoItem({ label, value }: { label: string, value: string }) {
   );
 }
 
-function SummaryCard({ label, value, active, onClick, iconColor, bgColor, hoverColor }: any) {
+function PreviewItem({ label, value, isFull }: { label: string, value: string, isFull?: boolean }) {
+  return (
+    <div className={`space-y-1 ${isFull ? 'col-span-2' : ''}`}>
+      <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">{label}</p>
+      <p className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-1">{value}</p>
+    </div>
+  );
+}
+
+function SummaryCard({ label, value, active, onClick, iconColor, bgColor, hoverColor, icon: Icon = User }: any) {
   return (
     <motion.div 
       whileHover={{ y: -4 }}
@@ -1321,7 +1584,7 @@ function SummaryCard({ label, value, active, onClick, iconColor, bgColor, hoverC
           "w-12 h-12 rounded-2xl flex items-center justify-center transition-colors",
           active ? "bg-white/20" : bgColor
         )}>
-          <User size={24} className={active ? "text-white" : iconColor} />
+          <Icon size={24} className={active ? "text-white" : iconColor} />
         </div>
         {active && <div className="w-2 h-2 rounded-full bg-superior-gold animate-pulse" />}
       </div>
@@ -1336,7 +1599,32 @@ function SummaryCard({ label, value, active, onClick, iconColor, bgColor, hoverC
   );
 }
 
-function AdmissionForm({ data, onClose, selectedSession }: { data: any, onClose: () => void, selectedSession?: string }) {
+function FormSectionHeader({ icon: Icon, title, sub }: any) {
+  return (
+    <div className="flex items-center gap-3 mb-6">
+      <div className="w-10 h-10 rounded-xl bg-superior-teal/10 flex items-center justify-center text-superior-teal">
+        <Icon size={20} />
+      </div>
+      <div>
+        <h4 className="text-sm font-black text-slate-800 uppercase tracking-[0.1em]">{title}</h4>
+        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{sub}</p>
+      </div>
+    </div>
+  );
+}
+
+function FormFieldWrapper({ label, children, required, className }: any) {
+  return (
+    <div className={cn("space-y-2", className)}>
+      <Label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1">
+        {label} {required && <span className="text-rose-500">*</span>}
+      </Label>
+      {children}
+    </div>
+  );
+}
+
+function AdmissionForm({ data, onClose, selectedSession, program }: { data: any, onClose: () => void, selectedSession?: string, program?: string }) {
   const [activeTab, setActiveTab] = useState('student');
   const [formData, setFormData] = useState({
     fullName: '',
@@ -1366,6 +1654,8 @@ function AdmissionForm({ data, onClose, selectedSession }: { data: any, onClose:
     contactNumber: '',
     fatherContact: '',
     secondaryContact: '',
+    email: '',
+    bloodGroup: '',
     reference: '',
     gender: 'Male' as Gender,
     category: 'Inter Part-1 Boys' as any,
@@ -1373,7 +1663,13 @@ function AdmissionForm({ data, onClose, selectedSession }: { data: any, onClose:
     section: '',
     photo: '',
     studentId: '',
-    status: 'Prospective' as any
+    status: 'Prospective' as any,
+    session: '',
+    sessionStartDate: '',
+    sessionEndDate: '',
+    academicPart: 'Part-1' as 'Part-1' | 'Part-2',
+    programType: 'Yearly' as 'Yearly' | 'Semester',
+    currentSemester: 0 as number
   });
 
   // Auto-calculate Total Package
@@ -1384,35 +1680,97 @@ function AdmissionForm({ data, onClose, selectedSession }: { data: any, onClose:
     setFormData(prev => ({ ...prev, totalPackage: total }));
   }, [formData.admissionFee, formData.miscFunds, formData.totalFeeFinalized]);
 
-  // Auto-confirm admission when received amount is entered
+  // Auto-confirm admission when received amount is entered (Allot unique Student ID on Fee Submission)
   React.useEffect(() => {
     if (Number(formData.feeReceived) > 0 && !formData.studentId) {
-      const newId = data.generateStudentId();
+      const newId = data.generateStudentId(formData.group || program);
       setFormData(prev => ({ 
         ...prev, 
         studentId: newId,
         status: 'Admitted/Confirmed'
       }));
-      toast.success(`Student ID Generated: ${newId}. Admission confirmed due to payment!`);
+      toast.success(`Official Student ID Allotted: ${newId}`, {
+        description: "Official identification has been generated based on fee submission."
+      });
     }
   }, [formData.feeReceived]);
 
-  const categories = [
-    'Inter Part-1 Boys',
-    'Inter Part-2 Boys',
-    'Inter Part-1 Girls',
-    'Inter Part-2 Girls'
-  ];
+  const categories = React.useMemo(() => {
+    let result = [
+      'Inter Part-1 Boys',
+      'Inter Part-2 Boys',
+      'Inter Part-1 Girls',
+      'Inter Part-2 Girls'
+    ];
+    if (program === 'dit') result = ['DIT Boys', 'DIT Girls'];
+    if (program === 'ukl3') result = ['UK L3 Boys', 'UK L3 Girls'];
+    if (program === 'bs') result = ['BS Boys', 'BS Girls'];
+
+    // Ensure the default category is valid for the current program
+    setFormData(prev => {
+      if (!result.includes(prev.category)) {
+        return { ...prev, category: result[0] };
+      }
+      return prev;
+    });
+
+    return result;
+  }, [program]);
 
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   const previewRef = React.useRef<HTMLDivElement>(null);
 
+  const filteredGroups = React.useMemo(() => ACADEMIC_GROUPS.filter(g => {
+    if (!program) return true;
+    const name = g.name.toLowerCase();
+    if (program === 'fsc') return !name.includes('dit') && !name.includes('uk') && !name.includes('level 3') && !name.includes('bs ');
+    if (program === 'dit') return name.includes('dit');
+    if (program === 'ukl3') return name.includes('uk') || name.includes('level 3');
+    if (program === 'bs') return name.includes('bs ');
+    return true;
+  }), [program]);
+
+  const filteredSubjects = React.useMemo(() => SUBJECTS.filter((s: string) => {
+    if (COMPULSORY_SUBJECTS.includes(s)) return false; // Handled separately
+    if (!program) return true;
+    const name = s.toLowerCase();
+    if (program === 'fsc') return !name.includes('dit') && !name.includes('uk') && !name.includes('level 3') && !name.includes('bs ');
+    if (program === 'dit') return name.includes('dit');
+    if (program === 'ukl3') return name.includes('uk') || name.includes('level 3');
+    if (program === 'bs') return name.includes('bs ');
+    return true;
+  }), [program]);
+
   const handleGroupChange = (groupName: string) => {
     const group = ACADEMIC_GROUPS.find(g => g.name === groupName);
     if (group) {
       const newSubjects = Array.from(new Set([...COMPULSORY_SUBJECTS, ...group.subjects]));
-      setFormData(prev => ({ ...prev, group: groupName, subjects: newSubjects }));
+      
+      // Auto-logic for Semester Programs
+      let paymentPlan = formData.paymentPlan;
+      let totalSemesters = formData.totalSemesters;
+      let programType = 'Yearly' as 'Yearly' | 'Semester';
+      let currentSemester = formData.currentSemester;
+      
+      const lowerGroupName = groupName.toLowerCase();
+      if (lowerGroupName.includes('dit') || lowerGroupName.includes('uk') || lowerGroupName.includes('level 3')) {
+        paymentPlan = 'Semester';
+        totalSemesters = lowerGroupName.includes('dit') ? 4 : 3;
+        programType = 'Semester';
+        currentSemester = currentSemester || 1;
+        toast.info(`${groupName} follows a Semester System. Plan adjusted automatically.`);
+      }
+
+      setFormData(prev => ({ 
+        ...prev, 
+        group: groupName, 
+        subjects: newSubjects,
+        paymentPlan,
+        totalSemesters,
+        programType,
+        currentSemester
+      }));
     }
   };
 
@@ -1494,16 +1852,24 @@ function AdmissionForm({ data, onClose, selectedSession }: { data: any, onClose:
       totalInstallments: formData.totalInstallments,
       nextInstallmentDate: formData.nextInstallmentDate,
       totalSemesters: formData.totalSemesters,
-      feePerSemester: formData.feePerSemester,
+      programType: formData.programType,
+      currentSemester: formData.currentSemester,
+      feePerSemester: Number(formData.feePerSemester),
       nextSemesterDueDate: formData.nextSemesterDueDate,
       contactNumber: formData.contactNumber,
       fatherContact: formData.fatherContact,
       secondaryContact: formData.secondaryContact,
+      email: formData.email,
+      bloodGroup: formData.bloodGroup,
       reference: formData.reference,
       gender: formData.gender,
       photo: formData.photo || "",
       status: formData.status || status,
-      isAdmitted: formData.status === 'Admitted/Confirmed' || received > 0
+      isAdmitted: formData.status === 'Admitted/Confirmed' || received > 0,
+      session: formData.session || selectedSession || data.settings?.academicSession,
+      sessionStartDate: formData.sessionStartDate,
+      sessionEndDate: formData.sessionEndDate,
+      academicPart: formData.academicPart || 'Part-1'
     };
 
     data.addAdmission(newAdmission);
@@ -1520,21 +1886,23 @@ function AdmissionForm({ data, onClose, selectedSession }: { data: any, onClose:
     }));
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const studentId = data.generateStudentId();
+      const toastId = toast.loading("Processing photo...");
+      try {
+        const compressedBase64 = await compressImage(file);
         setFormData(prev => ({ 
           ...prev, 
-          photo: reader.result as string,
-          studentId: studentId,
-          status: 'Admitted/Confirmed'
+          photo: compressedBase64
         }));
-        toast.success(`Photo uploaded! Student ID Generated: ${studentId}`);
-      };
-      reader.readAsDataURL(file);
+        toast.dismiss(toastId);
+        toast.success(`Photo processed successfully`);
+      } catch (err) {
+        console.error('Photo processing error:', err);
+        toast.dismiss(toastId);
+        toast.error("Failed to process photo.");
+      }
     }
   };
 
@@ -1585,16 +1953,17 @@ function AdmissionForm({ data, onClose, selectedSession }: { data: any, onClose:
         </TabsList>
 
         <form onSubmit={handleSubmit} className="space-y-6 min-h-[400px]">
-          <TabsContent value="student" className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
-            <div className="flex flex-col items-center justify-center mb-8">
-              <div className="relative group">
-                <div className="w-32 h-32 rounded-3xl border-4 border-dashed border-superior-teal/20 bg-slate-50 flex flex-col items-center justify-center overflow-hidden transition-all group-hover:border-superior-teal group-hover:bg-superior-teal/5">
+          <TabsContent value="student" className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-500">
+            {/* Identity Banner */}
+            <div className="bg-slate-50 rounded-[2.5rem] p-8 border border-slate-100 flex flex-col md:flex-row items-center gap-8">
+              <div className="relative group shrink-0">
+                <div className="w-36 h-36 rounded-[2.5rem] border-4 border-dashed border-slate-200 bg-white flex flex-col items-center justify-center overflow-hidden transition-all group-hover:border-superior-teal/50 group-hover:bg-superior-teal/[0.02]">
                   {formData.photo ? (
-                    <img src={formData.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <img src={formData.photo} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <>
-                      <Camera className="text-superior-teal/40 mb-2" size={32} />
-                      <span className="text-[10px] text-slate-500 font-black uppercase text-center px-4">Upload Photo to Admit</span>
+                      <Camera className="text-slate-200 mb-2" size={36} />
+                      <span className="text-[9px] text-slate-400 font-black uppercase text-center px-4 leading-tight">Student<br/>Photograph</span>
                     </>
                   )}
                 </div>
@@ -1602,396 +1971,366 @@ function AdmissionForm({ data, onClose, selectedSession }: { data: any, onClose:
                   <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
                 </label>
                 {formData.photo && (
-                  <div className="absolute -bottom-2 -right-2 bg-emerald-500 text-white p-1.5 rounded-full border-2 border-white">
+                  <div className="absolute -top-2 -right-2 bg-emerald-500 text-white p-2 rounded-2xl border-4 border-white shadow-lg">
                     <CheckCircle2 size={16} />
                   </div>
                 )}
               </div>
-              <p className="mt-3 text-xs font-bold text-slate-500 uppercase tracking-widest">
-                {formData.studentId ? (
-                  <span className="text-emerald-600">Student ID: {formData.studentId} (Admitted)</span>
-                ) : (
-                  "Photo Upload Triggers Admission & ID Generation"
+              <div className="flex-1 space-y-3 text-center md:text-left">
+                <h3 className="text-3xl font-black text-slate-800 uppercase tracking-tight">Candidate Profile</h3>
+                <p className="text-sm text-slate-500 font-medium">Registering candidate for <span className="font-bold text-superior-teal">{program?.toUpperCase() || 'General Admission'}</span>. Please ensure all names match official documents.</p>
+                {formData.studentId && (
+                  <div className="inline-flex items-center gap-3 bg-emerald-50 border border-emerald-100 px-4 py-2 rounded-xl">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-xs font-black text-emerald-700 uppercase tracking-widest">Enrollment ID: {formData.studentId}</span>
+                  </div>
                 )}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="category">Admission Category</Label>
-                <Select value={formData.category} onValueChange={(v: any) => {
-                  const gender = v.includes('Girls') ? 'Female' : 'Male';
-                  setFormData({...formData, category: v, gender});
-                }}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map(cat => (
-                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="gender">Gender (Auto-set)</Label>
-                <Select disabled value={formData.gender}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Male">Male</SelectItem>
-                    <SelectItem value="Female">Female</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="collegeNo">College No.</Label>
-                <Input 
-                  id="collegeNo" 
-                  placeholder="Enter College #"
-                  value={formData.collegeNo}
-                  onChange={e => setFormData({...formData, collegeNo: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2 text-superior-teal font-black">
-                <Label htmlFor="fullName">Student Full Name</Label>
-                <Input 
-                  id="fullName" 
-                  required 
-                  placeholder="Enter student's full name"
-                  className="border-superior-teal/30"
-                  value={formData.fullName}
-                  onChange={e => setFormData({...formData, fullName: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="fatherName">Father's Name</Label>
-                <Input 
-                  id="fatherName" 
-                  required 
-                  placeholder="Enter father's name"
-                  value={formData.fatherName}
-                  onChange={e => setFormData({...formData, fatherName: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="bayFormNo">B-Form No.</Label>
-                <Input 
-                  id="bayFormNo" 
-                  placeholder="xxxx-xxxxxxx-x"
-                  value={formData.bayFormNo}
-                  onChange={e => setFormData({...formData, bayFormNo: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="dob">Date of Birth</Label>
-                <Input 
-                  id="dob" 
-                  type="date"
-                  value={formData.dob}
-                  onChange={e => setFormData({...formData, dob: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="contact">Student Contact Number</Label>
-                <Input 
-                  id="contact" 
-                  required 
-                  placeholder="03xx-xxxxxxx"
-                  value={formData.contactNumber}
-                  onChange={e => setFormData({...formData, contactNumber: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="fatherContact">Father's Contact Number</Label>
-                <Input 
-                  id="fatherContact" 
-                  placeholder="03xx-xxxxxxx"
-                  value={formData.fatherContact}
-                  onChange={e => setFormData({...formData, fatherContact: e.target.value})}
-                />
-              </div>
-
-              <Separator className="col-span-full my-4" />
-              <h4 className="col-span-full text-xs font-black uppercase tracking-widest text-superior-teal">Academic Background</h4>
-
-              <div className="space-y-2">
-                <Label htmlFor="prevClass">Previous Class</Label>
-                <Select value={formData.previousClass} onValueChange={(v: any) => setFormData({...formData, previousClass: v})}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="9th">9th Class</SelectItem>
-                    <SelectItem value="10th">10th Class</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="boardRollNo">Board Roll No.</Label>
-                <Input 
-                  id="boardRollNo" 
-                  placeholder="Enter Roll #"
-                  value={formData.boardRollNo}
-                  onChange={e => setFormData({...formData, boardRollNo: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="prevMarks">Marks Obtained</Label>
-                <Input 
-                  id="prevMarks" 
-                  type="number" 
-                  required 
-                  value={formData.previousMarks}
-                  onChange={e => setFormData({...formData, previousMarks: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2 col-span-md-2">
-                <Label htmlFor="prevInst">Previous Institute</Label>
-                <Input 
-                  id="prevInst" 
-                  required 
-                  value={formData.previousInstitute}
-                  onChange={e => setFormData({...formData, previousInstitute: e.target.value})}
-                />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="address">Address</Label>
-              <Input 
-                id="address" 
-                required 
-                value={formData.address}
-                onChange={e => setFormData({...formData, address: e.target.value})}
-              />
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+               <div className="space-y-8">
+                 <FormSectionHeader icon={User} title="Primary Identity" sub="Full legal documentation" />
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FormFieldWrapper label="Full Name" required>
+                      <Input 
+                        placeholder="Full Name" 
+                        className="h-12 border-slate-200 rounded-xl focus:border-superior-teal/30" 
+                        value={formData.fullName || ""} 
+                        onChange={e => setFormData({...formData, fullName: e.target.value})} 
+                      />
+                    </FormFieldWrapper>
+                    <FormFieldWrapper label="Father's Name" required>
+                      <Input 
+                        placeholder="Father's Name" 
+                        className="h-12 border-slate-200 rounded-xl focus:border-superior-teal/30" 
+                        value={formData.fatherName || ""} 
+                        onChange={e => setFormData({...formData, fatherName: e.target.value})} 
+                      />
+                    </FormFieldWrapper>
+                    <FormFieldWrapper label="Date of Birth">
+                      <Input 
+                        type="date" 
+                        className="h-12 border-slate-200 rounded-xl" 
+                        value={formData.dob || ""} 
+                        onChange={e => setFormData({...formData, dob: e.target.value})} 
+                      />
+                    </FormFieldWrapper>
+                    <FormFieldWrapper label="B-Form / CNIC">
+                      <Input 
+                        placeholder="38403-xxxxxxx-x" 
+                        className="h-12 border-slate-200 rounded-xl" 
+                        value={formData.bayFormNo || ""} 
+                        onChange={e => setFormData({...formData, bayFormNo: e.target.value})} 
+                      />
+                    </FormFieldWrapper>
+                    <FormFieldWrapper label="Gender">
+                       <Select value={formData.gender || ""} onValueChange={(v: any) => setFormData({...formData, gender: v})}>
+                         <SelectTrigger className="h-12 border-slate-200 rounded-xl"><SelectValue /></SelectTrigger>
+                         <SelectContent><SelectItem value="Male">Male</SelectItem><SelectItem value="Female">Female</SelectItem></SelectContent>
+                       </Select>
+                    </FormFieldWrapper>
+                    <FormFieldWrapper label="Blood Group">
+                       <Select value={formData.bloodGroup || ""} onValueChange={v => setFormData({...formData, bloodGroup: v})}>
+                          <SelectTrigger className="h-12 border-slate-200 rounded-xl"><SelectValue placeholder="Select" /></SelectTrigger>
+                          <SelectContent>
+                            {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map(bg => (
+                              <SelectItem key={bg} value={bg}>{bg}</SelectItem>
+                            ))}
+                          </SelectContent>
+                       </Select>
+                    </FormFieldWrapper>
+                 </div>
+               </div>
+
+               <div className="space-y-8">
+                 <FormSectionHeader icon={CreditCard} title="Communication" sub="Emergency Contacts" />
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FormFieldWrapper label="Student Contact" required>
+                      <Input className="h-12 border-slate-200 rounded-xl" placeholder="03xx-xxxxxxx" value={formData.contactNumber || ""} onChange={e => setFormData({...formData, contactNumber: e.target.value})} />
+                    </FormFieldWrapper>
+                    <FormFieldWrapper label="Guardian Contact" required>
+                      <Input className="h-12 border-slate-200 rounded-xl" placeholder="03xx-xxxxxxx" value={formData.fatherContact || ""} onChange={e => setFormData({...formData, fatherContact: e.target.value})} />
+                    </FormFieldWrapper>
+                    <FormFieldWrapper label="Email Address">
+                      <Input className="h-12 border-slate-200 rounded-xl" placeholder="student@example.com" value={formData.email || ""} onChange={e => setFormData({...formData, email: e.target.value})} />
+                    </FormFieldWrapper>
+                    <FormFieldWrapper label="Reference">
+                      <Input className="h-12 border-slate-200 rounded-xl" placeholder="Who referred?" value={formData.reference || ""} onChange={e => setFormData({...formData, reference: e.target.value})} />
+                    </FormFieldWrapper>
+                    <FormFieldWrapper label="Address" className="md:col-span-2">
+                       <Textarea 
+                        placeholder="Full Residential Address" 
+                        className="rounded-2xl border-slate-200 resize-none min-h-[90px] p-4" 
+                        value={formData.address || ""} 
+                        onChange={e => setFormData({...formData, address: e.target.value})} 
+                       />
+                    </FormFieldWrapper>
+                 </div>
+               </div>
             </div>
-            <div className="flex justify-end">
-              <Button type="button" onClick={() => setActiveTab('subjects')} className="bg-superior-teal text-white">
-                Next: Subjects & Group
+
+            <div className="flex justify-end pt-4">
+              <Button type="button" onClick={() => setActiveTab('subjects')} className="h-14 px-10 bg-superior-teal text-white hover:bg-superior-teal/90 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-xl shadow-superior-teal/20">
+                Continue to Academic History
               </Button>
             </div>
           </TabsContent>
 
-          <TabsContent value="subjects" className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-lg font-bold text-superior-teal">Academic Group</Label>
-                  <Select value={formData.group} onValueChange={handleGroupChange}>
-                    <SelectTrigger className="h-14 text-lg font-medium border-2 border-superior-teal/20">
-                      <SelectValue placeholder="Select Academic Group" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[300px]">
-                      {ACADEMIC_GROUPS.map(group => (
-                        <SelectItem key={group.name} value={group.name} className="py-3 text-base">
-                          {group.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-lg font-bold text-superior-teal">Manual Section Input</Label>
-                  <Input 
-                    placeholder="e.g. A1, B2" 
-                    className="h-14 text-lg font-medium border-2 border-superior-teal/20"
-                    value={formData.section}
-                    onChange={e => setFormData({...formData, section: e.target.value.toUpperCase()})}
-                  />
-                </div>
-              </div>
-
-              <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 space-y-6">
-                <div className="space-y-3">
-                  <Label className="text-superior-teal font-bold flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-superior-teal" />
-                    Compulsory Subjects
-                  </Label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {COMPULSORY_SUBJECTS.map(subject => (
-                      <div key={subject} className="flex items-center space-x-2 bg-white p-3 rounded-lg border border-slate-100">
-                        <Checkbox 
-                          id={`comp-subject-${subject}`} 
-                          checked={(formData.subjects || []).includes(subject)}
-                          onCheckedChange={() => toggleSubject(subject)}
-                        />
-                        <label htmlFor={`comp-subject-${subject}`} className="text-xs font-bold leading-none cursor-pointer text-slate-700">
-                          {subject}
-                        </label>
-                      </div>
-                    ))}
+          <TabsContent value="subjects" className="space-y-10 animate-in fade-in slide-in-from-left-4 duration-500">
+             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Academic History */}
+                <div className="space-y-8 group">
+                  <FormSectionHeader icon={Search} title="Academic History" sub="Previous Record (SSC)" />
+                  <div className="grid grid-cols-1 gap-6 bg-slate-50/50 p-8 rounded-[2.5rem] border border-slate-100 group-hover:border-superior-teal/30 transition-colors">
+                    <FormFieldWrapper label="SSC Board Roll #">
+                      <Input 
+                        placeholder="Registration #"
+                        className="h-12 rounded-xl border-slate-200 bg-white"
+                        value={formData.boardRollNo || ""}
+                        onChange={e => setFormData({...formData, boardRollNo: e.target.value})}
+                      />
+                    </FormFieldWrapper>
+                    <FormFieldWrapper label="SSC Obtained Marks">
+                      <Input 
+                        type="number"
+                        placeholder="Obtained Marks"
+                        className="h-12 rounded-xl border-slate-200 bg-white"
+                        value={formData.previousMarks || ""}
+                        onChange={e => setFormData({...formData, previousMarks: e.target.value})}
+                      />
+                    </FormFieldWrapper>
+                    <FormFieldWrapper label="Previous Institute">
+                      <Input 
+                        placeholder="Enter school/college name"
+                        className="h-12 rounded-xl border-slate-200 bg-white"
+                        value={formData.previousInstitute || ""}
+                        onChange={e => setFormData({...formData, previousInstitute: e.target.value})}
+                      />
+                    </FormFieldWrapper>
+                    <FormFieldWrapper label="Previous Class">
+                       <Select value={formData.previousClass || ""} onValueChange={(v: any) => setFormData({...formData, previousClass: v})}>
+                         <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+                         <SelectContent><SelectItem value="9th">9th Class</SelectItem><SelectItem value="10th">10th Class</SelectItem></SelectContent>
+                       </Select>
+                    </FormFieldWrapper>
                   </div>
                 </div>
 
-                <Separator />
-
-                <div className="space-y-3">
-                  <Label className="text-superior-teal font-bold flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-superior-gold" />
-                    Elective & Group Subjects
-                  </Label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {SUBJECTS.filter(s => !COMPULSORY_SUBJECTS.includes(s)).map(subject => (
-                      <div key={subject} className="flex items-center space-x-2 bg-white p-3 rounded-lg border border-slate-100">
-                        <Checkbox 
-                          id={`subject-${subject}`} 
-                          checked={(formData.subjects || []).includes(subject)}
-                          onCheckedChange={() => toggleSubject(subject)}
-                        />
-                        <label htmlFor={`subject-${subject}`} className="text-xs font-bold leading-none cursor-pointer text-slate-700">
-                          {subject}
-                        </label>
-                      </div>
-                    ))}
+                {/* Course Selection */}
+                <div className="space-y-8 group">
+                  <FormSectionHeader icon={GraduationCap} title="Academic Placement" sub="Internal Program Entry" />
+                  <div className="grid grid-cols-1 gap-6 p-8 rounded-[2.5rem] bg-slate-50/50 border border-slate-100 group-hover:border-superior-teal/30 transition-colors">
+                    <FormFieldWrapper label="Academic Group" required>
+                      <Select value={formData.group || ""} onValueChange={handleGroupChange}>
+                        <SelectTrigger className="h-12 rounded-xl border-slate-200 font-bold bg-white shadow-sm focus:ring-superior-teal">
+                          <SelectValue placeholder="Assign Group" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[300px]">
+                          {filteredGroups.map(g => (
+                            <SelectItem key={g.name} value={g.name}>{g.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormFieldWrapper>
+                    <FormFieldWrapper label="College Roll #">
+                      <Input 
+                        placeholder="Assign Roll #"
+                        className="h-12 rounded-xl border-slate-200 bg-white"
+                        value={formData.collegeNo || ""}
+                        onChange={e => setFormData({...formData, collegeNo: e.target.value})}
+                      />
+                    </FormFieldWrapper>
+                    <FormFieldWrapper label="Assigned Section">
+                      <Input 
+                        placeholder="e.g. Med-1"
+                        className="h-12 rounded-xl border-slate-200 bg-white"
+                        value={formData.section || ""}
+                        onChange={e => setFormData({...formData, section: e.target.value.toUpperCase()})}
+                      />
+                    </FormFieldWrapper>
+                    <FormFieldWrapper label="Academic Part">
+                      <Select value={formData.academicPart || ""} onValueChange={(v: any) => setFormData({...formData, academicPart: v})}>
+                        <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white shadow-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Part-1">Part-1 (1st Year)</SelectItem>
+                          <SelectItem value="Part-2">Part-2 (2nd Year)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </FormFieldWrapper>
                   </div>
                 </div>
-              </div>
-            </div>
-            <div className="flex justify-between">
-              <Button type="button" variant="outline" onClick={() => setActiveTab('student')}>Back</Button>
-              <Button type="button" onClick={() => setActiveTab('fees')} className="bg-superior-teal text-white">
-                Next: Fee Details
-              </Button>
-            </div>
+
+                {/* Subject Selection Area */}
+                <div className="space-y-8 group">
+                  <FormSectionHeader icon={Layers} title="Course Subjects" sub="Elective & Compulsory" />
+                  <div className="p-8 rounded-[2.5rem] bg-slate-50/50 border border-slate-100 group-hover:border-superior-teal/30 transition-colors h-full max-h-[500px] overflow-y-auto">
+                    {!formData.group ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4">
+                        <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-300">
+                          <Layers size={32} />
+                        </div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-relaxed">Select an Academic Group<br/>to show subjects</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="space-y-3">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Compulsory Subjects</p>
+                          <div className="flex flex-wrap gap-2">
+                            {COMPULSORY_SUBJECTS.map(s => (
+                              <Badge key={s} variant="outline" className="bg-white border-slate-200 text-slate-500 font-bold px-3 py-1.5 rounded-lg capitalize">
+                                {s}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Selected Electives</p>
+                          <div className="grid grid-cols-1 gap-2">
+                            {filteredSubjects.map(s => (
+                              <button
+                                key={s}
+                                type="button"
+                                onClick={() => toggleSubject(s)}
+                                className={cn(
+                                  "flex items-center justify-between p-3 rounded-xl border-2 transition-all text-left",
+                                  formData.subjects.includes(s) 
+                                    ? "bg-superior-teal/5 border-superior-teal text-superior-teal" 
+                                    : "bg-white border-slate-100 text-slate-500 hover:border-slate-200"
+                                )}
+                              >
+                                <span className="text-xs font-black uppercase tracking-tight">{s}</span>
+                                {formData.subjects.includes(s) && <CheckCircle2 size={14} />}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+             </div>
+
+             <div className="flex justify-between pt-8 border-t border-slate-100">
+               <Button type="button" variant="ghost" onClick={() => setActiveTab('student')} className="h-14 px-8 font-bold text-slate-400">Back to profile</Button>
+               <Button type="button" onClick={() => setActiveTab('fees')} className="h-14 px-10 bg-slate-800 text-white hover:bg-slate-900 rounded-2xl font-black uppercase tracking-widest text-[11px] group">
+                 Continue to Financials
+                 <ArrowRight size={18} className="ml-2 group-hover:translate-x-1 transition-transform" />
+               </Button>
+             </div>
           </TabsContent>
 
           <TabsContent value="fees" className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="admissionFee" className="text-superior-gold font-black">Admission Fee</Label>
-                <Input 
-                  id="admissionFee" 
-                  type="number" 
-                  required
-                  placeholder="Enter admission fee"
-                  className="border-superior-gold/20"
-                  value={formData.admissionFee}
-                  onChange={e => setFormData({...formData, admissionFee: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="miscFunds">Miscellaneous Funds</Label>
-                <Input 
-                  id="miscFunds" 
-                  type="number" 
-                  placeholder="Library, Lab, etc."
-                  value={formData.miscFunds}
-                  onChange={e => setFormData({...formData, miscFunds: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="totalFeeFinalized">Total Finalized Tuition Fee</Label>
-                <Input 
-                  id="totalFeeFinalized" 
-                  type="number" 
-                  required 
-                  placeholder="Enter tuition fee"
-                  value={formData.totalFeeFinalized}
-                  onChange={e => setFormData({...formData, totalFeeFinalized: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-emerald-600 font-bold uppercase tracking-widest text-[10px]">Total Package (Calculated)</Label>
-                <div className="h-12 bg-emerald-50 border-2 border-emerald-100 rounded-xl flex items-center px-4 font-black text-emerald-700">
-                  Rs. {formData.totalPackage.toLocaleString()}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="feeReceived" className="font-black text-superior-teal">Amount Received (Initial)</Label>
-                <Input 
-                  id="feeReceived" 
-                  type="number" 
-                  required 
-                  placeholder="Confirm payment to allot ID"
-                  className="h-14 text-xl border-superior-teal/30 focus:border-superior-teal"
-                  value={formData.feeReceived}
-                  onChange={e => setFormData({...formData, feeReceived: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-lg font-bold text-superior-teal">Payment Plan</Label>
-                <Select value={formData.paymentPlan} onValueChange={(v: any) => setFormData({...formData, paymentPlan: v})}>
-                  <SelectTrigger className="h-14 border-2 border-superior-teal/10">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Semester">Semester Plan</SelectItem>
-                    <SelectItem value="Installments">Installment Plan</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {formData.paymentPlan === 'Installments' && (
-                <motion.div 
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  className="p-6 bg-slate-50 border border-slate-200 rounded-2xl"
-                >
-                  <div className="flex flex-col md:flex-row gap-8 items-center">
-                    <div className="flex-1 space-y-4">
-                      <div className="flex justify-between items-center">
-                        <Label className="font-black text-slate-700 uppercase tracking-widest text-[10px]">Select Number of Installments</Label>
-                        <Badge variant="outline" className="bg-white border-superior-teal text-superior-teal font-black">{formData.totalInstallments} Months</Badge>
-                      </div>
-                      <input 
-                        type="range" 
-                        min="1" 
-                        max="12" 
-                        value={formData.totalInstallments} 
-                        onChange={(e) => setFormData({...formData, totalInstallments: Number(e.target.value)})}
-                        className="w-full accent-superior-teal"
-                      />
-                      <div className="flex justify-between text-[8px] font-bold text-slate-400 uppercase tracking-widest">
-                        <span>1 Installment</span>
-                        <span>12 Installments</span>
-                      </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Left side: Financial Structure */}
+                <div className="space-y-8">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-xl bg-superior-teal/10 flex items-center justify-center text-superior-teal">
+                      <CreditCard size={20} />
                     </div>
-
-                    <div className="w-1 px-8 hidden md:block">
-                      <Separator orientation="vertical" className="h-20" />
-                    </div>
-
-                    <div className="flex-1 grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Paid Installments</Label>
-                        <Select value={String(formData.paidInstallments)} onValueChange={(v) => setFormData({...formData, paidInstallments: Number(v)})}>
-                          <SelectTrigger className="h-10 bg-white">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Array.from({ length: formData.totalInstallments + 1 }, (_, i) => (
-                              <SelectItem key={i} value={String(i)}>{i} Paid</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1 text-right">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Summary</p>
-                        <div className="space-y-0.5">
-                          <p className="text-xs font-bold text-emerald-600">Paid: {formData.paidInstallments}</p>
-                          <p className="text-xs font-bold text-rose-600">Remaining: {Math.max(0, formData.totalInstallments - formData.paidInstallments)}</p>
-                          <p className="text-xs font-black text-slate-800 border-t border-slate-200 pt-0.5 mt-1">Total: {formData.totalInstallments}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="w-1 px-8 hidden md:block">
-                      <Separator orientation="vertical" className="h-20" />
-                    </div>
-
-                    <div className="text-center md:text-left space-y-1">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Installment Amount</p>
-                      <p className="text-3xl font-display font-black text-superior-teal">
-                        Rs. {Math.round(Number(formData.totalPackage || 0) / (formData.totalInstallments || 1)).toLocaleString()}
-                      </p>
-                      <p className="text-[10px] text-slate-500 font-medium italic">Calculated from Total Package</p>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest">Financial Structure</h4>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Setup total package and payment plan</p>
                     </div>
                   </div>
-                </motion.div>
-              )}
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-8 rounded-[2.5rem] bg-slate-50 border border-slate-100">
+                    <div className="space-y-6">
+                      <FormFieldWrapper label="Admission Fee" required>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">Rs.</span>
+                          <Input type="number" className="h-14 pl-12 rounded-2xl border-slate-200 bg-white font-black" value={formData.admissionFee || ""} onChange={e => setFormData({...formData, admissionFee: e.target.value})} />
+                        </div>
+                      </FormFieldWrapper>
+                      <FormFieldWrapper label="Tuition Fee (Finalized)" required>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">Rs.</span>
+                          <Input type="number" className="h-14 pl-12 rounded-2xl border-slate-200 bg-white font-black text-lg focus:border-superior-teal" value={formData.totalFeeFinalized || ""} onChange={e => setFormData({...formData, totalFeeFinalized: e.target.value})} />
+                        </div>
+                      </FormFieldWrapper>
+                      <FormFieldWrapper label="Miscellaneous Funds">
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">Rs.</span>
+                          <Input type="number" className="h-14 pl-12 rounded-2xl border-slate-200 bg-white font-black" value={formData.miscFunds || ""} onChange={e => setFormData({...formData, miscFunds: e.target.value})} />
+                        </div>
+                      </FormFieldWrapper>
+                    </div>
+
+                    <div className="space-y-6">
+                       <div className="p-8 rounded-[2rem] bg-slate-900 text-white shadow-xl relative overflow-hidden">
+                          <p className="text-[10px] text-white/50 font-black uppercase tracking-widest mb-1">Total Package</p>
+                          <h4 className="text-4xl font-black text-superior-gold tracking-tighter">Rs. {formData.totalPackage.toLocaleString()}</h4>
+                          <div className="mt-6 flex items-center gap-2 bg-white/5 p-2 rounded-xl border border-white/5">
+                             <TrendingUp size={14} className="text-emerald-400" />
+                             <span className="text-[10px] font-bold text-white/60 uppercase">Auto-calculating installments</span>
+                          </div>
+                       </div>
+
+                       <FormFieldWrapper label="Immediate Payment (Received)" required className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100">
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300 font-bold text-sm">Rs.</span>
+                          <Input 
+                            type="number"
+                            className="h-14 pl-12 rounded-2xl border-emerald-200 bg-white text-xl font-black text-emerald-700"
+                            placeholder="0.00"
+                            value={formData.feeReceived || ""}
+                            onChange={e => setFormData({...formData, feeReceived: e.target.value})}
+                          />
+                        </div>
+                        <p className="text-[10px] text-emerald-600 font-black uppercase tracking-wider mt-3 px-1">
+                           Triggers Enrollment & ID Allotment
+                        </p>
+                      </FormFieldWrapper>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right side: Billing Strategy */}
+                <div className="space-y-8">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
+                      <TrendingUp size={20} />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest">Installment Plan</h4>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Bifurcation of remaining dues</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-6 p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm">
+                     <FormFieldWrapper label="Billing Frequency">
+                        <Select value={formData.paymentPlan || ""} onValueChange={(v: any) => setFormData({...formData, paymentPlan: v})}>
+                          <SelectTrigger className="h-14 rounded-2xl border-slate-200 bg-white font-bold"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Installments">Monthly Installments</SelectItem>
+                          </SelectContent>
+                        </Select>
+                     </FormFieldWrapper>
+                     <FormFieldWrapper label="Total Count">
+                        <Input type="number" className="h-14 rounded-2xl border-slate-200 font-bold" value={formData.totalInstallments || ""} onChange={e => setFormData({...formData, totalInstallments: Number(e.target.value)})} />
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-2 px-1">Dividing Rs. {(formData.totalPackage - Number(formData.feeReceived || 0)).toLocaleString()} into {formData.totalInstallments} parts.</p>
+                     </FormFieldWrapper>
+
+                     <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col items-center justify-center text-center space-y-4">
+                        <div className="w-12 h-12 rounded-2xl bg-superior-teal/10 flex items-center justify-center text-superior-teal">
+                          <AlertTriangle size={24} />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-none mb-1">Per Installment</p>
+                          <h4 className="text-2xl font-black text-slate-800">
+                             Rs. {formData.totalInstallments > 0 
+                               ? Math.ceil((formData.totalPackage - Number(formData.feeReceived || 0)) / formData.totalInstallments).toLocaleString() 
+                               : '0'
+                             }
+                          </h4>
+                        </div>
+                     </div>
+                  </div>
+                </div>
+            </div>
 
               {formData.paymentPlan === 'Semester' && (
                 <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 space-y-6">
@@ -2000,7 +2339,7 @@ function AdmissionForm({ data, onClose, selectedSession }: { data: any, onClose:
                       <Label>Total Semesters</Label>
                       <Input 
                         type="number" 
-                        value={formData.totalSemesters} 
+                        value={formData.totalSemesters || ""} 
                         onChange={e => setFormData({...formData, totalSemesters: Number(e.target.value)})} 
                       />
                     </div>
@@ -2008,7 +2347,7 @@ function AdmissionForm({ data, onClose, selectedSession }: { data: any, onClose:
                       <Label>Fee Per Semester</Label>
                       <Input 
                         type="number" 
-                        value={formData.feePerSemester} 
+                        value={formData.feePerSemester || ""} 
                         onChange={e => setFormData({...formData, feePerSemester: Number(e.target.value)})} 
                       />
                     </div>
@@ -2016,14 +2355,13 @@ function AdmissionForm({ data, onClose, selectedSession }: { data: any, onClose:
                       <Label>Next Semester Due Date</Label>
                       <Input 
                         type="date" 
-                        value={formData.nextSemesterDueDate} 
+                        value={formData.nextSemesterDueDate || ""} 
                         onChange={e => setFormData({...formData, nextSemesterDueDate: e.target.value})} 
                       />
                     </div>
                   </div>
                 </div>
               )}
-            </div>
 
             <div className="p-6 bg-superior-teal/5 rounded-2xl border border-superior-teal/10">
               <div className="flex justify-between items-center">
@@ -2081,192 +2419,175 @@ function AdmissionForm({ data, onClose, selectedSession }: { data: any, onClose:
         <div 
           ref={previewRef}
           className="bg-white border mx-auto p-12 font-sans relative"
-          style={{ width: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
+          style={{ width: '210mm', height: 'fit-content', boxSizing: 'border-box' }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b-4 border-superior-teal pb-8 mb-10">
+          <div className="flex items-center justify-between border-b-4 pb-8 mb-10" style={{ borderColor: data.settings?.themeColor || '#0b4d45' }}>
             <div className="flex items-center gap-6">
-              <div className="rounded-3xl overflow-hidden w-24 h-24 flex items-center justify-center bg-slate-50 border border-slate-100">
-                {data.settings.logo ? (
+              <div className="rounded-3xl overflow-hidden w-24 h-24 flex items-center justify-center text-white shadow-xl border-2 border-slate-50" style={{ background: data.settings?.themeColor || '#0b4d45' }}>
+                {data.settings?.logo ? (
                   <img src={data.settings.logo} alt="Logo" className="w-full h-full object-contain" />
                 ) : (
-                  <div className="bg-superior-teal w-full h-full flex items-center justify-center">
-                    <School className="text-superior-gold" size={50} />
-                  </div>
+                  <School className="text-white" size={50} />
                 )}
               </div>
               <div>
-                <h2 className="text-4xl font-serif font-bold text-superior-teal uppercase tracking-tight" style={{ color: data.settings.themeColor }}>{data.settings.collegeName}</h2>
-                <p className="text-lg text-superior-gold uppercase tracking-[0.3em] font-black">{data.settings.campusName}</p>
+                <h1 className="text-4xl font-serif font-black tracking-tight" style={{ color: data.settings?.themeColor || '#0b4d45' }}>{data.settings?.collegeName || 'Superior College'}</h1>
+                <p className="text-sm font-black tracking-[0.4em] uppercase" style={{ color: '#d4af37' }}>{data.settings?.campusName || 'Main Campus'}</p>
                 <div className="flex gap-3 mt-3">
                   {formData.studentId && (
-                    <div className="bg-superior-teal text-white px-4 py-1.5 rounded-lg font-mono text-xs font-black shadow-sm">
+                    <div className="text-white px-4 py-1.5 rounded-lg font-mono text-[10px] font-black shadow-sm" style={{ background: data.settings?.themeColor || '#0b4d45' }}>
                       ST-ID: {formData.studentId}
-                    </div>
-                  )}
-                  {formData.collegeNo && (
-                    <div className="bg-slate-800 text-white px-4 py-1.5 rounded-lg font-mono text-xs font-black shadow-sm">
-                      COLLEGE NO: {formData.collegeNo}
                     </div>
                   )}
                 </div>
               </div>
             </div>
             <div className="text-right">
-              <div className="inline-block bg-superior-gold text-superior-teal px-8 py-3 rounded-2xl text-base font-black mb-3 shadow-sm">ADMISSION FORM</div>
-              <p className="text-sm text-slate-500 font-bold">Session: {selectedSession}</p>
+              <div className="inline-block text-white px-8 py-3 rounded-2xl text-base font-black mb-3 shadow-xl flex flex-col items-center" style={{ background: data.settings?.themeColor || '#0b4d45' }}>
+                <span>ADMISSION FORM</span>
+                <span className="urdu-text text-[10px] font-medium opacity-60">داخلہ فارم</span>
+              </div>
               <p className="text-xs text-slate-400 font-mono mt-1">Issue Date: {new Date().toLocaleDateString()}</p>
             </div>
           </div>
 
           <div className="grid grid-cols-12 gap-8">
-            {/* Sidebar with Photo & Basic Info */}
+            {/* Sidebar */}
             <div className="col-span-3 space-y-6">
-              <div className="aspect-[3/4] rounded-3xl border-2 border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center shadow-inner">
+              <div className="aspect-[3/4] rounded-3xl border-2 border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center shadow-inner group relative">
                 {formData.photo ? (
-                  <img src={formData.photo} alt="" className="w-full h-full object-cover" />
+                  <img 
+                    src={formData.photo} 
+                    alt="" 
+                    className="w-full h-full object-cover" 
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                      const parent = target.parentElement;
+                      if (parent) {
+                        parent.innerHTML = `<div class="w-full h-full flex flex-col items-center justify-center bg-slate-50 text-slate-300 gap-2"><User size="60" /><span class="text-[10px] font-black uppercase text-center px-4">Photo Placeholder</span></div>`;
+                      }
+                    }}
+                  />
                 ) : (
                   <div className="flex flex-col items-center gap-2 opacity-20">
                     <User size={60} />
-                    <span className="text-[10px] font-black uppercase">Paste Photo Here</span>
+                    <span className="text-[10px] font-black uppercase text-center px-4">Paste Photo Here</span>
                   </div>
                 )}
               </div>
 
-              <div className="space-y-4">
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                  <p className="text-[10px] text-slate-400 uppercase font-black mb-1">Gender</p>
-                  <p className="text-base font-black text-slate-700 uppercase">{formData.gender || '---'}</p>
+              <div className="space-y-3">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <p className="text-[8px] text-slate-400 uppercase font-black mb-1">B-Form / CNIC</p>
+                  <p className="text-sm font-mono font-black text-slate-700">{formData.bayFormNo || '---'}</p>
                 </div>
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                  <p className="text-[10px] text-slate-400 uppercase font-black mb-1">B-Form / CNIC</p>
-                  <p className="text-base font-mono font-black text-slate-700">{formData.bayFormNo || '---'}</p>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <p className="text-[8px] text-slate-400 uppercase font-black mb-1">Contact Number</p>
+                  <p className="text-sm font-black text-slate-700">{formData.contactNumber || '---'}</p>
                 </div>
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                  <p className="text-[10px] text-slate-400 uppercase font-black mb-1">Date of Birth</p>
-                  <p className="text-base font-black text-slate-700">{formData.dob ? new Date(formData.dob).toLocaleDateString() : '---'}</p>
-                </div>
-                <div className={`p-4 rounded-2xl border shadow-sm ${Number(formData.feeReceived) > 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-superior-gold/5 border-superior-gold/10'}`}>
-                  <p className={`text-[10px] uppercase font-black mb-1 ${Number(formData.feeReceived) > 0 ? 'text-emerald-600' : 'text-superior-gold'}`}>Enrollment Status</p>
-                  <p className={`text-lg font-black ${Number(formData.feeReceived) > 0 ? 'text-emerald-700' : 'text-superior-gold'}`}>
-                    {Number(formData.feeReceived) > 0 ? "CONFIRMED" : "PENDING"}
+                <div className={`p-3 rounded-xl border shadow-sm ${Number(formData.feeReceived) > 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-200'}`}>
+                  <p className={`text-[8px] uppercase font-black mb-1 ${Number(formData.feeReceived) > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>Enrollment Status</p>
+                  <p className={`text-base font-black ${Number(formData.feeReceived) > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
+                    {Number(formData.feeReceived) > 0 ? "CONFIRMED" : "PROSPECTIVE"}
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Main Details Section */}
-            <div className="col-span-9 space-y-8">
-              {/* Student Identification */}
-              <section className="space-y-4">
-                <h4 className="text-[10px] font-black text-superior-teal uppercase tracking-[0.2em] border-b border-slate-100 pb-2">Student Information</h4>
-                <div className="grid grid-cols-2 gap-y-6 gap-x-10">
+            {/* Main Content */}
+            <div className="col-span-9 space-y-6">
+              <section className="space-y-3">
+                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] border-b border-slate-100 pb-2" style={{ color: data.settings?.themeColor || '#0b4d45' }}>Academic & Personal Profile</h4>
+                <div className="grid grid-cols-2 gap-y-4 gap-x-8">
                   <PreviewItem label="Student Full Name" value={formData.fullName || '---'} />
                   <PreviewItem label="Father's Name" value={formData.fatherName || '---'} />
-                  <PreviewItem label="Contact (Student)" value={formData.contactNumber || '---'} />
-                  <PreviewItem label="Contact (Father)" value={formData.fatherContact || '---'} />
-                  <div className="col-span-2 space-y-1">
-                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Permanent Address</p>
-                    <p className="text-lg font-medium text-slate-800 border-b border-slate-100 pb-1">{formData.address || '---'}</p>
-                  </div>
-                </div>
-              </section>
-
-              {/* Academic Profile */}
-              <section className="space-y-4">
-                <h4 className="text-[10px] font-black text-superior-teal uppercase tracking-[0.2em] border-b border-slate-100 pb-2">Academic & Group Selection</h4>
-                <div className="grid grid-cols-2 gap-y-6 gap-x-10">
-                  <PreviewItem label="Admission Category" value={formData.category || '---'} />
+                  <PreviewItem label="Category" value={formData.category || '---'} />
                   <PreviewItem label="Academic Group" value={formData.group || '---'} />
-                  <PreviewItem label="Board Roll No" value={formData.boardRollNo || '---'} />
-                  <PreviewItem label="Previous Class" value={formData.previousClass || '---'} />
-                  <PreviewItem label="Previous Marks" value={formData.previousMarks || '---'} />
-                  <PreviewItem label="Institute Attended" value={formData.previousInstitute || '---'} />
-                </div>
-
-                <div className="mt-4 p-5 bg-slate-50 rounded-2xl border border-slate-100">
-                  <p className="text-[10px] text-slate-400 uppercase font-black mb-3">Selected Course Subjects</p>
-                  <div className="flex flex-wrap gap-2">
-                    {(formData.subjects || []).length > 0 ? (
-                      (formData.subjects || []).map(s => (
-                        <span key={s} className="bg-white border border-slate-200 text-slate-700 px-3 py-1 rounded-lg text-[10px] font-bold shadow-sm">
-                          {s}
-                        </span>
-                      ))
-                    ) : (
-                      <p className="text-sm text-slate-300 italic">No subjects selected</p>
-                    )}
+                  <div className="col-span-2 space-y-1">
+                    <p className="text-[9px] text-slate-400 uppercase font-bold tracking-widest">Permanent Residential Address</p>
+                    <p className="text-base font-medium text-slate-800 border-b border-slate-100 pb-1">{formData.address || '---'}</p>
                   </div>
                 </div>
               </section>
 
-              {/* Financial Structure */}
-              <section className="space-y-4">
-                <h4 className="text-[10px] font-black text-superior-teal uppercase tracking-[0.2em] border-b border-slate-100 pb-2">Financial Breakdown & Payment Plan</h4>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                    <p className="text-[8px] text-slate-400 uppercase font-black mb-1">Admission Fee</p>
-                    <p className="text-xl font-bold text-slate-700">Rs. {Number(formData.admissionFee || 0).toLocaleString()}</p>
+              <section className="space-y-3">
+                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] border-b border-slate-100 pb-2" style={{ color: data.settings?.themeColor || '#0b4d45' }}>Financial Structure</h4>
+                <div className="grid grid-cols-12 gap-4 items-center rounded-xl p-5 text-white shadow-lg relative overflow-hidden" style={{ background: data.settings?.themeColor || '#0b4d45' }}>
+                  <div className="col-span-12 md:col-span-5">
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-1 font-mono">Total Package Value</p>
+                    <p className="text-3xl font-black tracking-tighter italic">Rs. {Number(formData.totalPackage || 0).toLocaleString()}</p>
                   </div>
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                    <p className="text-[8px] text-slate-400 uppercase font-black mb-1">Misc Funds</p>
-                    <p className="text-xl font-bold text-slate-700">Rs. {Number(formData.miscFunds || 0).toLocaleString()}</p>
-                  </div>
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                    <p className="text-[8px] text-slate-400 uppercase font-black mb-1">Tuition Fee</p>
-                    <p className="text-xl font-bold text-slate-700">Rs. {Number(formData.totalFeeFinalized || 0).toLocaleString()}</p>
-                  </div>
-                </div>
-
-                <div className="bg-superior-teal p-6 rounded-3xl text-white flex justify-between items-center shadow-lg">
-                  <div>
-                    <p className="text-[10px] uppercase font-black opacity-60 mb-1">Total Package Value</p>
-                    <p className="text-4xl font-black">Rs. {Number(formData.totalPackage || 0).toLocaleString()}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] uppercase font-black opacity-60 mb-1">Payment Plan</p>
-                    <p className="text-xl font-bold">{formData.paymentPlan} Plan</p>
-                    {formData.paymentPlan === 'Installments' && (
-                      <p className="text-xs font-black bg-white/20 px-3 py-1 rounded-full mt-2 inline-block">
-                        {formData.totalInstallments} Installments of Rs. {Math.round(Number(formData.totalPackage || 0) / (formData.totalInstallments || 1)).toLocaleString()}
-                      </p>
+                  
+                  <div className="col-span-12 md:col-span-7 border-l border-white/20 pl-4">
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-2 font-mono">
+                      {formData.paymentPlan === 'Semester' ? 'Semester Progress' : 'Payment Schedule'}
+                    </p>
+                    {formData.paymentPlan === 'Semester' ? (
+                      <div className="flex gap-2">
+                         {Array.from({ length: 8 }).map((_, i) => {
+                           const semesterFee = Number(formData.totalPackage || 0) / 8;
+                           const isPaid = Number(formData.feeReceived || 0) >= (i + 1) * semesterFee;
+                           return (
+                             <div key={i} className={`flex flex-col items-center gap-1 p-1 rounded-md border ${isPaid ? 'bg-white/10 border-white/20' : 'bg-transparent border-white/10'}`}>
+                                <span className="text-[7px] font-bold">SM{i+1}</span>
+                                {isPaid ? <CheckCircle2 size={10} className="text-white" /> : <div className="w-2.5 h-2.5 rounded-full border border-white/20" />}
+                             </div>
+                           );
+                         })}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Clock size={14} className="text-white/60" />
+                        <p className="text-sm font-black italic">Monthly Installment Plan Verified</p>
+                      </div>
                     )}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
+                  <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 flex justify-between items-center shadow-sm">
                     <div>
-                      <p className="text-[10px] text-slate-400 uppercase font-black">Initial Received</p>
-                      <p className="text-2xl font-black text-emerald-600">Rs. {Number(formData.feeReceived || 0).toLocaleString()}</p>
+                      <p className="text-[9px] text-emerald-600 font-black uppercase tracking-widest mb-0.5">{formData.paymentPlan === 'Semester' ? 'Total Semester Paid' : 'Total Fees Paid'}</p>
+                      <p className="text-xl font-black text-emerald-700 italic">Rs. {Number(formData.feeReceived || 0).toLocaleString()}</p>
                     </div>
-                    <CheckCircle2 size={30} className="text-emerald-100" />
+                    <CheckCircle2 size={24} className="text-emerald-500 opacity-20" />
                   </div>
-                  <div className="p-4 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
+                  
+                  <div className="p-4 bg-rose-50 rounded-xl border border-rose-100 flex justify-between items-center shadow-sm">
                     <div>
-                      <p className="text-[10px] text-slate-400 uppercase font-black">Remaining Balance</p>
-                      <p className="text-2xl font-black text-rose-600">Rs. {(Number(formData.totalPackage || 0) - Number(formData.feeReceived || 0)).toLocaleString()}</p>
+                      <p className="text-[9px] text-rose-600 font-black uppercase tracking-widest mb-0.5">{formData.paymentPlan === 'Semester' ? 'Unpaid Semesters Balance' : 'Remaining Payable Balance'}</p>
+                      <p className="text-xl font-black text-rose-700 italic">Rs. {(Number(formData.totalPackage || 0) - Number(formData.feeReceived || 0)).toLocaleString()}</p>
                     </div>
-                    <Info size={30} className="text-rose-100" />
+                    <AlertCircle size={24} className="text-rose-500 opacity-20" />
                   </div>
+                </div>
+
+                <div className="p-4 border border-slate-200 rounded-xl bg-slate-50/50">
+                  <p className="text-[9px] font-bold text-slate-500 italic flex items-center gap-2">
+                    <CheckCircle2 size={12} className="text-emerald-500" />
+                     Official system verification for <span className="text-slate-800 font-black tracking-tight">{formData.fullName || '---'}</span>. Outstanding balance: <span className="text-rose-600 font-black">Rs. {(Number(formData.totalPackage || 0) - Number(formData.feeReceived || 0)).toLocaleString()}</span> to be cleared via {formData.paymentPlan} schedule.
+                  </p>
                 </div>
               </section>
             </div>
           </div>
 
           {/* Footer Signatures */}
-          <div className="mt-20 pt-10 border-t border-slate-100 flex justify-between">
-            <div className="text-center w-56">
-              <div className="h-0.5 w-full bg-slate-300 mb-2"></div>
-              <p className="text-[10px] font-black uppercase text-slate-400">Student/Guardian Signature</p>
+          <div className="mt-8 pt-6 border-t border-slate-100 flex justify-between items-end">
+            <div className="text-[8px] text-slate-400 max-w-sm leading-relaxed font-bold italic uppercase tracking-wider">
+               Superior College Registry · J Jahanian Campus · Session {selectedSession}
             </div>
-            <div className="text-center w-56">
-              <div className="h-0.5 w-full bg-slate-800 mb-2"></div>
-              <p className="text-[10px] font-black uppercase text-slate-800">Office Superintendent</p>
-            </div>
-            <div className="text-center w-56">
-              <div className="h-0.5 w-full bg-slate-300 mb-2"></div>
-              <p className="text-[10px] font-black uppercase text-slate-400">Principal Signature</p>
+            <div className="flex gap-8">
+              <div className="text-center w-36">
+                <div className="h-0.5 w-full bg-slate-300 mb-1"></div>
+                <p className="text-[8px] font-black uppercase text-slate-400">Accountant Office</p>
+              </div>
+              <div className="text-center w-36">
+                <div className="h-0.5 w-full bg-slate-800 mb-1" style={{ background: data.settings?.themeColor || '#0b4d45' }}></div>
+                <p className="text-[8px] font-black uppercase text-slate-800">Registrar Sign</p>
+              </div>
             </div>
           </div>
 
@@ -2280,11 +2601,4 @@ function AdmissionForm({ data, onClose, selectedSession }: { data: any, onClose:
   );
 }
 
-function PreviewItem({ label, value, isFull }: { label: string, value: string, isFull?: boolean }) {
-  return (
-    <div className={`space-y-1 ${isFull ? 'col-span-2' : ''}`}>
-      <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">{label}</p>
-      <p className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-1">{value}</p>
-    </div>
-  );
-}
+

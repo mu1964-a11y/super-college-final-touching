@@ -89,50 +89,47 @@ service cloud.firestore {
     // ===============================================================
 
     match /leads/{leadId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     match /admissions/{admissionId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     match /students/{studentId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     match /staff/{staffId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     match /expenses/{expenseId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     match /income/{incomeId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     match /academicRecords/{recordId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     match /salaryPayments/{paymentId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     match /settings/{configId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && request.auth.token.email == "mughalazam1964@gmail.com";
+      allow read, write: if true;
     }
 
     match /permissions/{email} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && request.auth.token.email == "mughalazam1964@gmail.com";
+      allow read, write: if true;
     }
 
     match /notifications/{notifId} {
-      allow read: if isAdmin();
-      allow write: if isAuthenticated();
+      allow read, write: if true;
     }
   }
 }

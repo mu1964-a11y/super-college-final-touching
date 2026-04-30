@@ -66,6 +66,7 @@ import { Staff, StaffRole } from '../types';
 import { STAFF_ROLES } from '../constants';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { compressImage, base64ToBlob } from '../lib/imageUtils';
 
 export default function StaffView({ data, initialFilter }: { data: any, initialFilter?: string | null }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -163,6 +164,52 @@ export default function StaffView({ data, initialFilter }: { data: any, initialF
         </div>
       </div>
 
+      {/* Bulk Actions Bar */}
+      {selectedStaffIds.length > 0 && (
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="sticky top-4 z-30 flex items-center justify-between p-4 bg-superior-teal rounded-2xl shadow-2xl text-white mb-6 border border-white/10"
+        >
+          <div className="flex items-center gap-4 pl-2">
+            <Checkbox 
+              checked={selectedStaffIds.length === filteredStaff.length} 
+              onCheckedChange={toggleSelectAll} 
+              className="border-white data-[state=checked]:bg-white data-[state=checked]:text-superior-teal"
+            />
+            <div className="flex flex-col">
+              <p className="text-sm font-black uppercase tracking-widest">
+                {selectedStaffIds.length} staff member{selectedStaffIds.length > 1 ? 's' : ''} selected
+              </p>
+              {selectedStaffIds.length < filteredStaff.length && (
+                <button 
+                  onClick={() => setSelectedStaffIds(filteredStaff.map(s => s.id))}
+                  className="text-[10px] font-black underline uppercase tracking-tighter opacity-70 hover:opacity-100 text-left"
+                >
+                  Select all {filteredStaff.length} matching staff
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setSelectedStaffIds([])}
+              className="h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 font-black text-[10px] uppercase tracking-widest px-6"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleBulkDelete}
+              variant="destructive" 
+              className="h-10 rounded-xl bg-white text-rose-600 hover:bg-rose-50 border-none font-black text-[10px] uppercase tracking-widest px-6 shadow-lg shadow-black/20"
+            >
+              <Trash2 size={14} className="mr-2" /> Delete
+            </Button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Category Tabs */}
       <Tabs value={roleFilter} className="w-full" onValueChange={setRoleFilter}>
         <TabsList className="bg-slate-100/50 p-1.5 rounded-2xl border border-slate-200/50 h-auto flex flex-wrap max-w-fit mb-8">
@@ -185,18 +232,6 @@ export default function StaffView({ data, initialFilter }: { data: any, initialF
           />
           <Label htmlFor="select-all-staff" className="text-[11px] font-black text-slate-400 cursor-pointer uppercase tracking-widest">Select All</Label>
         </div>
-
-        {selectedStaffIds.length > 0 && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="flex items-center gap-2 pr-5 border-r border-slate-100"
-          >
-            <Button variant="destructive" size="sm" onClick={handleBulkDelete} className="rounded-xl gap-2 font-black uppercase tracking-widest text-[10px] h-10 px-4 shadow-lg shadow-rose-100">
-              <Trash2 size={14} /> Delete ({selectedStaffIds.length})
-            </Button>
-          </motion.div>
-        )}
 
         <div className="relative flex-1 min-w-[280px]">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -244,7 +279,20 @@ export default function StaffView({ data, initialFilter }: { data: any, initialF
               <div className="absolute -bottom-14 left-8">
                 <div className="w-28 h-28 rounded-3xl border-4 border-white bg-slate-50 overflow-hidden shadow-lg shadow-black/5">
                   {member.photo ? (
-                    <img src={member.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <img 
+                      src={member.photo} 
+                      alt="" 
+                      className="w-full h-full object-cover" 
+                      referrerPolicy="no-referrer" 
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent) {
+                          parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-superior-gold/10 text-superior-gold font-bold text-lg">${member.fullName.charAt(0)}</div>`;
+                        }
+                      }}
+                    />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-300">
                       <User size={48} />
@@ -304,11 +352,8 @@ export default function StaffView({ data, initialFilter }: { data: any, initialF
                   </Button>
                   
                   <DropdownMenu>
-                    <DropdownMenuTrigger nativeButton={true} render={
-                      <button className="h-10 w-10 rounded-xl hover:bg-slate-100 text-slate-400 flex items-center justify-center border border-transparent">
-                        <MoreHorizontal size={18} />
-                      </button>
-                    }>
+                    <DropdownMenuTrigger className="h-10 w-10 rounded-xl hover:bg-slate-100 text-slate-400 flex items-center justify-center border border-transparent outline-hidden transition-all">
+                      <MoreHorizontal size={18} />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="rounded-2xl p-2 min-w-[200px] border-slate-100 shadow-2xl">
                       <DropdownMenuItem 
@@ -387,11 +432,11 @@ export default function StaffView({ data, initialFilter }: { data: any, initialF
           </div>
           <DialogFooter className="gap-3">
             <Button variant="ghost" onClick={() => setDialogType(null)} className="rounded-xl h-12 px-6 font-bold">Cancel</Button>
-            <Button variant="destructive" className="rounded-xl h-12 px-8 font-black uppercase tracking-widest text-xs" onClick={() => {
-              data.bulkDeleteStaff(selectedStaffIds);
-              setSelectedStaffIds([]);
+            <Button variant="destructive" className="rounded-xl h-12 px-8 font-black uppercase tracking-widest text-xs" onClick={async () => {
+              const idsToDelete = [...selectedStaffIds];
               setDialogType(null);
-              toast.success(`${selectedStaffIds.length} records deleted successfully!`);
+              setSelectedStaffIds([]);
+              await data.bulkDeleteStaff(idsToDelete);
             }}>Delete All Selected</Button>
           </DialogFooter>
         </DialogContent>
@@ -424,15 +469,23 @@ export default function StaffView({ data, initialFilter }: { data: any, initialF
 }
 
 function StaffProfile({ member, data, onEdit }: { member: Staff, data: any, onEdit?: () => void }) {
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [imageError, setImageError] = useState(false);
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        data.updateStaff(member.id, { photo: reader.result as string });
+      const toastId = toast.loading("Processing photo...");
+      try {
+        const compressedBase64 = await compressImage(file);
+        await data.updateStaff(member.id, { photo: compressedBase64 });
+        setImageError(false);
+        toast.dismiss(toastId);
         toast.success("Photo updated successfully!");
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Photo upload error:', err);
+        toast.dismiss(toastId);
+        toast.error("Failed to upload photo.");
+      }
     }
   };
 
@@ -442,8 +495,17 @@ function StaffProfile({ member, data, onEdit }: { member: Staff, data: any, onEd
         <div className="flex flex-col md:flex-row gap-6 md:gap-10 items-center md:items-center relative z-10">
           <div className="relative group shrink-0">
             <div className="w-32 h-32 md:w-44 md:h-44 rounded-2xl border-4 border-white/20 bg-white/10 backdrop-blur-md overflow-hidden">
-              {member.photo ? (
-                <img src={member.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              {member.photo && !imageError ? (
+                <img 
+                  src={member.photo} 
+                  alt="" 
+                  className="w-full h-full object-cover" 
+                  onError={() => setImageError(true)}
+                />
+              ) : member.photo && imageError ? (
+                <div className="w-full h-full flex items-center justify-center bg-superior-gold/10 text-superior-gold font-bold text-3xl">
+                  {member.fullName.charAt(0)}
+                </div>
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-white/40">
                   <User size={64} />
@@ -641,15 +703,20 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
     photo: member.photo || ''
   });
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, photo: reader.result as string }));
+      const toastId = toast.loading("Processing photo...");
+      try {
+        const compressedBase64 = await compressImage(file);
+        setFormData(prev => ({ ...prev, photo: compressedBase64 }));
+        toast.dismiss(toastId);
         toast.success("Photo uploaded!");
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Photo upload error:', err);
+        toast.dismiss(toastId);
+        toast.error("Failed to upload photo.");
+      }
     }
   };
 
@@ -725,7 +792,7 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
           </div>
           <div className="space-y-2">
             <Label>Designation</Label>
-            <Select value={formData.role} onValueChange={(v: any) => setFormData({...formData, role: v})}>
+            <Select value={formData.role || ""} onValueChange={(v: any) => setFormData({...formData, role: v})}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -738,7 +805,7 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
           </div>
           <div className="space-y-2">
             <Label>Status</Label>
-            <Select value={formData.status} onValueChange={(v: any) => setFormData({...formData, status: v})}>
+            <Select value={formData.status || ""} onValueChange={(v: any) => setFormData({...formData, status: v})}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -770,6 +837,7 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
 
 function AddStaffDialog({ data }: { data: any }) {
   const [formData, setFormData] = useState({
+    id: '',
     fullName: '',
     fatherName: '',
     cnic: '',
@@ -786,25 +854,49 @@ function AddStaffDialog({ data }: { data: any }) {
     photo: ''
   });
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, photo: reader.result as string }));
+      if (!formData.id) { 
+        toast.error("Please enter Staff ID first to associate photo!");
+        return;
+      }
+      const toastId = toast.loading("Processing photo...");
+      try {
+        const compressedBase64 = await compressImage(file);
+        setFormData(prev => ({ ...prev, photo: compressedBase64 }));
+        toast.dismiss(toastId);
         toast.success("Photo uploaded!");
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Photo upload error:', err);
+        toast.dismiss(toastId);
+        toast.error("Failed to upload photo.");
+      }
     }
   };
 
   const handleSave = () => {
-    if (!formData.fullName || !formData.cnic) {
-      toast.error("Please fill in required fields");
+    if (!formData.id || !formData.fullName || !formData.cnic) {
+      toast.error("Please fill in all required fields including Staff ID");
       return;
     }
-    const newId = `SGC-${formData.role.charAt(0)}-${Math.floor(100 + Math.random() * 900)}`;
-    data.addStaff({ ...formData, id: newId });
+
+    // Validation for format: SGC-[Letter]-[3 or more digits]
+    // Allowing some flexibility as per user request example 'SGC-T-XXX'
+    const idPattern = /^SGC-[A-Z]-\d{3,5}$/i;
+    if (!idPattern.test(formData.id)) {
+      toast.error("Invalid ID Format! Use 'SGC-X-000' (e.g., SGC-T-123)");
+      return;
+    }
+
+    // Uniqueness check
+    const idExists = data.staff.some((s: Staff) => s.id.toLowerCase() === formData.id.toLowerCase());
+    if (idExists) {
+      toast.error(`Staff ID '${formData.id}' already exists! Please use a unique ID.`);
+      return;
+    }
+
+    data.addStaff({ ...formData });
     toast.success("Staff member added successfully!");
   };
 
@@ -833,7 +925,19 @@ function AddStaffDialog({ data }: { data: any }) {
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Full Name</Label>
+            <Label className="flex items-center gap-1 group">
+              Staff ID <span className="text-rose-500">*</span>
+              <span className="text-[9px] text-slate-400 font-normal opacity-0 group-hover:opacity-100 transition-opacity">(Format: SGC-T-123)</span>
+            </Label>
+            <Input 
+              placeholder="e.g. SGC-T-101" 
+              value={formData.id} 
+              onChange={e => setFormData({...formData, id: e.target.value.toUpperCase()})}
+              className="font-mono uppercase tracking-wider"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Full Name <span className="text-rose-500">*</span></Label>
             <Input placeholder="Enter full name" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} />
           </div>
           <div className="space-y-2">
@@ -854,7 +958,7 @@ function AddStaffDialog({ data }: { data: any }) {
           </div>
           <div className="space-y-2">
             <Label>Designation</Label>
-            <Select value={formData.role} onValueChange={(v: any) => setFormData({...formData, role: v})}>
+            <Select value={formData.role || ""} onValueChange={(v: any) => setFormData({...formData, role: v})}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -938,7 +1042,7 @@ function RecordSalaryDialog({ member, data }: { member: Staff, data: any }) {
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Month</Label>
-            <Select value={formData.month} onValueChange={v => setFormData({...formData, month: v})}>
+            <Select value={formData.month || ""} onValueChange={v => setFormData({...formData, month: v})}>
               <SelectTrigger className="rounded-xl bg-slate-50 border-transparent">
                 <SelectValue />
               </SelectTrigger>
@@ -964,7 +1068,7 @@ function RecordSalaryDialog({ member, data }: { member: Staff, data: any }) {
         </div>
         <div className="space-y-2">
           <Label>Payment Method</Label>
-          <Select value={formData.paymentMethod} onValueChange={v => setFormData({...formData, paymentMethod: v})}>
+          <Select value={formData.paymentMethod || ""} onValueChange={v => setFormData({...formData, paymentMethod: v})}>
             <SelectTrigger className="rounded-xl bg-slate-50 border-transparent">
               <SelectValue />
             </SelectTrigger>
