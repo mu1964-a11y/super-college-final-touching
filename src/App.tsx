@@ -184,13 +184,30 @@ export default function App() {
 
   // Standard session handling without auto-logout as requested
   React.useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+    supabase.auth.getSession().then((response) => {
+      const { data, error } = response;
+      if (error) {
+        if (error.message.includes('Refresh Token Not Found') || error.message.includes('Invalid Refresh Token')) {
+          supabase.auth.signOut().catch(() => {});
+        } else {
+          console.error("Session error:", error);
+        }
+      }
+      setUser(data?.session?.user ?? null);
+      setAuthLoading(false);
+    }).catch((err) => {
+      console.warn("Got session error:", err);
       setAuthLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(prev => prev?.id === session?.user?.id && prev ? prev : (session?.user ?? null));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
+      } else if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+        setUser(session?.user ?? null);
+      } else {
+        setUser(prev => prev?.id === session?.user?.id && prev ? prev : (session?.user ?? null));
+      }
       setAuthLoading(false);
     });
 
@@ -284,8 +301,8 @@ export default function App() {
       // Show everything if 'all' is selected
       if (selectedSession === 'all') return list;
       
-      // Strict matching for session
-      return list.filter(item => item.session === selectedSession);
+      // Strict matching for session with trim
+      return list.filter(item => (item.session || '').trim() === (selectedSession || '').trim());
     };
 
     return {
@@ -360,17 +377,17 @@ export default function App() {
     
     const parentMap: Record<string, string> = {
       'admissions-fsc': 'admissions', 'admissions-ukl3': 'admissions', 'admissions-dit': 'admissions', 'admissions-bs': 'admissions',
-      'fee-boys': 'accounts', 'fee-girls': 'accounts', 'fee-ukl3': 'accounts', 'fee-dit': 'accounts', 'fee-bs': 'accounts',
+      'fee-boys': 'fee', 'fee-girls': 'fee', 'fee-ukl3': 'fee', 'fee-dit': 'fee', 'fee-bs': 'fee',
       'students-boys': 'students', 'students-girls': 'students', 'students-ukl3': 'students', 'students-dit': 'students', 'students-bs': 'students',
     };
 
     if (isSuperAdmin) {
-      return [...modulesFromSettings, ...Object.keys(parentMap)];
+      return [...modulesFromSettings, ...Object.keys(parentMap), 'fee'];
     }
 
     const allowed = (userPermission?.sections || []).filter(s => {
       const parent = parentMap[s] || s;
-      return modulesFromSettings.includes(parent);
+      return modulesFromSettings.includes(parent) || parent === 'fee' || s === 'accounts' || modulesFromSettings.includes('accounts');
     });
     
     // If a parent is explicitly allowed, allow all its mapped children
@@ -765,7 +782,7 @@ export default function App() {
                     </NavSection>
                   )}
 
-                  {(allowedSections.includes('leads') || allowedSections.includes('admissions')) && (
+                  {(allowedSections.includes('leads') || allowedSections.includes('admissions') || allowedSections.includes('fee')) && (
                     <NavSection title="Enrollment">
                       {allowedSections.includes('leads') && <NavItem id="leads" label="Lead Pipeline" icon={BarChart3} expandedMenu={expandedMenu} activePage={activePage} activeFilter={activeFilter} onToggleMenu={toggleMenu} onNavClick={handleNavClick} />}
                       {allowedSections.includes('admissions') && (
@@ -782,7 +799,7 @@ export default function App() {
                           ].filter(item => allowedSections.includes(item.id))}
                         />
                       )}
-                      {allowedSections.includes('accounts') && (
+                      {allowedSections.includes('fee') && (
                         <NavItem 
                           expandedMenu={expandedMenu} activePage={activePage} activeFilter={activeFilter} onToggleMenu={toggleMenu} onNavClick={handleNavClick}
                           id="fee-boys" 

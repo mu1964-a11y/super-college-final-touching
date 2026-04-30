@@ -43,6 +43,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
+import { useReactToPrint } from 'react-to-print';
 
 export default function ReportsView({ data, initialFilter }: { data: any, initialFilter?: string | null }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -56,6 +57,11 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
   const [individualSearch, setIndividualSearch] = useState('');
   
   const reportRef = useRef<HTMLDivElement>(null);
+  
+  const handlePrint = useReactToPrint({
+    contentRef: reportRef,
+    documentTitle: selectedReport ? `${selectedReport.title}_Report` : 'Report'
+  });
 
   // Sync with initialFilter if it changes from sidebar
   React.useEffect(() => {
@@ -310,7 +316,7 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
             <Button variant="outline" size="sm" onClick={handleDownloadPDF} className="flex items-center gap-2 h-10 rounded-xl border-slate-200 font-bold text-slate-600 px-4">
               <FileDown size={16} className="text-superior-gold" /> PDF
             </Button>
-            <Button className="bg-superior-teal text-white hover:bg-superior-teal/90 h-10 rounded-xl font-bold px-6 shadow-lg shadow-superior-teal/10" onClick={() => window.print()}>
+            <Button className="bg-superior-teal text-white hover:bg-superior-teal/90 h-10 rounded-xl font-bold px-6 shadow-lg shadow-superior-teal/10" onClick={() => handlePrint()}>
               <Printer size={16} className="mr-2" /> Print Report
             </Button>
           </div>

@@ -1,5 +1,6 @@
 
 import * as React from 'react';
+import { useReactToPrint } from 'react-to-print';
 import { 
   School, 
   CreditCard, 
@@ -97,6 +98,11 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
     }
   };
 
+  const handlePrint = useReactToPrint({
+    contentRef: receiptRef,
+    documentTitle: `Fee_Receipt_${student.fullName?.replace(/\s+/g, '_') || 'Student'}`
+  });
+
   const admissionFee = student.admissionFee || 0;
   const miscFunds = student.miscFunds || 0;
   const totalPackage = student.totalPackage || student.feeLedger?.totalPackage || 0;
@@ -110,7 +116,7 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
       <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white">
         <h3 className="text-xl font-serif font-bold text-superior-teal">Fee Receipt Preview</h3>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={() => window.print()} className="rounded-xl font-bold">
+          <Button variant="outline" onClick={() => handlePrint()} className="rounded-xl font-bold">
             Print
           </Button>
           <Button className="bg-slate-800 text-white font-black rounded-xl hover:bg-slate-900 shadow-lg" onClick={downloadReceipt}>
@@ -119,10 +125,10 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
         </div>
       </div>
       
-      <div className="flex-1 overflow-auto p-4 flex justify-center">
+      <div className="flex-1 overflow-auto p-4 flex justify-center preview-scroll-container">
         <div 
           ref={receiptRef}
-          className="w-[215.9mm] h-fit bg-white p-12 relative shadow-2xl overflow-hidden"
+          className="w-[215.9mm] h-fit bg-white p-12 relative shadow-2xl overflow-hidden print-area"
           style={{ fontFamily: "'Inter', sans-serif" }}
         >
           {/* Header */}

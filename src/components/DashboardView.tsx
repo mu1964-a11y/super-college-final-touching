@@ -75,9 +75,6 @@ export default function DashboardView({
 
   const totalApplicants = useMemo(() => data.admissions.length, [data.admissions]);
   const confirmedAdmissions = useMemo(() => {
-    const activeStudentIds = new Set(data.students.map((s: any) => s.id));
-    const activeAdmissionIdsForStudents = new Set(data.students.map((s: any) => s.admissionId).filter(Boolean));
-
     return data.admissions.filter((a: any) => {
       const isConfirmedStatus = a.isAdmitted || 
         a.status === 'Admitted/Confirmed' || 
@@ -87,15 +84,9 @@ export default function DashboardView({
         (a.feeReceived > 0) ||
         (a.totalPackage > 0);
       
-      if (!isConfirmedStatus) return false;
-
-      // Only count if they are a current student OR a pending applicant who hasn't been linked to any student yet
-      const isLinkedToCurrentStudent = activeAdmissionIdsForStudents.has(a.id) || (a.studentId && activeStudentIds.has(a.studentId));
-      const isPendingApplicant = !a.studentId;
-
-      return isLinkedToCurrentStudent || isPendingApplicant;
+      return isConfirmedStatus;
     });
-  }, [data.admissions, data.students]);
+  }, [data.admissions]);
   
   const [selectedMonth, setSelectedMonth] = React.useState<string>(new Date().toLocaleString('default', { month: 'long' }));
   const monthsList = [
@@ -152,15 +143,8 @@ export default function DashboardView({
     const activeAdmissionIdsForStudents = new Set(data.students.map((s: any) => s.admissionId).filter(Boolean));
     const activeStudentNames = new Set(data.students.map((s: any) => s.fullName?.toLowerCase().trim()).filter(Boolean));
 
-    // We only consider admissions as "active" for income tracking if:
-    // 1. They are linked to an existing student
-    // 2. OR they are purely pending/prospective candidates who haven't been promoted to a student yet
-    const validAdmissions = data.admissions.filter((a: any) => {
-      if (activeAdmissionIdsForStudents.has(a.id)) return true;
-      if (a.studentId && !activeStudentIds.has(a.studentId)) return false;
-      // If it doesn't have a studentId, it's a pending applicant - we show their money
-      return !a.studentId;
-    });
+    // We want to consider all admissions for income tracking
+    const validAdmissions = data.admissions;
 
     const activeIds = new Set([
       ...activeStudentIds,
@@ -236,15 +220,7 @@ export default function DashboardView({
             if (admMonth !== selectedMonth || Number(admYear) !== targetYear) return false;
         }
         
-        // Stricter Activity Check: Only candidates or current students
-        const activeStudentIds = new Set(data.students.map((s: any) => s.id));
-        const activeAdmissionIdsForStudents = new Set(data.students.map((s: any) => s.admissionId).filter(Boolean));
-        
-        const isCurrentlyActive = activeAdmissionIdsForStudents.has(a.id) || (a.studentId && activeStudentIds.has(a.studentId));
-        const isPendingCandidate = !a.studentId;
-
-        if (!isCurrentlyActive && !isPendingCandidate) return false;
-
+        // We want to count income from admissions that don't have a formal income record yet
         // Check total received for this student in income records
         const studentIncomesTotal = activeIncomes
             .filter((inc: any) => inc.studentId === a.studentId || (inc.studentName === a.fullName))

@@ -1,5 +1,6 @@
 
 import * as React from 'react';
+import { useReactToPrint } from 'react-to-print';
 import { 
   Download, 
   School, 
@@ -89,12 +90,17 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
     }
   };
 
+  const handlePrint = useReactToPrint({
+    contentRef: slipRef,
+    documentTitle: `Admission_Slip_${admission.fullName?.replace(/\s+/g, '_') || 'Applicant'}`
+  });
+
   return (
     <div className="flex flex-col h-full bg-slate-50">
       <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white">
         <h3 className="text-xl font-serif font-bold text-superior-teal">Admission Form Preview</h3>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={() => window.print()} className="rounded-xl font-bold">
+          <Button variant="outline" onClick={() => handlePrint()} className="rounded-xl font-bold">
             Print
           </Button>
           <Button className="bg-superior-teal text-white font-black rounded-xl hover:bg-superior-teal/90" onClick={downloadSlip}>
@@ -103,10 +109,10 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
         </div>
       </div>
       
-      <div className="flex-1 overflow-auto p-4 bg-slate-100 flex justify-center">
+      <div className="flex-1 overflow-auto p-4 bg-slate-100 flex justify-center preview-scroll-container">
         <div 
           ref={slipRef}
-          className="w-[215.9mm] h-fit bg-white p-8 relative shadow-2xl overflow-hidden"
+          className="w-[215.9mm] h-fit bg-white p-8 relative shadow-2xl overflow-hidden print-area"
           style={{ fontFamily: "'Inter', sans-serif" }}
         >
           {/* Header */}
