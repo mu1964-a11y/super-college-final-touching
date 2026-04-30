@@ -373,10 +373,15 @@ export default function App() {
       return modulesFromSettings.includes(parent);
     });
     
+    // If a parent is explicitly allowed, allow all its mapped children
+    const explicitlyAllowedParents = allowed.filter(s => Object.values(parentMap).includes(s));
+    const childrenToAdd = Object.keys(parentMap).filter(child => explicitlyAllowedParents.includes(parentMap[child]));
+    
     // Add parent sections implicitly so that UI checks like allowedSections.includes('admissions') will work
     // if 'admissions-fsc' is allowed
     const parentsToAdd = allowed.map(s => parentMap[s]).filter(Boolean) as string[];
-    return Array.from(new Set([...allowed, ...parentsToAdd]));
+    
+    return Array.from(new Set([...allowed, ...childrenToAdd, ...parentsToAdd]));
   }, [isSuperAdmin, userPermission?.sections, data.settings?.enabledModules]);
 
   // Auto-redirect unauthorized users away from Dashboard
@@ -756,9 +761,7 @@ export default function App() {
                 <nav className="pb-8 space-y-1">
                   {allowedSections.includes('dashboard') && (
                     <NavSection title="Main Console">
-                      {isSuperAdmin && (
-                        <NavItem id="dashboard" label="Dashboard" icon={LayoutDashboard} expandedMenu={expandedMenu} activePage={activePage} activeFilter={activeFilter} onToggleMenu={toggleMenu} onNavClick={handleNavClick} />
-                      )}
+                      <NavItem id="dashboard" label="Dashboard" icon={LayoutDashboard} expandedMenu={expandedMenu} activePage={activePage} activeFilter={activeFilter} onToggleMenu={toggleMenu} onNavClick={handleNavClick} />
                     </NavSection>
                   )}
 
@@ -776,7 +779,7 @@ export default function App() {
                             { id: 'admissions-ukl3', label: 'UK Level 3' },
                             { id: 'admissions-dit', label: 'DIT Program' },
                             { id: 'admissions-bs', label: 'BS Program' },
-                          ]}
+                          ].filter(item => allowedSections.includes(item.id))}
                         />
                       )}
                       {allowedSections.includes('accounts') && (
@@ -791,7 +794,7 @@ export default function App() {
                             { id: 'fee-ukl3', label: 'UK Level 3' },
                             { id: 'fee-dit', label: 'DIT Program' },
                             { id: 'fee-bs', label: 'BS Program' },
-                          ]}
+                          ].filter(item => allowedSections.includes(item.id))}
                         />
                       )}
                     </NavSection>
@@ -811,7 +814,7 @@ export default function App() {
                             { id: 'students-ukl3', label: 'UK Level 3' },
                             { id: 'students-dit', label: 'DIT Program' },
                             { id: 'students-bs', label: 'BS Program' },
-                          ]}
+                          ].filter(item => allowedSections.includes(item.id))}
                         />
                       )}
                       {allowedSections.includes('attendance') && <NavItem id="attendance" label="Attendance" icon={CheckCircle2} expandedMenu={expandedMenu} activePage={activePage} activeFilter={activeFilter} onToggleMenu={toggleMenu} onNavClick={handleNavClick} />}
@@ -833,7 +836,7 @@ export default function App() {
                     </NavSection>
                   )}
 
-                  {allowedSections.includes('accounts') && (
+                  {(isSuperAdmin || (userPermission?.sections || []).includes('accounts')) && (
                     <NavSection title="Financials">
                       <NavItem 
                         expandedMenu={expandedMenu} activePage={activePage} activeFilter={activeFilter} onToggleMenu={toggleMenu} onNavClick={handleNavClick}
