@@ -321,7 +321,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
   };
 
   const handleConvert = async () => {
-    await data.convertLeadsToApplicants(selectedLeads, convertTargetProgram);
+    data.convertLeadsToApplicants(selectedLeads, convertTargetProgram);
     setSelectedLeads([]);
     setDialogType(null);
     
@@ -359,20 +359,28 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
   }, [filteredLeads]);
 
   // Handle pagination for better performance
-  const [displayCount, setDisplayCount] = useState(100);
+  const ITEMS_PER_PAGE = 30;
+  const [currentPage, setCurrentPage] = useState(1);
+  const totalPages = Math.ceil(filteredLeads.length / ITEMS_PER_PAGE);
 
   // Reset pagination when search or filters change
   React.useEffect(() => {
-    setDisplayCount(100);
-  }, [deferredSearchTerm, schoolFilter, areaFilter, classFilter]);
+    setCurrentPage(1);
+  }, [deferredSearchTerm, schoolFilter, areaFilter, classFilter, convertedFilter]);
 
-  const visibleLeads = useMemo(() => filteredLeads.slice(0, displayCount), [filteredLeads, displayCount]);
-  const hasMore = filteredLeads.length > displayCount;
+  const visibleLeads = useMemo(
+    () => {
+      const start = (currentPage - 1) * ITEMS_PER_PAGE;
+      const end = start + ITEMS_PER_PAGE;
+      return filteredLeads.slice(start, end);
+    },
+    [filteredLeads, currentPage],
+  );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-8">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div className="shrink-0 flex items-center gap-3">
           <h2 className="text-3xl font-display font-black text-superior-teal tracking-tight whitespace-nowrap">
             Leads Pipeline
@@ -381,140 +389,164 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
           <span className="urdu-text text-2xl text-superior-gold font-medium whitespace-nowrap mt-1">مارکیٹنگ ڈیٹا</span>
         </div>
 
-        {/* Horizontal Insights */}
-        <div className="flex-1 w-full bg-white px-6 py-4 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 transition-all duration-500 hover:border-superior-teal/20 hover:shadow-md">
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 md:gap-8 flex-1">
-              <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-2xl bg-emerald-50 flex items-center justify-center shrink-0">
-                    <BarChart3 className="text-emerald-600" size={18} />
-                 </div>
-                 <div>
-                   <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest leading-none mb-1.5">Total Leads</p>
-                   <p className="text-xl font-black text-slate-800 leading-none">{filteredLeads.length}</p>
-                 </div>
-              </div>
-
-              <div className="hidden sm:block h-8 w-px bg-slate-100"></div>
-
-              <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-2xl bg-orange-50 flex items-center justify-center shrink-0">
-                    <School className="text-orange-600" size={18} />
-                 </div>
-                 <div>
-                   <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest leading-none mb-1.5">Schools</p>
-                   <p className="text-xl font-black text-slate-800 leading-none">{uniqueSchoolsInSearchCount}</p>
-                 </div>
-              </div>
-
-              <div className="hidden md:block h-8 w-px bg-slate-100"></div>
-
-              <div className="hidden lg:flex flex-col justify-center max-w-[200px]">
-                 <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest leading-none mb-2">Top Schools</p>
-                 <div className="flex flex-wrap gap-1">
-                   {leadsBySchool.slice(0, 2).map(([school]) => (
-                     <Badge key={school} variant="outline" className="text-[9px] bg-slate-50 text-slate-500 border-slate-100 px-1.5 py-0 whitespace-nowrap truncate max-w-[120px]">
-                       {school}
-                     </Badge>
-                   ))}
-                   {leadsBySchool.length > 2 && (
-                     <Badge variant="outline" className="text-[9px] bg-slate-50 text-slate-500 border-slate-100 px-1.5 py-0">
-                       +{leadsBySchool.length - 2}
-                     </Badge>
-                   )}
-                 </div>
-              </div>
-            </div>
-
-            <Button 
-               onClick={generateFullReport}
-               variant="outline"
-               className="shrink-0 h-11 rounded-xl border-slate-200 text-xs font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 gap-2 shadow-sm px-5"
-            >
-               <FileText size={16} className="text-superior-teal" /> Full Report
-            </Button>
-        </div>
-
         <div className="shrink-0 flex items-center gap-4">
-          <div className="bg-white px-6 py-4 rounded-[2rem] border border-slate-100 flex items-center gap-4 shadow-sm">
+          <Button 
+             onClick={generateFullReport}
+             variant="outline"
+             className="shrink-0 h-14 rounded-2xl border-slate-200 text-xs font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 gap-2 shadow-sm px-6"
+          >
+             <FileText size={16} className="text-superior-teal" /> Full Report
+          </Button>
+          <div className="bg-white px-6 py-2 rounded-2xl border border-slate-100 flex items-center gap-4 shadow-sm h-14">
             <div className="text-right whitespace-nowrap hidden md:block">
-              <p className="text-xs font-black text-superior-teal leading-none uppercase tracking-widest">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+              <p className="text-[11px] font-black text-slate-700 leading-none uppercase tracking-widest mt-0.5">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-superior-teal/5 flex items-center justify-center text-superior-teal shadow-inner shrink-0">
-              <Database size={24} />
+            <div className="w-10 h-10 rounded-xl bg-superior-teal/5 flex items-center justify-center text-superior-teal shadow-inner shrink-0">
+              <Database size={20} />
             </div>
           </div>
         </div>
       </div>
 
+      {/* Horizontal Insights */}
+      <div className="w-full bg-[#053b32] px-6 py-5 rounded-[2rem] shadow-xl text-white relative overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-6 transition-all duration-500">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-superior-gold/5 blur-3xl -translate-y-1/2 translate-x-1/2 rounded-full pointer-events-none" />
+          
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 md:gap-12 flex-1 relative z-10 w-full">
+            <div className="flex items-center gap-4">
+               <div className="w-12 h-12 rounded-[1rem] bg-emerald-500/10 flex items-center justify-center shrink-0 border border-emerald-500/20">
+                  <BarChart3 className="text-emerald-400" size={24} />
+               </div>
+               <div>
+                 <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest leading-none mb-2">Total Leads</p>
+                 <p className="text-3xl font-black text-white leading-none">{filteredLeads.length}</p>
+               </div>
+            </div>
+
+            <div className="hidden sm:block h-12 w-px bg-white/10"></div>
+
+            <div className="flex items-center gap-4">
+               <div className="w-12 h-12 rounded-[1rem] bg-orange-500/10 flex items-center justify-center shrink-0 border border-orange-500/20">
+                  <School className="text-orange-400" size={24} />
+               </div>
+               <div>
+                 <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest leading-none mb-2">Schools</p>
+                 <p className="text-3xl font-black text-white leading-none">{uniqueSchoolsInSearchCount}</p>
+               </div>
+            </div>
+
+            <div className="hidden md:block h-12 w-px bg-white/10"></div>
+
+            <div className="hidden lg:flex flex-col justify-center flex-1">
+               <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest leading-none mb-3">Top Schools</p>
+               <div className="flex flex-wrap gap-2 overflow-hidden max-h-[80px]">
+                 {leadsBySchool.slice(0, 6).map(([school]) => (
+                   <Badge key={school} variant="outline" className="text-[10px] bg-white/5 text-white/90 border-white/20 hover:bg-white/10 px-3 py-1 whitespace-normal text-left h-auto leading-tight shadow-sm rounded-full border">
+                     {school}
+                   </Badge>
+                 ))}
+                 {leadsBySchool.length > 6 && (
+                   <Badge variant="outline" className="text-[11px] bg-white/10 text-white font-bold border-transparent px-3 py-1 rounded-full">
+                     +{leadsBySchool.length - 6}
+                   </Badge>
+                 )}
+               </div>
+            </div>
+          </div>
+      </div>
+
+      <div className="w-full flex justify-center py-1 overflow-visible relative z-0">
+        <svg
+          viewBox="0 0 1000 10"
+          preserveAspectRatio="none"
+          className="w-full h-[6px] opacity-90 drop-shadow-md"
+        >
+          <path
+            d="M 0 5 Q 500 10 1000 5 Q 500 0 0 5 Z"
+            fill="url(#orange-lens)"
+          />
+          <defs>
+            <linearGradient id="orange-lens" x1="0" y1="0" x2="1000" y2="0" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="#f97316" stopOpacity="0" />
+              <stop offset="20%" stopColor="#f97316" stopOpacity="0.6" />
+              <stop offset="50%" stopColor="#ea580c" stopOpacity="1" />
+              <stop offset="80%" stopColor="#f97316" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#f97316" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+
       {/* Search and Filters */}
-      <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8 mb-10 transition-all duration-500 hover:border-superior-teal/20">
+      <div className="bg-[#f8fbfa] p-5 md:p-6 rounded-[1.5rem] border border-slate-200/60 shadow-sm flex flex-col gap-5 mb-10 transition-all duration-500 w-full relative z-10">
+        
         {/* Row 1: Search & Main Action */}
-        <div className="flex flex-col lg:flex-row gap-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+        <div className="flex flex-col lg:flex-row gap-4 w-full">
+          <div className="relative flex-1 group">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-superior-teal transition-colors" size={18} />
             <Input 
               placeholder="Search by Student Name, School, Phone, City, or Specific Village/Town..." 
-              className="pl-12 h-14 bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 rounded-2xl transition-all font-medium text-base shadow-inner"
+              className="pl-12 h-12 bg-white border-slate-200 focus:bg-white focus:border-superior-teal/40 focus:ring-4 focus:ring-superior-teal/5 rounded-md transition-all font-medium text-slate-700 shadow-sm"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
           <Button 
-            className="bg-superior-teal text-white hover:bg-superior-teal/90 rounded-2xl h-14 px-10 shrink-0 font-black uppercase tracking-[0.2em] text-[11px] transition-all shadow-xl shadow-superior-teal/20 active:scale-95 flex items-center gap-3"
+            className="bg-[#053b32] text-white hover:bg-[#042f28] rounded-md h-12 px-8 shrink-0 font-bold uppercase tracking-[0.1em] text-[11px] transition-all shadow-md active:scale-95 flex items-center gap-3 w-full lg:w-auto"
             onClick={() => setDialogType('add')}
           >
-            <Plus size={20} /> Add New Lead Record
+            <Plus size={18} /> Add New Lead Record
           </Button>
         </div>
 
         {/* Row 2: Expanded Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 pt-2">
-          <div className="space-y-2">
-            <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Filter by School</Label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Filter by School</Label>
             <Select value={schoolFilter} onValueChange={setSchoolFilter}>
-              <SelectTrigger className="h-14 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-slate-700 shadow-sm">
+              <SelectTrigger className="h-11 rounded-md bg-white border-slate-200 focus:bg-white focus:border-superior-teal/40 focus:ring-4 focus:ring-superior-teal/5 transition-all font-semibold text-slate-700 shadow-sm w-full">
                 <SelectValue placeholder="All Schools" />
               </SelectTrigger>
-              <SelectContent className="rounded-2xl border-slate-100 shadow-2xl max-h-[400px] min-w-[350px]">
+              <SelectContent className="rounded-md border-slate-200 shadow-xl max-h-[400px] min-w-[350px]">
                 <SelectItem value="all" className="font-bold">All Schools Pool</SelectItem>
-                {schools.map(s => <SelectItem key={s} value={s} className="text-sm py-3 px-4 whitespace-nowrap">{s}</SelectItem>)}
+                {schools.map(s => <SelectItem key={s} value={s} className="text-sm py-2 px-3 whitespace-nowrap">{s}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Filter by Area/Village</Label>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Filter by Area/Village</Label>
             <Select value={areaFilter} onValueChange={setAreaFilter}>
-              <SelectTrigger className="h-14 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-slate-700 shadow-sm">
+              <SelectTrigger className="h-11 rounded-md bg-white border-slate-200 focus:bg-white focus:border-superior-teal/40 focus:ring-4 focus:ring-superior-teal/5 transition-all font-semibold text-slate-700 shadow-sm w-full">
                 <SelectValue placeholder="All Area/City" />
               </SelectTrigger>
-              <SelectContent className="rounded-2xl border-slate-100 shadow-2xl max-h-[400px] min-w-[300px]">
+              <SelectContent className="rounded-md border-slate-200 shadow-xl max-h-[400px] min-w-[300px]">
                 <SelectItem value="all" className="font-bold">All Geographical Areas</SelectItem>
-                {areas.map(a => <SelectItem key={a} value={a} className="text-sm py-3 px-4 whitespace-nowrap">{a}</SelectItem>)}
+                {areas.map(a => <SelectItem key={a} value={a} className="text-sm py-2 px-3 whitespace-nowrap">{a}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Filter by Class</Label>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Filter by Class</Label>
             <Select value={classFilter} onValueChange={setClassFilter}>
-              <SelectTrigger className="h-14 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-slate-700 shadow-sm">
+              <SelectTrigger className="h-11 rounded-md bg-white border-slate-200 focus:bg-white focus:border-superior-teal/40 focus:ring-4 focus:ring-superior-teal/5 transition-all font-semibold text-slate-700 shadow-sm w-full">
                 <SelectValue placeholder="All Classes" />
               </SelectTrigger>
-              <SelectContent className="rounded-2xl border-slate-100 shadow-2xl max-h-[400px] min-w-[250px]">
+              <SelectContent className="rounded-md border-slate-200 shadow-xl max-h-[400px] min-w-[250px]">
                 <SelectItem value="all" className="font-bold">All Class Levels</SelectItem>
-                {classes.map(c => <SelectItem key={c} value={c} className="text-sm py-3 px-4 whitespace-nowrap">{c}</SelectItem>)}
+                {classes.map(c => <SelectItem key={c} value={c} className="text-sm py-2 px-3 whitespace-nowrap">{c}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Conversion Status</Label>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Conversion Status</Label>
             <Select value={convertedFilter} onValueChange={setConvertedFilter}>
-              <SelectTrigger className="h-14 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-slate-700 shadow-sm">
+              <SelectTrigger className="h-11 rounded-md bg-white border-slate-200 focus:bg-white focus:border-superior-teal/40 focus:ring-4 focus:ring-superior-teal/5 transition-all font-semibold text-slate-700 shadow-sm w-full">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
-              <SelectContent className="rounded-2xl border-slate-100 shadow-2xl">
+              <SelectContent className="rounded-md border-slate-200 shadow-xl">
                 <SelectItem value="all" className="font-bold text-slate-700">All Records</SelectItem>
                 <SelectItem value="converted" className="font-bold text-emerald-600">Converted (Admission Taken)</SelectItem>
                 <SelectItem value="pending" className="font-bold text-amber-600">Pending Leads</SelectItem>
@@ -523,16 +555,18 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
-          <div className="flex items-center gap-3 px-5 py-2.5 bg-superior-teal/5 text-superior-teal rounded-full border border-superior-teal/10">
-            <Info size={16} className="text-superior-teal" />
-            <span className="text-[10px] font-black uppercase tracking-widest">
+        {/* Row 3: Totals & Formats */}
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-3 border-t border-slate-200/60 w-full">
+          <div className="flex items-center gap-2.5 px-4 py-2 bg-white text-[#053b32] rounded-md border border-slate-200 shadow-sm w-full md:w-auto overflow-hidden">
+            <Info size={16} className="text-superior-teal shrink-0" />
+            <span className="text-[10px] font-bold uppercase tracking-wider truncate">
               {searchTerm || schoolFilter !== 'all' || areaFilter !== 'all' || classFilter !== 'all' 
                 ? `Showing ${filteredLeads.length} Records Found`
                 : `Total Leads in System: ${leads.length}`}
             </span>
           </div>
-          <div className="flex items-center gap-4">
+          
+          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
             <input 
               type="file" 
               ref={fileInputRef} 
@@ -541,13 +575,13 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
               accept=".xlsx, .xls"
             />
             <div className="flex flex-col items-end">
-              <Button variant="ghost" className="rounded-xl text-slate-400 hover:text-superior-teal hover:bg-superior-teal/5 gap-2 font-black uppercase tracking-widest text-[10px] h-10 px-4" onClick={() => fileInputRef.current?.click()}>
+              <Button variant="ghost" className="rounded-md text-slate-500 hover:text-superior-teal hover:bg-slate-200/50 gap-2 font-bold uppercase tracking-widest text-[10px] h-9 px-3" onClick={() => fileInputRef.current?.click()}>
                 <Upload size={14} /> Bulk Import
               </Button>
-              <button onClick={downloadSampleExcel} className="text-[9px] font-black uppercase tracking-widest text-slate-300 hover:text-superior-gold hover:underline mt-1">Download Format</button>
+              <button onClick={downloadSampleExcel} className="text-[9px] font-bold uppercase tracking-widest text-slate-400 hover:text-superior-teal hover:underline mt-0.5 pr-3">Download Format</button>
             </div>
             <DropdownMenu>
-              <DropdownMenuTrigger className="rounded-xl text-slate-400 hover:text-superior-teal hover:bg-superior-teal/5 gap-2 font-black uppercase tracking-widest text-[10px] h-10 px-4 flex items-center justify-center border border-transparent outline-hidden transition-all">
+              <DropdownMenuTrigger className="rounded-md text-slate-500 hover:text-superior-teal hover:bg-slate-200/50 gap-2 font-bold uppercase tracking-widest text-[10px] h-9 px-3 flex items-center justify-center border border-transparent outline-hidden transition-all">
                 <Download size={14} /> Export
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="rounded-2xl border-slate-100 shadow-xl p-2">
@@ -769,15 +803,29 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
           </div>
         </div>
           
-          {hasMore && (
-            <div className="flex justify-center pt-4">
-              <Button 
-                variant="outline" 
-                onClick={() => setDisplayCount(prev => prev + 500)}
-                className="rounded-2xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-8"
-              >
-                Load More Records ({filteredLeads.length - displayCount} remaining)
-              </Button>
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-6 border-t border-slate-100">
+              <p className="text-sm font-bold text-slate-500">
+                Showing Page {currentPage} of {totalPages}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -896,7 +944,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
               const idsToConvert = [...selectedLeads];
               setDialogType(null);
               setSelectedLeads([]);
-              await data.convertLeadsToApplicants(idsToConvert, convertTargetProgram);
+              data.convertLeadsToApplicants(idsToConvert, convertTargetProgram);
             }}>Proceed with Conversion</Button>
           </DialogFooter>
         </DialogContent>

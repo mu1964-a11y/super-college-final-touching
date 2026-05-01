@@ -55,6 +55,7 @@ export interface Admission {
   id: string;
   studentId?: string; // SGC-J-2026-XXXX
   date: string;
+  dateApplied?: string;
   fullName: string;
   fatherName: string;
   email?: string;

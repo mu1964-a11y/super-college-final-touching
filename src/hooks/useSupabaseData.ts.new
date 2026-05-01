@@ -1,12 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { useLeadsOperations } from './data/useLeadsOperations';
-import { useAdmissionsOperations } from './data/useAdmissionsOperations';
-import { useStudentsOperations } from './data/useStudentsOperations';
-import { useAccountsOperations } from './data/useAccountsOperations';
-import { useStaffOperations } from './data/useStaffOperations';
-import { useSettingsOperations } from './data/useSettingsOperations';
-import { useAcademicOperations } from './data/useAcademicOperations';
 import { 
   Lead, Admission, Student, Staff, Expense, Income, 
   AppSettings, UserPermission, Notification, AcademicRecord, 
@@ -352,22 +345,7 @@ export function useSupabaseData(user: any) {
     return `${prefix}-${year}-${random}`;
   };
 
-  const ctx = { user, generateStudentId, leads, setLeads, admissions, setAdmissions, students, setStudents, staff, setStaff, expenses, setExpenses, incomes, setIncomes, academicRecords, setAcademicRecords, salaryPayments, setSalaryPayments, settings, setSettings, permissions, setPermissions, notifications, setNotifications, isBulkOperatingRef, logActivity, fetchData };
-  const leadsOps = useLeadsOperations(ctx);
-  const admissionsOps = useAdmissionsOperations(ctx);
-  const studentsOps = useStudentsOperations(ctx);
-  const accountsOps = useAccountsOperations(ctx);
-  const staffOps = useStaffOperations(ctx);
-  const settingsOps = useSettingsOperations(ctx);
-  const academicOps = useAcademicOperations(ctx);
   return {
-    ...leadsOps,
-    ...admissionsOps,
-    ...studentsOps,
-    ...accountsOps,
-    ...staffOps,
-    ...settingsOps,
-    ...academicOps,
     leads,
     admissions,
     students,
@@ -382,17 +360,17 @@ export function useSupabaseData(user: any) {
     markActioned,
     isNewRecord,
     logActivity,
-    // addLead,
-    // updateLead,
-    // deleteLead,
-    // addAdmission,
-    // addIncome,
-    // updateSettings,
+    addLead,
+    updateLead,
+    deleteLead,
+    addAdmission,
+    addIncome,
+    updateSettings,
     academicRecords,
     salaryPayments,
-    // addStudent,
-    // deleteStudent,
-    // recordFeePayment,
+    addStudent,
+    deleteStudent,
+    recordFeePayment,
     generateStudentId,
   };
 }

@@ -61,8 +61,12 @@ import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 
+import { useDebounce } from '../hooks/useDebounce';
+import { useVirtualizer } from '@tanstack/react-virtual';
+
 export default function FeeManagementView({ data, gender, program }: { data: any, gender?: Gender, program?: string }) {
   const [searchTerm, setSearchTerm] = React.useState('');
+  const debouncedSearch = useDebounce(searchTerm, 300);
   const [statusFilter, setStatusFilter] = React.useState('all');
   const [selectedStudent, setSelectedStudent] = React.useState<any>(null);
   const [isPaymentOpen, setIsPaymentOpen] = React.useState(false);
@@ -74,6 +78,8 @@ export default function FeeManagementView({ data, gender, program }: { data: any
   const [collectedByName, setCollectedByName] = React.useState<string>('');
   const [newFeePackage, setNewFeePackage] = React.useState<string>('');
   const [activeRowStudent, setActiveRowStudent] = React.useState<any>(null);
+  
+  const parentRef = React.useRef<HTMLDivElement>(null);
 
   // 1. Calculate All Enrolled Students (Boys + Girls)
   const allEnrolled = useMemo(() => {
@@ -397,9 +403,9 @@ export default function FeeManagementView({ data, gender, program }: { data: any
 
   const filteredStudents = useMemo(() => {
     return students.filter((s: any) => {
-      const nameMatch = (s.fullName || s.full_name || '').toLowerCase().includes(searchTerm.toLowerCase());
-      const idMatch = (s.id || '').toLowerCase().includes(searchTerm.toLowerCase());
-      const fatherMatch = (s.fatherName || s.father_name || '').toLowerCase().includes(searchTerm.toLowerCase());
+      const nameMatch = (s.fullName || s.full_name || '').toLowerCase().includes(debouncedSearch.toLowerCase());
+      const idMatch = (s.id || '').toLowerCase().includes(debouncedSearch.toLowerCase());
+      const fatherMatch = (s.fatherName || s.father_name || '').toLowerCase().includes(debouncedSearch.toLowerCase());
       const matchesSearch = nameMatch || idMatch || fatherMatch;
       
       const balance = (s.totalPackage || 0) - (s.feeReceived || 0);
@@ -417,7 +423,14 @@ export default function FeeManagementView({ data, gender, program }: { data: any
 
       return matchesSearch && matchesStatus;
     });
-  }, [students, searchTerm, statusFilter]);
+  }, [students, debouncedSearch, statusFilter]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: filteredStudents.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 75,
+    overscan: 5,
+  });
 
   const programLabel = useMemo(() => {
     if (program === 'ukl3') return 'UK Level 3';
@@ -621,109 +634,124 @@ export default function FeeManagementView({ data, gender, program }: { data: any
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <Table>
-                <TableHeader className="bg-slate-50/30">
-                  <TableRow className="border-none">
-                    <TableHead className="font-black text-[10px] uppercase tracking-widest pl-8 h-12">Student Profile</TableHead>
-                    <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Total Package</TableHead>
-                    <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Total Received</TableHead>
-                    <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Current Balance</TableHead>
-                    <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Progress</TableHead>
-                    <TableHead className="font-black text-[10px] uppercase tracking-widest text-right pr-8 h-12">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredStudents.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="h-64 text-center">
-                        <div className="flex flex-col items-center justify-center text-slate-300">
-                          <AlertCircle size={48} className="mb-4 opacity-10" />
-                          <p className="text-sm font-black uppercase tracking-widest">No Billing Records Found</p>
-                        </div>
-                      </TableCell>
+              <div ref={parentRef} className="max-h-[600px] overflow-auto">
+                <Table>
+                  <TableHeader className="bg-slate-50/30 sticky top-0 z-10 shadow-sm border-b border-slate-100">
+                    <TableRow className="border-none">
+                      <TableHead className="font-black text-[10px] uppercase tracking-widest pl-8 h-12">Student Profile</TableHead>
+                      <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Total Package</TableHead>
+                      <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Total Received</TableHead>
+                      <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Current Balance</TableHead>
+                      <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Progress</TableHead>
+                      <TableHead className="font-black text-[10px] uppercase tracking-widest text-right pr-8 h-12">Actions</TableHead>
                     </TableRow>
-                  ) : (
-                    filteredStudents.map((student: any) => {
-                      const balance = (student.totalPackage || 0) - (student.feeReceived || 0);
-                      const progress = student.totalPackage > 0 ? (student.feeReceived / student.totalPackage) * 100 : 0;
-                      
-                      return (
-                        <TableRow 
-                          key={student.id} 
-                          onClick={() => setActiveRowStudent(student)}
-                          className={cn(
-                            "group hover:bg-emerald-50/40 transition-colors border-slate-100 cursor-pointer",
-                            activeRowStudent?.id === student.id ? "bg-emerald-50/60 border-emerald-200" : ""
-                          )}
-                        >
-                          <TableCell className="pl-8 py-4">
-                            <div>
-                              <p className="font-black text-slate-700 leading-none mb-1 group-hover:text-superior-teal transition-colors italic">{student.fullName}</p>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{student.id}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="font-black text-slate-600 text-[13px]">Rs. {student.totalPackage?.toLocaleString()}</TableCell>
-                          <TableCell className="font-black text-emerald-600 text-[13px]">Rs. {student.feeReceived?.toLocaleString()}</TableCell>
-                          <TableCell className={cn("font-black text-[13px]", balance > 0 ? "text-rose-600" : "text-emerald-600")}>
-                            Rs. {balance.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="w-32">
-                            <div className="space-y-1.5">
-                              <Progress value={progress} className="h-1.5 bg-slate-100" />
-                              <p className="text-[9px] font-black text-slate-400 text-right uppercase">{progress.toFixed(0)}% Completion</p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right pr-8">
-                             <DropdownMenu>
-                              <DropdownMenuTrigger className="h-10 w-10 p-0 rounded-xl hover:bg-white hover:shadow-sm flex items-center justify-center text-slate-400 outline-none transition-all group-hover:text-slate-600">
-                                <MoreHorizontal className="h-5 w-5" />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="rounded-2xl border-slate-100 p-2 shadow-2xl w-56">
-                                <DropdownMenuItem 
-                                  onClick={() => { setSelectedStudent(student); setIsPaymentOpen(true); }}
-                                  className="gap-3 p-3 rounded-xl font-black text-xs text-emerald-600 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 uppercase tracking-widest italic"
-                                >
-                                  <CreditCard size={14} /> Record Payment
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => { setSelectedStudent(student); setIsUpdateOpen(true); }}
-                                  className="gap-3 p-3 rounded-xl font-black text-xs text-superior-teal cursor-pointer hover:bg-superior-teal/5 focus:bg-superior-teal/5 uppercase tracking-widest italic"
-                                >
-                                  <Plus size={14} /> Update Fee Package
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => { setSelectedStudent(student); setIsHistoryOpen(true); }}
-                                  className="gap-3 p-3 rounded-xl font-black text-xs text-slate-700 cursor-pointer hover:bg-slate-50 focus:bg-slate-50 uppercase tracking-widest italic"
-                                >
-                                  <Clock size={14} /> Payment History
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={(e) => { e.stopPropagation(); generateFeeStatement(student); }}
-                                  className="gap-3 p-3 rounded-xl font-black text-xs text-emerald-600 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 uppercase tracking-widest italic"
-                                >
-                                  <Download size={14} /> Download Fee Statement
-                                </DropdownMenuItem>
-                                {(student.feeHistory && student.feeHistory.length > 0) && (
-                                  <DropdownMenuItem 
-                                    onClick={(e) => { 
-                                      e.stopPropagation();
-                                      const sorted = [...student.feeHistory].sort((a: any, b: any) => new Date(b.datePaid).getTime() - new Date(a.datePaid).getTime());
-                                      generateReceipt(student, sorted[0]);
-                                    }}
-                                    className="gap-3 p-3 rounded-xl font-black text-xs text-emerald-600 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 uppercase tracking-widest italic"
-                                  >
-                                    <Download size={14} /> Download Latest Receipt
-                                  </DropdownMenuItem>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {rowVirtualizer.getVirtualItems().length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="h-64 text-center">
+                          <div className="flex flex-col items-center justify-center text-slate-300">
+                            <AlertCircle size={48} className="mb-4 opacity-10" />
+                            <p className="text-sm font-black uppercase tracking-widest">No Billing Records Found</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      <>
+                        {rowVirtualizer.getVirtualItems()[0]?.start > 0 && (
+                          <TableRow style={{ height: `${rowVirtualizer.getVirtualItems()[0].start}px` }}>
+                            <TableCell colSpan={6} className="p-0 border-0" />
+                          </TableRow>
+                        )}
+                        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                          const student = filteredStudents[virtualRow.index];
+                          const balance = (student.totalPackage || 0) - (student.feeReceived || 0);
+                          const progress = student.totalPackage > 0 ? (student.feeReceived / student.totalPackage) * 100 : 0;
+                          
+                          return (
+                            <TableRow 
+                              key={student.id} 
+                              onClick={() => setActiveRowStudent(student)}
+                              className={cn(
+                                "group hover:bg-emerald-50/40 transition-colors border-slate-100 cursor-pointer h-[75px]",
+                                activeRowStudent?.id === student.id ? "bg-emerald-50/60 border-emerald-200" : ""
+                              )}
+                            >
+                              <TableCell className="pl-8 py-4">
+                                <div>
+                                  <p className="font-black text-slate-700 leading-none mb-1 group-hover:text-superior-teal transition-colors italic">{student.fullName}</p>
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{student.id}</p>
+                                </div>
+                              </TableCell>
+                              <TableCell className="font-black text-slate-600 text-[13px]">Rs. {student.totalPackage?.toLocaleString()}</TableCell>
+                              <TableCell className="font-black text-emerald-600 text-[13px]">Rs. {student.feeReceived?.toLocaleString()}</TableCell>
+                              <TableCell className={cn("font-black text-[13px]", balance > 0 ? "text-rose-600" : "text-emerald-600")}>
+                                Rs. {balance.toLocaleString()}
+                              </TableCell>
+                              <TableCell className="w-32">
+                                <div className="space-y-1.5">
+                                  <Progress value={progress} className="h-1.5 bg-slate-100" />
+                                  <p className="text-[9px] font-black text-slate-400 text-right uppercase">{progress.toFixed(0)}% Completion</p>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right pr-8">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger className="h-10 w-10 p-0 rounded-xl hover:bg-white hover:shadow-sm flex items-center justify-center text-slate-400 outline-none transition-all group-hover:text-slate-600">
+                                    <MoreHorizontal className="h-5 w-5" />
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="rounded-2xl border-slate-100 p-2 shadow-2xl w-56">
+                                    <DropdownMenuItem 
+                                      onClick={() => { setSelectedStudent(student); setIsPaymentOpen(true); }}
+                                      className="gap-3 p-3 rounded-xl font-black text-xs text-emerald-600 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 uppercase tracking-widest italic"
+                                    >
+                                      <CreditCard size={14} /> Record Payment
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      onClick={() => { setSelectedStudent(student); setIsUpdateOpen(true); }}
+                                      className="gap-3 p-3 rounded-xl font-black text-xs text-superior-teal cursor-pointer hover:bg-superior-teal/5 focus:bg-superior-teal/5 uppercase tracking-widest italic"
+                                    >
+                                      <Plus size={14} /> Update Fee Package
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      onClick={() => { setSelectedStudent(student); setIsHistoryOpen(true); }}
+                                      className="gap-3 p-3 rounded-xl font-black text-xs text-slate-700 cursor-pointer hover:bg-slate-50 focus:bg-slate-50 uppercase tracking-widest italic"
+                                    >
+                                      <Clock size={14} /> Payment History
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      onClick={(e) => { e.stopPropagation(); generateFeeStatement(student); }}
+                                      className="gap-3 p-3 rounded-xl font-black text-xs text-emerald-600 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 uppercase tracking-widest italic"
+                                    >
+                                      <Download size={14} /> Download Fee Statement
+                                    </DropdownMenuItem>
+                                    {(student.feeHistory && student.feeHistory.length > 0) && (
+                                      <DropdownMenuItem 
+                                        onClick={(e) => { 
+                                          e.stopPropagation();
+                                          const sorted = [...student.feeHistory].sort((a: any, b: any) => new Date(b.datePaid).getTime() - new Date(a.datePaid).getTime());
+                                          generateReceipt(student, sorted[0]);
+                                        }}
+                                        className="gap-3 p-3 rounded-xl font-black text-xs text-emerald-600 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 uppercase tracking-widest italic"
+                                      >
+                                        <Download size={14} /> Download Latest Receipt
+                                      </DropdownMenuItem>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                        {rowVirtualizer.getVirtualItems().length > 0 && (
+                          <TableRow style={{ height: `${rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end}px` }}>
+                            <TableCell colSpan={6} className="p-0 border-0" />
+                          </TableRow>
+                        )}
+                      </>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </div>

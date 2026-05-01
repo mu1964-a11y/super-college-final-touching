@@ -71,8 +71,11 @@ import { HighlightText } from './HighlightText';
 import FeeReceipt from './FeeReceipt';
 import { compressImage, base64ToBlob } from '../lib/imageUtils';
 
+import { useDebounce } from '../hooks/useDebounce';
+
 export default function StudentsView({ data, gender, program }: { data: any, gender?: Gender, program?: string }) {
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebounce(searchTerm, 300);
   const [monthlyFeeFilter, setMonthlyFeeFilter] = useState('all');
   const [defaulterFilter, setDefaulterFilter] = useState('all');
   const [subjectFilter, setSubjectFilter] = useState('all');
@@ -176,29 +179,50 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
     });
   }, [data.students, data.admissions, gender, program]);
 
-  const filteredStudents = mergedStudents.filter((s: any) => {
-    const matchesSearch = s.fullName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         s.id.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    // Monthly fee status for current month (March 2026 for demo)
-    const currentMonthPayment = s.feeHistory.find(f => f.month === 'March' && f.year === 2026);
-    const matchesFee = monthlyFeeFilter === 'all' || 
-                      (monthlyFeeFilter === 'Paid' && currentMonthPayment?.status === 'Paid') ||
-                      (monthlyFeeFilter === 'Partial' && currentMonthPayment?.status === 'Partial') ||
-                      (monthlyFeeFilter === 'Unpaid' && (!currentMonthPayment || currentMonthPayment.status === 'Unpaid'));
+  const filteredStudents = React.useMemo(() => {
+    return mergedStudents.filter((s: any) => {
+      const matchesSearch = s.fullName.toLowerCase().includes(debouncedSearch.toLowerCase()) || 
+                           s.id.toLowerCase().includes(debouncedSearch.toLowerCase());
+      
+      // Monthly fee status for current month (March 2026 for demo)
+      const currentMonthPayment = s.feeHistory.find((f: any) => f.month === 'March' && f.year === 2026);
+      const matchesFee = monthlyFeeFilter === 'all' || 
+                        (monthlyFeeFilter === 'Paid' && currentMonthPayment?.status === 'Paid') ||
+                        (monthlyFeeFilter === 'Partial' && currentMonthPayment?.status === 'Partial') ||
+                        (monthlyFeeFilter === 'Unpaid' && (!currentMonthPayment || currentMonthPayment.status === 'Unpaid'));
 
-    // Defaulter logic
-    const unpaidMonths = s.feeHistory.filter(f => f.status === 'Unpaid').length;
-    const matchesDefaulter = defaulterFilter === 'all' ||
-                            (defaulterFilter === '1' && unpaidMonths === 1) ||
-                            (defaulterFilter === '2' && unpaidMonths === 2) ||
-                            (defaulterFilter === '3' && unpaidMonths >= 3) ||
-                            (defaulterFilter === '4' && unpaidMonths >= 4);
+      // Defaulter logic
+      const unpaidMonths = s.feeHistory.filter((f: any) => f.status === 'Unpaid').length;
+      const matchesDefaulter = defaulterFilter === 'all' ||
+                              (defaulterFilter === '1' && unpaidMonths === 1) ||
+                              (defaulterFilter === '2' && unpaidMonths === 2) ||
+                              (defaulterFilter === '3' && unpaidMonths >= 3) ||
+                              (defaulterFilter === '4' && unpaidMonths >= 4);
 
-    const matchesSubject = subjectFilter === 'all' || (s.subjects || []).includes(subjectFilter);
+      const matchesSubject = subjectFilter === 'all' || (s.subjects || []).includes(subjectFilter);
 
-    return matchesSearch && matchesFee && matchesDefaulter && matchesSubject;
-  });
+      return matchesSearch && matchesFee && matchesDefaulter && matchesSubject;
+    });
+  }, [mergedStudents, debouncedSearch, monthlyFeeFilter, defaulterFilter, subjectFilter]);
+
+  // Handle pagination for better performance
+  const ITEMS_PER_PAGE = 30;
+  const [currentPage, setCurrentPage] = useState(1);
+  const totalPages = Math.ceil(filteredStudents.length / ITEMS_PER_PAGE);
+
+  // Reset pagination when search or filters change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, monthlyFeeFilter, defaulterFilter, subjectFilter]);
+
+  const visibleStudents = React.useMemo(
+    () => {
+      const start = (currentPage - 1) * ITEMS_PER_PAGE;
+      const end = start + ITEMS_PER_PAGE;
+      return filteredStudents.slice(start, end);
+    },
+    [filteredStudents, currentPage],
+  );
 
   const getDefaulterBadge = (student: Student) => {
     const unpaidMonths = student.feeHistory.filter(f => f.status === 'Unpaid').length;
@@ -355,7 +379,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
 
       {/* Students Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {filteredStudents.map((student: Student) => (
+        {visibleStudents.map((student: Student) => (
           <motion.div
             key={student.id}
             whileHover={{ y: -5 }}
@@ -500,6 +524,32 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           </motion.div>
         ))}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 mt-4 border-t border-slate-100">
+          <p className="text-sm font-bold text-slate-500">
+            Showing Page {currentPage} of {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Centralized Dialogs */}
       <Dialog open={dialogType === 'delete'} onOpenChange={(open) => !open && setDialogType(null)}>
