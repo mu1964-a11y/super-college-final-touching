@@ -14,13 +14,13 @@ import {
   CheckCircle2,
   AlertCircle,
   User,
-  Plus,
   Camera,
-  Upload,
-  PieChart,
   Wallet,
   BarChart3,
-  Trash2
+  Trash2,
+  School,
+  Globe,
+  Award
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { 
@@ -45,8 +45,6 @@ import {
   DialogContent, 
   DialogHeader, 
   DialogTitle, 
-  DialogTrigger,
-  DialogClose,
   DialogDescription,
   DialogFooter
 } from '@/components/ui/dialog';
@@ -69,20 +67,28 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { HighlightText } from './HighlightText';
 import FeeReceipt from './FeeReceipt';
-import { compressImage, base64ToBlob } from '../lib/imageUtils';
+import { compressImage } from '../lib/imageUtils';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 import { useDebounce } from '../hooks/useDebounce';
+import { getUnifiedTransactions } from '../utils/fee';
 
 export default function StudentsView({ data, gender, program }: { data: any, gender?: Gender, program?: string }) {
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearch = useDebounce(searchTerm, 300);
   const [monthlyFeeFilter, setMonthlyFeeFilter] = useState('all');
   const [defaulterFilter, setDefaulterFilter] = useState('all');
-  const [subjectFilter, setSubjectFilter] = useState('all');
+  const [genderFilter, setGenderFilter] = useState<string>(gender || 'all');
+  const [programFilter, setProgramFilter] = useState<string>(program || 'all');
+  const [sectionFilter, setSectionFilter] = useState<string>('all');
+  const [subjectFilter] = useState('all');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
-  const [dialogType, setDialogType] = useState<'profile' | 'edit' | 'pay' | 'receipt' | 'delete' | 'bulkDelete' | null>(null);
+  const [dialogType, setDialogType] = useState<'profile' | 'profile_academic' | 'profile_fees' | 'edit' | 'pay' | 'receipt' | 'delete' | 'bulkDelete' | null>(null);
   const [payConfig, setPayConfig] = useState<{ month?: string, year?: number }>({});
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const mergedStudents = React.useMemo(() => {
     const rawStudents = [...data.students].map(s => {
@@ -98,13 +104,11 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
       return { ...s, gender: derivedGender };
     });
     
-    // Add confirmed admissions that don't have a matching student record yet
+    // Add all admissions that don't have a matching student record yet (automatically populated in Students tab)
     data.admissions.forEach((a: any) => {
-      // User Request: A student is considered enrolled only upon fee receipt.
-      const isEnrolled = a.isAdmitted || a.status === 'Admitted/Confirmed' || (a.feeReceived > 0);
       const existsInStudents = rawStudents.some((s: any) => s.admissionId === a.id || s.id === a.studentId);
       
-      if (isEnrolled && !existsInStudents) {
+      if (!existsInStudents) {
         let derivedGender = a.gender;
         if (!derivedGender) {
           const identifier = (`${a.category || ''} ${a.group || ''}`).toLowerCase();
@@ -129,8 +133,8 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           section: a.section || 'A',
           photo: a.photo || '',
           attendance: { present: 0, absent: 0 },
-          feeHistory: [],
-          feeLedger: { 
+          feeHistory: a.feeHistory || [],
+          feeLedger: a.feeLedger ? a.feeLedger : { 
             totalPackage: a.totalPackage || 0, 
             totalReceived: a.feeReceived || 0, 
             remainingBalance: (a.totalPackage || 0) - (a.feeReceived || 0), 
@@ -165,19 +169,34 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
     // Filter by Gender and Program
     return rawStudents.filter((s: any) => {
       let matchesGender = true;
-      if (gender) matchesGender = s.gender === gender;
+      if (genderFilter !== 'all') matchesGender = s.gender === genderFilter;
       
       let matchesProgram = true;
-      if (program) {
-        const identifier = (`${s.category || ''} ${s.group || ''}`).toLowerCase();
-        if (program === 'fsc') matchesProgram = !identifier.includes('dit') && !identifier.includes('level 3') && !identifier.includes('uk') && !identifier.includes('bs ');
-        else if (program === 'dit') matchesProgram = identifier.includes('dit');
-        else if (program === 'ukl3') matchesProgram = identifier.includes('level 3') || identifier.includes('uk');
-        else if (program === 'bs') matchesProgram = identifier.includes('bs');
+      if (programFilter !== 'all') {
+        const sGroup = (s.group || '').toLowerCase();
+        const sCategory = (s.category || '').toLowerCase();
+        const identifier = `${sGroup} ${sCategory}`;
+        const pFilter = programFilter.toLowerCase();
+        
+        if (pFilter === 'fsc' || pFilter.includes('engineering') || pFilter.includes('medical') || pFilter.includes('intermediate')) {
+           matchesProgram = sGroup.includes('engineering') || sGroup.includes('medical') || sGroup.includes('science') || sGroup.includes('com') || sGroup.includes('intermediate') || sCategory.includes('inter') || sGroup.includes('ics') || sGroup.includes('fsc');
+        } else if (pFilter === 'dit' || pFilter.includes('diploma')) {
+           matchesProgram = sGroup.includes('dit') || sGroup.includes('diploma');
+        } else if (pFilter === 'bs' || pFilter.includes('b.s')) {
+           matchesProgram = sGroup.includes('bs') || sGroup.includes('b.s');
+        } else if (pFilter === 'ukl3' || pFilter.includes('uk') || pFilter.includes('level 3')) {
+           matchesProgram = sGroup.includes('uk') || sGroup.includes('l3') || sGroup.includes('level 3');
+        } else {
+           matchesProgram = identifier.includes(pFilter);
+        }
       }
       return matchesGender && matchesProgram;
     });
-  }, [data.students, data.admissions, gender, program]);
+  }, [data.students, data.admissions, genderFilter, programFilter]);
+
+  const sectionOptions = React.useMemo(() => {
+    return Array.from(new Set(data?.settings?.predefinedSections?.map((s: any) => s.name).filter(Boolean))) as string[];
+  }, [data?.settings?.predefinedSections]);
 
   const filteredStudents = React.useMemo(() => {
     return mergedStudents.filter((s: any) => {
@@ -201,9 +220,11 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
 
       const matchesSubject = subjectFilter === 'all' || (s.subjects || []).includes(subjectFilter);
 
-      return matchesSearch && matchesFee && matchesDefaulter && matchesSubject;
+      const matchesSection = sectionFilter === 'all' || (s.section || '').trim().toLowerCase() === sectionFilter.trim().toLowerCase();
+
+      return matchesSearch && matchesFee && matchesDefaulter && matchesSubject && matchesSection;
     });
-  }, [mergedStudents, debouncedSearch, monthlyFeeFilter, defaulterFilter, subjectFilter]);
+  }, [mergedStudents, debouncedSearch, monthlyFeeFilter, defaulterFilter, subjectFilter, sectionFilter]);
 
   // Handle pagination for better performance
   const ITEMS_PER_PAGE = 30;
@@ -213,7 +234,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
   // Reset pagination when search or filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, monthlyFeeFilter, defaulterFilter, subjectFilter]);
+  }, [searchTerm, monthlyFeeFilter, defaulterFilter, subjectFilter, sectionFilter]);
 
   const visibleStudents = React.useMemo(
     () => {
@@ -239,6 +260,54 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
     }
   };
 
+  const handleExportPDF = () => {
+    const doc = new jsPDF('l', 'pt', 'a4');
+    const title = `Students List - ${programFilter !== 'all' ? programFilter : 'All Programs'} ${sectionFilter !== 'all' ? '- Section ' + sectionFilter : ''}`;
+    doc.text(title, 40, 40);
+    
+    autoTable(doc, {
+      startY: 50,
+      head: [['ID', 'Name', 'Father Name', 'Gender', 'Group', 'Class', 'Section', 'Contact']],
+      body: filteredStudents.map((s: any) => [
+        s.id,
+        s.fullName,
+        s.fatherName,
+        s.gender,
+        s.group,
+        s.category,
+        s.section || 'N/A',
+        s.parentContact || 'N/A'
+      ]),
+      theme: 'grid',
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [5, 59, 50], textColor: [255, 255, 255] }
+    });
+    
+    doc.save(`Students_Export_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  const handleExportExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(filteredStudents.map((s: any) => ({
+      'ID': s.id,
+      'Name': s.fullName,
+      'Father Name': s.fatherName,
+      'DOB': s.dob || 'N/A',
+      'Gender': s.gender,
+      'Group': s.group,
+      'Class': s.category,
+      'Section': s.section || 'N/A',
+      'Session': s.session || 'N/A',
+      'Parent Contact': s.parentContact || 'N/A',
+      'Address': s.address || 'N/A',
+      'Blood Group': s.bloodGroup || 'N/A',
+      'Admission Date': s.admissionDate || 'N/A'
+    })));
+    
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Students");
+    XLSX.writeFile(wb, `Students_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   const toggleSelectStudent = (id: string) => {
     setSelectedStudents(prev => 
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
@@ -256,15 +325,23 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
         <div>
           <div className="flex items-center gap-3">
             <h3 className="text-3xl font-display font-black text-superior-teal tracking-tight">
-              {gender === 'Male' ? 'Boys Campus' : 'Girls Campus'}
+              {gender === 'Male' ? 'Boys Campus' : gender === 'Female' ? 'Girls Campus' : 'Student Records'}
             </h3>
             <span className="text-slate-300 text-2xl">/</span>
             <span className="urdu-text text-2xl text-superior-gold font-medium">
-              {gender === 'Male' ? 'بوائز کیمپس' : 'گرلز کیمپس'}
+              {gender === 'Male' ? 'بوائز کیمپس' : gender === 'Female' ? 'گرلز کیمپس' : 'طلباء کا ریکارڈ'}
             </span>
           </div>
         </div>
         <div className="flex items-center gap-4">
+          <div className="flex gap-2">
+            <Button onClick={handleExportPDF} variant="outline" className="h-14 rounded-[2rem] border-slate-200 text-slate-600 hover:text-red-600 hover:bg-red-50 hover:border-red-100 flex items-center gap-2">
+              <Download size={18} /> PDF
+            </Button>
+            <Button onClick={handleExportExcel} variant="outline" className="h-14 rounded-[2rem] border-slate-200 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 hover:border-emerald-100 flex items-center gap-2">
+              <Download size={18} /> Excel
+            </Button>
+          </div>
           <div className="bg-white px-8 py-4 rounded-[2rem] border border-slate-100 flex items-center gap-6 shadow-sm">
             <div className="text-right">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Total Students</p>
@@ -323,6 +400,31 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
         </motion.div>
       )}
 
+      {/* Group Navigation Tabs */}
+      <Tabs value={programFilter} onValueChange={(val) => setProgramFilter(val)} className="w-full mb-6">
+        <TabsList className="bg-slate-100 p-1.5 rounded-2xl w-full flex items-center justify-start overflow-x-auto scrollbar-hide h-auto border border-slate-200/50">
+          <TabsTrigger value="all" className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap">
+            All Groups
+          </TabsTrigger>
+          <TabsTrigger value="fsc" className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap">
+            <School size={15} className="mr-2 inline-block" />
+            Inter
+          </TabsTrigger>
+          <TabsTrigger value="dit" className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap">
+            <GraduationCap size={15} className="mr-2 inline-block" />
+            DIT
+          </TabsTrigger>
+          <TabsTrigger value="ukl3" className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap">
+            <Globe size={15} className="mr-2 inline-block" />
+            UKL3
+          </TabsTrigger>
+          <TabsTrigger value="bs" className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap">
+            <GraduationCap size={15} className="mr-2 inline-block" />
+            BS
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {/* Filters Bar */}
       <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-wrap items-center gap-5 mb-10 hover:border-superior-teal/20 transition-all duration-500">
         <div className="flex items-center gap-3 pr-5 border-r border-slate-100">
@@ -346,6 +448,29 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
+          <Select value={sectionFilter} onValueChange={setSectionFilter}>
+            <SelectTrigger className="w-[140px] h-12 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-slate-600">
+              <SelectValue placeholder="Section" />
+            </SelectTrigger>
+            <SelectContent className="rounded-2xl border-slate-100 shadow-xl">
+              <SelectItem value="all">All Sections</SelectItem>
+              {sectionOptions.map(sec => (
+                <SelectItem key={sec} value={sec}>{sec}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={genderFilter} onValueChange={setGenderFilter}>
+            <SelectTrigger className="w-[140px] h-12 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-slate-600 font-bold">
+              <SelectValue placeholder="Gender" />
+            </SelectTrigger>
+            <SelectContent className="rounded-2xl border-slate-100 shadow-xl">
+              <SelectItem value="all">All Genders</SelectItem>
+              <SelectItem value="Male">Boys Only</SelectItem>
+              <SelectItem value="Female">Girls Only</SelectItem>
+            </SelectContent>
+          </Select>
+
           <Select value={monthlyFeeFilter} onValueChange={setMonthlyFeeFilter}>
             <SelectTrigger className="w-[180px] h-12 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-slate-600">
               <SelectValue placeholder="Monthly Fee" />
@@ -374,120 +499,85 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           <Button variant="outline" className="h-12 w-12 rounded-xl border-slate-100 bg-slate-50 hover:bg-white transition-all p-0">
             <Filter size={18} className="text-slate-400" />
           </Button>
+
+          <div className="flex bg-slate-100 p-1 rounded-xl">
+            <button
+              className={cn("px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all", viewMode === 'grid' ? "bg-white text-superior-teal shadow-sm" : "text-slate-400 hover:text-slate-600")}
+              onClick={() => setViewMode('grid')}
+            >
+              Grid
+            </button>
+            <button
+              className={cn("px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all", viewMode === 'list' ? "bg-white text-superior-teal shadow-sm" : "text-slate-400 hover:text-slate-600")}
+              onClick={() => setViewMode('list')}
+            >
+              List
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Students Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {visibleStudents.map((student: Student) => (
-          <motion.div
-            key={student.id}
-            whileHover={{ y: -5 }}
-            className={cn(
-              "bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden relative group",
-              selectedStudents.includes(student.id) && "ring-4 ring-superior-teal ring-offset-4"
-            )}
-          >
-            <div className="absolute top-4 left-4 z-20">
-              <Checkbox 
-                checked={selectedStudents.includes(student.id)} 
-                onCheckedChange={() => toggleSelectStudent(student.id)}
-                className="bg-white/80 backdrop-blur-sm border-white/20 rounded-md"
-              />
-            </div>
-            <div className="bg-superior-teal h-28 relative">
-              <div className="absolute -bottom-14 left-8">
-                <div className="w-28 h-28 rounded-3xl border-4 border-white bg-slate-100 overflow-hidden shadow-xl shadow-superior-teal/10">
-                  {student.photo ? (
-                    <img 
-                      src={student.photo} 
-                      alt="" 
-                      className="w-full h-full object-cover" 
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-slate-200 text-slate-400 font-bold text-2xl">
-                      {student.fullName.charAt(0)}
-                    </div>
-                  )}
-                </div>
+      {/* Students View */}
+      {viewMode === 'grid' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 lg:gap-6">
+          {visibleStudents.map((student: Student) => (
+            <motion.div
+              key={student.id}
+              whileHover={{ y: -5 }}
+              className={cn(
+                "bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden relative group",
+                selectedStudents.includes(student.id) && "ring-4 ring-superior-teal ring-offset-4"
+              )}
+            >
+              <div className="absolute top-4 left-4 z-20">
+                <Checkbox 
+                  checked={selectedStudents.includes(student.id)} 
+                  onCheckedChange={() => toggleSelectStudent(student.id)}
+                  className="bg-white/80 backdrop-blur-sm border-white/20 rounded-md"
+                />
               </div>
-              <div className="absolute top-5 right-6">
-                {getDefaulterBadge(student)}
-              </div>
-            </div>
-            <div className="pt-18 pb-8 px-8 bg-white">
-              <div className="flex justify-between items-start mb-6">
-                <div>
-                  <h3 className="font-display font-black text-2xl text-slate-800 tracking-tight leading-tight">
-                    <HighlightText text={student.fullName} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
-                  </h3>
-                  <p className="text-[10px] font-black text-superior-gold uppercase tracking-[0.3em] mt-1">{student.id}</p>
+              <div className="bg-superior-teal h-24 relative">
+                <div className="absolute top-3 left-5">
+                  {getDefaulterBadge(student)}
                 </div>
-                <div className="text-right">
-                  <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em] mb-1">Guardian</p>
-                  <p className="text-sm font-black text-slate-600">
-                    <HighlightText text={student.fatherName} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mb-8">
-                <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
-                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2">Academic Group</p>
-                  <p className="text-xs font-black text-superior-teal truncate">{student.group}</p>
-                </div>
-                <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
-                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2">Attendance</p>
-                  <p className="text-xs font-black text-emerald-600">
-                    {Math.round((student.attendance.present / (student.attendance.present + student.attendance.absent || 1)) * 100)}% Present
-                  </p>
-                </div>
-              </div>
-
-              <Separator className="mb-6 bg-slate-100" />
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Package / Installment</p>
-                  <div className="flex items-baseline gap-2">
-                    <p className="text-xl font-display font-black text-slate-800 tracking-tight">Rs. {(student.monthlyFee || 0).toLocaleString()}</p>
-                    <span className="text-[10px] font-bold text-rose-500 underline decoration-rose-500/30">Bal: {((student.feeLedger?.remainingBalance || (student.totalPackage || 0) - (student.feeReceived || 0)) / 1000).toFixed(1)}k</span>
-                  </div>
-                </div>
-                <div className="flex gap-2.5">
+                <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
                   <Button 
                     variant="outline" 
-                    size="sm" 
-                    className="h-11 rounded-xl text-[10px] font-black uppercase tracking-widest border-slate-200 hover:bg-slate-50 shadow-sm transition-all active:scale-95" 
+                    size="icon" 
+                    title="Profile"
+                    className="h-8 w-8 rounded-lg bg-white/10 hover:bg-white/20 text-white border-white/20 shadow-none transition-all active:scale-95" 
                     onClick={() => {
                       setSelectedStudent(student);
                       setDialogType('profile');
                     }}
                   >
-                    <Eye size={14} className="mr-2 text-superior-teal" /> Profile
-                  </Button>
-                  
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="h-11 rounded-xl text-[10px] font-black uppercase tracking-widest text-superior-teal border-superior-teal/20 hover:bg-superior-teal/5 shadow-sm transition-all active:scale-95"
-                    onClick={() => {
-                      setSelectedStudent(student);
-                      setDialogType('pay');
-                    }}
-                  >
-                    <CreditCard size={14} className="mr-2" /> Pay Fee
+                    <Eye size={14} />
                   </Button>
 
                   <DropdownMenu>
-                    <DropdownMenuTrigger className="h-11 w-11 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all flex items-center justify-center text-slate-400 outline-hidden">
-                      <MoreHorizontal size={18} />
+                    <DropdownMenuTrigger className="h-8 w-8 flex-shrink-0 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 transition-all flex items-center justify-center text-white outline-hidden">
+                      <MoreHorizontal size={14} />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="rounded-2xl p-2 min-w-[200px] border-slate-100 shadow-2xl">
+                      <DropdownMenuItem 
+                        className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
+                        onClick={() => {
+                          setSelectedStudent(student);
+                          setDialogType('profile_academic');
+                        }}
+                      >
+                        <Award size={16} className="text-emerald-500" /> Academic Records
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
+                        onClick={() => {
+                          setSelectedStudent(student);
+                          setDialogType('profile_fees');
+                        }}
+                      >
+                        <Wallet size={16} className="text-superior-gold" /> Fee Statement
+                      </DropdownMenuItem>
+                      <Separator className="my-2 bg-slate-50" />
                       <DropdownMenuItem 
                         className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
                         onClick={() => {
@@ -504,7 +594,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                           setDialogType('edit');
                         }}
                       >
-                        <Edit size={16} className="text-superior-gold" /> Edit Details
+                        <Edit size={16} className="text-slate-400" /> Edit Details
                       </DropdownMenuItem>
                       <Separator className="my-2 bg-slate-50" />
                       <DropdownMenuItem 
@@ -519,11 +609,157 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
+
+                <div className="absolute -bottom-10 left-5">
+                  <div className="w-20 h-20 rounded-[1.5rem] border-4 border-white bg-slate-100 overflow-hidden shadow-xl shadow-superior-teal/10">
+                    {student.photo ? (
+                      <img 
+                        src={student.photo} 
+                        alt="" 
+                        className="w-full h-full object-cover" 
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-slate-200 text-slate-400 font-bold text-2xl">
+                        {student.fullName.charAt(0)}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          </motion.div>
-        ))}
-      </div>
+              <div className="pt-14 pb-6 px-5 bg-white">
+                <div className="flex justify-between items-start mb-5">
+                  <div>
+                    <h3 className="font-display font-black text-lg text-slate-800 tracking-tight leading-tight line-clamp-1">
+                      <HighlightText text={student.fullName} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
+                    </h3>
+                    <p className="text-[10px] font-black text-superior-gold uppercase tracking-[0.3em] mt-1">{student.id}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em] mb-1">Guardian</p>
+                    <p className="text-sm font-black text-slate-600">
+                      <HighlightText text={student.fatherName} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mb-6">
+                  <div className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1.5">Academic Group</p>
+                    <p className="text-xs font-black text-superior-teal truncate">{student.group}</p>
+                  </div>
+                  <div className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1.5">Attendance</p>
+                    <p className="text-xs font-black text-emerald-600">
+                      {Math.round((student.attendance.present / (student.attendance.present + student.attendance.absent || 1)) * 100)}% Present
+                    </p>
+                  </div>
+                </div>
+
+                <Separator className="mb-5 bg-slate-100" />
+
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Package / Installment</p>
+                    <div className="flex items-baseline gap-2">
+                      <p className="text-lg font-display font-black text-slate-800 tracking-tight">Rs. {(student.monthlyFee || 0).toLocaleString()}</p>
+                      <span className="text-[10px] font-bold text-rose-500 underline decoration-rose-500/30">Bal: {((student.feeLedger?.remainingBalance || (student.totalPackage || 0) - (student.feeReceived || 0)) / 1000).toFixed(1)}k</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden auto-mx-4">
+          <Table>
+            <TableHeader className="bg-slate-50/50">
+              <TableRow>
+                <TableHead className="w-[50px]"></TableHead>
+                <TableHead>Student Details</TableHead>
+                <TableHead>Program/Class</TableHead>
+                <TableHead>Section</TableHead>
+                <TableHead>Contact Info</TableHead>
+                <TableHead>Total Package</TableHead>
+                <TableHead>Balance</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+               {visibleStudents.map((student: Student) => (
+                  <TableRow key={student.id} className="group cursor-pointer hover:bg-slate-50/50" onClick={() => { setSelectedStudent(student); setDialogType('profile'); }}>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                         <Checkbox 
+                           checked={selectedStudents.includes(student.id)} 
+                           onCheckedChange={() => toggleSelectStudent(student.id)}
+                         />
+                      </TableCell>
+                      <TableCell>
+                         <div className="flex items-center gap-3">
+                           <div className="w-10 h-10 rounded-[10px] overflow-hidden bg-slate-100 flex-shrink-0">
+                             {student.photo ? (
+                               <img src={student.photo} className="w-full h-full object-cover" />
+                             ) : (
+                               <div className="w-full h-full flex items-center justify-center text-slate-400 font-bold text-lg bg-slate-200">{student.fullName.charAt(0)}</div>
+                             )}
+                           </div>
+                           <div className="flex flex-col">
+                              <span className="text-sm font-black text-slate-900 group-hover:text-superior-teal transition-colors tracking-tight">{student.fullName}</span>
+                              <span className="text-[10px] font-black text-superior-gold uppercase tracking-widest">{student.id}</span>
+                           </div>
+                         </div>
+                      </TableCell>
+                      <TableCell>
+                         <div className="flex flex-col">
+                           <span className="text-xs font-black text-slate-700">{student.category}</span>
+                           <span className="text-[10px] text-slate-500 font-black tracking-widest uppercase">{student.group}</span>
+                         </div>
+                      </TableCell>
+                      <TableCell>
+                         <Badge variant="outline" className="text-[10px] text-slate-600 font-bold border-slate-200">
+                           {student.section || '-'}
+                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                         <div className="flex flex-col">
+                            <span className="text-xs font-black text-slate-600 font-mono tracking-tight">{student.contact}</span>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase">Guardian: {student.fatherName.split(' ')[0]}</span>
+                         </div>
+                      </TableCell>
+                      <TableCell>
+                         <span className="text-xs font-black text-emerald-600 block">
+                           Rs. {((student.totalPackage) || 0).toLocaleString()}
+                         </span>
+                      </TableCell>
+                      <TableCell>
+                         <span className="text-xs font-black text-rose-500 block underline decoration-rose-500/20">
+                           Rs. {(student.feeLedger?.remainingBalance || (student.totalPackage || 0) - (student.feeReceived || 0)).toLocaleString()}
+                         </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                           <Button onClick={() => { setSelectedStudent(student); setDialogType('receipt'); }} variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-emerald-500"><CreditCard className="h-4 w-4" /></Button>
+                           <Button onClick={() => { setSelectedStudent(student); setDialogType('edit'); }} variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-superior-teal"><Edit className="h-4 w-4" /></Button>
+                         </div>
+                      </TableCell>
+                  </TableRow>
+               ))}
+               {visibleStudents.length === 0 && (
+                 <TableRow>
+                   <TableCell colSpan={8} className="h-32 text-center text-slate-500 font-bold py-12">
+                     <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+                     No students found matching your filters.
+                   </TableCell>
+                 </TableRow>
+               )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
       {totalPages > 1 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 mt-4 border-t border-slate-100">
@@ -609,36 +845,18 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
         </DialogContent>
       </Dialog>
 
-      <Dialog open={dialogType === 'profile'} onOpenChange={(open) => !open && setDialogType(null)}>
+      <Dialog open={dialogType !== null && dialogType.startsWith('profile')} onOpenChange={(open) => !open && setDialogType(null)}>
         <DialogContent className="max-w-[98vw] w-[98vw] h-[95vh] max-h-[95vh] overflow-y-auto p-0 border-none bg-white rounded-3xl">
           {selectedStudent && (
             <StudentProfile 
               student={selectedStudent} 
               data={data} 
+              initialTab={dialogType === 'profile_academic' ? 'academic' : dialogType === 'profile_fees' ? 'fees' : 'overview'}
               onEdit={() => setDialogType('edit')}
               onDownloadReceipt={() => setDialogType('receipt')}
-              onPay={(month, year) => {
-                setPayConfig({ month, year });
-                setDialogType('pay');
-              }}
             />
           )}
         </DialogContent>
-      </Dialog>
-
-      <Dialog open={dialogType === 'pay'} onOpenChange={(open) => !open && setDialogType(null)}>
-        {selectedStudent && (
-          <PayFeeDialog 
-            student={selectedStudent} 
-            data={data} 
-            initialMonth={payConfig.month} 
-            initialYear={payConfig.year} 
-            onClose={() => {
-              setDialogType(null);
-              setPayConfig({});
-            }} 
-          />
-        )}
       </Dialog>
 
       <Dialog open={dialogType === 'edit'} onOpenChange={(open) => !open && setDialogType(null)}>
@@ -661,7 +879,8 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
   );
 }
 
-function StudentProfile({ student, data, onEdit, onPay, onDownloadReceipt }: { student: Student, data: any, onEdit?: () => void, onPay?: (month: string, year: number) => void, onDownloadReceipt?: () => void }) {
+function StudentProfile({ student, data, initialTab = 'overview', onEdit, onDownloadReceipt }: { student: Student, data: any, initialTab?: string, onEdit?: () => void, onDownloadReceipt?: () => void }) {
+  const [activeTab, setActiveTab] = useState(initialTab);
   const totalAttendance = student.attendance.present + student.attendance.absent;
   const attendanceRatio = totalAttendance > 0 ? student.attendance.present / totalAttendance : 0;
 
@@ -679,6 +898,51 @@ function StudentProfile({ student, data, onEdit, onPay, onDownloadReceipt }: { s
         toast.dismiss(toastId);
         toast.error("Failed to upload photo.");
       }
+    }
+  };
+
+  const handleExportStatement = () => {
+    try {
+      const doc = new jsPDF();
+      doc.setFontSize(22);
+      doc.text('SUPERIOR COLLEGE JAHANIAN', 105, 20, { align: 'center' });
+      doc.setFontSize(14);
+      doc.text('Official Fee Statement', 105, 30, { align: 'center' });
+      
+      doc.setFontSize(10);
+      doc.text(`Student Name: ${student.fullName}`, 14, 45);
+      doc.text(`Roll Number: ${student.id}`, 14, 52);
+      doc.text(`Class/Group: ${student.group}`, 14, 59);
+
+      const unified = getUnifiedTransactions(student);
+      const rows = unified.map((t: any) => [
+        t.date ? new Date(t.date).toLocaleDateString() : '-',
+        t.description || '-',
+        t.receiptId || '-',
+        `Rs. ${(t.amount || 0).toLocaleString()}`
+      ]);
+
+      autoTable(doc, {
+        startY: 70,
+        head: [['Date', 'Description', 'Receipt ID', 'Amount']],
+        body: rows,
+        theme: 'grid',
+        headStyles: { fillColor: [11, 77, 69] } // superior-teal
+      });
+
+      doc.setFontSize(10);
+      const finalY = (doc as any).lastAutoTable.finalY || 100;
+      const totalPaid = unified.reduce((sum: number, tx: any) => sum + (Number(tx.amount) || 0), 0);
+      doc.text(`Total Amount Paid: Rs. ${totalPaid.toLocaleString()}`, 14, finalY + 10);
+      const totalPkg = student.totalPackage || 0;
+      doc.text(`Total Package: Rs. ${totalPkg.toLocaleString()}`, 14, finalY + 17);
+      doc.text(`Remaining Balance: Rs. ${(totalPkg - totalPaid).toLocaleString()}`, 14, finalY + 24);
+
+      doc.save(`Fee_Statement_${student.fullName.replace(/\s+/g, '_')}_${student.id}.pdf`);
+      toast.success('Fee statement exported as PDF');
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Failed to export statement');
     }
   };
 
@@ -749,7 +1013,7 @@ function StudentProfile({ student, data, onEdit, onPay, onDownloadReceipt }: { s
       </div>
 
       <div className="p-6 md:p-10">
-        <Tabs defaultValue="overview" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="inline-flex w-auto mb-8 bg-slate-100 p-1 rounded-xl border border-slate-200">
             <TabsTrigger value="overview" className="px-8 rounded-lg data-[state=active]:bg-white">Overview</TabsTrigger>
             <TabsTrigger value="fees" className="px-8 rounded-lg data-[state=active]:bg-white">Fee History</TabsTrigger>
@@ -923,7 +1187,7 @@ function StudentProfile({ student, data, onEdit, onPay, onDownloadReceipt }: { s
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-slate-800">Transaction & Installment History</h3>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="text-xs">
+                <Button onClick={handleExportStatement} size="sm" variant="outline" className="text-xs">
                   <Download size={14} className="mr-1" /> Export Statement
                 </Button>
               </div>
@@ -939,25 +1203,8 @@ function StudentProfile({ student, data, onEdit, onPay, onDownloadReceipt }: { s
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {/* Show specific monthly installments first */}
-                  {student.feeHistory.map((fee) => (
-                    <TableRow key={fee.id} className="hover:bg-slate-50/50 transition-colors">
-                      <TableCell className="py-4">
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-slate-800">Installment: {fee.month} {fee.year}</span>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">Monthly Dues</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-black text-emerald-600">Rs. {(fee.amountPaid || 0).toLocaleString()}</TableCell>
-                      <TableCell className="text-sm text-slate-500">{fee.datePaid || 'N/A'}</TableCell>
-                      <TableCell>
-                        <Badge className="bg-slate-100 text-slate-600 border-none text-[9px]">INT-FEE</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-
-                  {/* Show Ledger Transactions (like Initial Admission Payment) */}
-                  {(student.feeLedger?.transactions || []).map((tx: any) => (
+                  {/* Show Ledger Transactions (Source of Truth + Legacy merged) */}
+                  {getUnifiedTransactions(student).map((tx: any) => (
                     <TableRow key={tx.id} className="hover:bg-slate-50/50 transition-colors bg-slate-50/20">
                       <TableCell className="py-4">
                         <div className="flex flex-col">
@@ -966,16 +1213,20 @@ function StudentProfile({ student, data, onEdit, onPay, onDownloadReceipt }: { s
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-black text-superior-teal">Rs. {(tx.amount || 0).toLocaleString()}</TableCell>
-                      <TableCell className="text-sm text-slate-500">{tx.date}</TableCell>
+                      <TableCell className="text-sm text-slate-500">
+                        {new Date(tx.date).toLocaleDateString()}
+                        {' • '}
+                        <span className="text-[10px]">{new Date(tx.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                      </TableCell>
                       <TableCell>
                         <Badge className="bg-superior-gold/20 text-superior-teal border-none text-[9px]">{tx.receiptId || 'TRANS'}</Badge>
                       </TableCell>
                     </TableRow>
                   ))}
 
-                  {student.feeHistory.length === 0 && (!student.feeLedger?.transactions || student.feeLedger.transactions.length === 0) && (
+                  {getUnifiedTransactions(student).length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={4} className="h-32 text-center text-slate-400 italic">No specific payment records found. Total received is reflected in summary.</TableCell>
+                      <TableCell colSpan={4} className="h-32 text-center text-slate-400 italic font-bold text-sm bg-slate-50 rounded-2xl border border-dashed border-slate-200">No payment records found.</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -1072,6 +1323,27 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
     sessionEndDate: student.sessionEndDate || '',
     academicPart: student.academicPart || 'Part-1'
   });
+
+  const filteredSections = React.useMemo(() => {
+    if (!data.settings?.predefinedSections) return [];
+    
+    return data.settings.predefinedSections.filter(sec => {
+      const matchesGender = sec.gender === student.gender || sec.gender === 'Co-ed';
+      if (!matchesGender) return false;
+
+      const sp = sec.program.toLowerCase();
+      const cat = (student.category || '').toLowerCase();
+      
+      let programMatch = false;
+      if (cat.includes('inter') && sp === 'inter') programMatch = true;
+      else if (cat.includes('bs') && sp === 'bs program') programMatch = true;
+      else if (cat.includes('dit') && sp === 'dit') programMatch = true;
+      else if (cat.includes('uk') && sp === 'uk level 3') programMatch = true;
+      else if (sp === 'other') programMatch = true;
+
+      return matchesGender && programMatch;
+    });
+  }, [data.settings?.predefinedSections, student.gender, student.category]);
 
   const handleGroupChange = (groupName: string) => {
     const group = ACADEMIC_GROUPS.find(g => g.name === groupName);
@@ -1206,8 +1478,17 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Session (e.g. 2026-28)</Label>
-                <Input value={formData.session || ""} onChange={e => setFormData({...formData, session: e.target.value})} />
+                <Label>Session (Academic Period)</Label>
+                <Select value={formData.session || ""} onValueChange={v => setFormData({...formData, session: v})}>
+                  <SelectTrigger><SelectValue placeholder="Select Session" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2023-2025">2023-2025</SelectItem>
+                    <SelectItem value="2024-2026">2024-2026</SelectItem>
+                    <SelectItem value="2025-2027">2025-2027</SelectItem>
+                    <SelectItem value="2026-28">2026-28</SelectItem>
+                    <SelectItem value="2027-2029">2027-2029</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Session Start</Label>
@@ -1269,7 +1550,29 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
           </div>
           <div className="space-y-2">
             <Label>Section</Label>
-            <Input value={formData.section || ""} onChange={e => setFormData({...formData, section: e.target.value.toUpperCase()})} />
+            <Select value={formData.section || ""} onValueChange={v => {
+              const sectionObj = filteredSections.find(sec => sec.name === v);
+              const newFormData = { ...formData, section: v };
+              if (sectionObj && sectionObj.class) {
+                newFormData.session = sectionObj.class;
+              }
+              setFormData(newFormData);
+            }}>
+              <SelectTrigger><SelectValue placeholder="Select Section" /></SelectTrigger>
+              <SelectContent>
+                {filteredSections.map(sec => (
+                  <SelectItem key={sec.id} value={sec.name}>{sec.name} ({sec.class})</SelectItem>
+                ))}
+                <SelectItem value="Other">Other / Manual</SelectItem>
+              </SelectContent>
+            </Select>
+            {formData.section === 'Other' && (
+              <Input 
+                className="mt-2"
+                placeholder="Enter manual section name" 
+                onChange={e => setFormData({...formData, section: e.target.value.toUpperCase()})} 
+              />
+            )}
           </div>
         </div>
         <div className="space-y-2">
@@ -1332,158 +1635,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
   );
 }
 
-function PayFeeDialog({ student, data, initialMonth, initialYear, onClose }: { student: Student, data: any, initialMonth?: string, initialYear?: number, onClose?: () => void }) {
-  const [amount, setAmount] = useState(String(student.monthlyFee || 0));
-  const [month, setMonth] = useState(initialMonth || 'March');
-  const [year, setYear] = useState(initialYear || 2026);
 
-  const lastPayment = student.feeLedger?.transactions?.[0];
-  const totalPaid = student.feeLedger?.totalReceived || student.feeReceived || 0;
-  const totalPackage = student.totalPackage || student.feeLedger?.totalPackage || 0;
-  const remainingBal = totalPackage - totalPaid;
-  const paidCount = Math.floor(totalPaid / (student.monthlyFee || 1));
-  const totalCount = student.totalInstallments || 12;
-
-  const handlePay = () => {
-    const paid = Number(amount);
-    if (paid <= 0) {
-      toast.error("Please enter a valid amount");
-      return;
-    }
-
-    const payment: FeePayment = {
-      id: `pay-${Date.now()}`,
-      month,
-      year,
-      amountDue: student.monthlyFee,
-      amountPaid: paid,
-      datePaid: new Date().toISOString().split('T')[0],
-      status: paid >= student.monthlyFee ? 'Paid' : 'Partial'
-    };
-
-    data.recordFeePayment(student.id, payment, data.currentUser?.email);
-    if (onClose) onClose();
-  };
-
-  return (
-    <DialogContent className="max-w-md">
-      <DialogHeader>
-        <DialogTitle className="text-2xl font-serif text-superior-teal tracking-tight flex items-center gap-2">
-          <Wallet size={24} /> Record Installment
-        </DialogTitle>
-        <DialogDescription>Review student financial history before confirming payment</DialogDescription>
-      </DialogHeader>
-      
-      <div className="space-y-6 py-2">
-        <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
-          <div className="w-12 h-12 rounded-xl bg-superior-teal/10 flex items-center justify-center text-superior-teal font-black text-xl">
-            {student.fullName.charAt(0)}
-          </div>
-          <div>
-            <p className="font-black text-slate-800 tracking-tight">{student.fullName}</p>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{student.id}</p>
-          </div>
-        </div>
-
-        {/* Financial Diagnostics */}
-        <div className="bg-slate-900 text-white rounded-2xl p-5 space-y-4 shadow-xl">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-[9px] uppercase font-black text-white/40 tracking-widest mb-1">Total Package</p>
-              <p className="text-lg font-bold text-superior-gold">Rs. {totalPackage.toLocaleString()}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[9px] uppercase font-black text-white/40 tracking-widest mb-1">Remaining Balance</p>
-              <p className="text-lg font-bold text-rose-400">Rs. {remainingBal.toLocaleString()}</p>
-            </div>
-          </div>
-          <div className="h-px bg-white/10" />
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-[9px] uppercase font-black text-white/40 tracking-widest mb-1">Last Payment</p>
-              <p className="text-sm font-semibold">{lastPayment ? lastPayment.date : 'None'}</p>
-              {lastPayment && (
-                <p className="text-[10px] text-emerald-400">By: {lastPayment.recordedBy || 'Admin'}</p>
-              )}
-            </div>
-            <div className="text-right">
-              <p className="text-[9px] uppercase font-black text-white/40 tracking-widest mb-1">Installments Tracking</p>
-              <p className="text-sm font-semibold text-superior-gold">{paidCount} / {totalCount} months paid</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label className="text-[11px] font-bold uppercase text-slate-500">Target Month</Label>
-            <Select value={month} onValueChange={setMonth}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map(m => (
-                  <SelectItem key={m} value={m}>{m}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-[11px] font-bold uppercase text-slate-500">Target Year</Label>
-            <Select value={year.toString()} onValueChange={(v) => setYear(Number(v))}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="2025">2025</SelectItem>
-                <SelectItem value="2026">2026</SelectItem>
-                <SelectItem value="2027">2027</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label className="text-[11px] font-bold uppercase text-slate-500">Amount to Receive (Rs.)</Label>
-          <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black">Rs.</span>
-            <Input 
-              type="number" 
-              className="pl-12 h-14 text-xl font-black bg-slate-50 border-2 border-slate-100 focus:border-superior-teal rounded-2xl" 
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-          </div>
-          <div className="flex justify-between items-center px-1">
-            <p className="text-[10px] text-slate-400 font-bold uppercase">Standard Installment: Rs. {(student.monthlyFee || 0).toLocaleString()}</p>
-            <Badge variant="outline" className="text-[10px] border-emerald-100 text-emerald-600 font-bold">Plan Verified</Badge>
-          </div>
-        </div>
-
-        <div className="pt-4 flex gap-3">
-          <Button variant="ghost" className="flex-1 font-bold h-12" type="button" onClick={onClose}>Cancel</Button>
-          <Button className="flex-1 bg-superior-teal text-white hover:bg-superior-teal/90 font-bold h-12 rounded-xl shadow-lg shadow-superior-teal/20" onClick={handlePay}>
-            Confirm Payment
-          </Button>
-        </div>
-      </div>
-    </DialogContent>
-  );
-}
-
-function PerformanceStat({ label, value, color }: { label: string, value: string, color: string }) {
-  const colors: any = {
-    teal: "bg-superior-teal/5 text-superior-teal border-superior-teal/10",
-    gold: "bg-superior-gold/10 text-superior-gold border-superior-gold/20",
-    slate: "bg-slate-50 text-slate-600 border-slate-200"
-  };
-
-  return (
-    <div className={cn("p-6 rounded-2xl border text-center", colors[color])}>
-      <p className="text-[10px] uppercase font-bold mb-1 opacity-70">{label}</p>
-      <p className="text-3xl font-bold">{value}</p>
-    </div>
-  );
-}
 
 function InfoCard({ title, value, icon: Icon }: { title: string, value: string, icon?: any }) {
   return (

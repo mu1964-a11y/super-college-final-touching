@@ -47,8 +47,8 @@ export default function NotificationPanel({
       <PopoverTrigger className="relative flex items-center justify-center p-2.5 rounded-2xl bg-slate-50 border border-slate-100 text-slate-400 hover:text-superior-teal hover:bg-white transition-all group">
         <Bell size={24} className="group-hover:rotate-12 transition-transform" />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-superior-gold text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white animate-in zoom-in-50">
-            {unreadCount}
+          <span className="absolute -top-1 -right-1 w-auto min-w-5 h-5 px-1.5 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white animate-in zoom-in-50">
+            {unreadCount > 999 ? '999+' : unreadCount}
           </span>
         )}
       </PopoverTrigger>

@@ -10,7 +10,6 @@ import {
   Users,
   AlertCircle,
   Clock,
-  Filter,
   MoreHorizontal,
   CheckCircle2,
   Plus
@@ -61,6 +60,8 @@ import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 
+
+import { getUnifiedTransactions } from '../utils/fee';
 import { useDebounce } from '../hooks/useDebounce';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -68,6 +69,10 @@ export default function FeeManagementView({ data, gender, program }: { data: any
   const [searchTerm, setSearchTerm] = React.useState('');
   const debouncedSearch = useDebounce(searchTerm, 300);
   const [statusFilter, setStatusFilter] = React.useState('all');
+  const [genderFilter, setGenderFilter] = React.useState<string>(gender || 'all');
+  const [groupFilter, setGroupFilter] = React.useState('all');
+  const [sectionFilter, setSectionFilter] = React.useState('all');
+  const [activeTab, setActiveTab] = React.useState('collect');
   const [selectedStudent, setSelectedStudent] = React.useState<any>(null);
   const [isPaymentOpen, setIsPaymentOpen] = React.useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
@@ -119,10 +124,12 @@ export default function FeeManagementView({ data, gender, program }: { data: any
           gender: derivedGender,
           category: a.category || '',
           group: a.group || '',
+          section: a.section || '',
           totalPackage: a.totalPackage || 0,
           feeReceived: a.feeReceived || 0,
           status: 'Active',
-          feeHistory: a.feeHistory || []
+          feeHistory: a.feeHistory || [],
+          feeLedger: a.feeLedger || null
         });
       }
     });
@@ -142,33 +149,32 @@ export default function FeeManagementView({ data, gender, program }: { data: any
     return raw;
   }, [data.students, data.admissions, program]);
 
-  // 2. Executive Summary Stats (Combined)
-  const executiveStats = useMemo(() => {
-    const totalExpected = allEnrolled.reduce((sum: number, s: any) => sum + (s.totalPackage || 0), 0);
-    const totalReceived = allEnrolled.reduce((sum: number, s: any) => sum + (s.feeReceived || 0), 0);
-    const boysFiltered = allEnrolled.filter((s: any) => s.gender === 'Male');
-    const girlsFiltered = allEnrolled.filter((s: any) => s.gender === 'Female');
-    const boysExpected = boysFiltered.reduce((sum: number, s: any) => sum + (s.totalPackage || 0), 0);
-    const boysReceived = boysFiltered.reduce((sum: number, s: any) => sum + (s.feeReceived || 0), 0);
-    const girlsExpected = girlsFiltered.reduce((sum: number, s: any) => sum + (s.totalPackage || 0), 0);
-    const girlsReceived = girlsFiltered.reduce((sum: number, s: any) => sum + (s.feeReceived || 0), 0);
-
+  const globalStats = useMemo(() => {
+    const students = data?.students || [];
+    const allBoys = students.filter((s: any) => s.gender === 'Male');
+    const allGirls = students.filter((s: any) => s.gender === 'Female');
+    const allDIT = students.filter((s: any) => {
+      const identifier = (`${s.category || ''} ${s.group || ''}`).toLowerCase();
+      return identifier.includes('dit');
+    });
+    
     return {
-      totalExpected,
-      totalReceived,
-      boys: { expected: boysExpected, received: boysReceived, count: boysFiltered.length },
-      girls: { expected: girlsExpected, received: girlsReceived, count: girlsFiltered.length },
-      collectionRate: totalExpected > 0 ? (totalReceived / totalExpected) * 100 : 0
+      totalStudents: students.length,
+      totalReceived: students.reduce((sum: number, s: any) => sum + (s.feeReceived || 0), 0),
+      totalExpected: students.reduce((sum: number, s: any) => sum + (s.totalPackage || 0), 0),
+      boys: allBoys.length,
+      girls: allGirls.length,
+      dit: allDIT.length,
     };
-  }, [allEnrolled]);
+  }, [data?.students]);
 
   const students = useMemo(() => {
     return allEnrolled.filter((s: any) => {
       let matchesGender = true;
-      if (gender) matchesGender = s.gender === gender;
+      if (genderFilter !== 'all') matchesGender = s.gender === genderFilter;
       return matchesGender;
     });
-  }, [allEnrolled, gender]);
+  }, [allEnrolled, genderFilter]);
   
   const stats = useMemo(() => {
     const totalExpected = students.reduce((sum: number, s: any) => sum + (s.totalPackage || 0), 0);
@@ -194,7 +200,9 @@ export default function FeeManagementView({ data, gender, program }: { data: any
       return;
     }
 
-    const payDate = new Date(paymentDate);
+    const currentDate = new Date();
+    const [year, month, day] = paymentDate.split('-');
+    const payDate = new Date(Number(year), Number(month) - 1, Number(day), currentDate.getHours(), currentDate.getMinutes(), currentDate.getSeconds());
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     
     await data.recordFeePayment(selectedStudent.id, {
@@ -284,6 +292,42 @@ export default function FeeManagementView({ data, gender, program }: { data: any
     XLSX.writeFile(wb, `fee_export_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
+  const handlePrintFeeVouchers = () => {
+    if (filteredStudents.length === 0) {
+      toast.error('No students carefully selected to print vouchers');
+      return;
+    }
+    const doc = new jsPDF('p', 'pt', 'a4');
+    filteredStudents.forEach((student: any, index: number) => {
+      if (index > 0) doc.addPage();
+      
+      doc.setFontSize(20);
+      doc.setTextColor(5, 59, 50);
+      doc.text(data.settings?.collegeName || 'SUPERIOR GROUP OF COLLEGES', 40, 60);
+
+      doc.setFontSize(14);
+      doc.setTextColor(0, 0, 0);
+      doc.text('FEE VOUCHER', 40, 90);
+
+      doc.setFontSize(10);
+      doc.text(`Student Name: ${student.fullName}`, 40, 130);
+      doc.text(`Father Name: ${student.fatherName}`, 40, 150);
+      doc.text(`Session: ${student.session || 'N/A'}`, 40, 170);
+      doc.text(`Program: ${student.group || student.category || 'N/A'}`, 40, 190);
+      doc.text(`Section: ${student.section || 'All'}`, 40, 210);
+
+      doc.text(`Total Package: Rs. ${(student.totalPackage || 0).toLocaleString()}`, 300, 130);
+      doc.text(`Received: Rs. ${(student.feeReceived || 0).toLocaleString()}`, 300, 150);
+      doc.text(`Outstanding Balance: Rs. ${((student.totalPackage || 0) - (student.feeReceived || 0)).toLocaleString()}`, 300, 170);
+
+      doc.setDrawColor(200, 200, 200);
+      doc.line(40, 230, 550, 230);
+    });
+
+    doc.save(`Fee_Vouchers_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success("Fee Vouchers downloaded!");
+  };
+
   const generateReceipt = (student: any, payment: any) => {
     const doc = new jsPDF();
     
@@ -316,8 +360,8 @@ export default function FeeManagementView({ data, gender, program }: { data: any
       startY: 95,
       head: [['Description', 'Amount']],
       body: [
-        [`Fee Installment (${payment.month} ${payment.year})`, `Rs. ${payment.amountPaid.toLocaleString()}`],
-        ['Total Received', `Rs. ${payment.amountPaid.toLocaleString()}`]
+        [`Fee Installment (${payment.month} ${payment.year})`, `Rs. ${(payment.amountPaid || 0).toLocaleString()}`],
+        ['Total Received', `Rs. ${(payment.amountPaid || 0).toLocaleString()}`]
       ],
       headStyles: { fillColor: [16, 185, 129] }
     });
@@ -325,9 +369,9 @@ export default function FeeManagementView({ data, gender, program }: { data: any
     const finalY = (doc as any).lastAutoTable.finalY + 10;
     
     // Footer Stats
-    doc.text(`Total Package: Rs. ${student.totalPackage.toLocaleString()}`, 20, finalY);
-    doc.text(`Fee Received: Rs. ${(student.feeReceived + payment.amountPaid).toLocaleString()}`, 20, finalY + 8);
-    doc.text(`Remaining Balance: Rs. ${(student.totalPackage - (student.feeReceived + payment.amountPaid)).toLocaleString()}`, 20, finalY + 16);
+    doc.text(`Total Package: Rs. ${(student.totalPackage || 0).toLocaleString()}`, 20, finalY);
+    doc.text(`Fee Received: Rs. ${((student.feeReceived || 0) + (payment.amountPaid || 0)).toLocaleString()}`, 20, finalY + 8);
+    doc.text(`Remaining Balance: Rs. ${((student.totalPackage || 0) - ((student.feeReceived || 0) + (payment.amountPaid || 0))).toLocaleString()}`, 20, finalY + 16);
     
     // Time and Collected By
     doc.text(`Recorded Date & Time: ${new Date(payment.datePaid || Date.now()).toLocaleString()}`, 20, finalY + 30);
@@ -370,13 +414,17 @@ export default function FeeManagementView({ data, gender, program }: { data: any
     doc.text(`Father's Name: ${student.fatherName}`, 20, 76);
     doc.text(`Student ID: ${student.id}`, 20, 84);
     
-    const sortedHistory = [...(student.feeHistory || [])].sort((a: any, b: any) => new Date(a.datePaid).getTime() - new Date(b.datePaid).getTime());
-    const body = sortedHistory.map((h: any) => [
-      new Date(h.datePaid).toLocaleDateString(),
-      h.receiptId || 'N/A',
-      (h.feeType || `Installment (${h.month} ${h.year})`) + (h.collectedBy ? `\n(By: ${h.collectedBy})` : ''),
-      `Rs. ${h.amountPaid.toLocaleString()}`
-    ]);
+    const unified = getUnifiedTransactions(student);
+    const sortedHistory = [...unified].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const body = sortedHistory.map((h: any) => {
+      const d = new Date(h.date);
+      return [
+        `${d.toLocaleDateString()}\n${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`,
+        h.receiptId || 'N/A',
+        (h.description || 'Fee Installment') + (h.recordedBy ? `\n(By: ${h.recordedBy})` : ''),
+        `Rs. ${(h.amount || 0).toLocaleString()}`
+      ];
+    });
 
     // Payment Table
     autoTable(doc, {
@@ -401,6 +449,10 @@ export default function FeeManagementView({ data, gender, program }: { data: any
     toast.success("Statement downloaded!");
   };
 
+  const sectionOptions = useMemo(() => {
+    return Array.from(new Set(data?.settings?.predefinedSections?.map((s: any) => s.name).filter(Boolean))) as string[];
+  }, [data?.settings?.predefinedSections]);
+
   const filteredStudents = useMemo(() => {
     return students.filter((s: any) => {
       const nameMatch = (s.fullName || s.full_name || '').toLowerCase().includes(debouncedSearch.toLowerCase());
@@ -411,19 +463,25 @@ export default function FeeManagementView({ data, gender, program }: { data: any
       const balance = (s.totalPackage || 0) - (s.feeReceived || 0);
       const received = s.feeReceived || 0;
       
+      let effectiveStatus = statusFilter;
+      if (activeTab === 'defaulters') effectiveStatus = 'not-paid';
+      
       // User Request Filters:
       // - Paid (Full payment)
       // - Pending Installments (Some paid, more to go)
       // - Not Paid at all (received = 0)
       const matchesStatus = 
-        statusFilter === 'all' ||
-        (statusFilter === 'paid' && balance <= 0 && received > 0) ||
-        (statusFilter === 'pending' && balance > 0 && received > 0) ||
-        (statusFilter === 'not-paid' && received <= 0);
+        effectiveStatus === 'all' ||
+        (effectiveStatus === 'paid' && balance <= 0 && received > 0) ||
+        (effectiveStatus === 'pending' && balance > 0 && received > 0) ||
+        (effectiveStatus === 'not-paid' && received <= 0);
 
-      return matchesSearch && matchesStatus;
+      const matchesGroup = groupFilter === 'all' || (s.group || '').toLowerCase().includes(groupFilter.toLowerCase());
+      const matchesSection = sectionFilter === 'all' || (s.section || '').trim().toLowerCase() === sectionFilter.trim().toLowerCase();
+
+      return matchesSearch && matchesStatus && matchesGroup && matchesSection;
     });
-  }, [students, debouncedSearch, statusFilter]);
+  }, [students, debouncedSearch, statusFilter, activeTab, groupFilter, sectionFilter]);
 
   const rowVirtualizer = useVirtualizer({
     count: filteredStudents.length,
@@ -432,70 +490,108 @@ export default function FeeManagementView({ data, gender, program }: { data: any
     overscan: 5,
   });
 
-  const programLabel = useMemo(() => {
-    if (program === 'ukl3') return 'UK Level 3';
-    if (program === 'dit') return 'DIT Program';
-    if (program === 'bs') return 'BS Program';
-    return 'FSC';
-  }, [program]);
-
   return (
-    <div className="space-y-8 pb-10">
-      {/* Executive Financial Summary */}
-      <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-2xl shadow-slate-900/20">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-superior-gold/10 rounded-full blur-3xl -mr-20 -mt-20" />
-        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
-          <div>
-            <h2 className="text-sm font-black uppercase tracking-[0.3em] text-superior-gold mb-2 italic">Institutional Treasury Control</h2>
-            <h1 className="text-4xl font-serif font-black tracking-tight">{programLabel !== 'FSC' ? `${programLabel} ` : ''}Executive Financial Summary</h1>
-          </div>
-          <div className="flex bg-white/5 backdrop-blur-md rounded-2xl p-4 border border-white/10 gap-8">
-            <div className="text-center">
-              <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-1 font-sans">Combined Revenue</p>
-              <h4 className="text-2xl font-black text-white">Rs. {executiveStats.totalReceived.toLocaleString()}</h4>
-            </div>
-            <Separator orientation="vertical" className="bg-white/10 h-10 self-center" />
-            <div className="text-center">
-              <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-1 font-sans">Collection Rate</p>
-              <h4 className="text-2xl font-black text-emerald-400">{executiveStats.collectionRate.toFixed(1)}%</h4>
-            </div>
-          </div>
+    <div className="space-y-6 pb-10">
+      {/* Global Billing Audit - Single Line Ticker */}
+      <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-3 flex items-center gap-4 overflow-x-auto whitespace-nowrap hide-scrollbar">
+        <div className="flex items-center gap-2 text-emerald-700 font-black text-[10px] uppercase tracking-widest shrink-0 bg-emerald-100/50 py-1 px-3 rounded-lg">
+          <Clock size={12} /> Global Billing Audit
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
-          <div className="bg-white/5 rounded-2xl p-4 border border-white/10 flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400">
-                <Users size={16} />
-              </div>
-              <span className="text-xs font-black uppercase tracking-widest text-white/80">{programLabel === 'FSC' ? 'Boys Section' : `${programLabel} Boys`} <span className="text-white/40 ml-2">({executiveStats.boys.count} Students)</span></span>
-            </div>
-            <div className="text-right">
-              <p className="text-lg font-black italic">Rs. {executiveStats.boys.received.toLocaleString()}</p>
-              <p className="text-[9px] text-white/30 uppercase font-bold">Of Rs. {executiveStats.boys.expected.toLocaleString()}</p>
-            </div>
+        {students.flatMap((s: any) => getUnifiedTransactions(s).map((h: any) => ({ ...h, studentName: s.fullName, student: s }))).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5).map((pay: any, idx: number) => (
+          <div key={idx} className="flex items-center gap-3 text-xs font-bold text-slate-600 shrink-0 border-l border-emerald-200/50 pl-4">
+             <CreditCard size={12} className="text-emerald-400" />
+             <span className="text-emerald-600 font-black">+Rs. {(pay.amount || 0).toLocaleString()}</span>
+             <span>({pay.studentName})</span>
+             <button 
+                onClick={() => generateReceipt(pay.student, { amountPaid: pay.amount, receiptId: pay.receiptId, datePaid: pay.date, collectedBy: pay.recordedBy, feeType: pay.description })}
+                className="text-[9px] font-black uppercase text-slate-400 hover:text-emerald-600 transition-colors bg-white px-2 py-1 rounded shadow-xs"
+             >
+               Receipt
+             </button>
           </div>
-          <div className="bg-white/5 rounded-2xl p-4 border border-white/10 flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-rose-500/20 flex items-center justify-center text-rose-400">
-                <Users size={16} />
-              </div>
-              <span className="text-xs font-black uppercase tracking-widest text-white/80">{programLabel === 'FSC' ? 'Girls Section' : `${programLabel} Girls`} <span className="text-white/40 ml-2">({executiveStats.girls.count} Students)</span></span>
-            </div>
-            <div className="text-right">
-              <p className="text-lg font-black italic">Rs. {executiveStats.girls.received.toLocaleString()}</p>
-              <p className="text-[9px] text-white/30 uppercase font-bold">Of Rs. {executiveStats.girls.expected.toLocaleString()}</p>
-            </div>
-          </div>
-        </div>
+        ))}
+        {students.flatMap((s: any) => getUnifiedTransactions(s)).length === 0 && (
+          <span className="text-xs font-bold text-slate-400">No recent transactions</span>
+        )}
       </div>
 
-      {/* Header */}
+      {/* Executive Financial Summary & Institutional Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+            <Card className="rounded-2xl border-none shadow-xl shadow-slate-200/50 overflow-hidden relative group bg-gradient-to-br from-white to-slate-50 h-full">
+              <CardContent className="p-4 flex flex-col justify-between h-full">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-8 h-8 rounded-xl bg-superior-teal/10 flex items-center justify-center text-superior-teal">
+                    <Wallet size={16} />
+                  </div>
+                  <Badge className="bg-superior-teal/10 text-superior-teal border-none font-black text-[9px] uppercase">Target</Badge>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Expected Revenue</p>
+                  <h3 className="text-lg font-black text-slate-900 leading-none italic">Rs. {stats.totalExpected.toLocaleString()}</h3>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+            <Card className="rounded-2xl border-none shadow-xl shadow-slate-200/50 overflow-hidden relative group bg-gradient-to-br from-white to-emerald-50 h-full">
+              <CardContent className="p-4 flex flex-col justify-between h-full">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+                    <ArrowUpRight size={16} />
+                  </div>
+                  <Badge className="bg-emerald-500 text-white border-none font-black text-[9px] uppercase">{stats.collectionRate.toFixed(0)}% Rate</Badge>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Received</p>
+                  <h3 className="text-lg font-black text-emerald-600 leading-none italic">Rs. {stats.totalReceived.toLocaleString()}</h3>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+            <Card className="rounded-2xl border-none shadow-xl shadow-slate-200/50 overflow-hidden relative group bg-gradient-to-br from-white to-rose-50 h-full">
+              <CardContent className="p-4 flex flex-col justify-between h-full">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-8 h-8 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-600">
+                    <ArrowDownRight size={16} />
+                  </div>
+                  <Badge variant="destructive" className="bg-rose-500 text-white border-none font-black text-[9px] uppercase">Arrears</Badge>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Outstanding</p>
+                  <h3 className="text-lg font-black text-rose-600 leading-none italic">Rs. {stats.outstanding.toLocaleString()}</h3>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+            <Card className="rounded-2xl border-none shadow-xl shadow-slate-200/50 overflow-hidden relative group bg-gradient-to-br from-white to-superior-gold/5 h-full">
+              <CardContent className="p-4 flex flex-col justify-between h-full">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-8 h-8 rounded-xl bg-superior-gold/10 flex items-center justify-center text-superior-gold">
+                    <Users size={16} />
+                  </div>
+                  <Badge className="bg-superior-gold text-white border-none font-black text-[9px] uppercase">{stats.defaulters} Defaulters</Badge>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Strength</p>
+                  <h3 className="text-lg font-black text-superior-teal leading-none italic">{stats.totalStudents} Students</h3>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+
+      {/* Header & Controls */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h2 className="text-3xl font-display font-black text-superior-teal tracking-tight flex items-center gap-3 italic">
             <CreditCard size={32} className="text-superior-gold" />
-            {programLabel === 'FSC' ? (gender === 'Male' ? 'Boys Fee Management' : 'Girls Fee Management') : `${programLabel} Fee Management`}
+            Fee Module
           </h2>
           <p className="text-slate-500 mt-1 font-bold tracking-tight">Student Ledger Control & Transaction Verification</p>
         </div>
@@ -505,11 +601,10 @@ export default function FeeManagementView({ data, gender, program }: { data: any
               <Button onClick={() => generateFeeStatement(activeRowStudent)} variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-700 font-black uppercase tracking-widest text-[10px] h-12 px-6 shadow-sm hover:bg-emerald-100 transition-all">
                 <Download size={16} className="mr-2" /> Fee Statement
               </Button>
-              {(activeRowStudent.feeHistory && activeRowStudent.feeHistory.length > 0) && (
+              {(getUnifiedTransactions(activeRowStudent) && getUnifiedTransactions(activeRowStudent).length > 0) && (
                 <Button 
                   onClick={() => {
-                    const sorted = [...activeRowStudent.feeHistory].sort((a: any, b: any) => new Date(b.datePaid).getTime() - new Date(a.datePaid).getTime());
-                    generateReceipt(activeRowStudent, sorted[0]);
+                    generateReceipt(activeRowStudent, getUnifiedTransactions(activeRowStudent)[0]);
                   }}
                   variant="outline" 
                   className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-700 font-black uppercase tracking-widest text-[10px] h-12 px-6 shadow-sm hover:bg-emerald-100 transition-all"
@@ -522,6 +617,9 @@ export default function FeeManagementView({ data, gender, program }: { data: any
           <Button onClick={handleExportCSV} variant="outline" className="rounded-xl border-slate-200 font-black uppercase tracking-widest text-[10px] h-12 px-6 shadow-sm hover:bg-slate-50 transition-all">
             <Download size={16} className="mr-2 text-superior-gold" /> Export CSV
           </Button>
+          <Button onClick={handlePrintFeeVouchers} variant="outline" className="rounded-xl border-slate-200 font-black uppercase tracking-widest text-[10px] h-12 px-6 shadow-sm hover:bg-red-50 hover:text-red-600 transition-all">
+            <Download size={16} className="mr-2 text-red-500" /> Print Vouchers
+          </Button>
           <Button onClick={handleExportExcel} variant="outline" className="rounded-xl border-slate-200 font-black uppercase tracking-widest text-[10px] h-12 px-6 shadow-sm hover:bg-slate-50 transition-all">
             <Download size={16} className="mr-2 text-emerald-600" /> Export Excel
           </Button>
@@ -531,85 +629,72 @@ export default function FeeManagementView({ data, gender, program }: { data: any
         </div>
       </div>
 
-      {/* Institutional Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-          <Card className="rounded-[2rem] border-none shadow-xl shadow-slate-200/50 overflow-hidden relative group bg-gradient-to-br from-white to-slate-50">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-superior-teal/5 rounded-bl-[4rem] group-hover:scale-110 transition-transform" />
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-superior-teal/10 flex items-center justify-center text-superior-teal shadow-inner">
-                  <Wallet size={24} />
-                </div>
-                <Badge className="bg-superior-teal/10 text-superior-teal border-none font-black text-[10px] uppercase">Target</Badge>
-              </div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Expected Revenue</p>
-              <h3 className="text-2xl font-black text-slate-900 leading-none italic">Rs. {stats.totalExpected.toLocaleString()}</h3>
-            </CardContent>
-          </Card>
-        </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-          <Card className="rounded-[2rem] border-none shadow-xl shadow-slate-200/50 overflow-hidden relative group bg-gradient-to-br from-white to-emerald-50">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-bl-[4rem] group-hover:scale-110 transition-transform" />
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 shadow-inner">
-                  <ArrowUpRight size={24} />
-                </div>
-                <Badge className="bg-emerald-500 text-white border-none font-black text-[10px] uppercase">{stats.collectionRate.toFixed(0)}% Rate</Badge>
-              </div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Received</p>
-              <h3 className="text-2xl font-black text-emerald-600 leading-none italic">Rs. {stats.totalReceived.toLocaleString()}</h3>
-            </CardContent>
-          </Card>
-        </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-          <Card className="rounded-[2rem] border-none shadow-xl shadow-slate-200/50 overflow-hidden relative group bg-gradient-to-br from-white to-rose-50">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-bl-[4rem] group-hover:scale-110 transition-transform" />
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-rose-500/10 flex items-center justify-center text-rose-600 shadow-inner">
-                  <ArrowDownRight size={24} />
-                </div>
-                <Badge variant="destructive" className="bg-rose-500 text-white border-none font-black text-[10px] uppercase">Arrears</Badge>
-              </div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Outstanding</p>
-              <h3 className="text-2xl font-black text-rose-600 leading-none italic">Rs. {stats.outstanding.toLocaleString()}</h3>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-          <Card className="rounded-[2rem] border-none shadow-xl shadow-slate-200/50 overflow-hidden relative group bg-gradient-to-br from-white to-superior-gold/5">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-superior-gold/5 rounded-bl-[4rem] group-hover:scale-110 transition-transform" />
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-superior-gold/10 flex items-center justify-center text-superior-gold shadow-inner">
-                  <Users size={24} />
-                </div>
-                <Badge className="bg-superior-gold text-white border-none font-black text-[10px] uppercase">{stats.defaulters} Defaulters</Badge>
-              </div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Strength</p>
-              <h3 className="text-2xl font-black text-superior-teal leading-none italic">{stats.totalStudents} Students</h3>
-            </CardContent>
-          </Card>
-        </motion.div>
+      {/* Tab Navigation Area */}
+      <div className="flex border-b border-slate-200 hide-scrollbar overflow-x-auto w-full mb-6">
+        {['collect', 'defaulters'].map((tab) => (
+          <button 
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`pb-4 px-8 font-black text-[11px] uppercase tracking-widest whitespace-nowrap border-b-2 transition-all ${activeTab === tab ? 'border-superior-teal text-superior-teal' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+          >
+            {tab === 'collect' && 'Collect Fee'}
+            {tab === 'defaulters' && 'Defaulters'}
+          </button>
+        ))}
       </div>
 
       {/* Main Content Area */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="rounded-[2.5rem] border-slate-100 shadow-sm overflow-hidden min-h-[600px]">
+      <div className="space-y-6">
+        <Card className="rounded-[2.5rem] border-slate-100 shadow-sm overflow-hidden min-h-[600px]">
             <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-8">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
-                  <CardTitle className="text-xl font-display font-black text-slate-800 uppercase tracking-tight italic">Enrollment Billing Hub</CardTitle>
+                  <CardTitle className="text-xl font-display font-black text-slate-800 uppercase tracking-tight italic">
+                    {activeTab === 'collect' && 'Collect Fee Hub'}
+                    {activeTab === 'defaulters' && 'Defaulters List'}
+                  </CardTitle>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">Real-time Individual Transaction Access</p>
                 </div>
                 <div className="flex items-center gap-3 w-full md:w-auto">
-                  <div className="relative flex-1 md:w-64">
+                  <Select value={sectionFilter} onValueChange={setSectionFilter}>
+                    <SelectTrigger className="w-28 rounded-xl border-slate-100 h-10 font-bold text-xs uppercase tracking-tighter">
+                      <SelectValue placeholder="Section" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-100 shadow-xl">
+                      <SelectItem value="all" className="font-bold text-xs">All Sections</SelectItem>
+                      {sectionOptions.map(sec => (
+                        <SelectItem key={sec} value={sec} className="font-bold text-xs">{sec}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={genderFilter} onValueChange={setGenderFilter}>
+                    <SelectTrigger className="w-28 rounded-xl border-slate-100 h-10 font-bold text-xs uppercase tracking-tighter">
+                      <SelectValue placeholder="Gender" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-100 shadow-xl">
+                      <SelectItem value="all" className="font-bold text-xs">All Genders</SelectItem>
+                      <SelectItem value="Male" className="font-bold text-xs">Boys Only</SelectItem>
+                      <SelectItem value="Female" className="font-bold text-xs">Girls Only</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={groupFilter} onValueChange={setGroupFilter}>
+                    <SelectTrigger className="w-28 rounded-xl border-slate-100 h-10 font-bold text-xs uppercase tracking-tighter">
+                      <SelectValue placeholder="Group" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-100 shadow-xl">
+                      <SelectItem value="all" className="font-bold text-xs">All Groups</SelectItem>
+                      <SelectItem value="DIT" className="font-bold text-xs">DIT</SelectItem>
+                      <SelectItem value="Pre-Medical" className="font-bold text-xs">Pre-Medical</SelectItem>
+                      <SelectItem value="Pre-Engineering" className="font-bold text-xs">Pre-Engineering</SelectItem>
+                      <SelectItem value="ICS" className="font-bold text-xs">ICS</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <div className="relative flex-1 md:w-48">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
                     <Input 
                       placeholder="Search name or ID..." 
@@ -618,35 +703,24 @@ export default function FeeManagementView({ data, gender, program }: { data: any
                       onChange={(e) => setSearchTerm(e.target.value)}
                     />
                   </div>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-32 rounded-xl border-slate-100 h-10 font-bold text-xs uppercase tracking-tighter">
-                      <Filter className="w-4 h-4 mr-2" />
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-xl border-slate-100 shadow-xl">
-                      <SelectItem value="all" className="font-bold text-xs">All Status</SelectItem>
-                      <SelectItem value="paid" className="font-bold text-xs">Full Paid</SelectItem>
-                      <SelectItem value="pending" className="font-bold text-xs">Pending Installments</SelectItem>
-                      <SelectItem value="not-paid" className="font-bold text-xs">Not Paid Yet</SelectItem>
-                    </SelectContent>
-                  </Select>
+
                 </div>
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div ref={parentRef} className="max-h-[600px] overflow-auto">
-                <Table>
-                  <TableHeader className="bg-slate-50/30 sticky top-0 z-10 shadow-sm border-b border-slate-100">
-                    <TableRow className="border-none">
-                      <TableHead className="font-black text-[10px] uppercase tracking-widest pl-8 h-12">Student Profile</TableHead>
-                      <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Total Package</TableHead>
-                      <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Total Received</TableHead>
-                      <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Current Balance</TableHead>
-                      <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Progress</TableHead>
-                      <TableHead className="font-black text-[10px] uppercase tracking-widest text-right pr-8 h-12">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                <div ref={parentRef} className="max-h-[600px] overflow-auto">
+                  <Table>
+                    <TableHeader className="bg-slate-50/50 sticky top-0 z-10 shadow-sm border-b border-slate-100">
+                      <TableRow className="border-none">
+                        <TableHead className="font-black text-[10px] uppercase tracking-widest pl-8 h-12">Student Profile</TableHead>
+                        <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Total Package</TableHead>
+                        <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Total Received</TableHead>
+                        <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Current Balance</TableHead>
+                        <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">Progress</TableHead>
+                        <TableHead className="font-black text-[10px] uppercase tracking-widest text-right pr-8 h-12">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                     {rowVirtualizer.getVirtualItems().length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6} className="h-64 text-center">
@@ -678,9 +752,26 @@ export default function FeeManagementView({ data, gender, program }: { data: any
                               )}
                             >
                               <TableCell className="pl-8 py-4">
-                                <div>
-                                  <p className="font-black text-slate-700 leading-none mb-1 group-hover:text-superior-teal transition-colors italic">{student.fullName}</p>
-                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{student.id}</p>
+                                <div className="flex items-center gap-4">
+                                  <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center text-sm font-black text-superior-teal overflow-hidden border border-slate-200">
+                                    {student.photo ? (
+                                      <img
+                                        src={student.photo}
+                                        alt=""
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                           const target = e.target as HTMLImageElement;
+                                           target.style.display = 'none';
+                                        }}
+                                      />
+                                    ) : (
+                                      student.fullName.charAt(0)
+                                    )}
+                                  </div>
+                                  <div>
+                                    <p className="font-black text-slate-700 leading-none mb-1 group-hover:text-superior-teal transition-colors italic">{student.fullName}</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{student.id}</p>
+                                  </div>
                                 </div>
                               </TableCell>
                               <TableCell className="font-black text-slate-600 text-[13px]">Rs. {student.totalPackage?.toLocaleString()}</TableCell>
@@ -724,12 +815,11 @@ export default function FeeManagementView({ data, gender, program }: { data: any
                                     >
                                       <Download size={14} /> Download Fee Statement
                                     </DropdownMenuItem>
-                                    {(student.feeHistory && student.feeHistory.length > 0) && (
+                                    {(getUnifiedTransactions(student) && getUnifiedTransactions(student).length > 0) && (
                                       <DropdownMenuItem 
                                         onClick={(e) => { 
                                           e.stopPropagation();
-                                          const sorted = [...student.feeHistory].sort((a: any, b: any) => new Date(b.datePaid).getTime() - new Date(a.datePaid).getTime());
-                                          generateReceipt(student, sorted[0]);
+                                          generateReceipt(student, getUnifiedTransactions(student)[0]);
                                         }}
                                         className="gap-3 p-3 rounded-xl font-black text-xs text-emerald-600 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 uppercase tracking-widest italic"
                                       >
@@ -755,59 +845,6 @@ export default function FeeManagementView({ data, gender, program }: { data: any
             </CardContent>
           </Card>
         </div>
-
-        <div className="space-y-8">
-          <Card className="rounded-[2.5rem] border-slate-100 shadow-sm overflow-hidden group">
-            <CardHeader className="bg-emerald-500/5 border-b border-emerald-500/10 p-6">
-              <CardTitle className="text-lg font-black text-emerald-700 flex items-center gap-2 uppercase tracking-widest text-[11px] italic">
-                <Clock size={18} /> Global Billing Audit
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
-              <div className="space-y-6">
-                {students.slice(0, 10).flatMap((s: any) => (s.feeHistory || []).map((h: any) => ({ ...h, studentName: s.fullName, student: s }))).sort((a: any, b: any) => new Date(b.datePaid).getTime() - new Date(a.datePaid).getTime()).slice(0, 8).map((pay: any, idx: number) => (
-                  <div key={idx} className="flex gap-4 group/item">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0 text-emerald-600 transition-all group-hover/item:bg-emerald-500 group-hover/item:text-white group-hover/item:scale-110">
-                      <CreditCard size={18} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-start">
-                        <p className="text-[13px] font-black text-slate-800 truncate italic">Rs. {pay.amountPaid?.toLocaleString()}</p>
-                        <span className="text-[8px] font-black text-slate-300 uppercase shrink-0">{new Date(pay.datePaid).toLocaleDateString()}</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 font-bold truncate tracking-tight">{pay.studentName}</p>
-                      <button 
-                         onClick={() => generateReceipt(pay.student, pay)}
-                         className="text-[8px] font-black text-emerald-500 uppercase tracking-widest hover:underline mt-1"
-                      >
-                        Download PDF Receipt
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-[2.5rem] bg-superior-teal text-white border-none shadow-2xl shadow-superior-teal/40 overflow-hidden relative">
-            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
-            <CardContent className="p-8 relative z-10 space-y-4">
-              <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center text-superior-gold mb-6 backdrop-blur-sm border border-white/10 group-hover:rotate-12 transition-transform">
-                <CheckCircle2 size={28} />
-              </div>
-              <h3 className="text-xl font-display font-black leading-tight italic">Enrollment Linked To Financial Fulfillment</h3>
-              <p className="text-sm text-white/70 font-bold leading-relaxed tracking-tight">
-                Instantly track payments and generate institutional receipts. Transparency drives institutional trust.
-              </p>
-              <Separator className="bg-white/10" />
-              <div className="flex items-center justify-between pt-2">
-                <span className="text-[10px] font-black uppercase tracking-widest text-superior-gold">Direct Ledger Access:</span>
-                <span className="text-lg font-black italic">{stats.totalStudents} Active</span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
 
       {/* Payment Dialog */}
       <Dialog open={isPaymentOpen} onOpenChange={setIsPaymentOpen}>
@@ -937,7 +974,7 @@ export default function FeeManagementView({ data, gender, program }: { data: any
           </DialogHeader>
           <ScrollArea className="flex-1 mt-6">
             <div className="space-y-4">
-              {(selectedStudent?.feeHistory || []).sort((a: any, b: any) => new Date(b.datePaid).getTime() - new Date(a.datePaid).getTime()).map((h: any, idx: number) => (
+              {getUnifiedTransactions(selectedStudent).map((h: any, idx: number) => (
                 <div key={idx} className="bg-slate-50 rounded-2xl p-6 flex items-center justify-between border border-slate-100 group hover:bg-white hover:shadow-md transition-all">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center text-emerald-500 shadow-sm border border-slate-100 group-hover:bg-emerald-500 group-hover:text-white transition-colors">
@@ -945,18 +982,18 @@ export default function FeeManagementView({ data, gender, program }: { data: any
                     </div>
                     <div>
                       <p className="text-lg font-black italic text-slate-800 leading-none mb-1">
-                        Rs. {h.amountPaid?.toLocaleString()} 
-                        <span className="text-[10px] font-bold text-superior-teal ml-2 uppercase not-italic tracking-widest bg-superior-teal/10 px-2 py-0.5 rounded-md">{h.feeType || 'Tuition Fee Installment'}</span>
+                        Rs. {h.amount?.toLocaleString()} 
+                        <span className="text-[10px] font-bold text-superior-teal ml-2 uppercase not-italic tracking-widest bg-superior-teal/10 px-2 py-0.5 rounded-md">{h.description || 'Tuition Fee Installment'}</span>
                       </p>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">
-                        {new Date(h.datePaid).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })} • {h.receiptId}
-                        {h.collectedBy && <><br/><span className="text-slate-500 opacity-80">Rcvd By: {h.collectedBy}</span></>}
+                        {new Date(h.date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })} • {h.receiptId}
+                        {h.recordedBy && <><br/><span className="text-slate-500 opacity-80">Rcvd By: {h.recordedBy}</span></>}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <Button 
-                      onClick={() => generateReceipt(selectedStudent, h)}
+                      onClick={() => generateReceipt(selectedStudent, { amountPaid: h.amount, receiptId: h.receiptId, datePaid: h.date, collectedBy: h.recordedBy, feeType: h.description })}
                       variant="outline" 
                       className="rounded-xl border-slate-200 h-10 font-black text-[10px] uppercase tracking-widest"
                     >
@@ -964,7 +1001,7 @@ export default function FeeManagementView({ data, gender, program }: { data: any
                     </Button>
                     <Button 
                       onClick={() => {
-                        const msg = `SCJ Receipt: Received Rs. ${h.amountPaid} from ${selectedStudent.fullName} on ${new Date(h.datePaid).toLocaleDateString()}. Balance: Rs. ${selectedStudent.totalPackage - (selectedStudent.feeReceived || 0)}`;
+                        const msg = `SCJ Receipt: Received Rs. ${h.amount} from ${selectedStudent.fullName} on ${new Date(h.date).toLocaleDateString()}. Balance: Rs. ${selectedStudent.feeLedger?.remainingBalance || (selectedStudent.totalPackage - (selectedStudent.feeReceived || 0))}`;
                         window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`);
                       }}
                       className="bg-[#25D366] hover:bg-[#25D366]/90 text-white rounded-xl h-10 font-black text-[10px] uppercase tracking-widest"
@@ -974,7 +1011,7 @@ export default function FeeManagementView({ data, gender, program }: { data: any
                   </div>
                 </div>
               ))}
-              {(selectedStudent?.feeHistory || []).length === 0 && (
+              {getUnifiedTransactions(selectedStudent).length === 0 && (
                 <div className="text-center py-12 opacity-30">
                   <Clock size={48} className="mx-auto mb-4" />
                   <p className="font-bold uppercase tracking-widest text-xs">No Payment Tracks Found</p>

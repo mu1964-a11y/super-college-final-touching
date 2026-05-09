@@ -8,18 +8,18 @@ export const INITIAL_EXPENSES: Expense[] = [];
 export const INITIAL_INCOMES: Income[] = [];
 
 export const ACADEMIC_GROUPS = [
-  { name: 'FSC (Premedical)', subjects: ['Biology', 'Physics', 'Chemistry'] },
-  { name: 'FSC (Pre Engineering)', subjects: ['Math', 'Physics', 'Chemistry'] },
-  { name: 'General Science (Phy, Math, CS)', subjects: ['Physics', 'Math', 'Computer Science'] },
-  { name: 'General Science (Eco, Math, CS)', subjects: ['Economics', 'Math', 'Computer Science'] },
-  { name: 'Humanities (Eco, Isl, CS)', subjects: ['Economics', 'Islamic Studies', 'Computer Science'] },
-  { name: 'Humanities (Eco, Isl, Punjabi)', subjects: ['Economics', 'Islamic Studies', 'Punjabi'] },
-  { name: 'Humanities (Eco, Isl, Education)', subjects: ['Economics', 'Islamic Studies', 'Education'] },
-  { name: 'Humanities (Eco, Isl, H&P Edu)', subjects: ['Economics', 'Islamic Studies', 'Health & Physical Education'] },
-  { name: 'I. Com', subjects: ['Accounting', 'Commerce', 'Economics'] },
-  { name: 'UK Level 3', subjects: ['UK Level 3 Subjects'] },
-  { name: 'DIT', subjects: ['Diploma in IT Subjects'] },
-  { name: 'BS Program', subjects: ['BS Subjects'] }
+  { name: 'FSC (Premedical)', subjects: ['Biology', 'Physics', 'Chemistry'], type: 'Intermediate' },
+  { name: 'FSC (Pre Engineering)', subjects: ['Math', 'Physics', 'Chemistry'], type: 'Intermediate' },
+  { name: 'General Science (Phy, Math, CS)', subjects: ['Physics', 'Math', 'Computer Science'], type: 'Intermediate' },
+  { name: 'General Science (Eco, Math, CS)', subjects: ['Economics', 'Math', 'Computer Science'], type: 'Intermediate' },
+  { name: 'Humanities (Eco, Isl, CS)', subjects: ['Economics', 'Islamic Studies', 'Computer Science'], type: 'Intermediate' },
+  { name: 'Humanities (Eco, Isl, Punjabi)', subjects: ['Economics', 'Islamic Studies', 'Punjabi'], type: 'Intermediate' },
+  { name: 'Humanities (Eco, Isl, Education)', subjects: ['Economics', 'Islamic Studies', 'Education'], type: 'Intermediate' },
+  { name: 'Humanities (Eco, Isl, H&P Edu)', subjects: ['Economics', 'Islamic Studies', 'Health & Physical Education'], type: 'Intermediate' },
+  { name: 'I. Com', subjects: ['Accounting', 'Commerce', 'Economics'], type: 'Intermediate' },
+  { name: 'UK Level 3', subjects: ['UK Level 3 Subjects'], type: 'Vocational' },
+  { name: 'DIT', subjects: ['Diploma in IT Subjects'], type: 'Diploma' },
+  { name: 'BS Program', subjects: ['BS Subjects'], type: 'Degree' }
 ];
 
 export const COMPULSORY_SUBJECTS = ['English', 'Urdu', 'Islamic Studies', 'Pakistan Studies'];
@@ -69,11 +69,12 @@ export const INITIAL_SETTINGS: AppSettings = {
   
   // Module Controls
   enabledModules: ['dashboard', 'leads', 'admissions', 'students', 'staff', 'accounts', 'reports', 'settings', 'academic'],
+  predefinedSections: [],
   
   // System Logic
   autoLeadConversion: false,
   defaulterAlertThreshold: 0,
-  academicSession: '2026-2027',
+  academicSession: '2026-28',
   allowQuickNav: true,
   enableHighlighting: true
 };

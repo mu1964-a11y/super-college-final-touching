@@ -1,0 +1,66 @@
+426:      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+1945:    setFormData((prev) => ({ ...prev, totalPackage: total }));
+1953:        ...prev,
+1990:        ...prev,
+2008:          ...prev,
+2023:      ...prev,
+2172:                    setFormData(prev => ({ ...prev, category: v, gender }));
+2214:                    setFormData(prev => ({ ...prev, fullName: e.target.value }))
+2226:                    setFormData(prev => ({ ...prev, fatherName: e.target.value }))
+2238:                    setFormData(prev => ({ ...prev, bayFormNo: e.target.value }))
+2251:                    setFormData(prev => ({ ...prev, dob: e.target.value }))
+2262:                    setFormData(prev => ({ ...prev, bloodGroup: v }))
+2287:                    setFormData(prev => ({ ...prev, address: e.target.value }))
+2318:                    setFormData(prev => ({ ...prev, contactNumber: e.target.value }))
+2330:                    setFormData(prev => ({ ...prev, fatherContact: e.target.value }))
+2343:                    setFormData(prev => ({ ...prev, email: e.target.value }))
+2394:                    setFormData(prev => ({ ...prev, section: e.target.value.toUpperCase(), }))
+2406:                    setFormData(prev => ({ ...prev, collegeNo: e.target.value }))
+2417:                    setFormData(prev => ({ ...prev, previousClass: v as any }))
+2437:                    setFormData(prev => ({ ...prev, boardRollNo: e.target.value }))
+2450:                    setFormData(prev => ({ ...prev, previousMarks: e.target.value }))
+2462:                    setFormData(prev => ({ ...prev, previousInstitute: e.target.value, }))
+2568:                    setFormData(prev => ({ ...prev, admissionFee: e.target.value }))
+2581:                    setFormData(prev => ({ ...prev, miscFunds: e.target.value }))
+2594:                    setFormData(prev => ({ ...prev, totalFeeFinalized: e.target.value, }))
+2623:                        setFormData(prev => ({ ...prev, feeReceived: e.target.value, }))
+2650:                    setFormData(prev => ({ ...prev, paymentPlan: v }))
+2691:                    setFormData(prev => ({ ...prev, reference: e.target.value }))
+2702:                    setFormData(prev => ({ ...prev, status: v }))
+3373:    setFormData((prev) => ({ ...prev, totalPackage: total }));
+3381:        ...prev,
+3406:        return { ...prev, category: result[0] };
+3527:        ...prev,
+3701:      ...prev,
+3715:          ...prev,
+3796:                  setFormData(prev => ({ ...prev, gender: v as Gender,
+3867:                onValueChange={(v) => setFormData(prev => ({ ...prev, category: v }))}
+3908:                  setFormData(prev => ({ ...prev, section: v, session: newSession }));
+4109:                            setFormData(prev => ({ ...prev, fullName: e.target.value, }))
+4119:                            setFormData(prev => ({ ...prev, fatherName: e.target.value, }))
+4129:                            setFormData(prev => ({ ...prev, dob: e.target.value }))
+4139:                            setFormData(prev => ({ ...prev, bayFormNo: e.target.value, }))
+4148:                            setFormData(prev => ({ ...prev, gender: v }))
+4164:                            setFormData(prev => ({ ...prev, bloodGroup: v }))
+4204:                            setFormData(prev => ({ ...prev, contactNumber: e.target.value, }))
+4214:                            setFormData(prev => ({ ...prev, fatherContact: e.target.value, }))
+4224:                            setFormData(prev => ({ ...prev, email: e.target.value }))
+4234:                            setFormData(prev => ({ ...prev, reference: e.target.value, }))
+4247:                            setFormData(prev => ({ ...prev, address: e.target.value, }))
+4285:                            setFormData(prev => ({ ...prev, boardRollNo: e.target.value, }))
+4296:                            setFormData(prev => ({ ...prev, previousMarks: e.target.value, }))
+4306:                            setFormData(prev => ({ ...prev, previousInstitute: e.target.value, }))
+4314:                            setFormData(prev => ({ ...prev, previousClass: v }))
+4361:                            setFormData(prev => ({ ...prev, collegeNo: e.target.value, }))
+4407:                              setFormData(prev => ({ ...prev, section: e.target.value.toUpperCase(), }))
+4417:                            setFormData(prev => ({ ...prev, session: v }))
+4562:                                setFormData(prev => ({ ...prev, admissionFee: e.target.value, }))
+4580:                                setFormData(prev => ({ ...prev, totalFeeFinalized: e.target.value, }))
+4595:                                setFormData(prev => ({ ...prev, miscFunds: e.target.value, }))
+4636:                                setFormData(prev => ({ ...prev, feeReceived: e.target.value, }))
+4669:                            setFormData(prev => ({ ...prev, paymentPlan: v }))
+4688:                            setFormData(prev => ({ ...prev, totalInstallments: Number(e.target.value), }))
+4734:                            setFormData(prev => ({ ...prev, totalSemesters: Number(e.target.value), }))
+4744:                            setFormData(prev => ({ ...prev, feePerSemester: Number(e.target.value), }))
+4754:                            setFormData(prev => ({ ...prev, nextSemesterDueDate: e.target.value, }))
+4802:                      setFormData(prev => ({ ...prev, reference: e.target.value }))

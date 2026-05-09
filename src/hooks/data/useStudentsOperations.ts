@@ -19,6 +19,8 @@ export function useStudentsOperations(ctx: any) {
         group: student.group,
         section: student.section,
         contact: student.contact,
+        email: student.email,
+        blood_group: student.bloodGroup,
         address: student.address,
         total_package: student.totalPackage,
         monthly_fee: student.monthlyFee,
@@ -42,6 +44,8 @@ export function useStudentsOperations(ctx: any) {
           group: updates.group,
           section: updates.section,
           contact: updates.contact,
+          email: updates.email,
+          blood_group: updates.bloodGroup,
           address: updates.address,
           total_package: updates.totalPackage,
           fee_received: updates.feeReceived,
@@ -53,7 +57,7 @@ export function useStudentsOperations(ctx: any) {
         }).eq('id', id);
         
         if (error) throw error;
-        // await fetchData(true);
+        fetchData(true);
         toast.success("Student details updated");
       } catch (e: any) {
         toast.error(`Failed to update student: ${e.message}`);
@@ -67,6 +71,7 @@ export function useStudentsOperations(ctx: any) {
     try {
       const { error } = await supabase.from('students').delete().eq('id', id);
       if (error) throw error;
+      fetchData(true);
       toast.success("Student removed");
     } catch (e) {
       setStudents(backupStudents);
@@ -105,7 +110,7 @@ export function useStudentsOperations(ctx: any) {
         toast.error(`Deletion failed: ${e.message}`, { id: toastId });
       } finally {
         isBulkOperatingRef.current = false;
-        // fetchData(true);
+        fetchData(true);
       }
     };
 
@@ -169,12 +174,34 @@ export function useStudentsOperations(ctx: any) {
           }).eq('id', student.admissionId);
         }
 
-        // await fetchData(true);
+        fetchData(true);
         toast.success(`Promoted to Semester ${nextSemester}. Arrears of Rs. ${arrears} carried forward.`);
         logActivity("Promotion", `${student.fullName} promoted to Semester ${nextSemester}`, 'success');
       } catch (e: any) {
         toast.error(`Promotion failed: ${e.message}`);
       }
     };
-  return { addStudent, updateStudent, deleteStudent, bulkDeleteStudents, promoteSemester };
+    const saveStudentAttendanceLogs = async (records: any[]) => {
+      try {
+        const { error } = await supabase.from('student_attendance').upsert(
+          records.map(r => ({
+            student_id: r.studentId,
+            date: r.date,
+            status: r.status,
+            notes: r.notes || ''
+          })), 
+          { onConflict: 'student_id,date' }
+        );
+        if (error) {
+          console.error("Attendance save error", error);
+          throw error;
+        }
+        fetchData(true);
+        return true;
+      } catch (e: any) {
+        toast.error(`Failed to save attendance: ${e.message}`);
+        return false;
+      }
+    };
+  return { addStudent, updateStudent, deleteStudent, bulkDeleteStudents, promoteSemester, saveStudentAttendanceLogs };
 }

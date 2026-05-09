@@ -130,7 +130,7 @@ export function useLeadsOperations(ctx: any) {
         toast.error(`Bulk Delete Failed: ${e.message}`, { id: toastId });
       } finally {
         isBulkOperatingRef.current = false;
-        // fetchData(true); 
+        fetchData(true);
       }
     };
 
@@ -156,7 +156,7 @@ export function useLeadsOperations(ctx: any) {
 
         const { error } = await supabase.from('leads').insert(leadsData);
         if (error) throw error;
-        // await fetchData(true);
+        fetchData(true);
         logActivity("Bulk Import", `Imported ${newLeads.length} leads via Excel`, 'success');
       } catch (e: any) {
         console.error("Bulk Import Error:", e);
@@ -230,11 +230,11 @@ export function useLeadsOperations(ctx: any) {
 
         logActivity("Bulk Conversion", `Converted ${ids.length} leads to applicants`, 'success');
         toast.success(`Successfully converted ${ids.length} leads!`, { id: toastId });
-        // fetchData(true); // Fire and forget background refresh
+        fetchData(true); // Fire and forget background refresh
       } catch (e: any) {
         console.error("Bulk Conversion Error:", e);
         toast.error(`Conversion failed: ${e.message}`, { id: toastId });
-        // fetchData(true);
+        fetchData(true);
       }
     };
   return { addLead, updateLead, deleteLead, bulkDeleteLeads, importLeads, convertLeadsToApplicants };

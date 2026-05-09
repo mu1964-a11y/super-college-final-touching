@@ -51,13 +51,20 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { AcademicRecord, Student, Staff } from '../types';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function AcademicView({ data }: { data: any }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [classFilter, setClassFilter] = useState<string>('all');
   const [subjectFilter, setSubjectFilter] = useState<string>('all');
+  const [sectionFilter, setSectionFilter] = useState<string>('all');
   const [dateRange, setDateRange] = useState<string>('all'); // all, 10-days, 20-days, 6-months, 1-year
+
+  const sectionOptions = useMemo(() => {
+    return Array.from(new Set(data?.settings?.predefinedSections?.map((s: any) => s.name).filter(Boolean))) as string[];
+  }, [data?.settings?.predefinedSections]);
 
   const filteredRecords = useMemo(() => {
     return data.academicRecords.filter((r: AcademicRecord) => {
@@ -68,6 +75,7 @@ export default function AcademicView({ data }: { data: any }) {
       const matchesType = typeFilter === 'all' || r.testType === typeFilter;
       const matchesClass = classFilter === 'all' || r.class === classFilter;
       const matchesSubject = subjectFilter === 'all' || r.subject === subjectFilter;
+      const matchesSection = sectionFilter === 'all' || r.section === sectionFilter;
       
       let matchesDate = true;
       if (dateRange !== 'all') {
@@ -81,9 +89,9 @@ export default function AcademicView({ data }: { data: any }) {
         else if (dateRange === '1-year') matchesDate = diffDays <= 365;
       }
 
-      return matchesSearch && matchesType && matchesClass && matchesSubject && matchesDate;
+      return matchesSearch && matchesType && matchesClass && matchesSubject && matchesSection && matchesDate;
     });
-  }, [data.academicRecords, searchTerm, typeFilter, classFilter, subjectFilter, dateRange]);
+  }, [data.academicRecords, searchTerm, typeFilter, classFilter, subjectFilter, sectionFilter, dateRange]);
 
   const downloadSampleExcel = () => {
     const sampleData = [
@@ -132,6 +140,44 @@ export default function AcademicView({ data }: { data: any }) {
     }
   };
 
+  const handleExportResultCards = () => {
+    if (filteredRecords.length === 0) {
+      toast.error('No records found to generate result cards');
+      return;
+    }
+    const doc = new jsPDF('p', 'pt', 'a4');
+    filteredRecords.forEach((record: any, index: number) => {
+      if (index > 0) doc.addPage();
+      
+      doc.setFontSize(20);
+      doc.setTextColor(5, 59, 50);
+      doc.text('SUPERIOR GROUP OF COLLEGES', 40, 60);
+
+      doc.setFontSize(14);
+      doc.setTextColor(0, 0, 0);
+      doc.text('RESULT CARD', 40, 90);
+
+      doc.setFontSize(10);
+      doc.text(`Student Name: ${record.studentName}`, 40, 130);
+      doc.text(`Class: ${record.class || 'N/A'}`, 40, 150);
+      doc.text(`Section: ${record.section || 'N/A'}`, 40, 170);
+      doc.text(`Exam Type: ${record.testType || 'N/A'}`, 40, 190);
+      doc.text(`Subject: ${record.subject || 'N/A'}`, 40, 210);
+
+      doc.text(`Total Marks: ${record.totalMarks || 0}`, 300, 130);
+      doc.text(`Obtained Marks: ${record.obtainedMarks || 0}`, 300, 150);
+      const percentage = record.totalMarks > 0 ? ((record.obtainedMarks / record.totalMarks) * 100).toFixed(1) : '0.0';
+      doc.text(`Percentage: ${percentage}%`, 300, 170);
+      doc.text(`Remarks: ${record.remarks || 'N/A'}`, 300, 190);
+
+      doc.setDrawColor(200, 200, 200);
+      doc.line(40, 230, 550, 230);
+    });
+
+    doc.save(`Result_Cards_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success("Result Cards downloaded!");
+  };
+
   return (
     <div className="space-y-8 pb-20">
       {/* Header Section */}
@@ -143,6 +189,9 @@ export default function AcademicView({ data }: { data: any }) {
         </div>
         
         <div className="flex items-center gap-3">
+          <Button onClick={handleExportResultCards} variant="outline" className="h-12 rounded-2xl border-slate-200 font-bold text-slate-600 hover:bg-slate-50">
+            <Download size={18} className="mr-2 text-red-500" /> Result Cards PDF
+          </Button>
           <Button variant="outline" onClick={downloadSampleExcel} className="h-12 rounded-2xl border-slate-200 font-bold text-slate-600 hover:bg-slate-50">
             <Download size={18} className="mr-2" /> Sample Excel
           </Button>
@@ -240,6 +289,18 @@ export default function AcademicView({ data }: { data: any }) {
               <SelectItem value="Inter Part-2 Boys">Inter Part-2 Boys</SelectItem>
               <SelectItem value="Inter Part-1 Girls">Inter Part-1 Girls</SelectItem>
               <SelectItem value="Inter Part-2 Girls">Inter Part-2 Girls</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={sectionFilter} onValueChange={setSectionFilter}>
+            <SelectTrigger className="w-[140px] h-12 rounded-2xl bg-slate-50 border-transparent">
+              <SelectValue placeholder="Section" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Sections</SelectItem>
+              {sectionOptions.map(sec => (
+                <SelectItem key={sec} value={sec}>{sec}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

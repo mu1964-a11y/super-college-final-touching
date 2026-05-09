@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { getUnifiedTransactions } from '../utils/fee';
 import { jsPDF } from 'jspdf';
 import { toPng } from 'html-to-image';
 
@@ -75,20 +76,26 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
       const dataUrl = await toPng(receiptRef.current, {
         quality: 1.0,
         pixelRatio: 2,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        cacheBust: true,
+        includeQueryParams: true,
+        style: {
+          transform: 'none',
+          transformOrigin: 'top left',
+          margin: '0',
+        }
       });
       
       const imgProps = new Image();
       imgProps.src = dataUrl;
       await new Promise((resolve) => { imgProps.onload = resolve; });
       
-      const pdfWidth = 215.9; // Legal width in mm
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
       
-      const pdf = new jsPDF('p', 'mm', [pdfWidth, Math.max(355.6, pdfHeight)]);
-      
       pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Fee-Receipt-${student.fullName.replace(/\s+/g, '_')}.pdf`);
+      pdf.save(`Fee-Receipt-${student.fullName?.replace(/\s+/g, '_') || 'Student'}.pdf`);
       toast.dismiss(toastId);
       toast.success("Fee Receipt downloaded!");
     } catch (err) {
@@ -98,12 +105,33 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
     }
   };
 
-  const handlePrint = useReactToPrint({
+  const reactToPrintFn = useReactToPrint({
     contentRef: receiptRef,
-    documentTitle: `Fee_Receipt_${student.fullName?.replace(/\s+/g, '_') || 'Student'}`
+    documentTitle: `Fee_Receipt_${student.fullName?.replace(/\s+/g, '_') || 'Student'}`,
+    onPrintError: (error) => {
+      console.error(error);
+      toast.error("Printing failed. Using download fallback.");
+      downloadReceipt();
+    }
   });
 
+  const handlePrintClick = () => {
+    try {
+      const isIframe = window !== window.parent;
+      if (isIframe) {
+        toast.info("Direct printing is blocked in Preview Mode. To use Print, please click 'Open App in New Tab' (top right corner). Downloading PDF fallback...", { duration: 6000 });
+        downloadReceipt();
+      } else {
+        reactToPrintFn();
+      }
+    } catch (e) {
+      toast.info("Attempting PDF download fallback...");
+      downloadReceipt();
+    }
+  };
+
   const admissionFee = student.admissionFee || 0;
+  const unifiedTransactions = getUnifiedTransactions(student);
   const miscFunds = student.miscFunds || 0;
   const totalPackage = student.totalPackage || student.feeLedger?.totalPackage || 0;
   const feeReceived = student.feeReceived || student.feeLedger?.totalReceived || 0;
@@ -116,7 +144,7 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
       <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white">
         <h3 className="text-xl font-serif font-bold text-superior-teal">Fee Receipt Preview</h3>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={() => handlePrint()} className="rounded-xl font-bold">
+          <Button variant="outline" onClick={handlePrintClick} className="rounded-xl font-bold">
             Print
           </Button>
           <Button className="bg-slate-800 text-white font-black rounded-xl hover:bg-slate-900 shadow-lg" onClick={downloadReceipt}>
@@ -128,7 +156,7 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
       <div className="flex-1 overflow-auto p-4 flex justify-center preview-scroll-container">
         <div 
           ref={receiptRef}
-          className="w-[215.9mm] h-fit bg-white p-12 relative shadow-2xl overflow-hidden print-area"
+          className="w-[794px] min-h-[1123px] h-fit bg-white p-10 relative shadow-2xl overflow-hidden print-area flex flex-col"
           style={{ fontFamily: "'Inter', sans-serif" }}
         >
           {/* Header */}
@@ -136,7 +164,7 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
             <div className="w-full flex items-center justify-center gap-6 mb-1">
                <div className="w-20 h-20 rounded-full flex items-center justify-center overflow-hidden border border-slate-200 bg-white shadow-sm shrink-0">
                 {settings?.logo ? (
-                  <img src={settings.logo} alt="Logo" className="w-full h-full object-contain" />
+                  <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-slate-300">
                     <School size={40} />
@@ -155,7 +183,7 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
 
             {/* Separator and Title */}
             <div className="w-full border-t border-b border-slate-200 mt-1 py-1.5 flex justify-between items-center px-2 mb-4" style={{ borderColor: prog.theme + '20' }}>
-              <p className="text-[10px] font-mono font-black text-slate-400 uppercase">SLIP ID: <span style={{ color: prog.theme }}>{student.feeLedger?.transactions?.[0]?.receiptId?.slice(-6) || Math.floor(Date.now() / 1000).toString().slice(-6)}</span></p>
+              <p className="text-[10px] font-mono font-black text-slate-400 uppercase">SLIP ID: <span style={{ color: prog.theme }}>{unifiedTransactions?.[0]?.receiptId?.slice(-6) || Math.floor(Date.now() / 1000).toString().slice(-6)}</span></p>
               
               <div className="flex flex-col items-center gap-0">
                 <span className="text-lg font-black uppercase tracking-[0.2em] text-slate-800 leading-none" style={{ color: prog.theme }}>FEE RECEIPT</span>
@@ -175,7 +203,7 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
                   <img src={student.photo} alt={student.fullName} className="w-full h-full object-cover" />
                 ) : (
                   <div className="text-slate-300 flex flex-col items-center">
-                    <User size={24} />
+                    <User size={24} stroke="#cbd5e1" strokeWidth={2} />
                     <span className="text-[6px] font-black uppercase tracking-widest mt-1 text-center">No Photo</span>
                   </div>
                 )}
@@ -206,7 +234,7 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
 
           {/* Table Header Section */}
           <div className="flex items-center gap-3 mb-2 pb-2 border-b border-slate-200">
-            <CreditCard size={18} className="text-slate-800" />
+            <CreditCard size={18} className="text-slate-800" stroke="#1e293b" strokeWidth={2} />
             <h3 className="text-base font-serif font-black text-slate-800">Financial Statement Breakdown</h3>
             <span className="urdu-text text-xs text-slate-400 font-medium ml-auto" style={{ fontFamily: "'Jameel Noori Nastaliq', 'Noto Nastaliq Urdu', serif" }}>مالی تفصیلات برائے فیس</span>
           </div>
@@ -214,7 +242,7 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
           {/* Ledger Table - Plain Text Format */}
           <div className="mb-4 px-2">
             <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
-              <span className="text-[11px] font-bold text-slate-600 italic">{prog.isSemester ? 'Total Semester/BS Program Fee' : 'Tuition Fee (Finalized)'} <span className="text-[11px] text-slate-400" style={{ fontFamily: "'Jameel Noori Nastaliq', 'Noto Nastaliq Urdu', serif" }}>(تالییمی فیس)</span></span>
+              <span className="text-[11px] font-bold text-slate-600 italic">{prog.isSemester ? 'Total Semester/BS Program Fee' : 'Tuition Fee (Finalized)'} <span className="text-[11px] text-slate-400" style={{ fontFamily: "'Jameel Noori Nastaliq', 'Noto Nastaliq Urdu', serif" }}>(تعلیمی فیس)</span></span>
               <span className="font-black text-slate-900 text-xs tracking-tight">Rs. {tuitionFee.toLocaleString()}</span>
             </div>
             <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
@@ -236,7 +264,7 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
             <div className="flex justify-between items-end mb-4">
                <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-800">Payment History Logs</h4>
             </div>
-            {(student.feeLedger?.transactions?.length > 0 || feeReceived > 0) ? (
+            {(unifiedTransactions.length > 0 || feeReceived > 0) ? (
               <div className="space-y-1">
                 <div className="flex items-center justify-between pb-2 border-b-2 border-slate-200">
                   <div className="w-1/4 text-slate-500 font-black uppercase tracking-widest text-[9px]">Date</div>
@@ -245,17 +273,7 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
                   <div className="w-1/4 text-right text-slate-500 font-black uppercase tracking-widest text-[9px]">Amount</div>
                 </div>
                 
-                {/* Fallback for legacy records missing transactions */}
-                {(!student.feeLedger?.transactions || student.feeLedger.transactions.length === 0) && feeReceived > 0 && (
-                   <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
-                     <div className="w-1/4 text-[10px] font-mono font-bold text-slate-600">{student.sessionStartDate || new Date().toLocaleDateString()}</div>
-                     <div className="w-1/4 text-[10px] font-mono text-slate-400">ADM-FEE</div>
-                     <div className="w-1/4 text-[11px] font-medium text-slate-700">Initial Admission Fee (Legacy)</div>
-                     <div className="w-1/4 text-right font-black text-emerald-600 text-sm tracking-tight">+ Rs. {feeReceived.toLocaleString()}</div>
-                   </div>
-                )}
-
-                {student.feeLedger?.transactions?.map((tx: any, idx: number) => (
+                {unifiedTransactions.map((tx: any, idx: number) => (
                   <div key={tx.id || idx} className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
                     <div className="w-1/4 text-[10px] font-mono font-bold text-slate-600 flex flex-col">
                       <span>{new Date(tx.date).toLocaleDateString()}</span>
@@ -283,7 +301,7 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
 
           {/* Balance & Semester Progress Section */}
           <div className="mb-6 space-y-4">
-             {prog.isSemester ? (
+             {prog.isSemester && (
                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col gap-4">
                   <div className="flex justify-between items-center">
                     <div>
@@ -325,17 +343,6 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
                     </div>
                   </div>
                </div>
-             ) : (
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex justify-between items-center">
-                   <div>
-                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Payment Frequency</p>
-                      <p className="text-sm font-bold text-slate-700 italic">Monthly Installment Basis (Inter 2-Year Program)</p>
-                   </div>
-                   <div className="text-right">
-                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Installment Rate</p>
-                      <p className="text-base font-black italic text-slate-800">Rs. {Math.round(totalPackage / 24).toLocaleString()}</p>
-                   </div>
-                </div>
              )}
 
              <div className="flex justify-between items-center px-2">
@@ -385,8 +392,12 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
           </div>
 
           {/* Bottom Branding */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.015] font-black text-[120px] rotate-[-25deg] pointer-events-none text-slate-900 uppercase tracking-tighter">
-             Superior
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.08] pointer-events-none w-[400px] h-[400px] flex items-center justify-center rounded-full overflow-hidden">
+            {settings?.logo ? (
+              <img src={settings.logo} alt="" className="w-full h-full object-cover rounded-full" />
+            ) : (
+              <School size={300} stroke="#001a1a" />
+            )}
           </div>
         </div>
       </div>

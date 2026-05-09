@@ -118,6 +118,8 @@ export interface Student {
   boardRollNo?: string;
   previousMarks?: number;
   contact: string;
+  email?: string;
+  bloodGroup?: string;
   address: string;
   gender: Gender;
   photo?: string;
@@ -228,6 +230,7 @@ export interface AppSettings {
   
   // Module Controls
   enabledModules: string[]; // ['dashboard', 'leads', 'admissions', 'students', 'staff', 'accounts', 'reports', 'settings', 'academic']
+  predefinedSections?: { id: string; program: string; class: string; name: string; gender?: string }[];
   
   // System Logic & Interlinking
   autoLeadConversion?: boolean; 

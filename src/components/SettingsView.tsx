@@ -2,7 +2,6 @@
 import * as React from 'react';
 import { useState } from 'react';
 import { 
-  Settings as SettingsIcon, 
   Upload, 
   Save, 
   Globe, 
@@ -14,13 +13,10 @@ import {
   Coins,
   Building2,
   Image as ImageIcon,
-  CheckCircle2,
   Layout,
   Type,
-  Square,
   Box,
   Zap,
-  Eye,
   AppWindow,
   Smartphone,
   MousePointer2,
@@ -29,14 +25,14 @@ import {
   Layers,
   Link2,
   X,
-  FileText
+  FileText,
+  Plus,
 } from 'lucide-react';
-import { motion } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
@@ -51,13 +47,13 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { AppSettings } from '../types';
 import { INITIAL_SETTINGS } from '../constants';
-import { supabase } from '../lib/supabase';
-import { compressImage, base64ToBlob } from '../lib/imageUtils';
+import { compressImage } from '../lib/imageUtils';
 
 export default function SettingsView({ data }: { data: any }) {
   const { settings, updateSettings } = data;
   const [formData, setFormData] = useState<AppSettings>(settings || INITIAL_SETTINGS);
   const [isSaving, setIsSaving] = useState(false);
+  const [newSection, setNewSection] = useState({ program: 'Inter', class: '2025-2027', name: '', gender: 'Male' });
 
   // Sync with Firebase settings when they load or change
   React.useEffect(() => {
@@ -106,6 +102,41 @@ export default function SettingsView({ data }: { data: any }) {
         toast.error("Failed to process logo.", { id: toastId });
       }
     }
+  };
+
+  const handleAddSection = () => {
+    if (!newSection.name) {
+      toast.error("Please enter a section name");
+      return;
+    }
+    setFormData(prev => ({
+      ...prev,
+      predefinedSections: [
+        ...(prev.predefinedSections || []),
+        { id: crypto.randomUUID(), ...newSection }
+      ]
+    }));
+    setNewSection(prev => ({ ...prev, name: '' }));
+  };
+
+  const handleUpdateNewSection = (field: string, value: string) => {
+    setNewSection(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleUpdateSection = (id: string, field: string, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      predefinedSections: (prev.predefinedSections || []).map(sec => 
+        sec.id === id ? { ...sec, [field]: value } : sec
+      )
+    }));
+  };
+
+  const handleRemoveSection = (id: string) => {
+    setFormData(prev => ({
+      ...prev,
+      predefinedSections: (prev.predefinedSections || []).filter(sec => sec.id !== id)
+    }));
   };
 
   const handleSave = async () => {
@@ -158,10 +189,15 @@ export default function SettingsView({ data }: { data: any }) {
     { id: 'leads', label: 'Leads Pipeline', icon: Activity },
     { id: 'admissions', label: 'Admissions Hub', icon: User },
     { id: 'students', label: 'Student Records', icon: User },
-    { id: 'staff', label: 'Personnel (Staff)', icon: Smartphone },
-    { id: 'accounts', label: 'Finance & Ledger', icon: Coins },
+    { id: 'staff', label: 'Staff & Payroll', icon: Smartphone },
+    { id: 'accounts', label: 'Expenses & Income', icon: Coins },
+    { id: 'fee', label: 'Fees & Billing', icon: Coins },
     { id: 'reports', label: 'Intelligence Reports', icon: Zap },
-    { id: 'academic', label: 'Academic Control', icon: Type },
+    { id: 'academic', label: 'Grades & Results', icon: Type },
+    { id: 'classes', label: 'Classes & Subjects', icon: Type },
+    { id: 'attendance', label: 'Attendance', icon: User },
+    { id: 'timetable', label: 'Timetable', icon: Layout },
+    { id: 'library', label: 'Library', icon: Type },
   ];
 
   return (
@@ -200,6 +236,7 @@ export default function SettingsView({ data }: { data: any }) {
             { id: 'themes', label: 'Custom Themes', icon: MousePointer2 },
             { id: 'modules', label: 'Core Modules', icon: AppWindow },
             { id: 'interlinks', label: 'System Logic', icon: Link2 },
+            { id: 'sections', label: 'Classes & Sections', icon: Layers },
             { id: 'documents', label: 'Forms & Documents', icon: FileText },
             { id: 'contact', label: 'Legal & Contact', icon: Globe },
           ].map(tab => (
@@ -258,35 +295,35 @@ export default function SettingsView({ data }: { data: any }) {
               <CardHeader className="bg-slate-50/50 px-8 py-6 text-center">
                 <CardTitle className="text-lg font-black uppercase tracking-widest text-superior-teal">College Insignia</CardTitle>
               </CardHeader>
-              <CardContent className="p-8 flex flex-col items-center justify-center">
-                <div className="relative group p-8 border-2 border-dashed border-slate-100 rounded-[2.5rem] w-full flex flex-col items-center hover:bg-slate-50/50 transition-all">
-                  {formData.logo ? (
-                    <div className="relative">
-                      <img src={formData.logo} alt="College Logo" className="max-h-40 object-contain rounded-2xl shadow-2xl" />
+              <CardContent className="p-8 flex flex-col items-center justify-center min-h-[350px]">
+                {formData.logo ? (
+                  <div className="flex flex-col items-center">
+                    <div className="relative group">
+                      <img src={formData.logo} alt="College Logo" className="w-48 h-48 object-cover rounded-full shadow-2xl ring-4 ring-slate-50 transition-transform group-hover:scale-105" />
                       <Button 
                         size="icon"
                         variant="destructive"
                         onClick={() => setFormData(prev => ({ ...prev, logo: '' }))}
-                        className="absolute -top-4 -right-4 h-8 w-8 rounded-full shadow-lg"
+                        className="absolute -top-2 -right-2 h-10 w-10 border-4 border-white rounded-full shadow-xl opacity-0 group-hover:opacity-100 transition-opacity"
                       >
-                        <X size={14} />
+                        <X size={18} />
                       </Button>
                     </div>
-                  ) : (
-                    <div className="text-center py-6">
-                      <div className="w-20 h-20 bg-slate-100 rounded-3xl flex items-center justify-center text-slate-300 mx-auto mb-4 group-hover:scale-110 transition-transform">
+                  </div>
+                ) : (
+                  <div className="relative group p-12 border-2 border-dashed border-slate-200 rounded-[3rem] w-full flex flex-col items-center hover:bg-slate-50/50 hover:border-superior-teal/30 transition-all cursor-pointer">
+                    <Label className="w-full flex flex-col items-center cursor-pointer">
+                      <div className="w-20 h-20 bg-slate-100 rounded-3xl flex items-center justify-center text-slate-300 mx-auto mb-4 group-hover:scale-110 transition-transform group-hover:text-superior-teal">
                         <ImageIcon size={40} />
                       </div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Insignia Required</p>
-                    </div>
-                  )}
-                  <Label className="mt-8 cursor-pointer group/btn">
-                    <span className="h-12 px-8 rounded-2xl bg-white border border-slate-200 text-slate-800 font-black uppercase tracking-widest text-[10px] flex items-center gap-2 hover:border-superior-teal hover:text-superior-teal transition-all shadow-sm">
-                      <Upload size={14} /> Upload Vector/Image
-                    </span>
-                    <Input type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} />
-                  </Label>
-                </div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-superior-teal">Insignia Required</p>
+                      <span className="mt-8 h-12 px-8 rounded-2xl bg-white border border-slate-200 text-slate-800 font-black uppercase tracking-widest text-[10px] flex items-center gap-2 group-hover:border-superior-teal group-hover:text-superior-teal transition-all shadow-sm">
+                        <Upload size={14} /> Upload Vector/Image
+                      </span>
+                      <Input type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} />
+                    </Label>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -569,7 +606,7 @@ export default function SettingsView({ data }: { data: any }) {
                     name="academicSession"
                     value={formData.academicSession} 
                     onChange={handleInputChange}
-                    placeholder="e.g. 2026-2027"
+                    placeholder="e.g. 2026-28"
                     className="h-14 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 focus:ring-0 transition-all font-bold text-lg"
                   />
                 </div>
@@ -614,6 +651,162 @@ export default function SettingsView({ data }: { data: any }) {
                   className="min-h-[120px] rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 focus:ring-0 transition-all font-medium py-4 px-4"
                   placeholder="Enter payment policies, conditions, or footers you want to appear on printed fee receipts..."
                 />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="sections" className="space-y-8">
+          <Card className="bg-white border-none shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden">
+            <CardHeader className="bg-slate-50/50 px-8 py-6 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-[11px] font-black uppercase tracking-widest text-superior-teal flex items-center gap-2">
+                  <Layers size={16} /> Predefined Classes & Sections
+                </CardTitle>
+                <CardDescription className="text-xs font-bold text-slate-400 mt-1">Configure predefined sections to select from during admissions.</CardDescription>
+              </div>
+              <Button onClick={handleAddSection} className="h-10 px-4 rounded-xl font-bold bg-superior-teal text-white">
+                <Plus size={16} className="mr-2" /> Add Section
+              </Button>
+            </CardHeader>
+            <CardContent className="p-8">
+              
+              {/* Add New Section Form */}
+              <div className="bg-slate-50 p-6 rounded-2xl mb-8 border border-slate-100">
+                <h4 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
+                  <Plus size={16} className="text-superior-teal"/> Create New Section
+                </h4>
+                <div className="flex flex-col md:flex-row items-end gap-4">
+                  <div className="flex-1 space-y-1 w-full">
+                    <Label className="text-[10px] font-black uppercase text-slate-400">Program</Label>
+                    <Select value={newSection.program} onValueChange={(val) => handleUpdateNewSection('program', val)}>
+                      <SelectTrigger className="h-10 bg-white border-none rounded-xl">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Inter">Inter</SelectItem>
+                        <SelectItem value="BS">BS Program</SelectItem>
+                        <SelectItem value="UKL3">UK Level 3</SelectItem>
+                        <SelectItem value="DIT">DIT</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex-1 space-y-1 w-full">
+                    <Label className="text-[10px] font-black uppercase text-slate-400">Session</Label>
+                    <Select value={newSection.class} onValueChange={(val) => handleUpdateNewSection('class', val)}>
+                      <SelectTrigger className="h-10 bg-white border-none rounded-xl">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="2023-2025">2023-2025</SelectItem>
+                        <SelectItem value="2024-2026">2024-2026</SelectItem>
+                        <SelectItem value="2025-2027">2025-2027</SelectItem>
+                        <SelectItem value="2026-28">2026-28</SelectItem>
+                        <SelectItem value="2027-2029">2027-2029</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex-1 space-y-1 w-full min-w-[120px]">
+                    <Label className="text-[10px] font-black uppercase text-slate-400">Campus</Label>
+                    <Select value={newSection.gender || 'Male'} onValueChange={(val) => handleUpdateNewSection('gender', val)}>
+                      <SelectTrigger className="h-10 bg-white border-none rounded-xl">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Male">Boys Campus</SelectItem>
+                        <SelectItem value="Female">Girls Campus</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex-1 space-y-1 w-full">
+                    <Label className="text-[10px] font-black uppercase text-slate-400">Section Name</Label>
+                    <Input 
+                      placeholder="e.g. Pre-Med A" 
+                      value={newSection.name} 
+                      onChange={(e) => handleUpdateNewSection('name', e.target.value)}
+                      className="h-10 bg-white border-none rounded-xl"
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddSection()}
+                    />
+                  </div>
+                  <div className="flex-none">
+                    <Button onClick={handleAddSection} className="h-10 px-6 rounded-xl font-bold bg-superior-teal text-white w-full">
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Preview Added Sections */}
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span> Boys Campus Sections
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {formData.predefinedSections?.filter(s => s.gender === 'Male').length === 0 && (
+                      <p className="text-xs text-slate-400 py-2">No boys sections added.</p>
+                    )}
+                    {formData.predefinedSections?.filter(s => s.gender === 'Male').map((sec) => (
+                      <Badge key={sec.id} variant="secondary" className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border-none rounded-lg text-sm flex items-center gap-2">
+                        <span className="font-semibold">{sec.program}</span>
+                        <span className="opacity-50">•</span>
+                        <span>{sec.class}</span>
+                        <span className="opacity-50">•</span>
+                        <span className="font-bold">{sec.name}</span>
+                        <Button variant="ghost" size="icon" onClick={() => handleRemoveSection(sec.id)} className="h-5 w-5 ml-1 text-blue-400 hover:text-rose-500 hover:bg-rose-50 rounded-full">
+                          <X size={12} />
+                        </Button>
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-pink-500"></span> Girls Campus Sections
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {formData.predefinedSections?.filter(s => s.gender === 'Female').length === 0 && (
+                      <p className="text-xs text-slate-400 py-2">No girls sections added.</p>
+                    )}
+                    {formData.predefinedSections?.filter(s => s.gender === 'Female').map((sec) => (
+                      <Badge key={sec.id} variant="secondary" className="px-3 py-1.5 bg-pink-50 text-pink-700 hover:bg-pink-100 border-none rounded-lg text-sm flex items-center gap-2">
+                        <span className="font-semibold">{sec.program}</span>
+                        <span className="opacity-50">•</span>
+                        <span>{sec.class}</span>
+                        <span className="opacity-50">•</span>
+                        <span className="font-bold">{sec.name}</span>
+                        <Button variant="ghost" size="icon" onClick={() => handleRemoveSection(sec.id)} className="h-5 w-5 ml-1 text-pink-400 hover:text-rose-500 hover:bg-rose-50 rounded-full">
+                          <X size={12} />
+                        </Button>
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Fallback for Co-ed / other */}
+                {(formData.predefinedSections?.filter(s => s.gender !== 'Male' && s.gender !== 'Female').length || 0) > 0 && (
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-slate-500"></span> Other / Co-ed Sections
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {formData.predefinedSections?.filter(s => s.gender !== 'Male' && s.gender !== 'Female').map((sec) => (
+                        <Badge key={sec.id} variant="secondary" className="px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 border-none rounded-lg text-sm flex items-center gap-2">
+                          <span className="font-semibold">{sec.program}</span>
+                          <span className="opacity-50">•</span>
+                          <span>{sec.class}</span>
+                          <span className="opacity-50">•</span>
+                          <span className="font-bold">{sec.name}</span>
+                          <Button variant="ghost" size="icon" onClick={() => handleRemoveSection(sec.id)} className="h-5 w-5 ml-1 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-full">
+                            <X size={12} />
+                          </Button>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

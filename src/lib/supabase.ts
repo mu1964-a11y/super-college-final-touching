@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL;
 const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY;
 
-// Use placeholders to prevent hard crash if keys are missing
-// The actual error "supabaseUrl is required" happens when passing empty string to createClient
+const isConfigured = Boolean(supabaseUrl && supabaseUrl !== 'https://your-project.supabase.co');
+
 export const supabase = createClient(
   supabaseUrl || 'https://your-project.supabase.co',
   supabaseAnonKey || 'your-anon-key',
@@ -16,6 +16,8 @@ export const supabase = createClient(
   }
 );
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase credentials missing. App UI will load but data fetching will fail. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Environment Variables.');
+export const isSupabaseConfigured = isConfigured;
+
+if (!isConfigured) {
+  console.warn('Supabase credentials missing or invalid. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Environment Variables.');
 }

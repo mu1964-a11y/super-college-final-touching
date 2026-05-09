@@ -76,6 +76,8 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
   const [isAddEntryOpen, setIsAddEntryOpen] = useState(false);
   const [incomeTypeFilter, setIncomeTypeFilter] = useState('all');
   const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('all');
+  const [incomeFilters, setIncomeFilters] = useState({ startDate: '', endDate: '', minAmount: '', maxAmount: '' });
+  const [expenseFilters, setExpenseFilters] = useState({ startDate: '', endDate: '', minAmount: '', maxAmount: '' });
 
   const selectedStudent = data.students.find((s: Student) => s.id === selectedStudentId);
 
@@ -298,30 +300,56 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
         </TabsContent>
 
         <TabsContent value="income" className="space-y-6">
-          <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
-            <div className="relative flex-1 min-w-[280px]">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <Input 
-                placeholder="Search by student name or ID..." 
-                className="pl-12 h-12 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all"
-                value={incomeSearch}
-                onChange={(e) => setIncomeSearch(e.target.value)}
-              />
+          <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="relative flex-1 min-w-[280px]">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <Input 
+                  placeholder="Search by student name or ID..." 
+                  className="pl-12 h-12 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all"
+                  value={incomeSearch}
+                  onChange={(e) => setIncomeSearch(e.target.value)}
+                />
+              </div>
+              <Select value={incomeTypeFilter} onValueChange={setIncomeTypeFilter}>
+                <SelectTrigger className="w-[180px] h-12 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold">
+                  <SelectValue placeholder="Fee Type" />
+                </SelectTrigger>
+                <SelectContent className="rounded-2xl border-slate-100 shadow-xl">
+                  <SelectItem value="all">All Income</SelectItem>
+                  <SelectItem value="Admission Fee">Admission Fees</SelectItem>
+                  <SelectItem value="Monthly Installment">Installments</SelectItem>
+                  <SelectItem value="Miscellaneous">Miscellaneous</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={incomeTypeFilter} onValueChange={setIncomeTypeFilter}>
-              <SelectTrigger className="w-[180px] h-12 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold">
-                <SelectValue placeholder="Fee Type" />
-              </SelectTrigger>
-              <SelectContent className="rounded-2xl border-slate-100 shadow-xl">
-                <SelectItem value="all">All Income</SelectItem>
-                <SelectItem value="Admission Fee">Admission Fees</SelectItem>
-                <SelectItem value="Monthly Installment">Installments</SelectItem>
-                <SelectItem value="Miscellaneous">Miscellaneous</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" className="h-12 w-12 rounded-2xl border-slate-100 p-0 text-slate-400 hover:text-superior-teal">
-              <Filter size={20} />
-            </Button>
+            
+            {/* Phase 3: Module-Wise Deep Filtering (Income) */}
+            <div className="flex flex-wrap items-center gap-4 pt-4 border-t border-slate-50">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest w-12">From</Label>
+                <Input type="date" className="h-10 w-[140px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30" 
+                  value={incomeFilters.startDate} onChange={(e) => setIncomeFilters({...incomeFilters, startDate: e.target.value})} />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest w-10">To</Label>
+                <Input type="date" className="h-10 w-[140px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30" 
+                  value={incomeFilters.endDate} onChange={(e) => setIncomeFilters({...incomeFilters, endDate: e.target.value})} />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest w-24">Min Amount</Label>
+                <Input type="number" placeholder="Rs. 0" className="h-10 w-[120px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30" 
+                  value={incomeFilters.minAmount} onChange={(e) => setIncomeFilters({...incomeFilters, minAmount: e.target.value})} />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest w-24">Max Amount</Label>
+                <Input type="number" placeholder="Rs. Any" className="h-10 w-[120px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30" 
+                  value={incomeFilters.maxAmount} onChange={(e) => setIncomeFilters({...incomeFilters, maxAmount: e.target.value})} />
+              </div>
+              <Button onClick={() => setIncomeFilters({startDate:'', endDate:'', minAmount:'', maxAmount:''})} variant="ghost" className="h-10 px-4 text-slate-400 hover:text-red-500 rounded-xl">
+                Clear Filters
+              </Button>
+            </div>
           </div>
 
           <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
@@ -343,22 +371,20 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
                     const matchesSearch = inc.studentName.toLowerCase().includes(incomeSearch.toLowerCase()) || 
                                           (inc.studentId && inc.studentId.toLowerCase().includes(incomeSearch.toLowerCase()));
                     const matchesType = incomeTypeFilter === 'all' || inc.feeType === incomeTypeFilter;
-                    return matchesSearch && matchesType;
+                    
+                    // Deep filters mapping
+                    let matchesDate = true;
+                    if (incomeFilters.startDate) matchesDate = matchesDate && new Date(inc.date) >= new Date(incomeFilters.startDate);
+                    if (incomeFilters.endDate) matchesDate = matchesDate && new Date(inc.date) <= new Date(incomeFilters.endDate);
+                    
+                    let matchesAmount = true;
+                    if (incomeFilters.minAmount) matchesAmount = matchesAmount && (inc.amount || 0) >= Number(incomeFilters.minAmount);
+                    if (incomeFilters.maxAmount) matchesAmount = matchesAmount && (inc.amount || 0) <= Number(incomeFilters.maxAmount);
+
+                    return matchesSearch && matchesType && matchesDate && matchesAmount;
                   })
-                  .length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-40 text-center text-slate-400 italic">No income records found.</TableCell>
-                  </TableRow>
-                ) : (
-                  activeIncomes
-                    .filter((inc: Income) => {
-                      const matchesSearch = inc.studentName.toLowerCase().includes(incomeSearch.toLowerCase()) || 
-                                            (inc.studentId && inc.studentId.toLowerCase().includes(incomeSearch.toLowerCase()));
-                      const matchesType = incomeTypeFilter === 'all' || inc.feeType === incomeTypeFilter;
-                      return matchesSearch && matchesType;
-                    })
-                    .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .map((inc: Income) => (
+                  .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  .map((inc: Income) => (
                     <TableRow key={inc.id} className="border-b border-slate-50 hover:bg-slate-50/30 transition-colors group">
                       <TableCell className="py-5 px-6 text-sm font-medium text-slate-600">{inc.date}</TableCell>
                       <TableCell className="py-5 px-6">
@@ -382,7 +408,7 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
                       </TableCell>
                     </TableRow>
                   ))
-                )}
+                }
               </TableBody>
             </Table>
           </div>
@@ -390,28 +416,57 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
       </TabsContent>
 
       <TabsContent value="expenses" className="space-y-6">
-          <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
-            <div className="relative flex-1 min-w-[280px]">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <Input 
-                placeholder="Search by description or category..." 
-                className="pl-12 h-12 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all"
-                value={expenseSearch}
-                onChange={(e) => setExpenseSearch(e.target.value)}
-              />
+          <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="relative flex-1 min-w-[280px]">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <Input 
+                  placeholder="Search by description or category..." 
+                  className="pl-12 h-12 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all"
+                  value={expenseSearch}
+                  onChange={(e) => setExpenseSearch(e.target.value)}
+                />
+              </div>
+              <Select value={expenseCategoryFilter} onValueChange={setExpenseCategoryFilter}>
+                <SelectTrigger className="w-[180px] h-12 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent className="rounded-2xl border-slate-100 shadow-xl">
+                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="Staff Salaries">Staff Salaries</SelectItem>
+                  <SelectItem value="Electricity Bills">Utility Bills</SelectItem>
+                  <SelectItem value="Maintenance & Repairs">Maintenance</SelectItem>
+                  <SelectItem value="Miscellaneous">Miscellaneous</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={expenseCategoryFilter} onValueChange={setExpenseCategoryFilter}>
-              <SelectTrigger className="w-[180px] h-12 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold">
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent className="rounded-2xl border-slate-100 shadow-xl">
-                <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="Staff Salaries">Staff Salaries</SelectItem>
-                <SelectItem value="Electricity Bills">Utility Bills</SelectItem>
-                <SelectItem value="Maintenance & Repairs">Maintenance</SelectItem>
-                <SelectItem value="Miscellaneous">Miscellaneous</SelectItem>
-              </SelectContent>
-            </Select>
+            
+            {/* Phase 3: Module-Wise Deep Filtering (Expense) */}
+            <div className="flex flex-wrap items-center gap-4 pt-4 border-t border-slate-50">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest w-12">From</Label>
+                <Input type="date" className="h-10 w-[140px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30" 
+                  value={expenseFilters.startDate} onChange={(e) => setExpenseFilters({...expenseFilters, startDate: e.target.value})} />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest w-10">To</Label>
+                <Input type="date" className="h-10 w-[140px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30" 
+                  value={expenseFilters.endDate} onChange={(e) => setExpenseFilters({...expenseFilters, endDate: e.target.value})} />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest w-24">Min Amount</Label>
+                <Input type="number" placeholder="Rs. 0" className="h-10 w-[120px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30" 
+                  value={expenseFilters.minAmount} onChange={(e) => setExpenseFilters({...expenseFilters, minAmount: e.target.value})} />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest w-24">Max Amount</Label>
+                <Input type="number" placeholder="Rs. Any" className="h-10 w-[120px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30" 
+                  value={expenseFilters.maxAmount} onChange={(e) => setExpenseFilters({...expenseFilters, maxAmount: e.target.value})} />
+              </div>
+              <Button onClick={() => setExpenseFilters({startDate:'', endDate:'', minAmount:'', maxAmount:''})} variant="ghost" className="h-10 px-4 text-slate-400 hover:text-red-500 rounded-xl">
+                Clear Filters
+              </Button>
+            </div>
           </div>
 
           <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
@@ -432,22 +487,19 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
                     const matchesSearch = exp.description.toLowerCase().includes(expenseSearch.toLowerCase()) || 
                                           exp.category.toLowerCase().includes(expenseSearch.toLowerCase());
                     const matchesCat = expenseCategoryFilter === 'all' || exp.category === expenseCategoryFilter;
-                    return matchesSearch && matchesCat;
+                    
+                    let matchesDate = true;
+                    if (expenseFilters.startDate) matchesDate = matchesDate && new Date(exp.date) >= new Date(expenseFilters.startDate);
+                    if (expenseFilters.endDate) matchesDate = matchesDate && new Date(exp.date) <= new Date(expenseFilters.endDate);
+                    
+                    let matchesAmount = true;
+                    if (expenseFilters.minAmount) matchesAmount = matchesAmount && (exp.amount || 0) >= Number(expenseFilters.minAmount);
+                    if (expenseFilters.maxAmount) matchesAmount = matchesAmount && (exp.amount || 0) <= Number(expenseFilters.maxAmount);
+
+                    return matchesSearch && matchesCat && matchesDate && matchesAmount;
                   })
-                  .length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="h-40 text-center text-slate-400 italic">No expense records found.</TableCell>
-                  </TableRow>
-                ) : (
-                  data.expenses
-                    .filter((exp: Expense) => {
-                      const matchesSearch = exp.description.toLowerCase().includes(expenseSearch.toLowerCase()) || 
-                                            exp.category.toLowerCase().includes(expenseSearch.toLowerCase());
-                      const matchesCat = expenseCategoryFilter === 'all' || exp.category === expenseCategoryFilter;
-                      return matchesSearch && matchesCat;
-                    })
-                    .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .map((exp: Expense) => (
+                  .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  .map((exp: Expense) => (
                     <TableRow key={exp.id} className="border-b border-slate-50 hover:bg-slate-50/30 transition-colors group">
                       <TableCell className="py-5 px-6 text-sm font-medium text-slate-600">{exp.date}</TableCell>
                       <TableCell className="py-5 px-6">
@@ -460,7 +512,7 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
                       <TableCell className="py-5 px-6 text-right font-display font-black text-rose-600 text-lg">Rs. {(exp.amount || 0).toLocaleString()}</TableCell>
                     </TableRow>
                   ))
-                )}
+                }
               </TableBody>
             </Table>
           </div>
@@ -641,13 +693,13 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
     pdf.setFontSize(10);
     pdf.setFont("helvetica", "bold");
     pdf.text(tx.description, 5, 88);
-    pdf.text(`Rs. ${tx.amount.toLocaleString()}`, 75, 88, { align: 'right' });
+    pdf.text(`Rs. ${(tx.amount || 0).toLocaleString()}`, 75, 88, { align: 'right' });
     
     pdf.line(5, 95, 75, 95);
     
     pdf.setFontSize(8);
     pdf.setFont("helvetica", "normal");
-    pdf.text(`Remaining Balance: Rs. ${student.feeLedger.remainingBalance.toLocaleString()}`, 5, 102);
+    pdf.text(`Remaining Balance: Rs. ${(student.feeLedger?.remainingBalance || 0).toLocaleString()}`, 5, 102);
     
     pdf.setFontSize(7);
     pdf.text("Thank you for your payment.", 40, 130, { align: 'center' });
@@ -867,7 +919,7 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
                         <TableCell className="py-5 px-6">
                           <Badge variant="outline" className="rounded-lg border-slate-100 bg-slate-50/50 text-slate-500 font-bold px-2 py-0.5">{tx.paymentMethod}</Badge>
                         </TableCell>
-                        <TableCell className="py-5 px-6 text-right font-display font-black text-emerald-600 text-lg">Rs. {tx.amount.toLocaleString()}</TableCell>
+                        <TableCell className="py-5 px-6 text-right font-display font-black text-emerald-600 text-lg">Rs. {(tx.amount || 0).toLocaleString()}</TableCell>
                         <TableCell className="py-5 px-6 text-right">
                           <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl text-superior-teal hover:bg-superior-teal hover:text-white transition-all shadow-sm" onClick={() => downloadReceipt(tx)}>
                             <Download size={18} />

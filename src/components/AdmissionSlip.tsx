@@ -67,20 +67,26 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
       const dataUrl = await toPng(slipRef.current, {
         quality: 1.0,
         pixelRatio: 2,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        cacheBust: true,
+        includeQueryParams: true,
+        style: {
+          transform: 'none',
+          transformOrigin: 'top left',
+          margin: '0',
+        }
       });
       
       const imgProps = new Image();
       imgProps.src = dataUrl;
       await new Promise((resolve) => { imgProps.onload = resolve; });
       
-      const pdfWidth = 215.9; // Legal width in mm
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
       
-      const pdf = new jsPDF('p', 'mm', [pdfWidth, Math.max(355.6, pdfHeight)]);
-      
       pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Admission_Slip_${admission.fullName.replace(/\s+/g, '_')}.pdf`);
+      pdf.save(`Admission_Slip_${admission.fullName?.replace(/\s+/g, '_') || 'Student'}.pdf`);
       toast.dismiss(toastId);
       toast.success("Admission Slip downloaded!");
     } catch (err) {
@@ -90,17 +96,37 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
     }
   };
 
-  const handlePrint = useReactToPrint({
+  const reactToPrintFn = useReactToPrint({
     contentRef: slipRef,
-    documentTitle: `Admission_Slip_${admission.fullName?.replace(/\s+/g, '_') || 'Applicant'}`
+    documentTitle: `Admission_Slip_${admission.fullName?.replace(/\s+/g, '_') || 'Applicant'}`,
+    onPrintError: (error) => {
+      console.error(error);
+      toast.error("Printing failed. Using download fallback.");
+      downloadSlip();
+    }
   });
+
+  const handlePrintClick = () => {
+    try {
+      const isIframe = window !== window.parent;
+      if (isIframe) {
+        toast.info("Direct printing is blocked in Preview Mode. To use Print, please click 'Open App in New Tab' (top right corner). Downloading PDF fallback...", { duration: 6000 });
+        downloadSlip();
+      } else {
+        reactToPrintFn();
+      }
+    } catch (e) {
+      toast.info("Attempting PDF download fallback...");
+      downloadSlip();
+    }
+  };
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
       <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white">
         <h3 className="text-xl font-serif font-bold text-superior-teal">Admission Form Preview</h3>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={() => handlePrint()} className="rounded-xl font-bold">
+          <Button variant="outline" onClick={handlePrintClick} className="rounded-xl font-bold">
             Print
           </Button>
           <Button className="bg-superior-teal text-white font-black rounded-xl hover:bg-superior-teal/90" onClick={downloadSlip}>
@@ -112,7 +138,7 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
       <div className="flex-1 overflow-auto p-4 bg-slate-100 flex justify-center preview-scroll-container">
         <div 
           ref={slipRef}
-          className="w-[215.9mm] h-fit bg-white p-8 relative shadow-2xl overflow-hidden print-area"
+          className="w-[794px] min-h-[1123px] h-fit bg-white p-10 relative shadow-2xl overflow-hidden print-area"
           style={{ fontFamily: "'Inter', sans-serif" }}
         >
           {/* Header */}
@@ -120,7 +146,7 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
             <div className="w-full flex items-center justify-center gap-6 mb-1">
                <div className="w-20 h-20 rounded-full flex items-center justify-center overflow-hidden border border-slate-200 bg-white shadow-sm shrink-0">
                 {settings?.logo ? (
-                  <img src={settings.logo} alt="Logo" className="w-full h-full object-contain" />
+                  <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-slate-300">
                     <School size={40} />
@@ -148,48 +174,78 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
           </div>
 
           {/* Student Info Section */}
-          <div className="grid grid-cols-12 gap-4 mb-4">
-            <div className="col-span-10 space-y-4">
-              <div className="grid grid-cols-2 gap-y-3 gap-x-6">
-                <PreviewItem label="Student Full Name" value={admission.fullName} />
-                <PreviewItem label="Father's Name" value={admission.fatherName} />
-                <PreviewItem label="B-Form / CNIC" value={admission.bayFormNo || '---'} />
-                <PreviewItem label="Date of Birth" value={admission.dob || '---'} />
-                <PreviewItem label="Contact (Primary)" value={admission.contactNumber || admission.contact} />
-                <PreviewItem label="Gender" value={admission.gender} />
-                {(admission as any).email && <PreviewItem label="Email Address" value={(admission as any).email} />}
-                {(admission as any).bloodGroup && <PreviewItem label="Blood Group" value={(admission as any).bloodGroup} />}
-                <PreviewItem label="Permanent Address" value={admission.address} isFull />
-              </div>
-            </div>
-            <div className="col-span-2 flex flex-col items-center justify-start pt-2">
-              <div className="w-full aspect-[3/4] border border-slate-200 rounded-lg overflow-hidden bg-slate-50 flex items-center justify-center relative shadow-sm mb-2">
-                {admission.photo ? (
-                  <img src={admission.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                ) : (
-                  <div className="text-slate-200 flex flex-col items-center gap-1">
-                    <User size={24} />
-                    <span className="text-[6px] font-black uppercase tracking-widest text-center">Passport<br/>Photo</span>
+          <section className="bg-slate-50 rounded-xl p-5 border border-slate-100 mb-6 shadow-sm mt-4">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-4 border-b border-slate-200 pb-1.5" style={{ color: prog.theme }}>Student Profile & Demographics</h3>
+            <div className="grid grid-cols-12 gap-4">
+              <div className="col-span-10 space-y-4">
+                <div className="grid grid-cols-2 gap-y-4 gap-x-8">
+                  {[
+                    { label: "Student Full Name", value: admission.fullName },
+                    { label: "Father's Name", value: admission.fatherName },
+                    { label: "B-Form / CNIC", value: admission.bayFormNo },
+                    { label: "Date of Birth", value: admission.dob },
+                    { label: "Contact (Primary)", value: admission.contactNumber || admission.contact },
+                    { label: "Father's Contact", value: admission.fatherContact },
+                    { label: "Secondary Contact", value: admission.secondaryContact },
+                    { label: "Gender", value: admission.gender },
+                    { label: "Email Address", value: (admission as any).email },
+                    { label: "Blood Group", value: (admission as any).bloodGroup }
+                  ].map((item, idx) => (
+                    <div key={idx} className="space-y-0.5">
+                      <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">{item.label}</p>
+                      <p className="text-[13px] font-bold text-slate-800 border-b border-slate-100 pb-0.5 leading-tight min-h-[24px]">
+                        {item.value && item.value !== '---' ? item.value : '\u00A0'}
+                      </p>
+                    </div>
+                  ))}
+                  <div className="space-y-0.5 col-span-2 mt-2">
+                     <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Permanent Address</p>
+                     <p className="text-[13px] font-bold text-slate-800 border-b border-slate-100 pb-0.5 leading-tight min-h-[24px]">
+                        {admission.address && admission.address !== '---' ? admission.address : '\u00A0'}
+                     </p>
                   </div>
-                )}
+                </div>
               </div>
-              <div className="bg-slate-100 w-full py-1.5 px-1 rounded flex flex-col items-center border border-slate-200 shadow-sm">
-                 <span className="text-[6px] font-black uppercase tracking-widest text-slate-400 leading-none mb-0.5">System ID</span>
-                 <span className="text-[8px] font-mono font-bold text-slate-700 leading-tight text-center break-all">{admission.studentId || admission.id || 'PENDING'}</span>
+              <div className="col-span-2 flex flex-col items-center justify-start pt-1">
+                <div className="w-full aspect-[3/4] border border-slate-200 rounded-lg overflow-hidden bg-white flex items-center justify-center relative shadow-sm mb-2">
+                  {admission.photo ? (
+                    <img src={admission.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="text-slate-200 flex flex-col items-center gap-1">
+                      <User size={24} stroke="#e2e8f0" strokeWidth={2} />
+                      <span className="text-[6px] font-black uppercase tracking-widest text-center">Passport<br/>Photo</span>
+                    </div>
+                  )}
+                </div>
+                <div className="bg-white w-full py-2 px-1 rounded flex flex-col items-center border border-slate-200 shadow-sm">
+                   <span className="text-[6px] font-black uppercase tracking-widest text-slate-400 leading-none mb-1">System ID</span>
+                   <span className="text-[8px] font-mono font-bold text-slate-700 leading-tight text-center break-all">{admission.studentId || (admission as any).id || 'PENDING'}</span>
+                </div>
               </div>
             </div>
-          </div>
+          </section>
 
           {/* Academic Details */}
           <section className="bg-slate-50 rounded-xl p-4 border border-slate-100 mb-4 shadow-sm">
             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-3 border-b border-slate-200 pb-1.5" style={{ color: prog.theme }}>Academic Enrollment & Subjects</h3>
             <div className="grid grid-cols-3 gap-4">
-              <PreviewItem label="Program Category" value={prog.name} />
-              <PreviewItem label="Academic Group" value={admission.group || '---'} />
-              <PreviewItem label="Proposed Section" value={admission.section || '---'} />
-              <PreviewItem label="Board Roll No" value={admission.boardRollNo || '---'} />
-              <PreviewItem label="Previous Class" value={admission.previousClass || '---'} />
-              <PreviewItem label="Grade / Marks" value={String(admission.previousMarks || '---')} />
+              {[
+                { label: "Program Category", value: prog.name },
+                { label: "Academic Group", value: admission.group },
+                { label: "Proposed Section", value: admission.section },
+                { label: "Board Roll No", value: admission.boardRollNo },
+                { label: "Previous Class", value: admission.previousClass },
+                { label: "Grade / Marks", value: admission.previousMarks ? String(admission.previousMarks) : undefined },
+                { label: "Previous Institute", value: admission.previousInstitute },
+                { label: "Reference", value: admission.reference }
+              ].map((item, idx) => (
+                <div key={idx} className="space-y-0.5">
+                  <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">{item.label}</p>
+                  <p className="text-[13px] font-bold text-slate-800 border-b border-slate-100 pb-0.5 leading-tight min-h-[24px]">
+                    {item.value && item.value !== '---' && String(item.value).trim() !== '' ? item.value : '\u00A0'}
+                  </p>
+                </div>
+              ))}
             </div>
             <div className="mt-3">
               <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1.5">Course Subjects Authorized</p>
@@ -268,8 +324,12 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
           </div>
 
           {/* Watermark */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.015] pointer-events-none -rotate-12">
-             <School size={400} />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.08] pointer-events-none w-[400px] h-[400px] flex items-center justify-center rounded-full overflow-hidden">
+            {settings?.logo ? (
+              <img src={settings.logo} alt="" className="w-full h-full object-cover rounded-full" />
+            ) : (
+              <School size={300} stroke="#001a1a" />
+            )}
           </div>
         </div>
       </div>
@@ -277,11 +337,12 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
   );
 }
 
-function PreviewItem({ label, value, isFull }: { label: string, value: string, isFull?: boolean }) {
+function PreviewItem({ label, value, isFull }: { label: string, value?: string, isFull?: boolean }) {
+  if (!value || value === '---' || value === 'N/A' || value.trim() === '') return null;
   return (
     <div className={`space-y-0.5 ${isFull ? 'col-span-2' : ''}`}>
       <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">{label}</p>
-      <p className="text-[13px] font-bold text-slate-800 border-b border-slate-100 pb-0.5 leading-tight">{value || '---'}</p>
+      <p className="text-[13px] font-bold text-slate-800 border-b border-slate-100 pb-0.5 leading-tight">{value}</p>
     </div>
   );
 }

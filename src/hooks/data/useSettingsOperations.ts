@@ -6,7 +6,7 @@ export function useSettingsOperations(ctx: any) {
   const { generateStudentId, user, settings, setSettings, permissions, notifications, setNotifications, fetchData } = ctx;
   const updateSettings = async (newSettings: AppSettings) => {
     const backupSettings = settings;
-    setSettings(newSettings);
+    setSettings({ ...newSettings, id: (settings as any)?.id });
 
     try {
       const payload = {
@@ -22,6 +22,7 @@ export function useSettingsOperations(ctx: any) {
         currency_symbol: newSettings.currencySymbol,
         academic_session: newSettings.academicSession,
         enabled_modules: newSettings.enabledModules,
+        updated_at: new Date().toISOString(),
         config: {
           sidebarColor: newSettings.sidebarColor,
           sidebarTextColor: newSettings.sidebarTextColor,
@@ -36,7 +37,8 @@ export function useSettingsOperations(ctx: any) {
           enableHighlighting: newSettings.enableHighlighting,
           admissionSlipCustomText: newSettings.admissionSlipCustomText,
           feeReceiptCustomText: newSettings.feeReceiptCustomText,
-          logo: newSettings.logo
+          logo: newSettings.logo,
+          predefinedSections: newSettings.predefinedSections
         }
       };
 

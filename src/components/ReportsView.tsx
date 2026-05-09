@@ -39,6 +39,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { toPng } from 'html-to-image';
@@ -53,6 +54,8 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
   // Advanced Filters
   const [genderFilter, setGenderFilter] = useState<string>('all');
   const [monthFilter, setMonthFilter] = useState<string>('all');
+  const [startDateFilter, setStartDateFilter] = useState<string>('');
+  const [endDateFilter, setEndDateFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [individualSearch, setIndividualSearch] = useState('');
   
@@ -82,9 +85,12 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
       const dataUrl = await toPng(reportRef.current, { 
         cacheBust: true, 
         backgroundColor: '#ffffff',
+        includeQueryParams: true,
         style: {
           overflow: 'visible',
-          height: 'auto'
+          height: 'auto',
+          margin: "0",
+          padding: "0"
         }
       });
       
@@ -234,15 +240,17 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
             ...activeStudentNames,
             ...validAdmissionsForIncome.map((a: any) => a.fullName?.toLowerCase().trim()).filter(Boolean)
         ]);
-        const activeIncomes = data.incomes.filter((inc: any) => {
-            if (inc.studentId && inc.studentId.trim() !== '') return activeIds.has(inc.studentId);
-            if (inc.studentName && inc.studentName.trim() !== '') return activeNames.has(inc.studentName.toLowerCase().trim());
-            return true;
-        });
+        const activeIncomes = data.incomes;
 
         const financialData: any[] = [];
         activeIncomes
           .filter((i: any) => monthFilter === 'all' || i.month === monthFilter)
+          .filter((i: any) => {
+             let matchesDate = true;
+             if (startDateFilter) matchesDate = matchesDate && new Date(i.date) >= new Date(startDateFilter);
+             if (endDateFilter) matchesDate = matchesDate && new Date(i.date) <= new Date(endDateFilter);
+             return matchesDate;
+          })
           .forEach((i: any) => {
             financialData.push([i.date, "Income", i.feeType, `Rs. ${i.amount}`, i.status]);
           });
@@ -256,7 +264,11 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
            const excess = Math.max(0, Number(a.feeReceived) - studentIncomesTotal);
            if (excess > 0) {
              const admMonth = months[new Date(a.date).getMonth()] || 'N/A';
-             if (monthFilter === 'all' || admMonth === monthFilter) {
+             let matchesDate = true;
+             if (startDateFilter) matchesDate = matchesDate && new Date(a.date) >= new Date(startDateFilter);
+             if (endDateFilter) matchesDate = matchesDate && new Date(a.date) <= new Date(endDateFilter);
+             
+             if ((monthFilter === 'all' || admMonth === monthFilter) && matchesDate) {
                 financialData.push([a.date, "Income (Adm)", "Admission Fee", `Rs. ${excess}`, "Received"]);
              }
            }
@@ -264,6 +276,12 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
 
         data.expenses
           .filter((e: any) => monthFilter === 'all' || months[new Date(e.date).getMonth()] === monthFilter)
+          .filter((e: any) => {
+             let matchesDate = true;
+             if (startDateFilter) matchesDate = matchesDate && new Date(e.date) >= new Date(startDateFilter);
+             if (endDateFilter) matchesDate = matchesDate && new Date(e.date) <= new Date(endDateFilter);
+             return matchesDate;
+          })
           .forEach((e: any) => {
             financialData.push([e.date, "Expense", e.category, `Rs. ${e.amount}`, "Paid"]);
           });
@@ -285,6 +303,12 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
           .filter((a: any) => genderFilter === 'all' || a.gender === genderFilter)
           .filter((a: any) => monthFilter === 'all' || months[new Date(a.date).getMonth()] === monthFilter)
           .filter((a: any) => statusFilter === 'all' || a.status === statusFilter)
+          .filter((a: any) => {
+             let matchesDate = true;
+             if (startDateFilter) matchesDate = matchesDate && new Date(a.date) >= new Date(startDateFilter);
+             if (endDateFilter) matchesDate = matchesDate && new Date(a.date) <= new Date(endDateFilter);
+             return matchesDate;
+          })
           .map((a: any) => [a.id, a.fullName, a.fatherName, a.status, a.date]);
       }
     },
@@ -390,6 +414,26 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
                 />
               </div>
             )}
+            
+            {(selectedReport.id === 'financial' || selectedReport.id === 'admissions') && (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">From</Label>
+                  <Input type="date" className="h-11 w-[140px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30" 
+                    value={startDateFilter} onChange={(e) => { setStartDateFilter(e.target.value); setSelectedReport({...selectedReport, data: selectedReport.getData()}) }} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">To</Label>
+                  <Input type="date" className="h-11 w-[140px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30" 
+                    value={endDateFilter} onChange={(e) => { setEndDateFilter(e.target.value); setSelectedReport({...selectedReport, data: selectedReport.getData()}) }} />
+                </div>
+                {(startDateFilter || endDateFilter) && (
+                  <Button onClick={() => { setStartDateFilter(''); setEndDateFilter(''); setSelectedReport({...selectedReport, data: selectedReport.getData()}) }} variant="ghost" className="h-11 px-3 text-slate-400 hover:text-red-500 rounded-xl">
+                    Clear
+                  </Button>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -416,9 +460,9 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
               {/* Report Header */}
               <div className="flex justify-between items-start border-b-4 border-superior-teal pb-12 mb-12">
                 <div className="flex gap-8 items-center">
-                  <div className="w-28 h-28 rounded-3xl bg-white shadow-inner border border-slate-100 flex items-center justify-center overflow-hidden p-2">
+                  <div className="w-28 h-28 rounded-full bg-white shadow-inner border border-slate-100 flex items-center justify-center overflow-hidden p-0">
                     {data.settings?.logo ? (
-                      <img src={data.settings.logo} alt="Logo" className="w-full h-full object-contain" />
+                      <img src={data.settings.logo} alt="Logo" className="w-full h-full object-cover" />
                     ) : (
                       <div className="bg-superior-teal w-full h-full flex items-center justify-center text-white rounded-2xl">
                         <School size={56} />

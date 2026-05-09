@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3e3;
+  const PORT = 3e3;
   app.use(express.json());
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
@@ -24,19 +24,23 @@ async function startServer() {
         process.env.SUPABASE_SERVICE_ROLE_KEY,
         { auth: { autoRefreshToken: false, persistSession: false } }
       );
-      const { data, error } = await supabaseAdmin.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: { display_name: displayName }
-      });
-      if (error) {
-        if (error.status === 422 && error.message.includes("already registered")) {
-          return res.json({ message: "User already exists in Auth, updating permissions..." });
+      if (password) {
+        const { data, error } = await supabaseAdmin.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: { display_name: displayName }
+        });
+        if (error) {
+          if (error.message && (error.message.includes("already registered") || error.message.includes("already exists"))) {
+            return res.json({ message: "User already exists in Auth, updating permissions..." });
+          }
+          return res.status(400).json({ error: error.message });
         }
-        return res.status(400).json({ error: error.message });
+        return res.json({ message: "User created successfully", user: data.user });
+      } else {
+        return res.json({ message: "No password provided, assuming user already exists in Auth, updating permissions..." });
       }
-      res.json({ message: "User created successfully", user: data.user });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }

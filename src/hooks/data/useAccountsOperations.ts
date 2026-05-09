@@ -45,15 +45,13 @@ export function useAccountsOperations(ctx: any) {
       }
     };
 
-  const recordFeePayment = async (studentId: string, payment: FeePayment) => {
+  const recordFeePayment = async (studentId: string, payment: FeePayment, fallbackName?: string) => {
     try {
       const student = students.find(s => s.id === studentId || s.admissionId === studentId);
       const admission = admissions.find(a => a.id === studentId || a.studentId === studentId);
 
-      if (!student && !admission) throw new Error("Student not found in management or admissions");
-
-      const targetId = student?.id || admission?.id;
-      const targetName = student?.fullName || admission?.fullName;
+      const targetId = student?.id || admission?.id || studentId;
+      const targetName = student?.fullName || admission?.fullName || fallbackName || 'Unknown Student';
 
       // 1. Record in Income table
       const { error: incomeError } = await supabase.from('income').insert({
@@ -293,9 +291,10 @@ export function useAccountsOperations(ctx: any) {
           amount: payment.amount,
           month: payment.month,
           year: payment.year,
-          payment_date: payment.date,
+          date: payment.date,
           payment_method: payment.paymentMethod,
-          recorded_by: user?.email
+          status: payment.status || 'Paid',
+          receipt_number: payment.receiptNumber || null
         });
         if (error) throw error;
         

@@ -20,7 +20,9 @@ import {
   Trash2,
   AlertCircle,
   CreditCard,
-  Printer
+  Printer,
+  FileSpreadsheet,
+  Upload
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { 
@@ -68,18 +70,166 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { compressImage, base64ToBlob } from '../lib/imageUtils';
 
-export default function StaffView({ data, initialFilter }: { data: any, initialFilter?: string | null }) {
+import * as XLSX from 'xlsx';
+import StaffAttendance from './StaffAttendance';
+import StaffPayroll from './StaffPayroll';
+import StaffSubjects from './StaffSubjects';
+import StaffTimetable from './StaffTimetable';
+
+export default function StaffView({ data, initialFilter, title, hideNavigation }: { data: any, initialFilter?: string | null, title?: string, hideNavigation?: boolean }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [roleFilter, setRoleFilter] = useState<string>(initialFilter || 'all');
+  const [roleFilter, setRoleFilter] = useState<string>(
+    ['all', 'Management', 'Academic', 'Administration', 'Support'].includes(initialFilter || 'all') 
+      ? (initialFilter || 'all') 
+      : 'all'
+  );
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [dialogType, setDialogType] = useState<'profile' | 'edit' | 'delete' | 'bulkDelete' | null>(null);
 
+  const [activeModule, setActiveModule] = useState<'directory' | 'attendance' | 'payroll' | 'timetable' | 'subjects'>(
+    ['directory', 'attendance', 'payroll', 'timetable', 'subjects'].includes(initialFilter as string) 
+      ? (initialFilter as any) 
+      : 'directory'
+  );
+
+  const handleExportExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(filteredStaff.map((staff: Staff) => ({
+      "Staff ID": staff.id,
+      "Full Name": staff.fullName,
+      "Father Name": staff.fatherName,
+      "CNIC": staff.cnic,
+      "Contact": staff.contact,
+      "Role": staff.role || "",
+      "Status": staff.status,
+      "Join Date": staff.joinDate,
+      "Salary": staff.baseSalary || staff.salary || 0,
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Staff");
+    XLSX.writeFile(wb, `Staff_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const handleExportCSV = () => {
+    const ws = XLSX.utils.json_to_sheet(filteredStaff.map((staff: Staff) => ({
+      "Staff ID": staff.id,
+      "Full Name": staff.fullName,
+      "Father Name": staff.fatherName,
+      "CNIC": staff.cnic,
+      "Contact": staff.contact,
+      "Role": staff.role || "",
+      "Status": staff.status,
+      "Join Date": staff.joinDate,
+      "Salary": staff.baseSalary || staff.salary || 0,
+    })));
+    const csv = XLSX.utils.sheet_to_csv(ws);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Staff_Export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleDownloadTemplate = () => {
+    const template = [{
+      "Staff ID": "SGC-T-001",
+      "Full Name": "John Doe",
+      "Father Name": "Richard Doe",
+      "CNIC": "12345-1234567-1",
+      "Contact": "03001234567",
+      "Role": "Lecturer",
+      "Status": "Active",
+      "Join Date": new Date().toISOString().split('T')[0],
+      "Salary": 50000
+    }];
+    const ws = XLSX.utils.json_to_sheet(template);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Staff_Template");
+    XLSX.writeFile(wb, "Staff_Format_Template.xlsx");
+  };
+
+  const handleBulkImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const rows = XLSX.utils.sheet_to_json(ws);
+
+        if (rows.length === 0) {
+          toast.error("The uploaded file is empty.");
+          return;
+        }
+
+        let importCount = 0;
+        const toastId = toast.loading("Processing staff import...");
+        
+        for (const row of rows as any[]) {
+          // Generate ID if not provided
+          let id = row['Staff ID'] || row['ID'] || '';
+          if (!id) {
+            const currentIds = data.staff.map((s: Staff) => s.id)
+                .filter((i: string) => typeof i === 'string' && i.startsWith('SGC-T-'))
+                .map((i: string) => parseInt(i.replace('SGC-T-', ''), 10))
+                .filter((num: number) => !isNaN(num));
+            const nextNum = currentIds.length > 0 ? Math.max(...currentIds) + 1 : 1;
+            id = `SGC-T-${(nextNum + importCount).toString().padStart(3, '0')}`;
+          }
+
+          const existingStaff = data.staff.find((s: Staff) => s.id === id);
+          if (existingStaff) continue; // skip duplicates manually
+          
+          await data.addStaff({
+            id: id,
+            fullName: row['Full Name'] || row['Name'] || '',
+            fatherName: row['Father Name'] || '',
+            cnic: row['CNIC'] || '',
+            contact: row['Contact'] || row['Phone'] || '',
+            role: row['Role'] || row['Designation'] || 'Lecturer',
+            status: row['Status'] || 'Active',
+            joinDate: row['Join Date'] || new Date().toISOString().split('T')[0],
+            qualification: '',
+            salary: row['Salary'] || 0,
+            baseSalary: row['Salary'] || 0,
+            subjects: [],
+            photo: ''
+          });
+          importCount++;
+        }
+        toast.dismiss(toastId);
+        toast.success(`Successfully imported ${importCount} staff members!`);
+        if (data.fetchData) data.fetchData(true);
+      } catch (err) {
+        toast.dismiss();
+        toast.error("Failed to parse file. Please use the provided format.");
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = '';
+  };
+
   // Sync with initialFilter if it changes from sidebar
   React.useEffect(() => {
     if (initialFilter) {
-      setRoleFilter(initialFilter);
+      if (['all', 'Management', 'Academic', 'Administration', 'Support'].includes(initialFilter)) {
+        setActiveModule('directory');
+        setRoleFilter(initialFilter);
+      } else if (initialFilter === 'directory') {
+        setActiveModule('directory');
+        setRoleFilter('all');
+      } else if (['attendance', 'payroll', 'timetable', 'subjects'].includes(initialFilter)) {
+        setActiveModule(initialFilter as any);
+        setRoleFilter('all');
+      }
     }
   }, [initialFilter]);
 
@@ -91,8 +241,10 @@ export default function StaffView({ data, initialFilter }: { data: any, initialF
   };
 
   const filteredStaff = data.staff.filter((s: Staff) => {
-    const matchesSearch = s.fullName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         s.id.toLowerCase().includes(searchTerm.toLowerCase());
+    const name = s.fullName || '';
+    const id = s.id || '';
+    const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         id.toLowerCase().includes(searchTerm.toLowerCase());
     
     let matchesRole = roleFilter === 'all';
     if (!matchesRole) {
@@ -144,28 +296,46 @@ export default function StaffView({ data, initialFilter }: { data: any, initialF
         <div>
           <div className="flex items-center gap-3">
             <h3 className="text-3xl font-display font-black text-superior-teal tracking-tight">
-              Staff Management
+              {title || "Staff Management"}
             </h3>
-            <span className="text-slate-300 text-2xl">/</span>
-            <span className="urdu-text text-2xl text-superior-gold font-medium">اسٹاف مینجمنٹ</span>
+            {!title && (
+              <>
+                <span className="text-slate-300 text-2xl">/</span>
+                <span className="urdu-text text-2xl text-superior-gold font-medium">اسٹاف مینجمنٹ</span>
+              </>
+            )}
           </div>
         </div>
         
-        <div className="flex items-center gap-4">
-          <div className="bg-white px-6 py-4 rounded-3xl flex items-center gap-5 border border-slate-100 shadow-sm">
-            <div className="text-right">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Staff</p>
-              <p className="text-2xl font-display font-black text-superior-teal tracking-tight">{data.staff.length}</p>
-            </div>
-            <div className="w-12 h-12 rounded-2xl bg-superior-teal/5 text-superior-teal flex items-center justify-center shadow-inner">
-              <Users size={24} />
+        {!hideNavigation && (
+          <div className="flex items-center gap-4">
+            <div className="bg-white px-6 py-4 rounded-3xl flex items-center gap-5 border border-slate-100 shadow-sm">
+              <div className="text-right">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Staff</p>
+                <p className="text-2xl font-display font-black text-superior-teal tracking-tight">{data.staff.length}</p>
+              </div>
+              <div className="w-12 h-12 rounded-2xl bg-superior-teal/5 text-superior-teal flex items-center justify-center shadow-inner">
+                <Users size={24} />
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Bulk Actions Bar */}
-      {selectedStaffIds.length > 0 && (
+      <Tabs value={activeModule} onValueChange={(v: any) => setActiveModule(v)} className="w-full space-y-8">
+        {!hideNavigation && (
+          <TabsList className="bg-white p-2 rounded-2xl border border-slate-100 shadow-sm h-auto flex flex-wrap gap-2 w-full justify-start overflow-x-auto">
+            <TabsTrigger value="directory" className="rounded-xl px-6 py-3 font-bold text-slate-500 data-[state=active]:bg-superior-teal data-[state=active]:text-white">Directory</TabsTrigger>
+            <TabsTrigger value="attendance" className="rounded-xl px-6 py-3 font-bold text-slate-500 data-[state=active]:bg-superior-teal data-[state=active]:text-white">Attendance</TabsTrigger>
+            <TabsTrigger value="payroll" className="rounded-xl px-6 py-3 font-bold text-slate-500 data-[state=active]:bg-superior-teal data-[state=active]:text-white">Payroll & Salaries</TabsTrigger>
+            <TabsTrigger value="timetable" className="rounded-xl px-6 py-3 font-bold text-slate-500 data-[state=active]:bg-superior-teal data-[state=active]:text-white">Timetable</TabsTrigger>
+            <TabsTrigger value="subjects" className="rounded-xl px-6 py-3 font-bold text-slate-500 data-[state=active]:bg-superior-teal data-[state=active]:text-white">Subjects</TabsTrigger>
+          </TabsList>
+        )}
+
+        <TabsContent value="directory" className="space-y-8 mt-0 focus-visible:outline-none">
+          {/* Bulk Actions Bar */}
+          {selectedStaffIds.length > 0 && (
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -244,6 +414,44 @@ export default function StaffView({ data, initialFilter }: { data: any, initialF
         </div>
 
         <div className="flex items-center gap-3">
+          <DropdownMenu>
+            <DropdownMenuTrigger render={
+              <Button variant="outline" className="h-12 w-12 rounded-2xl border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700">
+                <MoreHorizontal size={18} />
+              </Button>
+            } />
+            <DropdownMenuContent align="end" className="w-56 p-2 rounded-2xl shadow-xl shadow-slate-200/50">
+              <div className="px-2 py-1.5 text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                Bulk Actions
+              </div>
+              <DropdownMenuItem onClick={handleDownloadTemplate} className="rounded-lg py-3 cursor-pointer">
+                <FileSpreadsheet size={16} className="mr-2 text-superior-teal" />
+                Download Format Template
+              </DropdownMenuItem>
+              <div className="relative">
+                <input 
+                  type="file" 
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                  accept=".xlsx, .xls, .csv"
+                  onChange={handleBulkImport}
+                />
+                <DropdownMenuItem className="rounded-lg py-3 cursor-pointer">
+                  <Upload size={16} className="mr-2 text-blue-600" />
+                  Bulk Import Staff
+                </DropdownMenuItem>
+              </div>
+              <Separator className="my-2" />
+              <DropdownMenuItem onClick={handleExportExcel} className="rounded-lg py-3 cursor-pointer">
+                <Download size={16} className="mr-2 text-emerald-600" />
+                Export to Excel
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportCSV} className="rounded-lg py-3 cursor-pointer">
+                <Download size={16} className="mr-2 text-superior-gold" />
+                Export to CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Dialog>
             <DialogTrigger nativeButton={true} render={
               <button className="h-12 px-6 rounded-2xl bg-superior-teal text-white font-black uppercase tracking-widest text-xs hover:bg-superior-teal/90 shadow-lg shadow-superior-teal/10 transition-all flex items-center justify-center">
@@ -464,6 +672,29 @@ export default function StaffView({ data, initialFilter }: { data: any, initialF
           />
         )}
       </Dialog>
+      </TabsContent>
+
+      <TabsContent value="attendance" className="space-y-8 mt-0 focus-visible:outline-none">
+        <StaffAttendance staffList={filteredStaff} attendanceRecords={data.staffAttendance} onSaveAttendance={data.bulkSaveStaffAttendance} />
+      </TabsContent>
+
+      <TabsContent value="payroll" className="space-y-8 mt-0 focus-visible:outline-none">
+        <StaffPayroll staffList={filteredStaff} advances={data.staffAdvances || []} staffTimetable={data.staffTimetable || []} onRecordAdvance={data.recordStaffAdvance} onUpdateAdvance={data.updateStaffAdvance} />
+      </TabsContent>
+
+      <TabsContent value="timetable" className="space-y-8 mt-0 focus-visible:outline-none">
+        <StaffTimetable 
+          staffList={filteredStaff} 
+          timetableRecords={data.staffTimetable || []} 
+          onAddEntry={data.addTimetableEntry} 
+          onRemoveEntry={data.removeTimetableEntry} 
+        />
+      </TabsContent>
+
+      <TabsContent value="subjects" className="space-y-8 mt-0 focus-visible:outline-none">
+        <StaffSubjects staffList={filteredStaff} onUpdateStaff={data.updateStaff} />
+      </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -854,6 +1085,19 @@ function AddStaffDialog({ data }: { data: any }) {
     photo: ''
   });
 
+  React.useEffect(() => {
+    // Generate next staff ID automatically
+    const currentIds = data.staff.map((s: Staff) => s.id)
+      .filter((id: string) => typeof id === 'string' && id.startsWith('SGC-T-'))
+      .map((id: string) => parseInt(id.replace('SGC-T-', ''), 10))
+      .filter((num: number) => !isNaN(num));
+    
+    const nextNum = currentIds.length > 0 ? Math.max(...currentIds) + 1 : 1;
+    const nextId = `SGC-T-${nextNum.toString().padStart(3, '0')}`;
+    
+    setFormData(prev => ({ ...prev, id: nextId }));
+  }, [data.staff]);
+
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -926,14 +1170,12 @@ function AddStaffDialog({ data }: { data: any }) {
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label className="flex items-center gap-1 group">
-              Staff ID <span className="text-rose-500">*</span>
-              <span className="text-[9px] text-slate-400 font-normal opacity-0 group-hover:opacity-100 transition-opacity">(Format: SGC-T-123)</span>
+              Staff ID
             </Label>
             <Input 
-              placeholder="e.g. SGC-T-101" 
               value={formData.id} 
-              onChange={e => setFormData({...formData, id: e.target.value.toUpperCase()})}
-              className="font-mono uppercase tracking-wider"
+              readOnly
+              className="font-mono uppercase tracking-wider bg-slate-50 cursor-not-allowed"
             />
           </div>
           <div className="space-y-2">

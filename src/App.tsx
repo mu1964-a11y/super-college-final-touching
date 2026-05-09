@@ -15,10 +15,19 @@ import {
   BarChart3,
   AlertTriangle,
   CheckCircle2,
+  Eye,
+  EyeOff,
+  Shield,
+  Zap,
+  Database,
+  LogOut,
+  BookOpen,
+  Award,
+  Calendar,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useSupabaseData } from "./hooks/useSupabaseData";
-import { supabase } from "./lib/supabase";
+import { supabase, isSupabaseConfigured } from "./lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -45,15 +54,18 @@ import NotificationPanel from "./components/NotificationPanel";
 
 type Page =
   | "dashboard"
+  | "admissions"
   | "admissions-fsc"
   | "admissions-ukl3"
   | "admissions-dit"
   | "admissions-bs"
+  | "fee"
   | "fee-boys"
   | "fee-girls"
   | "fee-ukl3"
   | "fee-dit"
   | "fee-bs"
+  | "students"
   | "students-boys"
   | "students-girls"
   | "students-ukl3"
@@ -65,7 +77,10 @@ type Page =
   | "reports"
   | "leads"
   | "settings"
-  | "academic";
+  | "library"
+  | "academic"
+  | "classes"
+  | "timetable";
 
 const NavSection = ({
   title,
@@ -184,12 +199,14 @@ export default function App() {
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
+  const [hideLedgerAlert, setHideLedgerAlert] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isBrandingLoaded, setIsBrandingLoaded] = useState(false);
   const [showLoginForm, setShowLoginForm] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [brandingSettings, setBrandingSettings] = useState<{
     name: string;
@@ -201,6 +218,10 @@ export default function App() {
 
   // Fetch branding even before login
   React.useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setIsBrandingLoaded(true);
+      return;
+    }
     const fetchBranding = async () => {
       try {
         // Try to get the settings record
@@ -244,6 +265,10 @@ export default function App() {
 
   // Standard session handling without auto-logout as requested
   React.useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setAuthLoading(false);
+      return;
+    }
     supabase.auth
       .getSession()
       .then((response) => {
@@ -353,7 +378,7 @@ export default function App() {
   const availableSessions = useMemo(() => {
     const sessionSet = new Set<string>();
 
-    // Add default common sessions
+    // Add default common sessions (Removed 2026-2028 from system)
     ["2024-26", "2025-27", "2026-28", "2027-29"].forEach((s) =>
       sessionSet.add(s.trim()),
     );
@@ -486,8 +511,8 @@ export default function App() {
   );
   const hasAnyAccess = useMemo(
     () =>
-      isSuperAdmin || (userPermission && userPermission.sections.length > 0),
-    [isSuperAdmin, userPermission],
+      isAdmin || (userPermission && userPermission.sections.length > 0),
+    [isAdmin, userPermission],
   );
 
   // Filter out dashboard from allowed sections if not super admin
@@ -505,6 +530,11 @@ export default function App() {
             "reports",
             "settings",
             "academic",
+            "attendance",
+            "classes",
+            "timetable",
+            "library",
+            "fee",
           ];
 
     const parentMap: Record<string, string> = {
@@ -524,8 +554,12 @@ export default function App() {
       "students-bs": "students",
     };
 
-    if (isSuperAdmin) {
-      return [...modulesFromSettings, ...Object.keys(parentMap), "fee"];
+    if (isAdmin) {
+      return Array.from(new Set([
+        ...modulesFromSettings, 
+        ...Object.keys(parentMap), 
+        "dashboard", "fee", "academic", "attendance", "library", "accounts", "classes", "timetable", "reports", "leads", "admissions", "students", "staff", "settings"
+      ]));
     }
 
     const allowed = (userPermission?.sections || []).filter((s) => {
@@ -553,11 +587,11 @@ export default function App() {
       .filter(Boolean) as string[];
 
     return Array.from(new Set([...allowed, ...childrenToAdd, ...parentsToAdd]));
-  }, [isSuperAdmin, userPermission?.sections, data.settings?.enabledModules]);
+  }, [isAdmin, userPermission?.sections, data.settings?.enabledModules]);
 
   // Auto-redirect unauthorized users away from Dashboard
   React.useEffect(() => {
-    if (user && !authLoading && !isSuperAdmin) {
+    if (user && !authLoading && !isAdmin) {
       const parentMap: Record<string, string> = {
         "admissions-fsc": "admissions",
         "admissions-ukl3": "admissions",
@@ -595,7 +629,7 @@ export default function App() {
         setActivePage(defaultPages[firstSection] || (firstSection as Page));
       }
     }
-  }, [user, authLoading, isSuperAdmin, activePage, allowedSections]);
+  }, [user, authLoading, isAdmin, activePage, allowedSections]);
 
   const defaultersCount = useMemo(
     () =>
@@ -621,7 +655,7 @@ export default function App() {
   */
 
   const handlePasswordVerify = () => {
-    if (isSuperAdmin) {
+    if (isAdmin) {
       setIsPasswordVerified(true);
       return;
     }
@@ -718,7 +752,7 @@ export default function App() {
             transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
             className="relative mb-8 md:mb-12"
           >
-            <div className="w-32 h-32 md:w-48 md:h-48 bg-white/5 backdrop-blur-xl rounded-[2rem] md:rounded-[3rem] border border-white/10 shadow-[0_40px_80px_rgba(0,0,0,0.5),inset_0_2px_5px_rgba(255,255,255,0.2)] flex items-center justify-center relative overflow-hidden">
+            <div className="w-32 h-32 md:w-48 md:h-48 bg-white/5 backdrop-blur-xl rounded-full border border-white/10 shadow-[0_40px_80px_rgba(0,0,0,0.5),inset_0_2px_5px_rgba(255,255,255,0.2)] flex items-center justify-center relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-white/10 to-transparent pointer-events-none" />
               {brandingSettings.logo ? (
                 <img
@@ -738,18 +772,42 @@ export default function App() {
 
           <motion.div className="text-center p-6 md:p-8 max-w-[90%] md:max-w-xl xl:max-w-3xl backdrop-blur-sm bg-black/10 rounded-3xl border border-white/5 shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-48 h-48 md:w-64 md:h-64 bg-superior-teal/10 blur-[80px] rounded-full -translate-y-1/2 translate-x-1/2 pointer-events-none" />
-            <h1 className="text-3xl md:text-5xl xl:text-7xl font-black mb-4 md:mb-6 tracking-tighter bg-clip-text text-transparent bg-gradient-to-br from-white via-white to-white/40 leading-tight">
-              Welcome to
-              <br />
-              {brandingSettings.name}
-            </h1>
-            <p className="text-lg md:text-xl xl:text-2xl text-superior-gold font-medium tracking-[0.2em] uppercase mb-3 md:mb-4">
-              Academic Portal
-            </p>
-            <p className="text-sm md:text-base xl:text-lg text-white/60 font-medium leading-relaxed max-w-xl mx-auto">
-              Experience the next generation of academic management. Secure,
-              lightning-fast, and designed for excellence.
-            </p>
+            <div>
+              <h1 className="text-3xl md:text-5xl xl:text-7xl font-black mb-4 md:mb-6 tracking-tighter bg-clip-text text-transparent bg-gradient-to-br from-white via-white to-white/40 leading-tight">
+                Welcome to
+                <br />
+                {brandingSettings.name}
+              </h1>
+            </div>
+
+            <div>
+              <p className="text-lg md:text-xl xl:text-2xl text-superior-gold font-medium tracking-[0.2em] uppercase mb-3 md:mb-4 flex items-center justify-center gap-3">
+                <span className="h-[2px] w-6 md:w-12 bg-superior-gold/50 rounded-full hidden sm:block" />
+                Academic Portal
+                <span className="h-[2px] w-6 md:w-12 bg-superior-gold/50 rounded-full hidden sm:block" />
+              </p>
+              
+              <p className="text-sm md:text-base xl:text-lg text-white/60 font-medium leading-relaxed max-w-xl mx-auto mb-6">
+                Experience the next generation of academic management. Secure, 
+                A unified ecosystem for students, staff, and administration. 
+                Streamlined operations at your fingertips, crafted for excellence.</p>
+
+              <div className="flex flex-wrap items-center justify-center gap-2 md:gap-4 mt-6">
+                {[
+                  { icon: Shield, text: "Enterprise Security" },
+                  { icon: Zap, text: "Lightning Fast" },
+                  { icon: Database, text: "Real-time Sync" }
+                ].map((feature, i) => (
+                  <div 
+                    key={i}
+                    className="flex items-center gap-2 bg-white/5 border border-white/10 px-3 md:px-4 py-1.5 md:py-2 rounded-full backdrop-blur-md"
+                  >
+                    <feature.icon size={14} className="text-superior-gold" />
+                    <span className="text-[10px] md:text-xs font-bold text-white/80 uppercase tracking-wider">{feature.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             {!showLoginForm && (
               <motion.div
@@ -774,7 +832,7 @@ export default function App() {
           </motion.div>
         </motion.div>
 
-        {/* The Login Panel sliding from left */}
+        {/* The Login Panel */}
         <AnimatePresence>
           {showLoginForm && (
             <motion.div
@@ -846,14 +904,23 @@ export default function App() {
                       <label className="text-[10px] font-black text-white/60 uppercase tracking-widest ml-1">
                         Password
                       </label>
-                      <Input
-                        placeholder="Enter Secure Key"
-                        type="password"
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="bg-black/20 border-white/10 text-white placeholder:text-white/30 h-14 rounded-2xl focus:ring-2 focus:ring-superior-gold/50 focus:border-superior-gold/50 transition-all text-sm font-medium backdrop-blur-md"
-                      />
+                      <div className="relative">
+                        <Input
+                          placeholder="Enter Secure Key"
+                          type={showPassword ? "text" : "password"}
+                          required
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="bg-black/20 border-white/10 text-white placeholder:text-white/30 h-14 pr-12 rounded-2xl focus:ring-2 focus:ring-superior-gold/50 focus:border-superior-gold/50 transition-all text-sm font-medium backdrop-blur-md"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors"
+                        >
+                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -895,10 +962,10 @@ export default function App() {
           <motion.div
             animate={{ rotate: 360 }}
             transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-            className="absolute -inset-4 border-2 border-dashed border-white/20 rounded-[40px]"
+            className="absolute -inset-4 border-2 border-dashed border-white/20 rounded-full"
           />
 
-          <motion.div className="w-56 h-56 rounded-[3rem] bg-white flex items-center justify-center shadow-3xl relative z-10 border-8 border-white overflow-hidden shadow-[0_45px_100px_-20px_rgba(0,0,0,0.5)]">
+          <motion.div className="w-56 h-56 rounded-full bg-white flex items-center justify-center shadow-3xl relative z-10 border-8 border-white overflow-hidden shadow-[0_45px_100px_-20px_rgba(0,0,0,0.5)]">
             {brandingSettings.logo ? (
               <img
                 src={brandingSettings.logo}
@@ -982,7 +1049,7 @@ export default function App() {
 
               <div className="p-8 h-24 flex items-center justify-between relative z-10">
                 <div className="flex items-center gap-4">
-                  <div className="w-11 h-11 rounded-2xl bg-white flex items-center justify-center flex-shrink-0 shadow-xl shadow-black/20 transform rotate-3 overflow-hidden">
+                  <div className="w-11 h-11 rounded-full bg-white flex items-center justify-center flex-shrink-0 shadow-xl shadow-black/20 transform rotate-3 overflow-hidden">
                     {brandingSettings.logo ? (
                       <img
                         src={brandingSettings.logo}
@@ -1045,8 +1112,10 @@ export default function App() {
 
                   {(allowedSections.includes("leads") ||
                     allowedSections.includes("admissions") ||
-                    allowedSections.includes("fee")) && (
-                    <NavSection title="Enrollment">
+                    allowedSections.includes("students") ||
+                    allowedSections.includes("academic") ||
+                    allowedSections.includes("attendance")) && (
+                    <NavSection title="Academic">
                       {allowedSections.includes("leads") && (
                         <NavItem
                           id="leads"
@@ -1061,68 +1130,26 @@ export default function App() {
                       )}
                       {allowedSections.includes("admissions") && (
                         <NavItem
-                          expandedMenu={expandedMenu}
-                          activePage={activePage}
-                          activeFilter={activeFilter}
-                          onToggleMenu={toggleMenu}
-                          onNavClick={handleNavClick}
-                          id="admissions-fsc"
+                          id="admissions"
                           label="Admissions"
                           icon={UserPlus}
-                          subItems={([
-                            { id: "admissions-fsc", label: "FSC Admissions" },
-                            { id: "admissions-ukl3", label: "UK Level 3" },
-                            { id: "admissions-dit", label: "DIT Program" },
-                            { id: "admissions-bs", label: "BS Program" },
-                          ] as {id: Page, label: string, filter?: string}[]).filter((item) => allowedSections.includes(item.id))}
-                        />
-                      )}
-                      {allowedSections.includes("fee") && (
-                        <NavItem
                           expandedMenu={expandedMenu}
                           activePage={activePage}
                           activeFilter={activeFilter}
                           onToggleMenu={toggleMenu}
                           onNavClick={handleNavClick}
-                          id="fee-boys"
-                          label="Fee Collection"
-                          icon={CreditCard}
-                          subItems={([
-                            { id: "fee-boys", label: "FSC Boys Section" },
-                            { id: "fee-girls", label: "FSC Girls Section" },
-                            { id: "fee-ukl3", label: "UK Level 3" },
-                            { id: "fee-dit", label: "DIT Program" },
-                            { id: "fee-bs", label: "BS Program" },
-                          ] as {id: Page, label: string, filter?: string}[]).filter((item) => allowedSections.includes(item.id))}
                         />
                       )}
-                    </NavSection>
-                  )}
-
-                  {(allowedSections.includes("students") ||
-                    allowedSections.includes("academic") ||
-                    allowedSections.includes("staff")) && (
-                    <NavSection title="Academic">
                       {allowedSections.includes("students") && (
                         <NavItem
+                          id="students"
+                          label="Students"
+                          icon={Users}
                           expandedMenu={expandedMenu}
                           activePage={activePage}
                           activeFilter={activeFilter}
                           onToggleMenu={toggleMenu}
                           onNavClick={handleNavClick}
-                          id="students-boys"
-                          label="Students"
-                          icon={Users}
-                          subItems={([
-                            { id: "students-boys", label: "FSC Boys Section" },
-                            {
-                              id: "students-girls",
-                              label: "FSC Girls Section",
-                            },
-                            { id: "students-ukl3", label: "UK Level 3" },
-                            { id: "students-dit", label: "DIT Program" },
-                            { id: "students-bs", label: "BS Program" },
-                          ] as {id: Page, label: string, filter?: string}[]).filter((item) => allowedSections.includes(item.id))}
                         />
                       )}
                       {allowedSections.includes("attendance") && (
@@ -1140,8 +1167,72 @@ export default function App() {
                       {allowedSections.includes("academic") && (
                         <NavItem
                           id="academic"
-                          label="Academic Records"
-                          icon={GraduationCap}
+                          label="Grades & Results"
+                          icon={Award}
+                          expandedMenu={expandedMenu}
+                          activePage={activePage}
+                          activeFilter={activeFilter}
+                          onToggleMenu={toggleMenu}
+                          onNavClick={handleNavClick}
+                        />
+                      )}
+                    </NavSection>
+                  )}
+
+                  {(allowedSections.includes("fee") ||
+                    allowedSections.includes("accounts")) && (
+                    <NavSection title="Finance">
+                      {allowedSections.includes("fee") && (
+                        <NavItem
+                          id="fee"
+                          label="Fees & Billing"
+                          icon={CreditCard}
+                          expandedMenu={expandedMenu}
+                          activePage={activePage}
+                          activeFilter={activeFilter}
+                          onToggleMenu={toggleMenu}
+                          onNavClick={handleNavClick}
+                        />
+                      )}
+                      {allowedSections.includes("accounts") && (
+                        <NavItem
+                          id="accounts"
+                          label="Expenses & Income"
+                          icon={Wallet}
+                          expandedMenu={expandedMenu}
+                          activePage={activePage}
+                          activeFilter={activeFilter}
+                          onToggleMenu={toggleMenu}
+                          onNavClick={handleNavClick}
+                        />
+                      )}
+                    </NavSection>
+                  )}
+
+                  {(allowedSections.includes("staff") ||
+                    allowedSections.includes("classes") ||
+                    allowedSections.includes("timetable") ||
+                    allowedSections.includes("library") ||
+                    allowedSections.includes("reports") ||
+                    allowedSections.includes("settings")) && (
+                    <NavSection title="Admin">
+                      {allowedSections.includes("classes") && (
+                        <NavItem
+                          id="classes"
+                          label="Classes & Subjects"
+                          icon={BookOpen}
+                          expandedMenu={expandedMenu}
+                          activePage={activePage}
+                          activeFilter={activeFilter}
+                          onToggleMenu={toggleMenu}
+                          onNavClick={handleNavClick}
+                        />
+                      )}
+                      {allowedSections.includes("timetable") && (
+                        <NavItem
+                          id="timetable"
+                          label="Timetable"
+                          icon={Calendar}
                           expandedMenu={expandedMenu}
                           activePage={activePage}
                           activeFilter={activeFilter}
@@ -1151,82 +1242,28 @@ export default function App() {
                       )}
                       {allowedSections.includes("staff") && (
                         <NavItem
+                          id="staff"
+                          label="Staff & Payroll"
+                          icon={Briefcase}
                           expandedMenu={expandedMenu}
                           activePage={activePage}
                           activeFilter={activeFilter}
                           onToggleMenu={toggleMenu}
                           onNavClick={handleNavClick}
-                          id="staff"
-                          label="Faculty & Staff"
-                          icon={Briefcase}
-                          subItems={[
-                            {
-                              id: "staff",
-                              label: "Academic Staff",
-                              filter: "Academic",
-                            },
-                            {
-                              id: "staff",
-                              label: "Administration",
-                              filter: "Administration",
-                            },
-                            {
-                              id: "staff",
-                              label: "Support Staff",
-                              filter: "Support",
-                            },
-                            {
-                              id: "staff",
-                              label: "Payroll Management",
-                              filter: "Management",
-                            },
-                          ] as { id: Page; label: string; filter?: string }[]}
                         />
                       )}
-                    </NavSection>
-                  )}
-
-                  {(isSuperAdmin ||
-                    (userPermission?.sections || []).includes("accounts")) && (
-                    <NavSection title="Financials">
-                      <NavItem
-                        expandedMenu={expandedMenu}
-                        activePage={activePage}
-                        activeFilter={activeFilter}
-                        onToggleMenu={toggleMenu}
-                        onNavClick={handleNavClick}
-                        id="accounts"
-                        label="Finance Hub"
-                        icon={Wallet}
-                        subItems={[
-                          {
-                            id: "accounts",
-                            label: "Fee Collection",
-                            filter: "income",
-                          },
-                          {
-                            id: "accounts",
-                            label: "Income Ledger",
-                            filter: "income",
-                          },
-                          {
-                            id: "accounts",
-                            label: "Expense Tracker",
-                            filter: "expenses",
-                          },
-                          {
-                            id: "accounts",
-                            label: "Financial Summary",
-                            filter: "summary",
-                          },
-                        ]}
-                      />
-                    </NavSection>
-                  )}
-
-                  {(allowedSections.includes("reports") ||
-                    allowedSections.includes("settings")) && (
-                    <NavSection title="Administration">
+                      {allowedSections.includes("library") && (
+                        <NavItem
+                            id="library"
+                            label="Library"
+                            icon={BookOpen}
+                            expandedMenu={expandedMenu}
+                            activePage={activePage}
+                            activeFilter={activeFilter}
+                            onToggleMenu={toggleMenu}
+                            onNavClick={handleNavClick}
+                        />
+                      )}
                       {allowedSections.includes("reports") && (
                         <NavItem
                           id="reports"
@@ -1288,114 +1325,17 @@ export default function App() {
                 {activePage.replace("-", " ")}
               </h2>
             </div>
-
-            {/* Quick Navigation Shortcuts */}
-            <div className="hidden lg:flex items-center gap-2 overflow-x-auto px-4 py-2 scrollbar-hide flex-1 ml-4 justify-center bg-superior-teal rounded-full shadow-inner border border-superior-teal/20">
-              {[
-                {
-                  id: "dashboard",
-                  label: "DB",
-                  icon: LayoutDashboard,
-                  color: "text-emerald-500 bg-emerald-50",
-                  hover: "hover:bg-emerald-100 hover:text-emerald-600",
-                },
-                {
-                  id: "leads",
-                  label: "Leads",
-                  icon: BarChart3,
-                  color: "text-yellow-500 bg-yellow-50",
-                  hover: "hover:bg-yellow-100 hover:text-yellow-600",
-                },
-                {
-                  id: "admissions-fsc",
-                  label: "Inter",
-                  icon: UserPlus,
-                  color: "text-blue-500 bg-blue-50",
-                  hover: "hover:bg-blue-100 hover:text-blue-600",
-                },
-                {
-                  id: "admissions-ukl3",
-                  label: "UKL3",
-                  icon: GraduationCap,
-                  color: "text-indigo-500 bg-indigo-50",
-                  hover: "hover:bg-indigo-100 hover:text-indigo-600",
-                },
-                {
-                  id: "admissions-dit",
-                  label: "DIT",
-                  icon: Briefcase,
-                  color: "text-rose-500 bg-rose-50",
-                  hover: "hover:bg-rose-100 hover:text-rose-600",
-                },
-                {
-                  id: "admissions-bs",
-                  label: "BS",
-                  icon: UserPlus,
-                  color: "text-cyan-500 bg-cyan-50",
-                  hover: "hover:bg-cyan-100 hover:text-cyan-600",
-                },
-              ].map((shortcut) => {
-                const isActive =
-                  activePage === shortcut.id ||
-                  (shortcut.id === "admissions-fsc" &&
-                    activePage.includes("fsc")) ||
-                  (shortcut.id === "admissions-ukl3" &&
-                    activePage.includes("ukl3")) ||
-                  (shortcut.id === "admissions-dit" &&
-                    activePage.includes("dit")) ||
-                  (shortcut.id === "admissions-bs" &&
-                    activePage.includes("bs"));
-
-                const Icon = shortcut.icon;
-                return (
-                  <button
-                    key={shortcut.id}
-                    onClick={() => handleNavClick(shortcut.id as Page)}
-                    className={cn(
-                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all duration-300 group whitespace-nowrap",
-                      isActive
-                        ? `bg-white shadow-md transform scale-105 ${shortcut.color.split(" ")[0]}`
-                        : `bg-white/10 text-white hover:bg-white/20`,
-                    )}
-                    title={shortcut.label}
-                  >
-                    <div
-                      className={cn(
-                        "w-5 h-5 rounded-full flex items-center justify-center transition-transform",
-                        isActive ? shortcut.color : "bg-white/20",
-                      )}
-                    >
-                      <Icon
-                        size={12}
-                        className={cn(
-                          "filter drop-shadow-sm",
-                          isActive ? "" : "text-white",
-                        )}
-                      />
-                    </div>
-                    <span
-                      className={cn(
-                        "text-[10px] font-black uppercase tracking-wider",
-                        isActive ? "" : "text-white/90",
-                      )}
-                    >
-                      {shortcut.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
           </div>
 
           <div className="flex items-center gap-4">
             <Button
               onClick={handleLogout}
-              variant="ghost"
-              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-100 text-red-500 hover:bg-red-50 hover:text-red-600 transition-all active:scale-95 group shadow-sm bg-slate-50/50"
+              variant="outline"
+              className="group flex items-center gap-2 px-4 py-2.5 rounded-2xl border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 transition-all duration-300 shadow-sm hover:shadow-md active:scale-95"
             >
-              <div className="w-1.5 h-1.5 rounded-full bg-red-500 group-hover:animate-pulse" />
-              <span className="text-[10px] font-black uppercase tracking-widest">
-                Terminate Session
+              <LogOut size={16} className="text-slate-400 group-hover:text-rose-500 transition-colors" />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 group-hover:text-rose-700">
+                Sign Out
               </span>
             </Button>
 
@@ -1409,16 +1349,16 @@ export default function App() {
               />
 
               <div
-                onClick={() => isSuperAdmin && setIsAccessDialogOpen(true)}
+                onClick={() => isAdmin && setIsAccessDialogOpen(true)}
                 className={cn(
                   "flex items-center gap-3 ml-2 pl-3 py-1 pr-1 border border-slate-100 rounded-2xl bg-slate-50/50 hover:bg-white hover:border-superior-gold/30 transition-all cursor-pointer group shadow-sm",
-                  !isSuperAdmin &&
+                  !isAdmin &&
                     "cursor-default border-slate-100 grayscale opacity-60",
                 )}
               >
                 <div className="text-right hidden sm:block">
                   <p className="text-[10px] font-black text-slate-800 leading-none uppercase tracking-widest group-hover:text-superior-teal">
-                    {isSuperAdmin
+                    {isAdmin
                       ? "Master Admin"
                       : userPermission?.displayName || "Sub Admin"}
                   </p>
@@ -1428,7 +1368,7 @@ export default function App() {
                     "w-8 h-8 rounded-xl border-2 border-superior-gold flex items-center justify-center text-[10px] font-black text-superior-teal bg-superior-gold/10 shadow-sm",
                   )}
                 >
-                  {isSuperAdmin
+                  {isAdmin
                     ? "AD"
                     : userPermission?.displayName?.[0] || "U"}
                 </div>
@@ -1438,7 +1378,7 @@ export default function App() {
         </header>
 
         {/* Alert Strip - Refined */}
-        {defaultersCount > 0 && (
+        {defaultersCount > 0 && !hideLedgerAlert && (
           <div className="bg-superior-teal text-white px-10 py-2.5 flex items-center justify-between gap-4 overflow-hidden relative">
             <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-5 pointer-events-none" />
             <div className="flex items-center gap-3 relative z-10">
@@ -1453,12 +1393,17 @@ export default function App() {
                 detected
               </p>
             </div>
-            <button
-              onClick={() => handleNavClick("fee-boys")}
-              className="text-[10px] font-black uppercase tracking-[0.2em] bg-white/10 hover:bg-white/20 px-4 py-1.5 rounded-lg border border-white/10 transition-all relative z-10"
-            >
-              Review Ledger →
-            </button>
+            <div className="flex items-center gap-4 relative z-10">
+              <button
+                onClick={() => handleNavClick("fee-boys")}
+                className="text-[10px] font-black uppercase tracking-[0.2em] bg-white/10 hover:bg-white/20 px-4 py-1.5 rounded-lg border border-white/10 transition-all"
+              >
+                Review Ledger →
+              </button>
+              <button onClick={() => setHideLedgerAlert(true)} className="text-white/50 hover:text-white transition-colors p-1">
+                 <X size={16} />
+              </button>
+            </div>
           </div>
         )}
 
@@ -1490,21 +1435,15 @@ export default function App() {
                     }
                   />
                 )}
-                {activePage.startsWith("admissions-") && (
+                {activePage.startsWith("admissions") && (
                   <AdmissionsView
                     data={filteredData}
                     initialFilter={activeFilter}
                     selectedSession={selectedSession}
-                    program={activePage.split("-")[1]}
+                    program={activePage.includes("-") ? activePage.split("-")[1] : undefined}
                   />
                 )}
-                {[
-                  "fee-boys",
-                  "fee-girls",
-                  "fee-ukl3",
-                  "fee-dit",
-                  "fee-bs",
-                ].includes(activePage) && (
+                {activePage.startsWith("fee") && (
                   <FeeManagementView
                     data={filteredData}
                     gender={
@@ -1515,19 +1454,11 @@ export default function App() {
                           : undefined
                     }
                     program={
-                      activePage === "fee-boys" || activePage === "fee-girls"
-                        ? "fsc"
-                        : activePage.replace("fee-", "")
+                      activePage.includes("-") ? (activePage === "fee-boys" || activePage === "fee-girls" ? "fsc" : activePage.replace("fee-", "")) : undefined
                     }
                   />
                 )}
-                {[
-                  "students-boys",
-                  "students-girls",
-                  "students-ukl3",
-                  "students-dit",
-                  "students-bs",
-                ].includes(activePage) && (
+                {activePage.startsWith("students") && (
                   <StudentsView
                     data={filteredData}
                     gender={
@@ -1538,18 +1469,21 @@ export default function App() {
                           : undefined
                     }
                     program={
-                      activePage === "students-boys" ||
-                      activePage === "students-girls"
-                        ? "fsc"
-                        : activePage.replace("students-", "")
+                      activePage.includes("-") ? (activePage === "students-boys" || activePage === "students-girls" ? "fsc" : activePage.replace("students-", "")) : undefined
                     }
                   />
                 )}
                 {activePage === "attendance" && (
                   <AttendanceView data={filteredData} />
                 )}
+                {activePage === "classes" && (
+                  <StaffView key="classes" data={filteredData} initialFilter="subjects" title="Classes & Subjects" hideNavigation={true} />
+                )}
+                {activePage === "timetable" && (
+                  <StaffView key="timetable" data={filteredData} initialFilter="timetable" title="Timetable" hideNavigation={true} />
+                )}
                 {activePage === "staff" && (
-                  <StaffView data={filteredData} initialFilter={activeFilter} />
+                  <StaffView key="staff" data={filteredData} initialFilter={activeFilter} />
                 )}
                 {activePage === "accounts" && (
                   <AccountsView data={filteredData} initialTab={activeFilter} />
@@ -1562,6 +1496,18 @@ export default function App() {
                 )}
                 {activePage === "settings" && (
                   <SettingsView data={filteredData} />
+                )}
+                {activePage === "library" && (
+                  <div className="flex h-full items-center justify-center p-8 bg-slate-50 animate-in fade-in zoom-in duration-300">
+                    <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-100 shadow-xl text-center">
+                      <div className="w-20 h-20 bg-superior-teal/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                        <BookOpen size={40} className="text-superior-teal" />
+                      </div>
+                      <h2 className="text-2xl font-black text-slate-800 mb-2">Library Module</h2>
+                      <p className="text-slate-500 mb-6">The robust global library management system is being provisioned and will be activated shortly.</p>
+                      <Button variant="outline" className="rounded-xl w-full border-slate-200 hover:bg-slate-50 shadow-sm" onClick={() => handleNavClick("dashboard")}>Return to Dashboard</Button>
+                    </div>
+                  </div>
                 )}
                 {activePage === "academic" && (
                   <AcademicView data={filteredData} />

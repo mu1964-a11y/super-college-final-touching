@@ -90,6 +90,8 @@ export function useAdmissionsOperations(ctx: any) {
         contact_number: admission.contactNumber,
         father_contact: admission.fatherContact,
         secondary_contact: admission.secondaryContact,
+        email: admission.email,
+        blood_group: admission.bloodGroup,
         reference: admission.reference,
         gender: admission.gender,
         photo_url: admission.photo,
@@ -149,6 +151,8 @@ export function useAdmissionsOperations(ctx: any) {
           contact_number: updates.contactNumber,
           father_contact: updates.fatherContact,
           secondary_contact: updates.secondaryContact,
+          email: updates.email,
+          blood_group: updates.bloodGroup,
           reference: updates.reference,
           gender: updates.gender,
           category: updates.category,
@@ -164,7 +168,7 @@ export function useAdmissionsOperations(ctx: any) {
           academic_part: updates.academicPart
         }).eq('id', id);
         if (error) throw error;
-        // await fetchData(true);
+        fetchData(true);
         toast.success("Admission details updated");
       } catch (e: any) {
         console.error("Update Admission Error:", e);
@@ -180,7 +184,7 @@ export function useAdmissionsOperations(ctx: any) {
           toast.error("Admission record not found or delete restricted.");
           return;
         }
-        // await fetchData(true);
+        fetchData(true);
         toast.success("Admission record deleted successfully");
       } catch (e: any) {
         console.error("Delete Admission Error:", e);
@@ -223,7 +227,7 @@ export function useAdmissionsOperations(ctx: any) {
         toast.error(`Bulk Delete Failed: ${e.message}`, { id: toastId });
       } finally {
         isBulkOperatingRef.current = false;
-        // fetchData(true);
+        fetchData(true);
       }
     };
 
@@ -279,9 +283,9 @@ export function useAdmissionsOperations(ctx: any) {
           admission_id: admissionId,
           full_name: admission.fullName,
           father_name: admission.fatherName,
-          category: admission.category,
-          group: admission.group,
-          section: admission.section,
+          category: admission.category || 'N/A',
+          group: admission.group || 'N/A',
+          section: admission.section || 'A',
           contact: admission.contactNumber,
           address: admission.address,
           total_package: admission.totalPackage,
@@ -296,12 +300,121 @@ export function useAdmissionsOperations(ctx: any) {
           fee_history: admission.feeHistory || []
         });
         if (studentError) throw studentError;
-
-        // await fetchData(true);
+        fetchData(true);
         toast.success("Student confirmed and moved to Management!");
       } catch (e) {
         toast.error("Failed to confirm admission");
       }
     };
-  return { addAdmission, updateAdmission, deleteAdmission, bulkDeleteAdmissions, confirmAdmission };
+
+  const importAdmissions = async (admissionsToImport: Admission[]) => {
+    if (!admissionsToImport.length) return;
+
+    isBulkOperatingRef.current = true;
+    const toastId = toast.loading(`Importing ${admissionsToImport.length} admissions...`);
+
+    try {
+      const batchSize = 50;
+      let totalImported = 0;
+
+      for (let i = 0; i < admissionsToImport.length; i += batchSize) {
+        const chunk = admissionsToImport.slice(i, i + batchSize);
+        const mappedChunk = chunk.map(admission => ({
+          full_name: admission.fullName,
+          father_name: admission.fatherName,
+          previous_marks: admission.previousMarks || 0,
+          previous_institute: admission.previousInstitute || '',
+          college_no: admission.collegeNo || '',
+          bay_form_no: admission.bayFormNo || '',
+          dob: admission.dob || null,
+          previous_class: admission.previousClass || '10th',
+          board_roll_no: admission.boardRollNo || '',
+          category: admission.category,
+          group: admission.group,
+          section: admission.section || '',
+          subjects: admission.subjects || [],
+          address: admission.address || '',
+          admission_fee: admission.admissionFee || 0,
+          misc_funds: admission.miscFunds || 0,
+          total_fee_finalized: admission.totalFeeFinalized || 0,
+          total_package: admission.totalPackage || 0,
+          fee_received: admission.feeReceived || 0,
+          payment_plan: admission.paymentPlan || 'Installments',
+          contact_number: admission.contactNumber || '',
+          father_contact: admission.fatherContact || '',
+          secondary_contact: admission.secondaryContact || '',
+          email: admission.email || '',
+          blood_group: admission.bloodGroup || '',
+          reference: admission.reference || 'Bulk Import',
+          gender: admission.gender,
+          photo_url: admission.photo || '',
+          student_id: admission.studentId || null,
+          status: admission.status || 'Prospective',
+          is_admitted: admission.isAdmitted || false,
+          session: admission.session || settings?.academicSession,
+          academic_part: admission.academicPart || 'Part-1'
+        }));
+
+        const { error } = await supabase.from('admissions').insert(mappedChunk);
+        if (error) throw error;
+        
+        totalImported += chunk.length;
+        
+        if (i + batchSize < admissionsToImport.length) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      }
+
+      logActivity("Bulk Import", `Imported ${totalImported} admissions via Excel`, 'success');
+      toast.success(`${totalImported} admissions imported successfully`, { id: toastId });
+    } catch (e: any) {
+      console.error("Bulk Import Admissions Error:", e);
+      toast.error(`Import Failed: ${e.message}`, { id: toastId });
+    } finally {
+      isBulkOperatingRef.current = false;
+      fetchData(true);
+    }
+  };
+
+    const syncAdmissionsToStudents = async () => {
+      try {
+        const admitted = admissions.filter(a => a.isAdmitted || a.status === 'Admitted/Confirmed');
+        const existingIds = new Set(students?.map((s: any) => s.id) || []);
+        const toInsert = admitted.filter(a => !existingIds.has(a.studentId || a.id)).map(a => ({
+          id: a.studentId || a.id,
+          admission_id: a.id,
+          full_name: a.fullName,
+          father_name: a.fatherName,
+          category: a.category || 'N/A',
+          group: a.group || 'N/A',
+          section: a.section || 'Unassigned',
+          contact: a.contactNumber,
+          address: a.address,
+          total_package: a.totalPackage,
+          fee_received: a.feeReceived,
+          fee_ledger: a.feeLedger || {},
+          monthly_fee: Math.round((a.totalPackage || 0) / 12),
+          total_installments: 12,
+          session: a.session,
+          session_start_date: a.sessionStartDate,
+          session_end_date: a.sessionEndDate,
+          academic_part: a.academicPart || 'Part-1',
+          fee_history: a.feeHistory || []
+        }));
+
+        if (toInsert.length === 0) {
+          toast.info("All student records are already in sync.");
+          return;
+        }
+
+        const { error } = await supabase.from('students').insert(toInsert);
+        if (error) throw error;
+        toast.success(`Successfully synced ${toInsert.length} students to database.`);
+        fetchData(true);
+      } catch (e: any) {
+        toast.error(`Sync failed: ${e.message}`);
+      }
+    };
+
+  return { addAdmission, updateAdmission, deleteAdmission, bulkDeleteAdmissions, confirmAdmission, importAdmissions, syncAdmissionsToStudents };
 }

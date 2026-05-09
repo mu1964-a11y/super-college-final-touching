@@ -2,7 +2,6 @@
 import React, { useState, useMemo, useRef, useDeferredValue } from 'react';
 import { 
   Search, 
-  Filter, 
   Download, 
   Upload, 
   UserPlus, 
@@ -11,10 +10,7 @@ import {
   AlertCircle,
   School,
   MapPin,
-  GraduationCap,
-  ChevronRight,
   Info,
-  ArrowRight,
   Database,
   BarChart3,
   Plus,
@@ -23,11 +19,10 @@ import {
   FileText,
   FileSpreadsheet
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { 
   Table, 
@@ -51,8 +46,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-  DialogClose,
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -76,6 +69,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
   const [areaFilter, setAreaFilter] = useState('all');
   const [classFilter, setClassFilter] = useState('all');
   const [convertedFilter, setConvertedFilter] = useState('all');
+
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [dialogType, setDialogType] = useState<'add' | 'edit' | 'delete' | 'bulkDelete' | 'convert' | null>(null);
@@ -85,7 +79,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const leads: Lead[] = data.leads || [];
+  const leads: Lead[] = useMemo(() => data.leads || [], [data.leads]);
 
   const schools = useMemo(() => Array.from(new Set(leads.map(l => String(l.previousSchool || '')).filter(Boolean))), [leads]);
   const areas = useMemo(() => Array.from(new Set(leads.map(l => String(l.areaVillage || '')).filter(Boolean))), [leads]);
@@ -136,7 +130,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
       const matchesConverted = convertedFilter === 'all' || 
                               (convertedFilter === 'converted' && lead.isConverted) || 
                               (convertedFilter === 'pending' && !lead.isConverted);
-
+                              
       return matchesSearch && matchesSchool && matchesArea && matchesClass && matchesConverted;
     });
   }, [leads, deferredSearchTerm, schoolFilter, areaFilter, classFilter, convertedFilter]);
@@ -319,32 +313,6 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
 
     doc.save("Full_Marketing_Report.pdf");
   };
-
-  const handleConvert = async () => {
-    data.convertLeadsToApplicants(selectedLeads, convertTargetProgram);
-    setSelectedLeads([]);
-    setDialogType(null);
-    
-    // Auto-conversion interlinking logic
-    if (data.settings?.autoLeadConversion && onNavigate) {
-      toast.info(`Navigating to ${convertTargetProgram.toUpperCase()} Admissions pool...`, {
-        description: "Checking converted applicants in processing queue."
-      });
-      setTimeout(() => onNavigate(`admissions-${convertTargetProgram}`, 'Not Paid'), 1000);
-    }
-  };
-
-  // Summary stats for search context
-  const searchSummary = useMemo(() => {
-    if (!searchTerm && schoolFilter === 'all' && areaFilter === 'all' && classFilter === 'all') return null;
-    
-    const schoolsInSearch = Array.from(new Set(filteredLeads.map(l => String(l.previousSchool || 'Other'))));
-    return {
-      count: filteredLeads.length,
-      schoolsCount: schoolsInSearch.length,
-      schoolsList: schoolsInSearch.slice(0, 3).join(', ') + (schoolsInSearch.length > 3 ? '...' : '')
-    };
-  }, [filteredLeads, searchTerm, schoolFilter, areaFilter, classFilter]);
 
   const leadsBySchool = useMemo(() => {
     return Object.entries(filteredLeads.reduce((acc: Record<string, number>, curr) => {
@@ -555,7 +523,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
           </div>
         </div>
 
-        {/* Row 3: Totals & Formats */}
+        {/* Row 4: Totals & Formats */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-3 border-t border-slate-200/60 w-full">
           <div className="flex items-center gap-2.5 px-4 py-2 bg-white text-[#053b32] rounded-md border border-slate-200 shadow-sm w-full md:w-auto overflow-hidden">
             <Info size={16} className="text-superior-teal shrink-0" />
@@ -711,11 +679,19 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
                         )}
                         <Checkbox checked={selectedLeads.includes(lead.id)} onCheckedChange={() => toggleSelectLead(lead.id)} />
                       </TableCell>
-                      <TableCell className={cn("font-bold text-slate-600 group-hover:text-slate-900 transition-colors", lead.isConverted && "text-emerald-700")}>
-                        <div className="flex items-center gap-2">
-                          <HighlightText text={lead.studentName} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
-                          {lead.isConverted && <CheckCircle2 size={14} className="text-emerald-500" />}
-                          {isNew && !lead.isConverted && <span className="text-[9px] font-black uppercase text-red-500 tracking-widest bg-red-100 px-2 py-0.5 rounded-md">New</span>}
+                      <TableCell className={cn("font-bold text-slate-600 transition-colors", lead.isConverted && "text-emerald-700")}>
+                        <div className="flex items-center gap-4">
+                          <div className={cn("w-10 h-10 rounded-[10px] flex items-center justify-center text-sm font-black overflow-hidden border shrink-0", lead.isConverted ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-superior-teal/5 text-superior-teal border-superior-teal/10")}>
+                            {lead.studentName ? lead.studentName.charAt(0).toUpperCase() : '?'}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="group-hover:text-superior-teal transition-colors flex items-center gap-2">
+                               <HighlightText text={lead.studentName} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
+                               {lead.isConverted && <CheckCircle2 size={14} className="text-emerald-500" />}
+                               {isNew && !lead.isConverted && <span className="text-[9px] font-black uppercase text-red-500 tracking-widest bg-red-100 px-2 py-0.5 rounded-md">New</span>}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">#{lead.id.slice(-6)}</span>
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell className="text-slate-500 font-medium">

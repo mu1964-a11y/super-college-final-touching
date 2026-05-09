@@ -21,25 +21,14 @@ const SECTIONS = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'leads', label: 'Lead Pipeline' },
   { id: 'admissions', label: 'Admissions' },
-  { id: 'admissions-fsc', label: '↳ FSC Admissions', isSubItem: true },
-  { id: 'admissions-ukl3', label: '↳ UK Level 3 Admissions', isSubItem: true },
-  { id: 'admissions-dit', label: '↳ DIT Admissions', isSubItem: true },
-  { id: 'admissions-bs', label: '↳ BS Program Admissions', isSubItem: true },
   { id: 'accounts', label: 'Fee Collection / Accounts' },
-  { id: 'fee-boys', label: '↳ FSC Boys Fee', isSubItem: true },
-  { id: 'fee-girls', label: '↳ FSC Girls Fee', isSubItem: true },
-  { id: 'fee-ukl3', label: '↳ UK Level 3 Fee', isSubItem: true },
-  { id: 'fee-dit', label: '↳ DIT Fee', isSubItem: true },
-  { id: 'fee-bs', label: '↳ BS Program Fee', isSubItem: true },
   { id: 'students', label: 'Students' },
-  { id: 'students-boys', label: '↳ FSC Boys Section', isSubItem: true },
-  { id: 'students-girls', label: '↳ FSC Girls Section', isSubItem: true },
-  { id: 'students-ukl3', label: '↳ UK Level 3 Students', isSubItem: true },
-  { id: 'students-dit', label: '↳ DIT Students', isSubItem: true },
-  { id: 'students-bs', label: '↳ BS Program Students', isSubItem: true },
   { id: 'attendance', label: 'Attendance' },
   { id: 'academic', label: 'Academic Records' },
+  { id: 'classes', label: 'Classes & Subjects' },
+  { id: 'timetable', label: 'Timetable' },
   { id: 'staff', label: 'Faculty & Staff' },
+  { id: 'library', label: 'Library' },
   { id: 'reports', label: 'Intelligence Reports' },
   { id: 'settings', label: 'System Settings' },
 ];
@@ -184,8 +173,7 @@ export default function AccessControlDialog({
                                 key={s.id} 
                                 className={cn(
                                   "flex items-center space-x-2 p-2 rounded-lg transition-all cursor-pointer hover:bg-slate-50",
-                                  selectedSections.includes(s.id) ? "bg-superior-teal/5 text-superior-teal" : "text-slate-600",
-                                  (s as any).isSubItem ? "pl-8" : ""
+                                  selectedSections.includes(s.id) ? "bg-superior-teal/5 text-superior-teal" : "text-slate-600"
                                 )}
                                 onClick={() => toggleSection(s.id)}
                               >
@@ -198,8 +186,7 @@ export default function AccessControlDialog({
                                 <Label 
                                   htmlFor={`section-${s.id}`} 
                                   className={cn(
-                                    "font-black tracking-wider cursor-pointer flex-1",
-                                    (s as any).isSubItem ? "text-[11px]" : "text-[10px] uppercase"
+                                    "font-black tracking-wider cursor-pointer flex-1 text-[10px] uppercase"
                                   )}
                                 >
                                   {s.label}

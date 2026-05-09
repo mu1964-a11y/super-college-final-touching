@@ -22,6 +22,11 @@
     border-style: solid;
     border-color: var(--border, currentColor);
     outline: none !important;
+    border-radius: 0 !important;
+  }
+
+  .rounded-full {
+    border-radius: 9999px !important;
   }
 
   *:focus, *:focus-visible {

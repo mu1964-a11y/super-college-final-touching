@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useLeadsOperations } from './data/useLeadsOperations';
 import { useAdmissionsOperations } from './data/useAdmissionsOperations';
 import { useStudentsOperations } from './data/useStudentsOperations';
@@ -19,6 +19,10 @@ export function useSupabaseData(user: any) {
   const [admissions, setAdmissions] = useState<Admission[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [staffAttendance, setStaffAttendance] = useState<any[]>([]);
+  const [staffTimetable, setStaffTimetable] = useState<any[]>([]);
+  const [staffAdvances, setStaffAdvances] = useState<any[]>([]);
+  const [studentAttendance, setStudentAttendance] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [academicRecords, setAcademicRecords] = useState<AcademicRecord[]>([]);
@@ -87,7 +91,7 @@ export function useSupabaseData(user: any) {
 
   const fetchData = useCallback(async (silent = false) => {
     // Prevent overlapping fetches or fetches during bulk operations
-    if (isFetchingRef.current || isBulkOperatingRef.current) return;
+    if (isFetchingRef.current || isBulkOperatingRef.current || !isSupabaseConfigured) return;
     
     isFetchingRef.current = true;
     if (!silent) setLoading(true);
@@ -100,9 +104,15 @@ export function useSupabaseData(user: any) {
         expensesData,
         incomeData,
         staffResult,
+        staffAttendanceResult,
+        staffTimetableResult,
+        staffAdvancesResult,
         settingsResult,
         permissionsResult,
-        notificationsResult
+        notificationsResult,
+        academicRecordsResult,
+        salaryPaymentsResult,
+        studentAttendanceResult
       ] = await Promise.all([
         fetchAllRecords('leads', 'date_added'),
         fetchAllRecords('admissions', 'created_at'),
@@ -110,15 +120,29 @@ export function useSupabaseData(user: any) {
         fetchAllRecords('expenses', 'date'),
         fetchAllRecords('income', 'date'),
         supabase.from('staff').select('*').order('created_at', { ascending: false }).limit(1000),
-        supabase.from('settings').select('*').limit(1).maybeSingle(),
+        supabase.from('staff_attendance').select('*').order('date', { ascending: false }).limit(2000),
+        supabase.from('staff_timetable').select('*').limit(1000),
+        supabase.from('staff_advances').select('*').order('date_issued', { ascending: false }).limit(500),
+        supabase.from('settings').select('*').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('permissions').select('*'),
-        supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(100)
+        supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(1000),
+        fetchAllRecords('academic_records', 'date'),
+        fetchAllRecords('salary_payments', 'date'),
+        fetchAllRecords('student_attendance', 'date')
       ]);
 
       const { data: staffData } = staffResult;
+      const { data: staffAttendanceData } = staffAttendanceResult;
+      const { data: staffTimetableData } = staffTimetableResult;
+      const { data: staffAdvancesData } = staffAdvancesResult;
       const { data: settingsData } = settingsResult;
       const { data: permissionsData } = permissionsResult;
       const { data: notificationsData } = notificationsResult;
+      const { data: academicRecordsData } = academicRecordsResult;
+      const { data: salaryPaymentsData } = salaryPaymentsResult;
+      const { data: studentAttendanceData } = studentAttendanceResult;
+
+      const defaultSession = settingsData?.academic_session || '2026-28';
 
       if (leadsData) setLeads(leadsData.map(l => ({ 
         ...l, 
@@ -132,7 +156,7 @@ export function useSupabaseData(user: any) {
         dateAdded: l.date_added,
         currentClass: l.current_class,
         isConverted: l.is_converted,
-        session: l.session,
+        session: l.session || defaultSession,
         subjects: l.subjects || [] 
       })));
       if (admissionsData) setAdmissions(admissionsData.map(a => ({
@@ -152,8 +176,10 @@ export function useSupabaseData(user: any) {
         contactNumber: a.contact_number,
         fatherContact: a.father_contact,
         secondaryContact: a.secondary_contact,
+        email: a.email,
+        bloodGroup: a.blood_group,
         isAdmitted: a.is_admitted,
-        session: a.session,
+        session: a.session || defaultSession,
         sessionStartDate: a.session_start_date,
         sessionEndDate: a.session_end_date,
         academicPart: a.academic_part,
@@ -161,7 +187,8 @@ export function useSupabaseData(user: any) {
         currentSemester: a.current_semester,
         studentId: a.student_id,
         photo: a.photo_url || a.photo, // Mapping photo_url from DB to photo in app
-        feeHistory: a.fee_history || []
+        feeHistory: a.fee_history || [],
+        feeLedger: a.fee_ledger || null,
       })));
       if (studentsData) {
         const mappedStudents = studentsData.map(s => ({
@@ -173,6 +200,8 @@ export function useSupabaseData(user: any) {
           previousClass: s.previous_class,
           boardRollNo: s.board_roll_no,
           previousMarks: s.previous_marks,
+          email: s.email,
+          bloodGroup: s.blood_group,
           admissionFee: s.admission_fee,
           miscFunds: s.misc_funds,
           totalFeeFinalized: s.total_fee_finalized,
@@ -181,7 +210,7 @@ export function useSupabaseData(user: any) {
           totalInstallments: s.total_installments,
           monthlyFee: s.monthly_fee,
           admissionId: s.admission_id,
-          session: s.session,
+          session: s.session || defaultSession,
           sessionStartDate: s.session_start_date,
           sessionEndDate: s.session_end_date,
           academicPart: s.academic_part,
@@ -199,16 +228,51 @@ export function useSupabaseData(user: any) {
         fullName: st.full_name,
         fatherName: st.father_name,
         joinDate: st.join_date,
-        baseSalary: st.base_salary
+        baseSalary: st.base_salary,
+        salary: st.salary,
+        photo: st.photo,
+        dob: st.dob,
+        cnic: st.cnic,
+        qualification: st.qualification,
+        specialization: st.specialization,
+        subjects: st.subjects
       })));
-      if (expensesData) setExpenses(expensesData);
+      if (staffAttendanceData) setStaffAttendance(staffAttendanceData.map(a => ({
+        ...a,
+        staffId: a.staff_id,
+        checkIn: a.check_in,
+        checkOut: a.check_out
+      })));
+      if (staffTimetableData) setStaffTimetable(staffTimetableData.map(t => ({
+        ...t,
+        staffId: t.staff_id,
+        startTime: t.start_time,
+        endTime: t.end_time,
+        classRoom: t.class_room
+      })));
+      if (studentAttendanceData) setStudentAttendance(studentAttendanceData.map(a => ({
+        ...a,
+        studentId: a.student_id,
+      })));
+      if (staffAdvancesData) setStaffAdvances(staffAdvancesData.map(a => ({
+        ...a,
+        staffId: a.staff_id,
+        dateIssued: a.date_issued,
+        deductionPerMonth: a.deduction_per_month,
+        remainingBalance: a.remaining_balance
+      })));
+      if (expensesData) setExpenses(expensesData.map(e => ({
+        ...e,
+        session: e.session || defaultSession
+      })));
       if (incomeData) setIncomes(incomeData.map(i => ({
         ...i,
         studentId: i.student_id,
         studentName: i.student_name,
         feeType: i.fee_type,
         paymentMethod: i.payment_method,
-        recordedBy: i.recorded_by
+        recordedBy: i.recorded_by,
+        session: i.session || defaultSession
       })));
       if (settingsData) setSettings({
         id: settingsData.id,
@@ -236,7 +300,8 @@ export function useSupabaseData(user: any) {
         allowQuickNav: settingsData.allow_quick_nav ?? settingsData.config?.allowQuickNav,
         enableHighlighting: settingsData.enable_highlighting ?? settingsData.config?.enableHighlighting,
         admissionSlipCustomText: settingsData.admission_slip_custom_text ?? settingsData.config?.admissionSlipCustomText,
-        feeReceiptCustomText: settingsData.fee_receipt_custom_text ?? settingsData.config?.feeReceiptCustomText
+        feeReceiptCustomText: settingsData.fee_receipt_custom_text ?? settingsData.config?.feeReceiptCustomText,
+        predefinedSections: settingsData.config?.predefinedSections || []
       } as any);
       if (permissionsData) setPermissions(permissionsData.map(p => ({
         ...p,
@@ -250,7 +315,24 @@ export function useSupabaseData(user: any) {
         isRead: n.is_read,
         timestamp: n.created_at
       })));
-
+      if (academicRecordsData) setAcademicRecords(academicRecordsData.map(r => ({
+        ...r,
+        studentId: r.student_id,
+        studentName: r.student_name,
+        testName: r.test_name,
+        testType: r.test_type,
+        totalMarks: r.total_marks,
+        obtainedMarks: r.obtained_marks,
+        teacherId: r.teacher_id,
+        session: r.session || defaultSession
+      })));
+      if (salaryPaymentsData) setSalaryPayments(salaryPaymentsData.map(p => ({
+        ...p,
+        staffId: p.staff_id,
+        staffName: p.staff_name,
+        paymentMethod: p.payment_method,
+        receiptNumber: p.receipt_number
+      })));
     } catch (error) {
       console.error('Error fetching Supabase data:', error);
     } finally {
@@ -269,7 +351,7 @@ export function useSupabaseData(user: any) {
   const userId = user?.id;
 
   useEffect(() => {
-    if (!userId) {
+    if (!isSupabaseConfigured || !userId) {
       setLoading(false);
       return;
     }
@@ -352,7 +434,7 @@ export function useSupabaseData(user: any) {
     return `${prefix}-${year}-${random}`;
   };
 
-  const ctx = { user, generateStudentId, leads, setLeads, admissions, setAdmissions, students, setStudents, staff, setStaff, expenses, setExpenses, incomes, setIncomes, academicRecords, setAcademicRecords, salaryPayments, setSalaryPayments, settings, setSettings, permissions, setPermissions, notifications, setNotifications, isBulkOperatingRef, logActivity, fetchData };
+  const ctx = { user, generateStudentId, leads, setLeads, admissions, setAdmissions, students, setStudents, staff, setStaff, staffAttendance, setStaffAttendance, staffTimetable, setStaffTimetable, staffAdvances, setStaffAdvances, expenses, setExpenses, incomes, setIncomes, academicRecords, setAcademicRecords, salaryPayments, setSalaryPayments, studentAttendance, setStudentAttendance, settings, setSettings, permissions, setPermissions, notifications, setNotifications, isBulkOperatingRef, logActivity, fetchData };
   const leadsOps = useLeadsOperations(ctx);
   const admissionsOps = useAdmissionsOperations(ctx);
   const studentsOps = useStudentsOperations(ctx);
@@ -372,6 +454,10 @@ export function useSupabaseData(user: any) {
     admissions,
     students,
     staff,
+    staffAttendance,
+    studentAttendance,
+    staffTimetable,
+    staffAdvances,
     expenses,
     incomes,
     settings,
@@ -382,6 +468,7 @@ export function useSupabaseData(user: any) {
     markActioned,
     isNewRecord,
     logActivity,
+    ...admissionsOps,
     // addLead,
     // updateLead,
     // deleteLead,
