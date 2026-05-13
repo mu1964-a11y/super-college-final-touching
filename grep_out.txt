@@ -1,66 +1,684 @@
-426:      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
-1945:    setFormData((prev) => ({ ...prev, totalPackage: total }));
-1953:        ...prev,
-1990:        ...prev,
-2008:          ...prev,
-2023:      ...prev,
-2172:                    setFormData(prev => ({ ...prev, category: v, gender }));
-2214:                    setFormData(prev => ({ ...prev, fullName: e.target.value }))
-2226:                    setFormData(prev => ({ ...prev, fatherName: e.target.value }))
-2238:                    setFormData(prev => ({ ...prev, bayFormNo: e.target.value }))
-2251:                    setFormData(prev => ({ ...prev, dob: e.target.value }))
-2262:                    setFormData(prev => ({ ...prev, bloodGroup: v }))
-2287:                    setFormData(prev => ({ ...prev, address: e.target.value }))
-2318:                    setFormData(prev => ({ ...prev, contactNumber: e.target.value }))
-2330:                    setFormData(prev => ({ ...prev, fatherContact: e.target.value }))
-2343:                    setFormData(prev => ({ ...prev, email: e.target.value }))
-2394:                    setFormData(prev => ({ ...prev, section: e.target.value.toUpperCase(), }))
-2406:                    setFormData(prev => ({ ...prev, collegeNo: e.target.value }))
-2417:                    setFormData(prev => ({ ...prev, previousClass: v as any }))
-2437:                    setFormData(prev => ({ ...prev, boardRollNo: e.target.value }))
-2450:                    setFormData(prev => ({ ...prev, previousMarks: e.target.value }))
-2462:                    setFormData(prev => ({ ...prev, previousInstitute: e.target.value, }))
-2568:                    setFormData(prev => ({ ...prev, admissionFee: e.target.value }))
-2581:                    setFormData(prev => ({ ...prev, miscFunds: e.target.value }))
-2594:                    setFormData(prev => ({ ...prev, totalFeeFinalized: e.target.value, }))
-2623:                        setFormData(prev => ({ ...prev, feeReceived: e.target.value, }))
-2650:                    setFormData(prev => ({ ...prev, paymentPlan: v }))
-2691:                    setFormData(prev => ({ ...prev, reference: e.target.value }))
-2702:                    setFormData(prev => ({ ...prev, status: v }))
-3373:    setFormData((prev) => ({ ...prev, totalPackage: total }));
-3381:        ...prev,
-3406:        return { ...prev, category: result[0] };
-3527:        ...prev,
-3701:      ...prev,
-3715:          ...prev,
-3796:                  setFormData(prev => ({ ...prev, gender: v as Gender,
-3867:                onValueChange={(v) => setFormData(prev => ({ ...prev, category: v }))}
-3908:                  setFormData(prev => ({ ...prev, section: v, session: newSession }));
-4109:                            setFormData(prev => ({ ...prev, fullName: e.target.value, }))
-4119:                            setFormData(prev => ({ ...prev, fatherName: e.target.value, }))
-4129:                            setFormData(prev => ({ ...prev, dob: e.target.value }))
-4139:                            setFormData(prev => ({ ...prev, bayFormNo: e.target.value, }))
-4148:                            setFormData(prev => ({ ...prev, gender: v }))
-4164:                            setFormData(prev => ({ ...prev, bloodGroup: v }))
-4204:                            setFormData(prev => ({ ...prev, contactNumber: e.target.value, }))
-4214:                            setFormData(prev => ({ ...prev, fatherContact: e.target.value, }))
-4224:                            setFormData(prev => ({ ...prev, email: e.target.value }))
-4234:                            setFormData(prev => ({ ...prev, reference: e.target.value, }))
-4247:                            setFormData(prev => ({ ...prev, address: e.target.value, }))
-4285:                            setFormData(prev => ({ ...prev, boardRollNo: e.target.value, }))
-4296:                            setFormData(prev => ({ ...prev, previousMarks: e.target.value, }))
-4306:                            setFormData(prev => ({ ...prev, previousInstitute: e.target.value, }))
-4314:                            setFormData(prev => ({ ...prev, previousClass: v }))
-4361:                            setFormData(prev => ({ ...prev, collegeNo: e.target.value, }))
-4407:                              setFormData(prev => ({ ...prev, section: e.target.value.toUpperCase(), }))
-4417:                            setFormData(prev => ({ ...prev, session: v }))
-4562:                                setFormData(prev => ({ ...prev, admissionFee: e.target.value, }))
-4580:                                setFormData(prev => ({ ...prev, totalFeeFinalized: e.target.value, }))
-4595:                                setFormData(prev => ({ ...prev, miscFunds: e.target.value, }))
-4636:                                setFormData(prev => ({ ...prev, feeReceived: e.target.value, }))
-4669:                            setFormData(prev => ({ ...prev, paymentPlan: v }))
-4688:                            setFormData(prev => ({ ...prev, totalInstallments: Number(e.target.value), }))
-4734:                            setFormData(prev => ({ ...prev, totalSemesters: Number(e.target.value), }))
-4744:                            setFormData(prev => ({ ...prev, feePerSemester: Number(e.target.value), }))
-4754:                            setFormData(prev => ({ ...prev, nextSemesterDueDate: e.target.value, }))
-4802:                      setFormData(prev => ({ ...prev, reference: e.target.value }))
+  ]);
+
+  return (
+    <div className="space-y-8 pb-12 relative">
+      {/* Dynamic Background Highlights - Giving "Life" to the Dashboard */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
+        <motion.div
+          animate={{
+            x: [0, 50, 0],
+--
+            scale: [1, 1.1, 1],
+          }}
+          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+          className="absolute top-[20%] -left-20 w-96 h-96 bg-superior-teal/5 rounded-full blur-[100px]"
+        />
+        <motion.div
+          animate={{
+--
+            scale: [1, 1.2, 1],
+          }}
+          transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+          className="absolute bottom-[20%] -right-20 w-80 h-80 bg-superior-gold/5 rounded-full blur-[100px]"
+        />
+      </div>
+
+      {/* Hero Banner - ORIGINAL Branded Version */}
+      <div className="relative overflow-hidden bg-superior-teal rounded-[2rem] p-6 lg:p-8 border border-superior-teal/20 shadow-2xl shadow-superior-teal/20 z-10">
+        <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-superior-gold/5 to-transparent pointer-events-none" />
+        <div className="absolute -bottom-16 -right-16 w-64 h-64 bg-white/5 rounded-full blur-3xl" />
+        <div className="relative z-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+          <div className="space-y-6 pl-4">
+            <div className="space-y-1">
+              <h1 className="text-white text-xs md:text-sm font-black uppercase tracking-[0.4em] opacity-80 pl-1">
+                {(() => {
+                  const collegeName = data.settings?.collegeName || "Superior College";
+                  const campusName = data.settings?.campusName || "Jahanian";
+--
+                    : `${collegeName}, ${campusName}`;
+                })()}
+              </h1>
+              <h2 className="text-4xl md:text-6xl font-display font-black text-white tracking-tighter leading-none flex flex-wrap gap-x-4">
+                <span>ADMIN</span>
+                <span className="text-superior-gold">DASHBOARD</span>
+              </h2>
+            </div>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  onClick={() => {
+                    setActivePage("admissions");
+                    setTimeout(() => window.dispatchEvent(new CustomEvent('open-new-admission')), 100);
+                  }}
+                  className="bg-superior-gold text-superior-teal hover:bg-superior-gold/90 font-black uppercase tracking-widest text-[10px] h-10 rounded-xl px-6 shadow-lg shadow-superior-gold/10 transition-all active:scale-95"
+                >
+                  New Admission
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setActivePage("reports")}
+                  className="bg-transparent border-white/20 text-white hover:bg-white/10 h-10 rounded-xl px-6 font-black uppercase tracking-widest text-[10px] transition-all active:scale-95"
+                >
+                  View Reports
+                </Button>
+              </div>
+              <div className="flex items-center gap-2 text-white/60">
+                <div className="w-2 h-2 rounded-full bg-superior-gold animate-pulse" />
+                <span className="text-[10px] font-black uppercase tracking-widest">
+                  Ongoing Session:{" "}
+                  <span className="text-white">{selectedSession}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white/5 backdrop-blur-md border border-white/10 p-5 rounded-2xl text-right min-w-[260px] relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-1 h-full bg-superior-gold/50" />
+            <div className="flex items-center justify-between gap-4 mb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <span className="text-[8px] font-black text-emerald-400 uppercase tracking-[0.2em]">
+                  System Live
+                </span>
+              </div>
+--
+                value={selectedSession}
+                onValueChange={setSelectedSession}
+              >
+                <SelectTrigger className="w-[130px] h-7 bg-white/10 border-white/20 text-white text-[9px] font-black uppercase tracking-widest rounded-lg focus:ring-0">
+                  <SelectValue placeholder="Session" />
+                </SelectTrigger>
+                <SelectContent className="bg-superior-teal border-superior-teal/50 text-white">
+                  <SelectItem
+                    value="all"
+                    className="text-[10px] font-bold uppercase tracking-widest focus:bg-white/10"
+                  >
+                    All Sessions
+                  </SelectItem>
+--
+                    <SelectItem
+                      key={session}
+                      value={session}
+                      className="text-[10px] font-bold uppercase tracking-widest focus:bg-white/10"
+                    >
+                      {session}
+                    </SelectItem>
+--
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-superior-gold text-[9px] font-black uppercase tracking-[0.2em] mb-1">
+                Current Date & Time
+              </p>
+              <p className="text-white text-xl font-display font-black tracking-tight">
+                {currentDate.toLocaleDateString("en-US", {
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </p>
+              <div className="flex items-center justify-end gap-2">
+                <p className="text-white/40 text-xs font-medium">
+                  {currentDate.toLocaleDateString("en-US", { weekday: "long" })}
+                </p>
+                <div className="w-1 h-1 rounded-full bg-white/20" />
+                <p className="text-white font-mono text-sm tracking-widest">
+                  {time.toLocaleTimeString("en-US", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+--
+              </div>
+            </div>
+
+            <Separator className="my-4 bg-white/5" />
+            <div className="flex items-center justify-end gap-2 text-superior-gold">
+              <div className="w-6 h-6 rounded-lg bg-superior-gold/20 flex items-center justify-center">
+                <TrendingUp size={12} />
+              </div>
+              <span className="text-[10px] font-black tracking-tight uppercase">
+                Active Filter: {selectedSession}
+              </span>
+            </div>
+--
+      </div>
+
+      {/* Program-wise Gender Breakdown */}
+      <div className="relative z-10 space-y-6">
+        <div className="flex items-center justify-between px-2">
+          <div>
+            <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Academic Group Demographics</h3>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Real-time Boys vs Girls split across programs</p>
+          </div>
+          <Badge variant="outline" className="bg-white border-slate-200 text-slate-500 font-black px-4 py-1.5 rounded-xl shadow-sm">
+            <Users size={14} className="mr-2 text-superior-teal" />
+            Total Enrollment: {totalEnrollmentCount}
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            { 
+              name: "Intermediate (FSC)", 
+--
+              <motion.div
+                key={prog.name}
+                whileHover={{ y: -5 }}
+                className={cn(
+                  "bg-white rounded-2xl p-5 border shadow-xs relative overflow-hidden flex flex-col justify-between border-slate-200",
+                )}
+              >
+                {/* Left accent border */}
+                <div className={cn(
+                  "absolute left-0 top-0 w-1 h-full",
+                  prog.color === "emerald" ? "bg-emerald-500" : 
+                  prog.color === "blue" ? "bg-blue-500" : 
+                  prog.color === "rose" ? "bg-rose-500" : "bg-indigo-500"
+                )} />
+                
+                <div className="flex items-start justify-between mb-2">
+                  <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border",
+                    prog.color === "emerald" ? "bg-emerald-50 text-emerald-600 border-emerald-100" : 
+                    prog.color === "blue" ? "bg-blue-50 text-blue-600 border-blue-100" : 
+--
+                  )}>
+                    <prog.icon size={20} />
+                  </div>
+                  <span className={cn(
+                    "px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide",
+                    prog.status === "Active" ? "bg-emerald-100 text-emerald-700" : 
+                    prog.status === "Low intake" ? "bg-amber-100 text-amber-700" : 
+--
+                  </span>
+                </div>
+
+                <div className="mb-4">
+                  <h4 className="text-[15px] font-bold text-slate-800 leading-tight mb-0.5">{prog.name}</h4>
+                  <p className="text-xs text-slate-500 font-medium">{prog.total} total students</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-3">
+                  <div>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">Boys</p>
+                    <h5 className="text-2xl font-black text-slate-800 tracking-tighter leading-none">{prog.boys}</h5>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">Girls</p>
+                    <h5 className="text-2xl font-black text-slate-800 tracking-tighter leading-none">{prog.girls}</h5>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 mb-6">
+                  <div className="h-1.5 w-full bg-slate-100 rounded-full flex overflow-hidden">
+                     {prog.total > 0 ? (
+                       <>
+                         <div style={{ width: `${boysPercent}%` }} className={cn(
+                           prog.color === "emerald" ? "bg-emerald-500" : 
+                           prog.color === "blue" ? "bg-blue-500" : 
+                           prog.color === "rose" ? "bg-rose-500" : "bg-indigo-500"
+                         )} />
+                         <div style={{ width: `${girlsPercent}%` }} className={cn(
+                           prog.color === "emerald" ? "bg-emerald-200" : 
+                           prog.color === "blue" ? "bg-blue-200" : 
+                           prog.color === "rose" ? "bg-rose-200" : "bg-indigo-200"
+                         )} />
+                       </>
+                     ) : (
+                       <div className="w-full bg-slate-200" />
+                     )}
+                  </div>
+                  <div className="flex justify-between text-[10px] font-medium text-slate-500">
+                    {prog.total > 0 ? (
+                      <>
+                        <span>Boys {boysPercent}%</span>
+--
+
+                <button 
+                  onClick={() => setActivePage(prog.page)}
+                  className="flex items-center text-[12px] font-semibold text-blue-600 hover:text-blue-700 transition-colors w-max"
+                >
+                  <ArrowRight size={14} className="mr-1.5" />
+                  View full record
+                </button>
+              </motion.div>
+--
+      {totalApplicants === 0 &&
+        confirmedAdmissions.length === 0 &&
+        selectedSession !== "all" && (
+          <div className="px-4 md:px-10 mt-6">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="p-6 rounded-[2rem] bg-amber-50 border border-amber-200 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm"
+            >
+              <div className="flex items-center gap-4 text-center md:text-left transition-all">
+                <div className="w-12 h-12 rounded-2xl bg-amber-200 flex items-center justify-center text-amber-700 shadow-inner shrink-0">
+                  <AlertCircle size={24} />
+                </div>
+                <div>
+                  <p className="text-amber-900 font-black uppercase tracking-widest text-[11px] leading-tight">
+                    No Active Records for Session "{selectedSession}"
+                  </p>
+                  <p className="text-amber-700/70 text-xs font-medium mt-1">
+                    We couldn't find any admissions or students for this
+                    specific session ID. Try switching to{" "}
+                    <span className="font-bold">"All Sessions"</span> or check
+                    your settings.
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() => setSelectedSession("all")}
+                className="bg-amber-600 hover:bg-amber-700 text-white rounded-xl px-6 h-11 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-amber-200 shrink-0"
+              >
+                Expose All Data
+              </Button>
+--
+        )}
+
+      {/* Filter Row */}
+      <div className="flex items-center justify-between px-2">
+        <div className="flex items-center gap-3">
+          <div className="w-1.5 h-6 bg-superior-gold rounded-full" />
+          <h3 className="text-xl font-serif font-black text-slate-800">
+            Financial Snapshot
+          </h3>
+        </div>
+        <div className="flex items-center gap-3 bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm">
+          <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-3">
+            Viewing Data For:
+          </span>
+          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+            <SelectTrigger className="w-[180px] h-10 rounded-xl bg-slate-50 border-transparent focus:bg-white transition-all font-bold text-slate-600">
+              <SelectValue placeholder="Select Month" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border-slate-100 shadow-2xl">
+              <SelectItem value="all" className="font-bold">
+                Total Collection (All Months)
+              </SelectItem>
+              {monthsList.map((m) => (
+--
+      </div>
+
+      {/* Financial Snapshot - Restructured for ss2 Layout */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* May Collection Card */}
+        <div 
+          onClick={() => setActivePage("accounts")}
+          className="bg-emerald-50 rounded-2xl p-6 border border-emerald-100/50 relative overflow-hidden cursor-pointer hover:shadow-lg transition-shadow group flex flex-col justify-between min-h-[160px]"
+        >
+          <div>
+            <div className="flex items-center gap-2 mb-2 text-emerald-600">
+               <ReceiptText size={16} />
+               <p className="text-[12px] font-bold uppercase tracking-widest leading-none">
+                 {selectedMonth === "all" ? "TOTAL REVENUE" : `${selectedMonth.toUpperCase()} COLLECTION`}
+               </p>
+            </div>
+            <h4 className="text-4xl font-display font-black text-emerald-600 tracking-tighter">
+              Rs. {(monthlyIncome || 0).toLocaleString()}
+            </h4>
+            <p className="text-[11px] font-semibold text-emerald-600/80 mt-1">
+              {selectedMonth === "all" ? "Total fee received" : "Total fee received this month"}
+            </p>
+          </div>
+          {/* Faux Bar Chart Representation at bottom */}
+          <div className="flex items-end gap-1.5 h-12 mt-4 opacity-70 group-hover:opacity-100 transition-opacity">
+            {[40, 50, 60, 45, 80].map((h, i) => (
+              <div key={i} className="flex-1 rounded-sm bg-emerald-400" style={{ height: `${h}%` }} />
+            ))}
+          </div>
+        </div>
+--
+        {/* PSA Card */}
+        <div 
+          onClick={() => setActivePage("accounts")}
+          className="bg-white rounded-2xl p-6 border border-slate-200 cursor-pointer hover:shadow-lg transition-shadow flex flex-col justify-center min-h-[160px]"
+        >
+          <div className="flex items-center gap-2 text-slate-400 mb-2">
+            <TrendingUp size={16} />
+            <p className="text-[12px] font-bold uppercase tracking-widest leading-none">PER STUDENT AVG (PSA)</p>
+          </div>
+          <h4 className="text-4xl font-display font-black text-slate-800 tracking-tighter">
+            Rs. {Math.round(academicPerformance.totalAvg).toLocaleString()}
+          </h4>
+          <p className="text-[11px] font-semibold text-slate-500 mt-1 mb-4">
+            Institutional value / student
+          </p>
+          {activeStudentsRevenue > 0 && (
+             <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-sm w-max">
+               <ArrowUpRight size={10} /> +4.2% vs last month
+             </span>
+          )}
+        </div>
+
+        {/* Consolidated Card */}
+        <div className="bg-white rounded-2xl p-5 border border-slate-200 grid grid-cols-2 gap-4 gap-y-6">
+           <div className="cursor-pointer" onClick={() => setActivePage("students-boys")}>
+             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 leading-none">TOTAL ENROLLMENT</p>
+             <h5 className="text-3xl font-black text-slate-800 tracking-tighter mb-1 leading-none">{totalEnrollmentCount}</h5>
+             <Badge variant="outline" className="bg-slate-50 text-slate-600 rounded-sm px-1.5 py-0 text-[9px] border-slate-200">All programs</Badge>
+           </div>
+           
+           <div className="cursor-pointer" onClick={() => setActivePage("staff")}>
+             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 leading-none">STAFF PRESENCE</p>
+             <h5 className="text-3xl font-black text-slate-800 tracking-tighter mb-1 leading-none">{totalStaff}/{totalStaff}</h5>
+             <Badge variant="outline" className="bg-emerald-50 text-emerald-600 rounded-sm px-1.5 py-0 text-[9px] border-emerald-100 border flex w-max items-center gap-1"><CheckCircle2 size={8} /> Full</Badge>
+           </div>
+
+           <div className="cursor-pointer" onClick={() => setActivePage("leads")}>
+             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 leading-none">RAW LEADS</p>
+             <h5 className="text-3xl font-black text-slate-800 tracking-tighter mb-1 leading-none">{(data.leads?.length || 0).toLocaleString()}</h5>
+             <Badge variant="outline" className="bg-rose-50 text-rose-600 rounded-sm px-1.5 py-0 text-[10px] border-rose-100">
+                <ArrowDownRight size={10} className="inline mr-0.5" /> 1% converted
+             </Badge>
+           </div>
+
+           <div>
+             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 leading-none">LEAD CONVERSION</p>
+             <h5 className="text-2xl font-black text-slate-800 tracking-tighter mb-1 leading-none">
+                {data.leads?.length ? `${Math.round((confirmedAdmissions.length / data.leads.length) * 100)}%` : "0%"}
+             </h5>
+             <Badge variant="outline" className="bg-rose-50 text-rose-600 rounded-sm px-1.5 py-0 text-[9px] border-rose-100">Needs attention</Badge>
+           </div>
+        </div>
+      </div>
+
+      {/* Complete Information Cluster Panel - REPLACING Shortucts */}
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between px-2">
+          <h3 className="text-xs font-black uppercase tracking-[0.4em] text-slate-400">
+            Superior Information Cluster
+          </h3>
+          <Badge
+            variant="outline"
+            className="bg-white text-[9px] font-black uppercase tracking-widest text-slate-400 border-slate-100"
+          >
+            Live Institutional Analytics
+          </Badge>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 lg:gap-6 relative z-10">
+          {infoCluster.map((item: any, idx) => (
+            <motion.div
+              key={idx}
+--
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.05 }}
+              whileHover={{ y: -8, scale: 1.02 }}
+              className={cn(
+                "group relative p-5 rounded-[2.5rem] border shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all overflow-hidden cursor-default",
+                "hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1),0_0_20px_rgba(0,0,0,0.05)]",
+                item.color, // used for the beam color
+--
+              )}
+            >
+              {/* Base background for the 2px gap when beam isn't there */}
+              <div className="absolute inset-0 z-0 bg-white dark:bg-slate-900" />
+              
+              {/* Spinning Beam Border */}
+              <div className="absolute inset-0 z-[1] overflow-hidden rounded-[2.5rem] opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+                <div 
+                  className="absolute animate-[spin_4s_linear_infinite]"
+                  style={{
+                    background: `conic-gradient(from 90deg at 50% 50%, transparent 60%, currentColor 100%)`,
+                    width: '300%',
+--
+              </div>
+
+              {/* Inner Solid Card background (opaque layer to block inner gradient spin) */}
+              <div className="absolute inset-[2px] rounded-[calc(2.5rem-2px)] z-[2] transition-colors duration-300 bg-white dark:bg-slate-900" />
+              
+              {/* Inner Tint Layer */}
+              <div className={cn(
+                "absolute inset-[2px] rounded-[calc(2.5rem-2px)] z-[2] transition-colors duration-300 pointer-events-none",
+                item.bgColor,
+              )} />
+
+              {/* Metallic Grain / Crystallized Reflection */}
+              <div className="absolute inset-[2px] rounded-[calc(2.5rem-2px)] z-[2] bg-gradient-to-br from-white/30 dark:from-white/10 via-transparent to-black/5 dark:to-white/5 pointer-events-none" />
+              <div className="absolute -inset-x-full top-0 h-full w-1/2 bg-gradient-to-r from-transparent via-white/40 dark:via-white/10 to-transparent skew-x-[-25deg] transition-all duration-1000 group-hover:translate-x-[400%] pointer-events-none z-[2]" />
+
+              <div className="relative z-[3] flex flex-col h-full justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div
+                      className={cn(
+                        "w-8 h-8 rounded-xl bg-white dark:bg-slate-800 shadow-xs border flex items-center justify-center transition-all group-hover:scale-110",
+                        item.color,
+                        item.border
+--
+                      <item.icon size={16} />
+                    </div>
+                    {item.pill && (
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wide",
+                        item.pillColor || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                      )}>
+--
+                      </span>
+                    )}
+                  </div>
+                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1">
+                    {item.label}
+                  </h4>
+                </div>
+                <div>
+                  <p className="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tighter">
+                    {item.value}
+                  </p>
+                  
+                  {item.progress !== undefined && (
+                    <div className="mt-3 w-full">
+                      <div className="h-1.5 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-1.5">
+                        <div 
+                          className={cn("h-full rounded-full transition-all duration-1000", item.progressColor)} 
+                          style={{ width: `${Math.min(item.progress, 100)}%` }} 
+                        />
+                      </div>
+                      <p className="text-[9px] font-bold text-slate-500 dark:text-slate-400">{item.progressText}</p>
+                    </div>
+                  )}
+
+                  <p className={cn("mt-2 text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest", item.progress !== undefined ? "opacity-0 h-0" : "")}>
+                    {item.desc}
+                  </p>
+                </div>
+--
+      </div>
+
+      {/* Detailed Program Intelligence Cabinets - REPLACING Treasury Grid and Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[
+          {
+            name: "FSc Stream",
+--
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 + idx * 0.1 }}
+            className={`group relative flex flex-col overflow-hidden rounded-[2.5rem] border ${program.border} bg-white/95 p-8 shadow-sm backdrop-blur-xl transition-all duration-500 hover:shadow-2xl`}
+          >
+            {/* Decorative Background Elements */}
+            <div
+              className={`absolute -right-10 -top-10 h-32 w-32 ${program.bg} rounded-full blur-3xl opacity-50 transition-opacity group-hover:opacity-100`}
+            />
+
+            <div className="relative z-10 mb-8 flex items-center justify-between">
+              <div className="space-y-1">
+                <h3
+                  className={`text-[10px] font-black uppercase tracking-[0.2em] ${program.color}`}
+                >
+                  {program.name}
+                </h3>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                  Institutional Unit
+                </p>
+              </div>
+              <div
+                className={`p-4 rounded-2xl ${program.bg} ${program.color} shadow-inner transition-transform duration-500 group-hover:rotate-6 group-hover:scale-110`}
+              >
+                <program.icon size={20} strokeWidth={2.5} />
+              </div>
+            </div>
+
+            <div className="relative z-10 flex flex-1 flex-col py-2">
+              <div className="mb-6">
+                <div className="flex items-baseline gap-1">
+                  <span className="mr-1 text-sm font-black italic text-slate-400">
+                    Rs.
+                  </span>
+                  <span className="text-3xl font-black tracking-tighter text-slate-900 sm:text-4xl">
+                    {program.collection.toLocaleString()}
+                  </span>
+                </div>
+                <span className="mt-1 block text-[9px] font-black uppercase tracking-widest text-slate-400">
+                  Total Financial Treasury
+                </span>
+              </div>
+
+              <div className="mb-6 grid grid-cols-2 gap-4">
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4 transition-colors group-hover:bg-white">
+                  <div className="mb-1 flex items-center gap-2">
+                    <GraduationCap size={12} className="text-slate-400" />
+                    <span className="text-[9px] font-black uppercase text-slate-400">
+                      Scholars
+                    </span>
+                  </div>
+                  <p className="text-xl font-black text-slate-800">
+                    {program.count}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4 transition-colors group-hover:bg-white">
+                  <div className="mb-1 flex items-center gap-2">
+                    <div className="flex items-center gap-0.5">
+                      <span className="text-[10px] font-bold text-blue-500">
+                        ♂
+                      </span>
+                      <span className="text-[10px] font-bold text-xs text-rose-500">
+                        ♀
+                      </span>
+                    </div>
+                    <span className="text-[9px] font-black uppercase text-slate-400">
+                      Ratio
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs font-black text-slate-700">
+                    {program.boys}B / {program.girls}G
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="relative z-10 mt-3 flex flex-col gap-5 border-t border-slate-100 pt-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">
+                    Program Average Yield
+                  </span>
+                  <div className="mt-1 text-3xl font-black text-slate-900 tracking-tight">
+                    Rs. {Math.round(program.avg || 0).toLocaleString()}
+                  </div>
+                </div>
+                <Badge
+                  variant="outline"
+                  className="border-slate-200 bg-slate-50/50 px-3 py-1 text-[8px] font-black uppercase tracking-[0.2em] text-slate-500"
+                >
+                  Verified
+                </Badge>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div className="group flex flex-col rounded-lg border border-teal-200 bg-teal-50/70 p-4 transition-all duration-300 hover:bg-teal-50 hover:shadow-sm">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-teal-600/80">
+                    Boys Yield
+                  </span>
+                  <span className="mt-1 text-xl font-black text-teal-900">
+                    Rs. {Math.round(program.boysAvg || 0).toLocaleString()}
+                  </span>
+                </div>
+                
+                <div className="group flex flex-col rounded-lg border border-orange-200 bg-orange-50/70 p-4 transition-all duration-300 hover:bg-orange-50 hover:shadow-sm">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-orange-600/80">
+                    Girls Yield
+                  </span>
+                  <span className="mt-1 text-xl font-black text-orange-900">
+                    Rs. {Math.round(program.girlsAvg || 0).toLocaleString()}
+                  </span>
+                </div>
+--
+      whileHover={{ y: -8 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={onClick}
+      className="bg-white/80 backdrop-blur-md p-8 rounded-[2.5rem] border border-white shadow-[0_8px_32px_0_rgba(31,38,135,0.07)] cursor-pointer hover:border-superior-teal/30 transition-all duration-500 group shadow-sm hover:shadow-xl hover:shadow-superior-teal/5 relative overflow-hidden"
+    >
+      <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-slate-200/10 pointer-events-none" />
+      <div className="absolute inset-0 border-4 border-transparent group-active:border-superior-gold/20 transition-colors pointer-events-none rounded-[2.5rem]" />
+      <div className="flex items-center justify-between mb-8 relative z-10">
+        <div
+          className={cn(
+            "w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-500 group-hover:scale-110 group-hover:rotate-3 shadow-inner shadow-black/20",
+            colorMap[color],
+          )}
+--
+        </div>
+        {trend && (
+          <div
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black tracking-tight shadow-sm border border-white/50 backdrop-blur-sm",
+              isUp
+                ? "bg-emerald-50/80 text-emerald-600"
+--
+          </div>
+        )}
+      </div>
+      <div className="relative z-10">
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">
+          {title}
+        </p>
+        <h3 className="text-3xl font-display font-black text-slate-800 tracking-tight group-hover:translate-x-1 transition-transform">
+          {value}
+        </h3>
+        {subValue && (
+          <p className="text-sm text-slate-500 mt-2 font-medium italic opacity-80">
+            {subValue}
+          </p>
+        )}
+--
+  };
+
+  return (
+    <div className="flex items-start gap-4 p-6 hover:bg-slate-50/50 transition-colors">
+      <div
+        className={cn(
+          "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
+          colorMap[color],
+        )}
+      >
+        <Icon size={18} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <p className="text-sm font-bold text-slate-800 truncate">{title}</p>
+          <span className="text-[10px] font-medium text-slate-400 shrink-0">
+            {time}
+          </span>
+        </div>
+        <p className="text-xs text-slate-500 leading-relaxed">{desc}</p>
+      </div>
+    </div>
+  );
+--
+    <motion.button
+      whileTap={{ scale: 0.95 }}
+      onClick={onClick}
+      className={cn(
+        "flex flex-col items-center justify-center p-6 bg-white border border-slate-100 rounded-3xl transition-all duration-300 group active:scale-95 relative overflow-hidden",
+        colorMap[color],
+      )}
+    >
+      <div className="absolute inset-0 border-2 border-transparent group-active:border-current/20 transition-colors pointer-events-none rounded-3xl" />
+      <div className="mb-3 transition-all duration-300 group-hover:scale-110 group-hover:rotate-3">
+        <Icon size={24} />
+      </div>
+      <span className="text-[11px] font-black uppercase tracking-[0.2em]">
+        {label}
+      </span>
+    </motion.button>

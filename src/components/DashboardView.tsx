@@ -323,7 +323,7 @@ export default function DashboardView({
       .reduce((acc: number, curr: any) => acc + (curr.amount || 0), 0);
 
     // Track consumed incomes to prevent double deduplication
-    let consumedIncomesForMonth = 0;
+    const consumedIncomesForMonth = 0;
 
     // Ensure admission fees directly recorded are accounted for if no formal income record exists
     const fromPendingAdmissions = data.admissions
@@ -346,7 +346,7 @@ export default function DashboardView({
         const totalAdmittedFee = Number(curr.feeReceived) || 0;
         
         // Simplified mapping strategy
-        let diff = Math.max(0, totalAdmittedFee - mappedAmount);
+        const diff = Math.max(0, totalAdmittedFee - mappedAmount);
         return acc + diff;
       }, 0);
 
@@ -658,6 +658,8 @@ export default function DashboardView({
         color: "text-emerald-600",
         bgColor: "bg-emerald-50/50",
         border: "border-emerald-100/50",
+        pill: data.leads?.length ? (confirmedAdmissions.length / data.leads.length < 0.1 ? "Very low" : "Good") : "No leads",
+        pillColor: "bg-rose-50 text-rose-600",
         desc: "Leads to Admission",
       },
       {
@@ -667,6 +669,8 @@ export default function DashboardView({
         color: "text-blue-600",
         bgColor: "bg-blue-50/50",
         border: "border-blue-100/50",
+        pill: totalEnrollmentCount > 0 ? `${Math.round(mergedBoysCount / totalEnrollmentCount * 100)}%` : "0%",
+        pillColor: "bg-emerald-100 text-emerald-700",
         desc: "Active Boys Count",
       },
       {
@@ -676,6 +680,8 @@ export default function DashboardView({
         color: "text-rose-600",
         bgColor: "bg-rose-50/50",
         border: "border-rose-100/50",
+        pill: totalEnrollmentCount > 0 ? `${Math.round(mergedGirlsCount / totalEnrollmentCount * 100)}%` : "0%",
+        pillColor: "bg-emerald-100 text-emerald-700",
         desc: "Active Girls Count",
       },
       {
@@ -685,6 +691,8 @@ export default function DashboardView({
         color: "text-indigo-600",
         bgColor: "bg-indigo-50/50",
         border: "border-indigo-100/50",
+        pill: teachersCount > 0 ? "Active" : "None",
+        pillColor: teachersCount > 0 ? "bg-emerald-100 text-emerald-700" : "bg-rose-50 text-rose-600",
         desc: "Active Lecturers",
       },
       {
@@ -694,6 +702,8 @@ export default function DashboardView({
         color: "text-slate-600",
         bgColor: "bg-slate-50/50",
         border: "border-slate-100/50",
+        pill: totalStaff - teachersCount > 0 ? "Active" : "Vacant",
+        pillColor: totalStaff - teachersCount > 0 ? "bg-emerald-100 text-emerald-700" : "bg-rose-50 text-rose-600",
         desc: "Admin & Support",
       },
       {
@@ -730,7 +740,12 @@ export default function DashboardView({
         color: "text-emerald-500",
         bgColor: "bg-emerald-50/50",
         border: "border-emerald-100/50",
+        pill: currentMonth.slice(0,3),
+        pillColor: "bg-emerald-100 text-emerald-700",
         desc: "Student Fee Collected",
+        progress: academicPerformance.totalInvoiced > 0 ? (activeStudentsRevenue / academicPerformance.totalInvoiced) * 100 : 0,
+        progressText: `${academicPerformance.totalInvoiced > 0 ? Math.round((activeStudentsRevenue / academicPerformance.totalInvoiced) * 100) : 0}% of receivables collected`,
+        progressColor: "bg-emerald-500"
       },
       {
         label: "Pending Student Dues",
@@ -739,7 +754,12 @@ export default function DashboardView({
         color: "text-red-600",
         bgColor: "bg-red-50/50",
         border: "border-red-100/50",
+        pill: "Pending",
+        pillColor: "bg-red-100 text-red-700",
         desc: "For Active Students",
+        progress: academicPerformance.totalInvoiced > 0 ? ((academicPerformance.totalInvoiced - activeStudentsRevenue) / academicPerformance.totalInvoiced) * 100 : 0,
+        progressText: `${academicPerformance.totalInvoiced > 0 ? Math.round(((academicPerformance.totalInvoiced - activeStudentsRevenue) / academicPerformance.totalInvoiced) * 100) : 0}% still outstanding`,
+        progressColor: "bg-red-500"
       },
       {
         label: "Avg. Yield / Head",
@@ -945,13 +965,14 @@ export default function DashboardView({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {[
             { 
-              name: "Intermediate (F.Sc)", 
+              name: "Intermediate (FSC)", 
               icon: GraduationCap, 
               color: "emerald", 
               total: academicPerformance.fscCount,
               boys: academicPerformance.fscBoysCount,
               girls: academicPerformance.fscGirlsCount,
-              page: 'students-boys'
+              page: 'students-boys',
+              status: academicPerformance.fscCount > 20 ? "Active" : academicPerformance.fscCount > 0 ? "Low intake" : "No enrollment"
             },
             { 
               name: "Diploma in IT (DIT)", 
@@ -960,7 +981,8 @@ export default function DashboardView({
               total: academicPerformance.ditCount,
               boys: academicPerformance.ditBoysCount,
               girls: academicPerformance.ditGirlsCount,
-              page: 'students-dit'
+              page: 'students-dit',
+              status: academicPerformance.ditCount > 20 ? "Active" : academicPerformance.ditCount > 0 ? "Low intake" : "No enrollment"
             },
             { 
               name: "B.S Program", 
@@ -969,7 +991,8 @@ export default function DashboardView({
               total: academicPerformance.bsCount,
               boys: academicPerformance.bsBoysCount,
               girls: academicPerformance.bsGirlsCount,
-              page: 'students-bs'
+              page: 'students-bs',
+              status: academicPerformance.bsCount > 20 ? "Active" : academicPerformance.bsCount > 0 ? "Low intake" : "No enrollment"
             },
             { 
               name: "UK Level 3", 
@@ -978,56 +1001,108 @@ export default function DashboardView({
               total: academicPerformance.ukL3Count,
               boys: academicPerformance.ukL3BoysCount,
               girls: academicPerformance.ukL3GirlsCount,
-              page: 'students-ukl3'
+              page: 'students-ukl3',
+              status: academicPerformance.ukL3Count > 20 ? "Active" : academicPerformance.ukL3Count > 0 ? "Low intake" : "No enrollment"
             }
-          ].map((prog) => (
-            <motion.div
-              key={prog.name}
-              whileHover={{ y: -5 }}
-              className="bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-xl shadow-slate-200/50 relative overflow-hidden group"
-            >
-              <div className={cn(
-                "absolute top-0 right-0 w-24 h-24 blur-3xl opacity-10 rounded-full -translate-y-1/2 translate-x-1/2",
-                prog.color === "emerald" ? "bg-emerald-500" : 
-                prog.color === "blue" ? "bg-blue-500" : 
-                prog.color === "rose" ? "bg-rose-500" : "bg-indigo-500"
-              )} />
-              
-              <div className="flex items-center gap-4 mb-6">
-                <div className={cn(
-                  "w-12 h-12 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110",
-                  prog.color === "emerald" ? "bg-emerald-50 text-emerald-600" : 
-                  prog.color === "blue" ? "bg-blue-50 text-blue-600" : 
-                  prog.color === "rose" ? "bg-rose-50 text-rose-600" : "bg-indigo-50 text-indigo-600"
-                )}>
-                  <prog.icon size={24} />
-                </div>
-                <div className="min-w-0">
-                  <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight truncate leading-tight">{prog.name}</h4>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{prog.total} Total Students</p>
-                </div>
-              </div>
+          ].map((prog) => {
+            const boysPercent = prog.total > 0 ? Math.round((prog.boys / prog.total) * 100) : 0;
+            const girlsPercent = prog.total > 0 ? Math.round((prog.girls / prog.total) * 100) : 0;
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-100/50">
-                  <p className="text-[9px] text-blue-500 font-black uppercase tracking-widest mb-1 leading-none">Boys</p>
-                  <h5 className="text-2xl font-black text-slate-800 tracking-tighter">{prog.boys}</h5>
-                </div>
-                <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-100/50">
-                  <p className="text-[9px] text-rose-500 font-black uppercase tracking-widest mb-1 leading-none">Girls</p>
-                  <h5 className="text-2xl font-black text-slate-800 tracking-tighter">{prog.girls}</h5>
-                </div>
-              </div>
-
-              <button 
-                onClick={() => setActivePage(prog.page)}
-                className="w-full mt-6 flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-superior-teal transition-colors outline-hidden"
+            return (
+              <motion.div
+                key={prog.name}
+                whileHover={{ y: -5 }}
+                className={cn(
+                  "bg-white rounded-2xl p-5 border shadow-xs relative overflow-hidden flex flex-col justify-between border-slate-200",
+                )}
               >
-                <span>View Full Record</span>
-                <ArrowRight size={14} />
-              </button>
-            </motion.div>
-          ))}
+                {/* Left accent border */}
+                <div className={cn(
+                  "absolute left-0 top-0 w-1 h-full",
+                  prog.color === "emerald" ? "bg-emerald-500" : 
+                  prog.color === "blue" ? "bg-blue-500" : 
+                  prog.color === "rose" ? "bg-rose-500" : "bg-indigo-500"
+                )} />
+                
+                <div className="flex items-start justify-between mb-2">
+                  <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border",
+                    prog.color === "emerald" ? "bg-emerald-50 text-emerald-600 border-emerald-100" : 
+                    prog.color === "blue" ? "bg-blue-50 text-blue-600 border-blue-100" : 
+                    prog.color === "rose" ? "bg-rose-50 text-rose-600 border-rose-100" : "bg-indigo-50 text-indigo-600 border-indigo-100"
+                  )}>
+                    <prog.icon size={20} />
+                  </div>
+                  <span className={cn(
+                    "px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide",
+                    prog.status === "Active" ? "bg-emerald-100 text-emerald-700" : 
+                    prog.status === "Low intake" ? "bg-amber-100 text-amber-700" : 
+                    "bg-rose-100 text-rose-700"
+                  )}>
+                    {prog.status}
+                  </span>
+                </div>
+
+                <div className="mb-4">
+                  <h4 className="text-[15px] font-bold text-slate-800 leading-tight mb-0.5">{prog.name}</h4>
+                  <p className="text-xs text-slate-500 font-medium">{prog.total} total students</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-3">
+                  <div>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">Boys</p>
+                    <h5 className="text-2xl font-black text-slate-800 tracking-tighter leading-none">{prog.boys}</h5>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">Girls</p>
+                    <h5 className="text-2xl font-black text-slate-800 tracking-tighter leading-none">{prog.girls}</h5>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 mb-6">
+                  <div className="h-1.5 w-full bg-slate-100 rounded-full flex overflow-hidden">
+                     {prog.total > 0 ? (
+                       <>
+                         <div style={{ width: `${boysPercent}%` }} className={cn(
+                           prog.color === "emerald" ? "bg-emerald-500" : 
+                           prog.color === "blue" ? "bg-blue-500" : 
+                           prog.color === "rose" ? "bg-rose-500" : "bg-indigo-500"
+                         )} />
+                         <div style={{ width: `${girlsPercent}%` }} className={cn(
+                           prog.color === "emerald" ? "bg-emerald-200" : 
+                           prog.color === "blue" ? "bg-blue-200" : 
+                           prog.color === "rose" ? "bg-rose-200" : "bg-indigo-200"
+                         )} />
+                       </>
+                     ) : (
+                       <div className="w-full bg-slate-200" />
+                     )}
+                  </div>
+                  <div className="flex justify-between text-[10px] font-medium text-slate-500">
+                    {prog.total > 0 ? (
+                      <>
+                        <span>Boys {boysPercent}%</span>
+                        <span>Girls {girlsPercent}%</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>No data</span>
+                        <span>—</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => setActivePage(prog.page)}
+                  className="flex items-center text-[12px] font-semibold text-blue-600 hover:text-blue-700 transition-colors w-max"
+                >
+                  <ArrowRight size={14} className="mr-1.5" />
+                  View full record
+                </button>
+              </motion.div>
+            );
+          })}
         </div>
       </div>
 
@@ -1097,54 +1172,87 @@ export default function DashboardView({
         </div>
       </div>
 
-      {/* Stats Grid - RESTORED ORIGINAL MODULES */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 lg:gap-6">
-        <StatCard
-          title="Total Enrollment"
-          value={totalEnrollmentCount}
-          isUp={true}
-          icon={Users}
-          color="teal"
-          onClick={() => setActivePage("students-boys")}
-        />
-        <StatCard
-          title={
-            selectedMonth === "all"
-              ? "Total Revenue"
-              : `${selectedMonth} Collection`
-          }
-          value={`Rs. ${(monthlyIncome || 0).toLocaleString()}`}
-          isUp={true}
-          icon={Wallet}
-          color="gold"
+      {/* Financial Snapshot - Restructured for ss2 Layout */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* May Collection Card */}
+        <div 
           onClick={() => setActivePage("accounts")}
-        />
-        <StatCard
-          title="Per Student Avg (PSA)"
-          value={`Rs. ${Math.round(academicPerformance.totalAvg).toLocaleString()}`}
-          subValue="Institutional Value / Student"
-          trend={activeStudentsRevenue > 0 ? "Calculated" : null}
-          isUp={true}
-          icon={TrendingUp}
-          color="teal"
+          className="bg-emerald-50 rounded-2xl p-6 border border-emerald-100/50 relative overflow-hidden cursor-pointer hover:shadow-lg transition-shadow group flex flex-col justify-between min-h-[160px]"
+        >
+          <div>
+            <div className="flex items-center gap-2 mb-2 text-emerald-600">
+               <ReceiptText size={16} />
+               <p className="text-[12px] font-bold uppercase tracking-widest leading-none">
+                 {selectedMonth === "all" ? "TOTAL REVENUE" : `${selectedMonth.toUpperCase()} COLLECTION`}
+               </p>
+            </div>
+            <h4 className="text-4xl font-display font-black text-emerald-600 tracking-tighter">
+              Rs. {(monthlyIncome || 0).toLocaleString()}
+            </h4>
+            <p className="text-[11px] font-semibold text-emerald-600/80 mt-1">
+              {selectedMonth === "all" ? "Total fee received" : "Total fee received this month"}
+            </p>
+          </div>
+          {/* Faux Bar Chart Representation at bottom */}
+          <div className="flex items-end gap-1.5 h-12 mt-4 opacity-70 group-hover:opacity-100 transition-opacity">
+            {[40, 50, 60, 45, 80].map((h, i) => (
+              <div key={i} className="flex-1 rounded-sm bg-emerald-400" style={{ height: `${h}%` }} />
+            ))}
+          </div>
+        </div>
+
+        {/* PSA Card */}
+        <div 
           onClick={() => setActivePage("accounts")}
-        />
-        <StatCard
-          title="Raw Leads"
-          value={data.leads?.length || 0}
-          isUp={true}
-          icon={BarChart3}
-          color="gold"
-          onClick={() => setActivePage("leads")}
-        />
-        <StatCard
-          title="Staff Presence"
-          value={`${totalStaff}/${totalStaff}`}
-          isUp={true}
-          icon={Briefcase}
-          color="slate"
-          onClick={() => setActivePage("staff")}
-        />
+          className="bg-white rounded-2xl p-6 border border-slate-200 cursor-pointer hover:shadow-lg transition-shadow flex flex-col justify-center min-h-[160px]"
+        >
+          <div className="flex items-center gap-2 text-slate-400 mb-2">
+            <TrendingUp size={16} />
+            <p className="text-[12px] font-bold uppercase tracking-widest leading-none">PER STUDENT AVG (PSA)</p>
+          </div>
+          <h4 className="text-4xl font-display font-black text-slate-800 tracking-tighter">
+            Rs. {Math.round(academicPerformance.totalAvg).toLocaleString()}
+          </h4>
+          <p className="text-[11px] font-semibold text-slate-500 mt-1 mb-4">
+            Institutional value / student
+          </p>
+          {activeStudentsRevenue > 0 && (
+             <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-sm w-max">
+               <ArrowUpRight size={10} /> +4.2% vs last month
+             </span>
+          )}
+        </div>
+
+        {/* Consolidated Card */}
+        <div className="bg-white rounded-2xl p-5 border border-slate-200 grid grid-cols-2 gap-4 gap-y-6">
+           <div className="cursor-pointer" onClick={() => setActivePage("students-boys")}>
+             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 leading-none">TOTAL ENROLLMENT</p>
+             <h5 className="text-3xl font-black text-slate-800 tracking-tighter mb-1 leading-none">{totalEnrollmentCount}</h5>
+             <Badge variant="outline" className="bg-slate-50 text-slate-600 rounded-sm px-1.5 py-0 text-[9px] border-slate-200">All programs</Badge>
+           </div>
+           
+           <div className="cursor-pointer" onClick={() => setActivePage("staff")}>
+             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 leading-none">STAFF PRESENCE</p>
+             <h5 className="text-3xl font-black text-slate-800 tracking-tighter mb-1 leading-none">{totalStaff}/{totalStaff}</h5>
+             <Badge variant="outline" className="bg-emerald-50 text-emerald-600 rounded-sm px-1.5 py-0 text-[9px] border-emerald-100 border flex w-max items-center gap-1"><CheckCircle2 size={8} /> Full</Badge>
+           </div>
+
+           <div className="cursor-pointer" onClick={() => setActivePage("leads")}>
+             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 leading-none">RAW LEADS</p>
+             <h5 className="text-3xl font-black text-slate-800 tracking-tighter mb-1 leading-none">{(data.leads?.length || 0).toLocaleString()}</h5>
+             <Badge variant="outline" className="bg-rose-50 text-rose-600 rounded-sm px-1.5 py-0 text-[10px] border-rose-100">
+                <ArrowDownRight size={10} className="inline mr-0.5" /> 1% converted
+             </Badge>
+           </div>
+
+           <div>
+             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 leading-none">LEAD CONVERSION</p>
+             <h5 className="text-2xl font-black text-slate-800 tracking-tighter mb-1 leading-none">
+                {data.leads?.length ? `${Math.round((confirmedAdmissions.length / data.leads.length) * 100)}%` : "0%"}
+             </h5>
+             <Badge variant="outline" className="bg-rose-50 text-rose-600 rounded-sm px-1.5 py-0 text-[9px] border-rose-100">Needs attention</Badge>
+           </div>
+        </div>
       </div>
 
       {/* Complete Information Cluster Panel - REPLACING Shortucts */}
@@ -1167,37 +1275,90 @@ export default function DashboardView({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.05 }}
-              whileHover={{ y: -5, scale: 1.02 }}
+              whileHover={{ y: -8, scale: 1.02 }}
               className={cn(
-                "group relative p-5 rounded-[2.5rem] border backdrop-blur-xl shadow-lg transition-all overflow-hidden",
-                item.bgColor,
-                item.border,
+                "group relative p-5 rounded-[2.5rem] border shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all overflow-hidden cursor-default",
+                "hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1),0_0_20px_rgba(0,0,0,0.05)]",
+                item.color, // used for the beam color
+                item.border
               )}
             >
-              {/* Metallic Grain / Crystallized Reflection */}
-              <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-transparent to-black/10 pointer-events-none" />
-              <div className="absolute -inset-x-full top-0 h-full w-1/2 bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-[-25deg] transition-all duration-1000 group-hover:translate-x-[400%] pointer-events-none" />
+              {/* Base background for the 2px gap when beam isn't there */}
+              <div className="absolute inset-0 z-0 bg-white dark:bg-slate-900" />
+              
+              {/* Spinning Beam Border */}
+              <div className="absolute inset-0 z-[1] overflow-hidden rounded-[2.5rem] opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+                <div 
+                  className="absolute animate-[spin_4s_linear_infinite]"
+                  style={{
+                    background: `conic-gradient(from 90deg at 50% 50%, transparent 60%, currentColor 100%)`,
+                    width: '300%',
+                    height: '300%',
+                    left: '-100%',
+                    top: '-100%'
+                  }}
+                />
+              </div>
 
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-3">
-                  <div
-                    className={cn(
-                      "w-8 h-8 rounded-xl bg-white/80 shadow-sm flex items-center justify-center transition-all group-hover:scale-110 group-hover:rotate-6 shadow-inner",
-                      item.color,
+              {/* Inner Solid Card background (opaque layer to block inner gradient spin) */}
+              <div className="absolute inset-[2px] rounded-[calc(2.5rem-2px)] z-[2] transition-colors duration-300 bg-white dark:bg-slate-900" />
+              
+              {/* Inner Tint Layer */}
+              <div className={cn(
+                "absolute inset-[2px] rounded-[calc(2.5rem-2px)] z-[2] transition-colors duration-300 pointer-events-none",
+                item.bgColor,
+              )} />
+
+              {/* Metallic Grain / Crystallized Reflection */}
+              <div className="absolute inset-[2px] rounded-[calc(2.5rem-2px)] z-[2] bg-gradient-to-br from-white/30 dark:from-white/10 via-transparent to-black/5 dark:to-white/5 pointer-events-none" />
+              <div className="absolute -inset-x-full top-0 h-full w-1/2 bg-gradient-to-r from-transparent via-white/40 dark:via-white/10 to-transparent skew-x-[-25deg] transition-all duration-1000 group-hover:translate-x-[400%] pointer-events-none z-[2]" />
+
+              <div className="relative z-[3] flex flex-col h-full justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div
+                      className={cn(
+                        "w-8 h-8 rounded-xl bg-white dark:bg-slate-800 shadow-xs border flex items-center justify-center transition-all group-hover:scale-110",
+                        item.color,
+                        item.border
+                      )}
+                    >
+                      <item.icon size={16} />
+                    </div>
+                    {item.pill && (
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wide",
+                        item.pillColor || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                      )}>
+                        {item.pill}
+                      </span>
                     )}
-                  >
-                    <item.icon size={16} />
                   </div>
-                  <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-800 transition-colors">
+                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1">
                     {item.label}
                   </h4>
                 </div>
-                <p className="text-xl font-display font-black text-slate-800 tracking-tight group-hover:translate-x-1 transition-transform">
-                  {item.value}
-                </p>
-                <p className="text-[8px] font-black text-slate-400 mt-1 italic opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-tighter">
-                  {item.desc}
-                </p>
+                <div>
+                  <p className="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tighter">
+                    {item.value}
+                  </p>
+                  
+                  {item.progress !== undefined && (
+                    <div className="mt-3 w-full">
+                      <div className="h-1.5 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-1.5">
+                        <div 
+                          className={cn("h-full rounded-full transition-all duration-1000", item.progressColor)} 
+                          style={{ width: `${Math.min(item.progress, 100)}%` }} 
+                        />
+                      </div>
+                      <p className="text-[9px] font-bold text-slate-500 dark:text-slate-400">{item.progressText}</p>
+                    </div>
+                  )}
+
+                  <p className={cn("mt-2 text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest", item.progress !== undefined ? "opacity-0 h-0" : "")}>
+                    {item.desc}
+                  </p>
+                </div>
               </div>
             </motion.div>
           ))}

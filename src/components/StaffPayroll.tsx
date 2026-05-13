@@ -14,6 +14,7 @@ interface StaffPayrollProps {
   staffList: Staff[];
   advances?: AdvanceEntry[];
   staffTimetable?: any[];
+  attendanceRecords?: any[];
   onRecordAdvance?: (advance: AdvanceEntry) => void;
   onUpdateAdvance?: (id: string, updates: Partial<AdvanceEntry>) => void;
 }
@@ -28,7 +29,7 @@ interface AdvanceEntry {
   remainingBalance: number;
 }
 
-export default function StaffPayroll({ staffList, advances = [], staffTimetable = [], onRecordAdvance, onUpdateAdvance }: StaffPayrollProps) {
+export default function StaffPayroll({ staffList, advances = [], staffTimetable = [], attendanceRecords = [], onRecordAdvance, onUpdateAdvance }: StaffPayrollProps) {
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -39,13 +40,19 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
   const [leavesTaken, setLeavesTaken] = useState(0);
   const [lateMinutes, setLateMinutes] = useState(0);
   const [advanceDeduction, setAdvanceDeduction] = useState(0);
+  
+  // Extra Lecture State
+  const [extraLectureRate, setExtraLectureRate] = useState(0);
+  const [extraLecturesCount, setExtraLecturesCount] = useState(0);
+  const [regularLecturesCount, setRegularLecturesCount] = useState(0);
+  const [totalLecturesCount, setTotalLecturesCount] = useState(0);
 
   // Current Month/Year
   const [selectedMonth, setSelectedMonth] = useState<string>(format(new Date(), 'yyyy-MM'));
 
   // Advances State
   const [localAdvances, setLocalAdvances] = useState<AdvanceEntry[]>([]);
-  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+  const [localAttendance, setLocalAttendance] = useState<any[]>([]);
   const [advanceAmount, setAdvanceAmount] = useState<number>(0);
   const [advanceMonths, setAdvanceMonths] = useState<number>(1);
   const [advanceNotes, setAdvanceNotes] = useState('');
@@ -66,15 +73,19 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
     }
     
     // We didn't pass attendanceRecords as prop to this component in StaffView, but we could. For now, fetch from localStorage or use prop if we add it.
-    const storedAttendance = localStorage.getItem('staffAttendanceRecords');
-    if (storedAttendance) {
-      try {
-        setAttendanceRecords(JSON.parse(storedAttendance));
-      } catch (e) {
-        console.error("Failed to parse attendance", e);
+    if (attendanceRecords.length > 0) {
+      setLocalAttendance(attendanceRecords);
+    } else {
+      const storedAttendance = localStorage.getItem('staffAttendanceRecords');
+      if (storedAttendance) {
+        try {
+          setLocalAttendance(JSON.parse(storedAttendance));
+        } catch (e) {
+          console.error("Failed to parse attendance", e);
+        }
       }
     }
-  }, [advances]);
+  }, [advances, attendanceRecords]);
 
   const saveAdvances = (newAdvances: AdvanceEntry[]) => {
     setLocalAdvances(newAdvances);
@@ -104,7 +115,7 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
   const handleAutoCalculate = () => {
     if (!selectedStaff) return;
     
-    const monthRecords = attendanceRecords.filter(r => 
+    const monthRecords = localAttendance.filter(r => 
       r.staffId === selectedStaff.id && 
       r.date.startsWith(selectedMonth)
     );
@@ -112,6 +123,11 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
     let totalLeaves = 0;
     let totalLateMins = 0;
     
+    // Lectures calculation
+    let extraLecs = 0;
+    let regularLecs = 0;
+    let totalLecs = 0;
+
     // Parse the start time config
     const [startH, startM] = collegeStartTime.split(':').map(Number);
     const startMinsConfig = (startH || 0) * 60 + (startM || 0);
@@ -147,19 +163,39 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
           totalLateMins += (endMinsConfig - checkOutMins);
         }
       }
+      
+      // Compute Lectures given on this day
+      if (['Present', 'Late', 'Half Day'].includes(r.status)) {
+         const d = new Date(r.date);
+         const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+         const dayStr = daysOfWeek[d.getDay()];
+
+         const daySchedule = staffTimetable.filter(t => t.staffId === selectedStaff.id && t.day === dayStr);
+         const dayExtra = daySchedule.filter(t => t.classRoom === 'Extra').length;
+         const dayTotal = daySchedule.length;
+         const dayRegular = dayTotal - dayExtra;
+         
+         extraLecs += dayExtra;
+         regularLecs += dayRegular;
+         totalLecs += dayTotal;
+      }
     });
 
     setLeavesTaken(totalLeaves);
     setLateMinutes(totalLateMins);
+    setExtraLecturesCount(extraLecs);
+    setRegularLecturesCount(regularLecs);
+    setTotalLecturesCount(totalLecs);
     
     if (monthRecords.length === 0) {
       toast.warning(`No attendance records found for ${format(new Date(selectedMonth + '-01'), 'MMMM yyyy')}`);
     } else {
-      toast.success(`Successfully auto-calculated based on ${monthRecords.length} attendance records.`);
+      toast.success(`Successfully auto-calculated based on ${monthRecords.length} attendance records.\nTotal Lectures: ${totalLecs}`);
     }
   };
 
-  const netSalary = baseSalary - leaveDeduction - lateDeduction - advanceDeduction;
+  const extraAllowance = extraLecturesCount * extraLectureRate;
+  const netSalary = baseSalary + extraAllowance - leaveDeduction - lateDeduction - advanceDeduction;
 
   const handleIssueAdvance = () => {
     if (!selectedStaff || advanceAmount <= 0) return;
@@ -494,6 +530,43 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
                 </div>
               </div>
 
+              <div className="print:hidden bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100 border-dashed space-y-6 mb-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-indigo-800">Extra Lectures Allowance</h3>
+                    <p className="text-xs text-indigo-600/80">Configure extra lecture rate and view lecture counts.</p>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-indigo-600 uppercase">Extra Lecture Rate</label>
+                    <Input 
+                      type="number"
+                      value={extraLectureRate}
+                      onChange={(e) => setExtraLectureRate(Number(e.target.value))}
+                      className="h-12 bg-white border-indigo-200 rounded-xl"
+                    />
+                    <p className="text-[10px] text-indigo-500">Allowance: RS {extraAllowance.toFixed(0)}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-indigo-600 uppercase">Extra Lectures</label>
+                    <Input 
+                      type="number"
+                      value={extraLecturesCount}
+                      readOnly
+                      className="h-12 bg-indigo-50 border-indigo-200 rounded-xl font-bold font-mono text-indigo-900"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-indigo-600 uppercase">Total / Regular</label>
+                    <div className="h-12 flex items-center gap-2 px-3 bg-indigo-50 border border-indigo-200 rounded-xl font-bold font-mono text-indigo-900">
+                      {totalLecturesCount} / {regularLecturesCount}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="print:hidden bg-rose-50/50 p-6 rounded-2xl border border-rose-100 border-dashed space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -551,6 +624,15 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
                         <TableCell className="text-right font-bold text-slate-800 print:text-black print:py-2">{baseSalary.toLocaleString()}</TableCell>
                       </TableRow>
                       
+                      {extraAllowance > 0 && (
+                        <TableRow className="print:border-b print:border-slate-300">
+                          <TableCell className="text-indigo-600 font-medium border-l-2 border-indigo-500 print:text-black print:py-2">
+                            Extra Lectures Allowance ({extraLecturesCount} lectures @ RS {extraLectureRate.toFixed(2)}/lec)
+                          </TableCell>
+                          <TableCell className="text-right font-bold text-indigo-600 print:text-black print:py-2">+ {extraAllowance.toFixed(0)}</TableCell>
+                        </TableRow>
+                      )}
+
                       {leaveDeduction > 0 && (
                         <TableRow className="print:border-b print:border-slate-300">
                           <TableCell className="text-rose-600 font-medium border-l-2 border-rose-500 print:text-black print:py-2">

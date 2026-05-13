@@ -138,9 +138,9 @@ export function useSupabaseData(user: any) {
       const { data: settingsData } = settingsResult;
       const { data: permissionsData } = permissionsResult;
       const { data: notificationsData } = notificationsResult;
-      const { data: academicRecordsData } = academicRecordsResult;
-      const { data: salaryPaymentsData } = salaryPaymentsResult;
-      const { data: studentAttendanceData } = studentAttendanceResult;
+      const academicRecordsData = academicRecordsResult || [];
+      const salaryPaymentsData  = salaryPaymentsResult || [];
+      const studentAttendanceData = studentAttendanceResult || [];
 
       const defaultSession = settingsData?.academic_session || '2026-28';
 
@@ -319,11 +319,14 @@ export function useSupabaseData(user: any) {
         ...r,
         studentId: r.student_id,
         studentName: r.student_name,
+        class: r.class,
+        section: r.section,
         testName: r.test_name,
         testType: r.test_type,
         totalMarks: r.total_marks,
         obtainedMarks: r.obtained_marks,
         teacherId: r.teacher_id,
+        teacherName: r.teacher_name,
         session: r.session || defaultSession
       })));
       if (salaryPaymentsData) setSalaryPayments(salaryPaymentsData.map(p => ({

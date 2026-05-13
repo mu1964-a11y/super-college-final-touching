@@ -356,3 +356,64 @@ CREATE TABLE "student_attendance" (
     "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
     UNIQUE("student_id", "date")
 );
+
+-- ==========================================
+-- ROW LEVEL SECURITY (RLS)
+-- ==========================================
+-- Allowing public access for initial testing phase
+-- You can harden these later once Supabase Auth is fully ready
+
+ALTER TABLE "app_settings" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "app_settings" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "user_permissions" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "user_permissions" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "leads" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "leads" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "admissions" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "admissions" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "staff" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "staff" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "students" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "students" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "installments" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "installments" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "fee_transactions" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "fee_transactions" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "fee_payments" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "fee_payments" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "academic_records" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "academic_records" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "salary_payments" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "salary_payments" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "staff_attendance" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "staff_attendance" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "staff_timetable" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "staff_timetable" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "staff_advances" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "staff_advances" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "expenses" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "expenses" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "incomes" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "incomes" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "notifications" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "notifications" FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE "student_attendance" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "student_attendance" FOR ALL USING (true) WITH CHECK (true);
+

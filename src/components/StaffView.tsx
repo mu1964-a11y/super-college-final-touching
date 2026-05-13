@@ -679,7 +679,14 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
       </TabsContent>
 
       <TabsContent value="payroll" className="space-y-8 mt-0 focus-visible:outline-none">
-        <StaffPayroll staffList={filteredStaff} advances={data.staffAdvances || []} staffTimetable={data.staffTimetable || []} onRecordAdvance={data.recordStaffAdvance} onUpdateAdvance={data.updateStaffAdvance} />
+        <StaffPayroll 
+          staffList={filteredStaff} 
+          advances={data.staffAdvances || []} 
+          staffTimetable={data.staffTimetable || []} 
+          attendanceRecords={data.staffAttendance || []}
+          onRecordAdvance={data.recordStaffAdvance} 
+          onUpdateAdvance={data.updateStaffAdvance} 
+        />
       </TabsContent>
 
       <TabsContent value="timetable" className="space-y-8 mt-0 focus-visible:outline-none">
@@ -688,6 +695,7 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
           timetableRecords={data.staffTimetable || []} 
           onAddEntry={data.addTimetableEntry} 
           onRemoveEntry={data.removeTimetableEntry} 
+          predefinedSections={data?.settings?.predefinedSections || []}
         />
       </TabsContent>
 

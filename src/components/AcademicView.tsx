@@ -46,6 +46,8 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { School, GraduationCap, Globe } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -106,7 +108,6 @@ export default function AcademicView({ data }: { data: any }) {
         subject: 'Physics',
         totalMarks: 50,
         obtainedMarks: 45,
-        teacherName: 'Prof. Usman',
         remarks: 'Excellent performance'
       }
     ];
@@ -258,11 +259,14 @@ export default function AcademicView({ data }: { data: any }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="Daily">Daily</SelectItem>
-              <SelectItem value="15-Day">15-Day</SelectItem>
-              <SelectItem value="Monthly">Monthly</SelectItem>
-              <SelectItem value="Mid-Term">Mid-Term</SelectItem>
-              <SelectItem value="Final">Final</SelectItem>
+              <SelectItem value="Daily">Daily Assessment</SelectItem>
+              <SelectItem value="Weekly">Weekly Test</SelectItem>
+              <SelectItem value="15-Day">15-Day Test</SelectItem>
+              <SelectItem value="Monthly">Monthly Test</SelectItem>
+              <SelectItem value="Pre-Board">Pre-Board</SelectItem>
+              <SelectItem value="Mid-Term">Mid-Term Exam</SelectItem>
+              <SelectItem value="Final">Final Exam</SelectItem>
+              <SelectItem value="Quiz">Surprise Quiz</SelectItem>
             </SelectContent>
           </Select>
 
@@ -366,9 +370,9 @@ export default function AcademicView({ data }: { data: any }) {
                   <TableCell className="py-5">
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">
-                        {record.teacherName.charAt(0)}
+                        {record.teacherName ? record.teacherName.charAt(0) : '?'}
                       </div>
-                      <span className="text-xs font-medium text-slate-600">{record.teacherName}</span>
+                      <span className="text-xs font-medium text-slate-600">{record.teacherName || 'Unknown'}</span>
                     </div>
                   </TableCell>
                   <TableCell className="py-5">
@@ -391,12 +395,25 @@ export default function AcademicView({ data }: { data: any }) {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={7} className="py-20 text-center">
-                  <div className="max-w-xs mx-auto">
-                    <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-100">
-                      <Search size={24} className="text-slate-300" />
+                <TableCell colSpan={7} className="py-24 text-center">
+                  <div className="max-w-md mx-auto flex flex-col items-center justify-center">
+                    <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-6 shadow-inner border border-slate-100 relative">
+                      <div className="absolute inset-0 bg-superior-teal/5 rounded-full animate-pulse"></div>
+                      <BookOpen size={36} className="text-superior-teal opacity-60" />
                     </div>
-                    <p className="text-slate-400 font-medium italic">No academic records found matching your filters.</p>
+                    <h3 className="text-xl font-bold text-slate-800 mb-2">No Academic Records Yet</h3>
+                    <p className="text-slate-500 font-medium mb-6 leading-relaxed">
+                      Maintain your students' complete academic history. You can create various tests like 15-day tests, monthly tests, or pre-board exams to keep track of their performance seamlessly.
+                    </p>
+                    <Dialog>
+                      <DialogTrigger nativeButton={true} render={
+                        <button className="h-12 px-6 rounded-2xl bg-superior-teal/10 text-superior-teal font-black uppercase tracking-widest text-xs hover:bg-superior-teal hover:text-white transition-all flex items-center justify-center">
+                          <Plus size={18} className="mr-2" /> Add First Record
+                        </button>
+                      }>
+                      </DialogTrigger>
+                      <RecordMarksDialog data={data} />
+                    </Dialog>
                   </div>
                 </TableCell>
               </TableRow>
@@ -496,17 +513,20 @@ function RecordMarksDialog({ data }: { data: any }) {
         </div>
 
         <div className="space-y-2">
-          <Label>Test Type</Label>
+          <Label>Test Type / Frequency</Label>
           <Select value={formData.testType || ""} onValueChange={(v: any) => setFormData({...formData, testType: v})}>
             <SelectTrigger className="h-12 rounded-2xl bg-slate-50 border-transparent">
-              <SelectValue />
+              <SelectValue placeholder="Select type..." />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Daily">Daily</SelectItem>
-              <SelectItem value="15-Day">15-Day</SelectItem>
-              <SelectItem value="Monthly">Monthly</SelectItem>
-              <SelectItem value="Mid-Term">Mid-Term</SelectItem>
-              <SelectItem value="Final">Final</SelectItem>
+              <SelectItem value="Daily">Daily Assessment</SelectItem>
+              <SelectItem value="Weekly">Weekly Test</SelectItem>
+              <SelectItem value="15-Day">15-Day Test</SelectItem>
+              <SelectItem value="Monthly">Monthly Test</SelectItem>
+              <SelectItem value="Pre-Board">Pre-Board</SelectItem>
+              <SelectItem value="Mid-Term">Mid-Term Exam</SelectItem>
+              <SelectItem value="Final">Final Exam</SelectItem>
+              <SelectItem value="Quiz">Surprise Quiz</SelectItem>
             </SelectContent>
           </Select>
         </div>

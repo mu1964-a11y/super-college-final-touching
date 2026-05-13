@@ -216,6 +216,23 @@ export default function App() {
     logo: null,
   });
 
+  // Dark mode init
+  React.useEffect(() => {
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme === "dark" || (!savedTheme && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    }
+    
+    // Listen for custom themechange event
+    const handleThemeChange = () => {}; // Dummy to keep state updated, actually we don't need react state since we read DOM directly, but could trigger a re-render if we used state.
+    window.addEventListener('themechange', handleThemeChange);
+    return () => window.removeEventListener('themechange', handleThemeChange);
+  }, []);
+
   // Fetch branding even before login
   React.useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -274,7 +291,9 @@ export default function App() {
       .then((response) => {
         const { data, error } = response;
         if (error) {
-          if (error.message?.toLowerCase().includes("refresh token")) {
+          const errMsg = typeof error === 'string' ? error : (error.message || String(error));
+          if (errMsg.toLowerCase().includes("refresh token")) {
+            window.localStorage.removeItem("scj-auth");
             supabase.auth.signOut({ scope: "local" }).catch(() => {});
           } else {
             console.error("Session error:", error);
@@ -284,7 +303,9 @@ export default function App() {
         setAuthLoading(false);
       })
       .catch((err) => {
-        if (err?.message?.toLowerCase().includes("refresh token")) {
+        const errMsg = typeof err === 'string' ? err : (err?.message || String(err));
+        if (errMsg.toLowerCase().includes("refresh token")) {
+          window.localStorage.removeItem("scj-auth");
           supabase.auth.signOut({ scope: "local" }).catch(() => {});
         } else {
           console.warn("Got session error:", err);
@@ -340,8 +361,12 @@ export default function App() {
   const handleLogout = async () => {
     try {
       const { error } = await supabase.auth.signOut();
-      if (error && error.message?.toLowerCase().includes("refresh token")) {
-        await supabase.auth.signOut({ scope: "local" });
+      if (error) {
+        const errMsg = typeof error === 'string' ? error : (error.message || String(error));
+        if (errMsg.toLowerCase().includes("refresh token")) {
+          window.localStorage.removeItem("scj-auth");
+          await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+        }
       }
     } catch (e) {
       console.warn("Logout warning:", e);
@@ -1023,7 +1048,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden relative">
+    <div className="flex h-screen bg-white dark:bg-slate-950 overflow-hidden relative">
       <AnimatePresence>
         {isSidebarOpen && (
           <>
@@ -1307,9 +1332,9 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#fcfdfd]">
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#fcfdfd] dark:bg-slate-950">
         {/* Header - Unified Navigation */}
-        <header className="h-20 bg-white flex items-center justify-between px-6 border-b border-slate-100 sticky top-0 z-30 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.1)]">
+        <header className="h-20 bg-white dark:bg-slate-900 flex items-center justify-between px-6 border-b border-slate-100 dark:border-slate-800 sticky top-0 z-30 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.1)]">
           <div className="flex items-center gap-6">
             <Button
               variant="ghost"
@@ -1319,9 +1344,9 @@ export default function App() {
             >
               <Menu size={22} />
             </Button>
-            <div className="flex items-center gap-3 bg-slate-50 px-4 py-1.5 rounded-full border border-slate-100">
+            <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800 px-4 py-1.5 rounded-full border border-slate-100 dark:border-slate-700">
               <div className="w-1.5 h-1.5 rounded-full bg-superior-gold shadow-[0_0_8px_rgba(201,168,76,0.5)]" />
-              <h2 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.25em]">
+              <h2 className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-[0.25em]">
                 {activePage.replace("-", " ")}
               </h2>
             </div>
@@ -1331,33 +1356,59 @@ export default function App() {
             <Button
               onClick={handleLogout}
               variant="outline"
-              className="group flex items-center gap-2 px-4 py-2.5 rounded-2xl border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 transition-all duration-300 shadow-sm hover:shadow-md active:scale-95"
+              className="group flex items-center gap-2 px-4 py-2.5 rounded-2xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-200 dark:hover:border-rose-800 hover:text-rose-600 transition-all duration-300 shadow-sm hover:shadow-md active:scale-95"
             >
-              <LogOut size={16} className="text-slate-400 group-hover:text-rose-500 transition-colors" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 group-hover:text-rose-700">
+              <LogOut size={16} className="text-slate-400 dark:text-slate-500 group-hover:text-rose-500 transition-colors" />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 dark:text-slate-400 group-hover:text-rose-700 dark:group-hover:text-rose-400">
                 Sign Out
               </span>
             </Button>
 
-            <div className="h-8 w-[1px] bg-slate-100 mx-2" />
+            <div className="h-8 w-[1px] bg-slate-100 dark:bg-slate-800 mx-2" />
 
             <div className="flex items-center gap-3">
-              <NotificationPanel
-                notifications={data.notifications}
-                onMarkRead={data.markNotificationRead}
-                onClearAll={data.clearAllNotifications}
-              />
+              {isAdmin && (
+                <NotificationPanel
+                  notifications={data.notifications}
+                  onMarkRead={data.markNotificationRead}
+                  onClearAll={data.clearAllNotifications}
+                />
+              )}
+
+              <button
+                onClick={() => {
+                  const newTheme = document.documentElement.classList.contains("dark") ? "light" : "dark";
+                  if (newTheme === "dark") {
+                    document.documentElement.classList.add("dark");
+                    localStorage.setItem("theme", "dark");
+                  } else {
+                    document.documentElement.classList.remove("dark");
+                    localStorage.setItem("theme", "light");
+                  }
+                  // Force a re-render for icon if needed, or we can just use CSS to show/hide icons
+                  window.dispatchEvent(new Event('themechange'));
+                }}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:text-amber-300 dark:hover:bg-slate-800 transition-colors"
+                title="Toggle Dark Mode"
+              >
+                <svg className="w-4 h-4 hidden dark:block text-amber-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                <svg className="w-4 h-4 block dark:hidden text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                </svg>
+              </button>
 
               <div
                 onClick={() => isAdmin && setIsAccessDialogOpen(true)}
                 className={cn(
-                  "flex items-center gap-3 ml-2 pl-3 py-1 pr-1 border border-slate-100 rounded-2xl bg-slate-50/50 hover:bg-white hover:border-superior-gold/30 transition-all cursor-pointer group shadow-sm",
+                  "flex items-center gap-3 ml-2 pl-3 py-1 pr-1 border border-slate-100 dark:border-slate-700 rounded-2xl bg-slate-50/50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 hover:border-superior-gold/30 transition-all cursor-pointer group shadow-sm",
                   !isAdmin &&
-                    "cursor-default border-slate-100 grayscale opacity-60",
+                    "cursor-default border-slate-100 dark:border-slate-700 grayscale opacity-60",
                 )}
               >
                 <div className="text-right hidden sm:block">
-                  <p className="text-[10px] font-black text-slate-800 leading-none uppercase tracking-widest group-hover:text-superior-teal">
+                  <p className="text-[10px] font-black text-slate-800 dark:text-slate-300 leading-none uppercase tracking-widest group-hover:text-superior-teal dark:group-hover:text-superior-gold">
                     {isAdmin
                       ? "Master Admin"
                       : userPermission?.displayName || "Sub Admin"}

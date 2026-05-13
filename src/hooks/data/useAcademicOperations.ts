@@ -9,19 +9,26 @@ export function useAcademicOperations(ctx: any) {
         const { error } = await supabase.from('academic_records').insert({
           student_id: record.studentId,
           student_name: record.studentName,
-          class_name: record.class,
-          subject: record.subject,
-          marks_obtained: record.obtainedMarks,
-          total_marks: record.totalMarks,
-          exam_type: record.testType,
+          class: record.class,
+          section: record.section,
+          test_name: record.testName,
+          test_type: record.testType,
           date: record.date,
-          recorded_by: user?.email
+          subject: record.subject,
+          total_marks: record.totalMarks,
+          obtained_marks: record.obtainedMarks,
+          teacher_id: record.teacherId,
+          remarks: record.remarks,
         });
-        if (error) throw error;
-        // await fetchData(true);
+        if (error) {
+          console.error("Supabase insert error: ", error);
+          throw error;
+        }
+        if (fetchData) await fetchData(true);
         toast.success("Academic record added");
-      } catch (e) {
-        toast.error("Failed to add academic record");
+      } catch (e: any) {
+        console.error("Add record failed:", e);
+        toast.error("Failed to add academic record: " + (e.message || "Unknown error"));
       }
     };
 
@@ -30,20 +37,27 @@ export function useAcademicOperations(ctx: any) {
         const mapped = records.map(r => ({
           student_id: r.studentId,
           student_name: r.studentName,
-          class_name: r.class,
-          subject: r.subject,
-          marks_obtained: r.obtainedMarks,
-          total_marks: r.totalMarks,
-          exam_type: r.testType,
+          class: r.class,
+          section: r.section || 'A',
+          test_name: r.testName || 'Imported Test',
+          test_type: r.testType || 'Monthly',
           date: r.date,
-          recorded_by: user?.email
+          subject: r.subject,
+          total_marks: r.totalMarks,
+          obtained_marks: r.obtainedMarks,
+          teacher_id: r.teacherId,
+          remarks: r.remarks,
         }));
         const { error } = await supabase.from('academic_records').insert(mapped);
-        if (error) throw error;
-        // await fetchData(true);
+        if (error) {
+          console.error("Supabase bulk insert error: ", error);
+          throw error;
+        }
+        if (fetchData) await fetchData(true);
         toast.success(`Imported ${records.length} academic records`);
-      } catch (e) {
-        toast.error("Academic records import failed");
+      } catch (e: any) {
+        console.error("Bulk import failed:", e);
+        toast.error("Academic records import failed: " + (e.message || "Unknown error"));
       }
     };
   return { addAcademicRecord, importAcademicRecords };

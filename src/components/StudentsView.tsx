@@ -178,14 +178,18 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
         const identifier = `${sGroup} ${sCategory}`;
         const pFilter = programFilter.toLowerCase();
         
-        if (pFilter === 'fsc' || pFilter.includes('engineering') || pFilter.includes('medical') || pFilter.includes('intermediate')) {
-           matchesProgram = sGroup.includes('engineering') || sGroup.includes('medical') || sGroup.includes('science') || sGroup.includes('com') || sGroup.includes('intermediate') || sCategory.includes('inter') || sGroup.includes('ics') || sGroup.includes('fsc');
+        const isDIT = sGroup.includes('dit') || sGroup.includes('diploma') || sCategory.includes('dit') || sCategory.includes('diploma');
+        const isBS = sGroup.includes('bs') || sGroup.includes('b.s') || sCategory.includes('bs');
+        const isUKL3 = sGroup.includes('uk') || sGroup.includes('l3') || sGroup.includes('level 3') || sCategory.includes('uk');
+
+        if (pFilter === 'fsc') {
+           matchesProgram = !isDIT && !isBS && !isUKL3;
         } else if (pFilter === 'dit' || pFilter.includes('diploma')) {
-           matchesProgram = sGroup.includes('dit') || sGroup.includes('diploma');
+           matchesProgram = isDIT;
         } else if (pFilter === 'bs' || pFilter.includes('b.s')) {
-           matchesProgram = sGroup.includes('bs') || sGroup.includes('b.s');
+           matchesProgram = isBS;
         } else if (pFilter === 'ukl3' || pFilter.includes('uk') || pFilter.includes('level 3')) {
-           matchesProgram = sGroup.includes('uk') || sGroup.includes('l3') || sGroup.includes('level 3');
+           matchesProgram = isUKL3;
         } else {
            matchesProgram = identifier.includes(pFilter);
         }
@@ -195,8 +199,38 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
   }, [data.students, data.admissions, genderFilter, programFilter]);
 
   const sectionOptions = React.useMemo(() => {
-    return Array.from(new Set(data?.settings?.predefinedSections?.map((s: any) => s.name).filter(Boolean))) as string[];
-  }, [data?.settings?.predefinedSections]);
+    let sections = data?.settings?.predefinedSections || [];
+    
+    // Filter by gender if selected
+    if (genderFilter !== "all") {
+      sections = sections.filter((s: any) => s.gender === genderFilter || !s.gender);
+    }
+    
+    // Filter by group if selected
+    const pFilter = programFilter.toLowerCase();
+    if (pFilter !== "all") {
+      sections = sections.filter((s: any) => {
+        const pg = (s.program || "").toLowerCase();
+        const isDIT = pg.includes("dit") || pg.includes("diploma");
+        const isBS = pg.includes("bs") || pg.includes("b.s");
+        const isUKL3 = pg.includes("uk") || pg.includes("level 3") || pg.includes("l3");
+        
+        if (pFilter === "fsc") {
+          return !isDIT && !isBS && !isUKL3;
+        } else if (pFilter === "dit" || pFilter.includes("diploma")) {
+          return isDIT;
+        } else if (pFilter === "bs" || pFilter.includes("b.s")) {
+          return isBS;
+        } else if (pFilter === "ukl3" || pFilter.includes("uk") || pFilter.includes("level 3")) {
+           return isUKL3;
+        } else {
+          return pg.includes(pFilter);
+        }
+      });
+    }
+
+    return Array.from(new Set(sections.map((s: any) => s.name).filter(Boolean))) as string[];
+  }, [data?.settings?.predefinedSections, programFilter, genderFilter]);
 
   const filteredStudents = React.useMemo(() => {
     return mergedStudents.filter((s: any) => {

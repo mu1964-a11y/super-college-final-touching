@@ -155,17 +155,20 @@ export default function AdmissionsView({
         let matchesProgram = true;
         if (localProgram && localProgram !== "all") {
           const groupLower = (a.group || "").toLowerCase();
+          const categoryLower = (a.category || "").toLowerCase();
+          
+          const isDIT = groupLower.includes("dit") || groupLower.includes("diploma") || categoryLower.includes("dit") || categoryLower.includes("diploma");
+          const isBS = groupLower.includes("bs") || groupLower.includes("b.s") || categoryLower.includes("bs");
+          const isUKL3 = groupLower.includes("uk") || groupLower.includes("level 3") || groupLower.includes("l3") || categoryLower.includes("uk");
+
           if (localProgram === "fsc")
-            matchesProgram =
-              !groupLower.includes("dit") &&
-              !groupLower.includes("level 3") &&
-              !groupLower.includes("bs ");
+            matchesProgram = !isDIT && !isBS && !isUKL3;
           else if (localProgram === "dit")
-            matchesProgram = groupLower.includes("dit");
+            matchesProgram = isDIT;
           else if (localProgram === "ukl3")
-            matchesProgram = groupLower.includes("level 3");
+            matchesProgram = isUKL3;
           else if (localProgram === "bs")
-            matchesProgram = groupLower.includes("bs ");
+            matchesProgram = isBS;
         }
 
         // Diversion Logic: Only show students who are NOT yet fully admitted (haven't paid initial fee)
@@ -233,17 +236,20 @@ export default function AdmissionsView({
       let matchesProgram = true;
       if (localProgram && localProgram !== "all") {
         const groupLower = (a.group || "").toLowerCase();
+        const categoryLower = (a.category || "").toLowerCase();
+        
+        const isDIT = groupLower.includes("dit") || groupLower.includes("diploma") || categoryLower.includes("dit") || categoryLower.includes("diploma");
+        const isBS = groupLower.includes("bs") || groupLower.includes("b.s") || categoryLower.includes("bs");
+        const isUKL3 = groupLower.includes("uk") || groupLower.includes("level 3") || groupLower.includes("l3") || categoryLower.includes("uk");
+
         if (localProgram === "fsc")
-          matchesProgram =
-            !groupLower.includes("dit") &&
-            !groupLower.includes("level 3") &&
-            !groupLower.includes("bs ");
+          matchesProgram = !isDIT && !isBS && !isUKL3;
         else if (localProgram === "dit")
-          matchesProgram = groupLower.includes("dit");
+          matchesProgram = isDIT;
         else if (localProgram === "ukl3")
-          matchesProgram = groupLower.includes("level 3");
+          matchesProgram = isUKL3;
         else if (localProgram === "bs")
-          matchesProgram = groupLower.includes("bs ");
+          matchesProgram = isBS;
       }
       return matchesProgram;
     });
