@@ -191,8 +191,29 @@ export function useSupabaseData(user: any) {
         feeLedger: a.fee_ledger || null,
       })));
       if (studentsData) {
-        const mappedStudents = studentsData.map(s => ({
+        const mappedStudents = studentsData.map(s => {
+          let parsedSubjects = Array.isArray(s.subjects) ? s.subjects : (typeof s.subjects === 'string' ? JSON.parse(s.subjects || '[]') : []);
+          
+          let linkedAdmission = null;
+          if (s.admission_id && admissionsData) {
+             linkedAdmission = admissionsData.find(a => a.id === s.admission_id);
+          }
+
+          // Fallback to admissions table if missing in students
+          if (parsedSubjects.length === 0 && linkedAdmission) {
+             if (linkedAdmission.subjects) {
+                 parsedSubjects = Array.isArray(linkedAdmission.subjects) ? linkedAdmission.subjects : (typeof linkedAdmission.subjects === 'string' ? JSON.parse(linkedAdmission.subjects || '[]') : []);
+             }
+          }
+
+          let mappedPhoto = s.photo_url || s.photo;
+          if (!mappedPhoto && linkedAdmission) {
+             mappedPhoto = linkedAdmission.photo_url || linkedAdmission.photo;
+          }
+
+          return {
           ...s,
+          photo: mappedPhoto,
           fullName: s.full_name,
           fatherName: s.father_name,
           collegeNo: s.college_no,
@@ -213,12 +234,14 @@ export function useSupabaseData(user: any) {
           session: s.session || defaultSession,
           sessionStartDate: s.session_start_date,
           sessionEndDate: s.session_end_date,
+          subjects: parsedSubjects,
           academicPart: s.academic_part,
           programType: s.program_type || 'Yearly',
           currentSemester: s.current_semester,
           feeLedger: s.fee_ledger || { totalPackage: 0, totalReceived: 0, remainingBalance: 0, installments: [], transactions: [] },
           feeHistory: s.fee_history || []
-        }));
+        };
+        });
         setStudents(mappedStudents);
         // Run promotion check
         autoPromoteStudents(mappedStudents);
@@ -365,8 +388,53 @@ export function useSupabaseData(user: any) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => debouncedFetchData())
       .subscribe();
 
+    const notifSubscription = supabase.channel('notifications-changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
+        const newNotif = payload.new;
+        const msgOpts = {
+          description: `${newNotif.message} (by ${newNotif.actor_name || 'Admin'})`,
+          duration: 6000,
+        };
+        
+        // Define priority - only show global toasts for important things to avoid spam
+        const isUpdateOrDelete = newNotif.title.toLowerCase().includes('delete') || 
+                                 newNotif.title.toLowerCase().includes('update') || 
+                                 newNotif.title.toLowerCase().includes('remove') ||
+                                 newNotif.type === 'alert' ||
+                                 newNotif.type === 'warning';
+                                 
+        // Don't show toast if the current user triggered it (to avoid double notifications)
+        const isFromOtherAdmin = !user || (newNotif.actor_name && newNotif.actor_name !== (user.displayName || user.email));
+        
+        // Only show notifications to the Super Admins
+        const SUPER_ADMIN_EMAILS = ["mughalazam1964@gmail.com", "akhtar147jhn@gmail.com"];
+        const isSuperAdmin = user?.email ? SUPER_ADMIN_EMAILS.includes(user.email) : false;
+                                 
+        if (isUpdateOrDelete && isFromOtherAdmin && isSuperAdmin) {
+          switch (newNotif.type) {
+            case 'success':
+              toast.success(`${newNotif.title}`, msgOpts);
+              break;
+            case 'alert':
+            case 'error':
+              toast.error(`${newNotif.title}`, msgOpts);
+              break;
+            case 'warning':
+              toast.warning(`${newNotif.title}`, msgOpts);
+              break;
+            default:
+              toast.info(`${newNotif.title}`, msgOpts);
+          }
+        }
+        
+        // Always fetch the notifications silently so the notification panel stays updated
+        debouncedFetchData();
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(leadsSubscription);
+      supabase.removeChannel(notifSubscription);
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
   }, [userId, fetchData, debouncedFetchData]);

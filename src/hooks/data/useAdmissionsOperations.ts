@@ -121,8 +121,17 @@ export function useAdmissionsOperations(ctx: any) {
         const existingAdmission = admissions.find(a => a.id === id);
         let updatedStudentId = updates.studentId !== undefined ? updates.studentId : existingAdmission?.studentId;
         
-        // Auto-allot student ID if fee is received, and ID hasn't been allotted yet
-        if (!updatedStudentId && updates.feeReceived && updates.feeReceived > 0) {
+        // Auto-allot student ID if needed
+        const finalStatus = updates.status !== undefined ? updates.status : existingAdmission?.status;
+        const needsId = (updates.feeReceived && updates.feeReceived > 0) || 
+                        updates.isAdmitted === true ||
+                        finalStatus === 'Admitted/Confirmed' ||
+                        finalStatus === 'Admitted' ||
+                        finalStatus === 'Confirmed' ||
+                        finalStatus === 'Full Paid' ||
+                        finalStatus === 'Partial Paid';
+
+        if (!updatedStudentId && needsId) {
             updatedStudentId = generateStudentId(updates.group || existingAdmission?.group);
             
             if (updates.status === 'Prospective' || updates.status === 'Not Paid') {
@@ -168,7 +177,68 @@ export function useAdmissionsOperations(ctx: any) {
           academic_part: updates.academicPart
         }).eq('id', id);
         if (error) throw error;
+
+        // Auto-sync to Students Table!
+        if (needsId && updatedStudentId) {
+          const { data: existingStudent } = await supabase.from('students').select('id').eq('admission_id', id).maybeSingle();
+          if (!existingStudent) {
+            let derivedGender = updates.gender || existingAdmission?.gender;
+            if (!derivedGender) {
+              const identifier = (`${updates.category || existingAdmission?.category || ''} ${updates.group || existingAdmission?.group || ''}`).toLowerCase();
+              if (identifier.includes('girl') || identifier.includes('female')) {
+                derivedGender = 'Female';
+              } else {
+                derivedGender = 'Male';
+              }
+            }
+
+            await supabase.from('students').insert({
+              id: updatedStudentId,
+              admission_id: id,
+              full_name: updates.fullName || existingAdmission?.fullName || 'Unknown',
+              father_name: updates.fatherName || existingAdmission?.fatherName || 'Unknown',
+              category: updates.category || existingAdmission?.category || 'N/A',
+              group: updates.group || existingAdmission?.group || 'N/A',
+              section: updates.section || existingAdmission?.section || 'Unassigned',
+              subjects: updates.subjects || existingAdmission?.subjects || [],
+              contact: updates.contactNumber || existingAdmission?.contactNumber || 'N/A',
+              address: updates.address || existingAdmission?.address || 'N/A',
+              gender: derivedGender,
+              photo: updates.photo || existingAdmission?.photo,
+              admission_fee: updates.admissionFee || existingAdmission?.admissionFee || 0,
+              misc_funds: updates.miscFunds || existingAdmission?.miscFunds || 0,
+              total_package: updates.totalPackage || existingAdmission?.totalPackage || 0,
+              fee_received: updates.feeReceived || existingAdmission?.feeReceived || 0,
+              monthly_fee: Math.round((updates.totalPackage || existingAdmission?.totalPackage || 0) / 12),
+              total_installments: 12,
+              session: updates.session || existingAdmission?.session,
+              session_start_date: updates.sessionStartDate || existingAdmission?.sessionStartDate || null,
+              session_end_date: updates.sessionEndDate || existingAdmission?.sessionEndDate || null,
+              academic_part: updates.academicPart || existingAdmission?.academicPart || 'Part-1'
+            });
+          } else {
+            // Keep existing student details in sync
+            await supabase.from('students').update({
+              full_name: updates.fullName || existingAdmission?.fullName,
+              father_name: updates.fatherName || existingAdmission?.fatherName,
+              category: updates.category || existingAdmission?.category,
+              group: updates.group || existingAdmission?.group,
+              section: updates.section || existingAdmission?.section,
+              subjects: updates.subjects || existingAdmission?.subjects,
+              contact: updates.contactNumber || existingAdmission?.contactNumber,
+              address: updates.address || existingAdmission?.address,
+              gender: updates.gender || existingAdmission?.gender,
+              photo: updates.photo || existingAdmission?.photo,
+              total_package: updates.totalPackage || existingAdmission?.totalPackage,
+              fee_received: updates.feeReceived || existingAdmission?.feeReceived,
+              session: updates.session || existingAdmission?.session,
+              academic_part: updates.academicPart || existingAdmission?.academicPart
+            }).eq('admission_id', id);
+          }
+        }
+        
         fetchData(true);
+        logActivity("Admission Updated", `Admission ${updates.fullName || id} details changed`, "warning");
         toast.success("Admission details updated");
       } catch (e: any) {
         console.error("Update Admission Error:", e);
@@ -278,6 +348,16 @@ export function useAdmissionsOperations(ctx: any) {
         };
 
         // Create student record
+        let derivedGender = admission.gender;
+        if (!derivedGender) {
+            const identifier = (`${admission.category || ''} ${admission.group || ''}`).toLowerCase();
+            if (identifier.includes('girl') || identifier.includes('female')) {
+              derivedGender = 'Female';
+            } else {
+              derivedGender = 'Male';
+            }
+        }
+
         const { error: studentError } = await supabase.from('students').insert({
           id: studentId,
           admission_id: admissionId,
@@ -286,10 +366,14 @@ export function useAdmissionsOperations(ctx: any) {
           category: admission.category || 'N/A',
           group: admission.group || 'N/A',
           section: admission.section || 'A',
-          contact: admission.contactNumber,
-          address: admission.address,
-          total_package: admission.totalPackage,
-          fee_received: admission.feeReceived,
+          subjects: admission.subjects || [],
+          contact: admission.contactNumber || 'N/A',
+          address: admission.address || 'N/A',
+          gender: derivedGender,
+          admission_fee: admission.admissionFee || 0,
+          misc_funds: admission.miscFunds || 0,
+          total_package: admission.totalPackage || 0,
+          fee_received: admission.feeReceived || 0,
           fee_ledger: initialFeeLedger,
           monthly_fee: calculatedMonthlyFee,
           total_installments: installments,
@@ -297,7 +381,8 @@ export function useAdmissionsOperations(ctx: any) {
           session_start_date: admission.sessionStartDate,
           session_end_date: admission.sessionEndDate,
           academic_part: admission.academicPart || 'Part-1',
-          fee_history: admission.feeHistory || []
+          fee_history: admission.feeHistory || [],
+          photo: admission.photo
         });
         if (studentError) throw studentError;
         fetchData(true);
@@ -380,27 +465,43 @@ export function useAdmissionsOperations(ctx: any) {
       try {
         const admitted = admissions.filter(a => a.isAdmitted || a.status === 'Admitted/Confirmed');
         const existingIds = new Set(students?.map((s: any) => s.id) || []);
-        const toInsert = admitted.filter(a => !existingIds.has(a.studentId || a.id)).map(a => ({
-          id: a.studentId || a.id,
-          admission_id: a.id,
-          full_name: a.fullName,
-          father_name: a.fatherName,
-          category: a.category || 'N/A',
-          group: a.group || 'N/A',
-          section: a.section || 'Unassigned',
-          contact: a.contactNumber,
-          address: a.address,
-          total_package: a.totalPackage,
-          fee_received: a.feeReceived,
-          fee_ledger: a.feeLedger || {},
-          monthly_fee: Math.round((a.totalPackage || 0) / 12),
-          total_installments: 12,
-          session: a.session,
-          session_start_date: a.sessionStartDate,
-          session_end_date: a.sessionEndDate,
-          academic_part: a.academicPart || 'Part-1',
-          fee_history: a.feeHistory || []
-        }));
+        const toInsert = admitted.filter(a => !existingIds.has(a.studentId || a.id)).map(a => {
+          let derivedGender = a.gender;
+          if (!derivedGender) {
+             const identifier = (`${a.category || ''} ${a.group || ''}`).toLowerCase();
+             if (identifier.includes('girl') || identifier.includes('female')) {
+                derivedGender = 'Female';
+             } else {
+                derivedGender = 'Male';
+             }
+          }
+
+          return {
+            id: a.studentId || a.id,
+            admission_id: a.id,
+            full_name: a.fullName,
+            father_name: a.fatherName,
+            category: a.category || 'N/A',
+            group: a.group || 'N/A',
+            section: a.section || 'Unassigned',
+            subjects: a.subjects || [],
+            contact: a.contactNumber || 'N/A',
+            address: a.address || 'N/A',
+            gender: derivedGender,
+            admission_fee: a.admissionFee || 0,
+            misc_funds: a.miscFunds || 0,
+            total_package: a.totalPackage || 0,
+            fee_received: a.feeReceived || 0,
+            fee_ledger: a.feeLedger || {},
+            monthly_fee: Math.round((a.totalPackage || 0) / 12),
+            total_installments: 12,
+            session: a.session,
+            session_start_date: a.sessionStartDate,
+            session_end_date: a.sessionEndDate,
+            academic_part: a.academicPart || 'Part-1',
+            fee_history: a.feeHistory || []
+          };
+        });
 
         if (toInsert.length === 0) {
           toast.info("All student records are already in sync.");

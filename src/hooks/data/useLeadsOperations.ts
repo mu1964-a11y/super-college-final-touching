@@ -62,6 +62,7 @@ export function useLeadsOperations(ctx: any) {
         is_converted: updates.isConverted
       }).eq('id', id);
       if (error) throw error;
+      logActivity("Lead Updated", `Lead ${updates.studentName || id} details changed`, "warning");
       toast.success("Lead updated");
     } catch (e) {
       setLeads(backupLeads); // Revert

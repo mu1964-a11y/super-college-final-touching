@@ -7,6 +7,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  LayoutDashboard,
   UserPlus,
   GraduationCap,
   Briefcase,
@@ -58,6 +59,7 @@ import {
   LandPlot,
   BookOpen,
   ShieldCheck,
+  PieChart as PieChartIcon,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
@@ -81,6 +83,8 @@ import {
   AreaChart,
   Area,
 } from "recharts";
+import { Sparkles } from "lucide-react";
+import AiCopilotView from "./AiCopilotView";
 
 export default function DashboardView({
   data,
@@ -94,6 +98,7 @@ export default function DashboardView({
   setSelectedSession: (s: string) => void;
 }) {
   const [time, setTime] = React.useState(new Date());
+  const [activeDashboardTab, setActiveDashboardTab] = React.useState<"overview" | "directors" | "staff" | "ai_copilot">("overview");
 
   React.useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -107,13 +112,13 @@ export default function DashboardView({
   const confirmedAdmissions = useMemo(() => {
     return data.admissions.filter((a: any) => {
       const isConfirmedStatus =
-        a.isAdmitted ||
+        a.isAdmitted === true ||
         a.status === "Admitted/Confirmed" ||
         a.status === "Admitted" ||
+        a.status === "Confirmed" ||
         a.status === "Full Paid" ||
         a.status === "Partial Paid" ||
-        a.feeReceived > 0 ||
-        a.totalPackage > 0;
+        Number(a.feeReceived) > 0;
 
       return isConfirmedStatus;
     });
@@ -792,6 +797,153 @@ export default function DashboardView({
     totalExpenses,
   ]);
 
+  // --- Staff Analytics ---
+  const staffAnalytics = useMemo(() => {
+    const rawStaff = data.staff || [];
+    
+    // Active counting
+    const activeStaff = rawStaff.filter((s:any) => s.status !== "Inactive" && s.status !== "Resigned");
+    
+    // Distribution
+    let management = 0, academic = 0, administration = 0, support = 0;
+    let totalBaseSalary = 0;
+
+    activeStaff.forEach((s:any) => {
+      if (s.role === 'Principal' || s.role === 'Director' || s.role === 'Management') management++;
+      else if (s.role === 'Lecturer' || s.role === 'Professor' || s.role === 'Academic') academic++;
+      else if (s.role === 'Admin' || s.role === 'Clerk' || s.role === 'Administration') administration++;
+      else support++;
+
+      totalBaseSalary += Number(s.baseSalary || s.base_salary || s.salary || 0);
+    });
+
+    const averageSalary = activeStaff.length > 0 ? (totalBaseSalary / activeStaff.length) : 0;
+
+    // Attendance processing (Current Month)
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const monthlyAttendance = (data.staffAttendance || []).filter((a:any) => a.date?.startsWith(currentMonth) || a.date_logged?.startsWith(currentMonth));
+    const totalPresents = monthlyAttendance.filter((a:any) => a.status === 'Present').length;
+    const totalAbsents = monthlyAttendance.filter((a:any) => a.status === 'Absent').length;
+    const totalLates = monthlyAttendance.filter((a:any) => a.status === 'Late').length;
+    const totalLeaves = monthlyAttendance.filter((a:any) => a.status === 'Leave').length;
+
+    // Advances processing (Active remaining balance)
+    const advances = data.staffAdvances || [];
+    const totalAdvancesTaken = advances.reduce((sum:number, a:any) => sum + Number(a.amount || 0), 0);
+    const pendingAdvances = advances.reduce((sum:number, a:any) => sum + Number(a.remainingBalance ?? a.remaining_balance ?? 0), 0);
+    const totalAdvancesRecovered = totalAdvancesTaken - pendingAdvances;
+
+    const inactiveStaffCount = rawStaff.filter((s:any) => s.status === "Inactive" || s.status === "Resigned").length;
+    
+    const possibleAttendanceDays = totalPresents + totalAbsents + totalLeaves + totalLates;
+    const attendanceRate = possibleAttendanceDays > 0 ? ((totalPresents + totalLates) / possibleAttendanceDays) * 100 : 0;
+
+    return {
+      totalActive: activeStaff.length,
+      inactiveCount: inactiveStaffCount,
+      attendanceRate,
+      management,
+      academic,
+      administration,
+      support,
+      totalBaseSalary,
+      averageSalary,
+      attendance: {
+        presents: totalPresents,
+        absents: totalAbsents,
+        lates: totalLates,
+        leaves: totalLeaves,
+      },
+      advances: {
+        total: totalAdvancesTaken,
+        recovered: totalAdvancesRecovered,
+        pending: pendingAdvances,
+      }
+    };
+  }, [data.staff, data.staffAttendance, data.staffAdvances]);
+
+  // --- Directors Analytics ---
+  const directorsAnalytics = useMemo(() => {
+    const incomes = data.incomes || [];
+    const expenses = data.expenses || [];
+
+    // Determine Other Incomes (Not related to students to avoid double counting)
+    const otherIncomesTotal = incomes.reduce((sum: number, inc: any) => {
+      // If the income record has a studentId or studentName, it's a student fee payment
+      // and is already incorporated in activeStudentsRevenue via the students/admissions tables.
+      // So we only count incomes that are purely "Other" or "Miscellaneous" without a student attached.
+      const isStudentFee = Boolean(inc.studentId || (inc.studentName && inc.studentName !== 'Manual Entry'));
+      if (!isStudentFee) {
+        return sum + Number(inc.amount || 0);
+      }
+      return sum;
+    }, 0);
+    
+    const totalEarnings = activeStudentsRevenue + otherIncomesTotal;
+    const trueTotalExpenses = totalExpenses + staffAnalytics.totalBaseSalary;
+    const netProfit = totalEarnings - trueTotalExpenses;
+    const profitMargin = totalEarnings > 0 ? (netProfit / totalEarnings) * 100 : 0;
+
+    // Monthly breakdown for charting
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const year = new Date().getFullYear();
+    const monthlyFinance = months.map(m => ({ name: m, income: 0, expense: 0, profit: 0 }));
+
+    incomes.forEach((i: any) => {
+      if (!i.date) return;
+      const d = new Date(i.date);
+      if (d.getFullYear() === year) {
+        const isStudentFee = Boolean(i.studentId || (i.studentName && i.studentName !== 'Manual Entry'));
+        // We only add "Other Incomes" to the historical month distribution directly
+        if (!isStudentFee) {
+          monthlyFinance[d.getMonth()].income += Number(i.amount || 0);
+        }
+      }
+    });
+
+    expenses.forEach((e: any) => {
+      if (!e.date) return;
+      const d = new Date(e.date);
+      if (d.getFullYear() === year) {
+        monthlyFinance[d.getMonth()].expense += Number(e.amount || 0);
+      }
+    });
+
+    // We add all active students revenue to the chart
+    // Ideally this would be mapped by payment dates, but for an aggregate view we allocate it into the current operational month
+    // as student fees are dynamically tracked as a current net positive.
+    const currentM = new Date().getMonth();
+    monthlyFinance[currentM].income += activeStudentsRevenue; 
+
+    monthlyFinance.forEach(m => {
+      m.profit = m.income - m.expense;
+    });
+
+    // Categories
+    const expenseCategories: Record<string, number> = {};
+    expenses.forEach((e: any) => {
+      const cat = e.category || 'General';
+      expenseCategories[cat] = (expenseCategories[cat] || 0) + Number(e.amount || 0);
+    });
+    
+    // Add staff salaries to expenses
+    expenseCategories['Payroll'] = (expenseCategories['Payroll'] || 0) + staffAnalytics.totalBaseSalary;
+    
+    const maxMonthlyIncome = Math.max(...monthlyFinance.map(m => m.income));
+    const maxMonthlyExpense = Math.max(...monthlyFinance.map(m => m.expense));
+
+    return {
+      totalEarnings,
+      totalExpenses: trueTotalExpenses, // True total
+      netProfit,
+      profitMargin,
+      monthlyFinance,
+      expenseCategories: Object.entries(expenseCategories)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a,b) => b.value - a.value).slice(0, 5), // Top 5
+    };
+  }, [data.incomes, data.expenses, activeStudentsRevenue, totalExpenses, staffAnalytics.totalBaseSalary]);
+
   return (
     <div className="space-y-8 pb-12 relative">
       {/* Dynamic Background Highlights - Giving "Life" to the Dashboard */}
@@ -947,8 +1099,43 @@ export default function DashboardView({
             </div>
           </div>
         </div>
+
+        {/* Unified Dashboard Navigational Tabs */}
+        <div className="relative z-20 mt-6 pt-6 border-t border-white/10 flex flex-wrap gap-2 w-full">
+          {[
+            { id: "overview", label: "Overview", icon: LayoutDashboard },
+            { id: "directors", label: "Directors", icon: ShieldCheck },
+            { id: "staff", label: "Staff", icon: Users },
+            { id: "ai_copilot", label: "SCJ AI Intellect", icon: Sparkles },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveDashboardTab(tab.id as any)}
+              className={cn(
+                "flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs md:text-sm font-bold uppercase tracking-widest transition-all relative overflow-hidden",
+                activeDashboardTab === tab.id
+                  ? "text-superior-teal"
+                  : "text-white/60 hover:text-white hover:bg-white/5"
+              )}
+            >
+              {activeDashboardTab === tab.id && (
+                <motion.div
+                  layoutId="dashboardTabBg"
+                  className="absolute inset-0 bg-superior-gold rounded-xl z-0 shadow-[0_0_15px_rgba(201,168,76,0.3)]"
+                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                />
+              )}
+              <div className="relative z-10 flex items-center gap-2">
+                <tab.icon size={16} />
+                {tab.label}
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
 
+      {activeDashboardTab === "overview" && (
+        <>
       {/* Program-wise Gender Breakdown */}
       <div className="relative z-10 space-y-6">
         <div className="flex items-center justify-between px-2">
@@ -1544,6 +1731,462 @@ export default function DashboardView({
           </motion.div>
         ))}
       </div>
+        </>
+      )}
+
+      {activeDashboardTab === "directors" && (
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="space-y-6 relative p-6 md:p-8 rounded-[2.5rem] bg-gradient-to-b from-slate-50 to-slate-100/50 dark:from-slate-900 dark:to-slate-950 border border-slate-200/60 dark:border-slate-800 shadow-sm overflow-hidden z-10"
+        >
+          {/* Executive Backdrop Accents */}
+          <div className="absolute inset-0 bg-[radial-gradient(#085a4e_1px,transparent_1px)] [background-size:24px_24px] opacity-[0.04] z-0 pointer-events-none" />
+          <div className="absolute top-0 right-1/4 w-[500px] h-[500px] bg-gradient-to-tr from-superior-gold/15 to-transparent rounded-full blur-[140px] -z-10 pointer-events-none" />
+          <div className="absolute bottom-0 left-1/4 w-[400px] h-[400px] bg-gradient-to-br from-superior-teal/5 to-transparent rounded-full blur-[120px] -z-10 pointer-events-none" />
+          
+          <div className="relative z-10 flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 pb-4 mb-2 dark:border-slate-800">
+            <div>
+              <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-superior-gold shadow-[0_0_8px_rgba(201,168,76,0.8)]" />
+                Director Console & Analytics
+              </h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">High-level financial summaries and yield analysis</p>
+            </div>
+            <div className="bg-white/80 dark:bg-slate-800 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-200/50 dark:border-slate-700 text-[10px] font-black uppercase tracking-wider text-slate-500 shadow-sm flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-superior-gold animate-pulse" />
+              Directorial Overview Mode
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative z-10">
+            <StatCard
+              title="Total Revenue"
+              value={`Rs. ${directorsAnalytics.totalEarnings.toLocaleString()}`}
+              subValue="From all sources"
+              icon={Banknote}
+              color="teal"
+            />
+            <StatCard
+              title="Total Operating Costs"
+              value={`Rs. ${directorsAnalytics.totalExpenses.toLocaleString()}`}
+              subValue="Includes payroll & overheads"
+              icon={CreditCard}
+              color="slate"
+            />
+            <StatCard
+              title="Net Profit"
+              value={`Rs. ${directorsAnalytics.netProfit.toLocaleString()}`}
+              subValue="Revenue - Expenses"
+              icon={TrendingUp}
+              color="gold"
+              isUp={directorsAnalytics.netProfit > 0}
+            />
+            <StatCard
+              title="Profit Margin"
+              value={`${directorsAnalytics.profitMargin.toFixed(1)}%`}
+              subValue="Percentage of revenue"
+              icon={PieChartIcon}
+              color="teal"
+            />
+          </div>
+          
+          {/* Second Row of Director Metrics */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCard
+              title="Outstanding Dues"
+              value={`Rs. ${Math.max(0, academicPerformance.totalInvoiced - activeStudentsRevenue).toLocaleString()}`}
+              subValue="Pending student fees"
+              icon={AlertCircle}
+              color="rose"
+            />
+            <StatCard
+              title="Per Student Avg (PSA)"
+              value={`Rs. ${Math.round(academicPerformance.totalAvg).toLocaleString()}`}
+              subValue="Institutional value / student"
+              icon={BarChart3}
+              color="teal"
+            />
+            <StatCard
+              title="Staff Wage Liability"
+              value={`Rs. ${staffAnalytics.totalBaseSalary.toLocaleString()}`}
+              subValue="Monthly payroll commitment"
+              icon={Users}
+              color="orange"
+            />
+            <StatCard
+              title="Staff Advances Paid"
+              value={`Rs. ${(staffAnalytics.advances?.pending || 0).toLocaleString()}`}
+              subValue="Total unrecovered advances"
+              icon={Redo2}
+              color="indigo"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+            <div className="lg:col-span-2 bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden">
+              <div className="flex items-center justify-between mb-8 relative z-10">
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">
+                    Annual Financial Overview
+                  </h3>
+                  <p className="text-sm font-medium text-slate-500 mt-1">
+                    Income vs Expenses over the year
+                  </p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-bold text-slate-600">Revenue</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-rose-500" />
+                    <span className="text-xs font-bold text-slate-600">Expenses</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="h-[350px] relative z-10 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={directorsAnalytics.monthlyFinance}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="name"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: "#64748b", fontSize: 12, fontWeight: 600 }}
+                      dy={10}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(value) => `Rs.${(value / 1000)}k`}
+                      tick={{ fill: "#64748b", fontSize: 12 }}
+                    />
+                    <Tooltip 
+                      formatter={(value: any) => [`Rs. ${Number(value).toLocaleString()}`]}
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' }}
+                    />
+                    <Area type="monotone" dataKey="income" name="Revenue" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorIncome)" />
+                    <Area type="monotone" dataKey="expense" name="Expenses" stroke="#f43f5e" strokeWidth={3} fillOpacity={1} fill="url(#colorExpense)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col items-center justify-center">
+               <div className="w-full h-full flex flex-col justify-between">
+                 <div>
+                   <h3 className="text-xl font-black text-slate-800 text-left">Top Expenses</h3>
+                   <p className="text-sm font-medium text-slate-500 mt-1 text-left">Key spending areas</p>
+                 </div>
+                 
+                 <div className="space-y-6 mt-8 flex-1">
+                    {directorsAnalytics.expenseCategories.length > 0 ? directorsAnalytics.expenseCategories.map((cat, idx) => (
+                      <div key={idx} className="relative">
+                        <div className="flex justify-between text-sm mb-2">
+                           <span className="font-bold text-slate-700">{cat.name}</span>
+                           <span className="text-slate-500 font-semibold">Rs. {cat.value.toLocaleString()}</span>
+                        </div>
+                        <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                           <motion.div 
+                             initial={{ width: 0 }}
+                             animate={{ width: `${(cat.value / (directorsAnalytics.totalExpenses || 1)) * 100}%` }}
+                             transition={{ duration: 1, ease: "easeOut" }}
+                             className={cn("h-full rounded-full", idx === 0 ? "bg-rose-500" : idx === 1 ? "bg-orange-400" : "bg-blue-400")}
+                           />
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+                        No expense data available
+                      </div>
+                    )}
+                 </div>
+                 
+                 <div className="pt-6 border-t border-slate-100 mt-6 mt-auto">
+                    <div className="flex justify-between items-center">
+                       <span className="text-slate-500 font-medium">Total Spending</span>
+                       <span className="font-black text-lg text-slate-800">Rs. {directorsAnalytics.totalExpenses.toLocaleString()}</span>
+                    </div>
+                 </div>
+               </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {activeDashboardTab === "staff" && (
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="space-y-6 relative p-6 md:p-8 rounded-[2.5rem] bg-gradient-to-b from-slate-50 to-slate-100/50 dark:from-slate-900 dark:to-slate-950 border border-slate-200/60 dark:border-slate-800 shadow-sm overflow-hidden z-10"
+        >
+          {/* HR Backdrop Accents */}
+          <div className="absolute inset-0 bg-[radial-gradient(#c9a84c_1px,transparent_1px)] [background-size:20px_20px] opacity-[0.04] z-0 pointer-events-none" />
+          <div className="absolute top-1/3 right-10 w-[450px] h-[450px] bg-gradient-to-bl from-superior-teal/10 to-transparent rounded-full blur-[130px] -z-10 pointer-events-none" />
+          <div className="absolute bottom-10 left-10 w-[350px] h-[350px] bg-gradient-to-tr from-[#fb7185]/5 to-transparent rounded-full blur-[110px] -z-10 pointer-events-none" />
+
+          <div className="relative z-10 flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 pb-4 mb-2 dark:border-slate-800">
+            <div>
+              <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-superior-teal shadow-[0_0_8px_rgba(8,90,78,0.8)]" />
+                Staff Attendance & Payroll Console
+              </h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Workforce allocation, daily presents, and advance wages liability</p>
+            </div>
+            <div className="bg-white/80 dark:bg-slate-800 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-200/50 dark:border-slate-700 text-[10px] font-black uppercase tracking-wider text-slate-500 shadow-sm flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-superior-teal animate-pulse" />
+              HR Command Center
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative z-10">
+            <StatCard
+              title="Total Active Staff"
+              value={staffAnalytics.totalActive}
+              subValue="Current headcount"
+              icon={Users}
+              color="teal"
+            />
+            <StatCard
+              title="Monthly Salary Payout"
+              value={`Rs. ${staffAnalytics.totalBaseSalary.toLocaleString()}`}
+              subValue={`Avg Rs. ${Math.round(staffAnalytics.averageSalary).toLocaleString()}`}
+              icon={Banknote}
+              color="slate"
+            />
+            <StatCard
+              title="This Month Presents"
+              value={staffAnalytics.attendance.presents}
+              subValue={`${staffAnalytics.attendance.absents} Absents, ${staffAnalytics.attendance.lates} Lates`}
+              icon={CheckCircle2}
+              color="gold"
+            />
+            <StatCard
+              title="Pending Advances"
+              value={`Rs. ${staffAnalytics.advances.pending.toLocaleString()}`}
+              subValue={`Out of Rs. ${staffAnalytics.advances.total.toLocaleString()} total`}
+              icon={Briefcase}
+              color="teal"
+            />
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCard
+              title="Avg. Daily Labor Cost"
+              value={`Rs. ${Math.round(staffAnalytics.totalBaseSalary / 30).toLocaleString()}`}
+              subValue="Estimated cost per day"
+              icon={DollarSign}
+              color="orange"
+            />
+            <StatCard
+              title="Advances Recovered"
+              value={`Rs. ${staffAnalytics.advances.recovered.toLocaleString()}`}
+              subValue="Deducted from salaries"
+              icon={RotateCcw}
+              color="emerald"
+            />
+            <StatCard
+              title="Attendance Rate"
+              value={`${Math.round(staffAnalytics.attendanceRate)}%`}
+              subValue="Based on logged days"
+              icon={BarChart3}
+              color="teal"
+            />
+            <StatCard
+              title="Inactive/Resigned"
+              value={staffAnalytics.inactiveCount}
+              subValue="Total left staff"
+              icon={LogOut}
+              color="rose"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">
+                    Role Distribution
+                  </h3>
+                  <p className="text-sm font-medium text-slate-500 mt-1">
+                    Staff breakdown by role
+                  </p>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center">
+                  <Users className="text-teal-600" size={24} />
+                </div>
+              </div>
+              
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: "Academic", value: staffAnalytics.academic },
+                        { name: "Management", value: staffAnalytics.management },
+                        { name: "Administration", value: staffAnalytics.administration },
+                        { name: "Support", value: staffAnalytics.support },
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      <Cell fill="#085a4e" />
+                      <Cell fill="#c9a84c" />
+                      <Cell fill="#0f172a" />
+                      <Cell fill="#94a3b8" />
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              
+              <div className="flex flex-wrap items-center justify-center gap-4 mt-4">
+                 <div className="flex items-center gap-2">
+                   <div className="w-3 h-3 rounded-full bg-[#085a4e]" />
+                   <span className="text-xs font-bold text-slate-600">Academic ({staffAnalytics.academic})</span>
+                 </div>
+                 <div className="flex items-center gap-2">
+                   <div className="w-3 h-3 rounded-full bg-[#c9a84c]" />
+                   <span className="text-xs font-bold text-slate-600">Management ({staffAnalytics.management})</span>
+                 </div>
+                 <div className="flex items-center gap-2">
+                   <div className="w-3 h-3 rounded-full bg-[#0f172a]" />
+                   <span className="text-xs font-bold text-slate-600">Admin ({staffAnalytics.administration})</span>
+                 </div>
+                 <div className="flex items-center gap-2">
+                   <div className="w-3 h-3 rounded-full bg-[#94a3b8]" />
+                   <span className="text-xs font-bold text-slate-600">Support ({staffAnalytics.support})</span>
+                 </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">
+                    Monthly Attendance
+                  </h3>
+                  <p className="text-sm font-medium text-slate-500 mt-1">
+                    Present vs Absent vs Late
+                  </p>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center">
+                  <BarChart3 className="text-superior-gold" size={24} />
+                </div>
+              </div>
+              
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={[
+                      { name: "Presents", count: staffAnalytics.attendance.presents, fill: "#085a4e" },
+                      { name: "Absents", count: staffAnalytics.attendance.absents, fill: "#ef4444" },
+                      { name: "Lates", count: staffAnalytics.attendance.lates, fill: "#c9a84c" },
+                      { name: "Leaves", count: staffAnalytics.attendance.leaves, fill: "#3b82f6" },
+                    ]}
+                    margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="name"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: "#64748b", fontSize: 12, fontWeight: 600 }}
+                      dy={10}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: "#64748b", fontSize: 12 }}
+                    />
+                    <Tooltip cursor={{ fill: "transparent" }} />
+                    <Bar
+                      dataKey="count"
+                      radius={[6, 6, 0, 0]}
+                      barSize={40}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {activeDashboardTab === "ai_copilot" && (
+        <AiCopilotView
+          collegeContext={{
+            studentCount: totalEnrollmentCount,
+            boysCount: mergedBoysCount,
+            girlsCount: mergedGirlsCount,
+            staffCount: staffAnalytics.totalActive,
+            revenue: academicPerformance.totalCollection,
+            expenses: data.expenses.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0),
+            outstandingDues: Math.max(0, academicPerformance.totalInvoiced - academicPerformance.totalCollection),
+            staffWageLiability: staffAnalytics.totalBaseSalary,
+            staffAdvancesPaid: staffAnalytics.advances.pending,
+            session: selectedSession,
+            studentsList: (data.students || []).map((s: any) => ({
+              id: s.id,
+              colNo: s.collegeNo || s.college_no,
+              name: s.fullName,
+              gender: s.gender,
+              fatherName: s.fatherName,
+              contact: s.contact,
+              cat: s.category,
+              grp: s.group,
+              sec: s.section,
+              part: s.academicPart,
+              session: s.session,
+              pkg: s.totalPackage,
+              rec: s.feeReceived,
+              bal: Math.max(0, (s.totalPackage || 0) - (s.feeReceived || 0))
+            })),
+            staffList: (data.staff || []).map((s: any) => ({
+              id: s.id,
+              name: s.fullName,
+              role: s.role,
+              status: s.status,
+              salary: s.baseSalary || s.salary,
+              contact: s.contact,
+              qualification: s.qualification,
+              specialization: s.specialization,
+              subjects: s.subjects
+            })),
+            marksList: (data.academicRecords || []).map((r: any) => ({
+              studentId: r.studentId || r.student_id,
+              studentName: r.studentName || r.student_name,
+              testName: r.testName || r.test_name,
+              subject: r.subject,
+              total: r.totalMarks || r.total_marks,
+              obtained: r.obtainedMarks || r.obtained_marks,
+              remarks: r.remarks,
+              date: r.date
+            }))
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1560,8 +2203,12 @@ function StatCard({
 }: any) {
   const colorMap: any = {
     teal: "bg-superior-teal text-white",
-    gold: "bg-superior-gold text-superior-teal",
+    gold: "bg-[#c9a84c] text-white",
     slate: "bg-slate-800 text-white",
+    rose: "bg-rose-500 text-white",
+    orange: "bg-orange-500 text-white",
+    indigo: "bg-indigo-600 text-white",
+    emerald: "bg-emerald-600 text-white",
   };
 
   return (

@@ -20,7 +20,11 @@ import {
   Trash2,
   School,
   Globe,
-  Award
+  Award,
+  Droplet,
+  MapPin,
+  Mail,
+  Phone
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { 
@@ -91,6 +95,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const mergedStudents = React.useMemo(() => {
+    console.log("Students data preview:", data.students.slice(0, 3).map((s: any) => ({ name: s.fullName, subjects: s.subjects })));
     const rawStudents = [...data.students].map(s => {
       let derivedGender = s.gender;
       if (!derivedGender) {
@@ -104,11 +109,18 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
       return { ...s, gender: derivedGender };
     });
     
-    // Add all admissions that don't have a matching student record yet (automatically populated in Students tab)
+    // Add all admissions that don't have a matching student record yet but are confirmed
     data.admissions.forEach((a: any) => {
       const existsInStudents = rawStudents.some((s: any) => s.admissionId === a.id || s.id === a.studentId);
+      const isConfirmed = a.isAdmitted === true || 
+                          a.status === "Admitted/Confirmed" || 
+                          a.status === "Admitted" || 
+                          a.status === "Confirmed" || 
+                          a.status === "Full Paid" || 
+                          a.status === "Partial Paid" || 
+                          Number(a.feeReceived) > 0;
       
-      if (!existsInStudents) {
+      if (!existsInStudents && isConfirmed) {
         let derivedGender = a.gender;
         if (!derivedGender) {
           const identifier = (`${a.category || ''} ${a.group || ''}`).toLowerCase();
@@ -357,14 +369,16 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
       {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
         <div>
-          <div className="flex items-center gap-3">
-            <h3 className="text-3xl font-display font-black text-superior-teal tracking-tight">
-              {gender === 'Male' ? 'Boys Campus' : gender === 'Female' ? 'Girls Campus' : 'Student Records'}
-            </h3>
-            <span className="text-slate-300 text-2xl">/</span>
-            <span className="urdu-text text-2xl text-superior-gold font-medium">
-              {gender === 'Male' ? 'بوائز کیمپس' : gender === 'Female' ? 'گرلز کیمپس' : 'طلباء کا ریکارڈ'}
-            </span>
+          <div className="flex flex-col items-start gap-1">
+            <div className="flex items-center gap-3">
+              <h3 className="text-3xl font-display font-black text-superior-teal tracking-tight">
+                {gender === 'Male' ? 'Boys Campus' : gender === 'Female' ? 'Girls Campus' : 'Student Records'}
+              </h3>
+              <span className="text-slate-300 text-2xl">/</span>
+              <span className="urdu-text text-2xl text-superior-gold font-medium">
+                {gender === 'Male' ? 'بوائز کیمپس' : gender === 'Female' ? 'گرلز کیمپس' : 'طلباء کا ریکارڈ'}
+              </span>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -651,6 +665,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                         src={student.photo} 
                         alt="" 
                         className="w-full h-full object-cover" 
+                        referrerPolicy="no-referrer"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
                           target.style.display = 'none';
@@ -681,14 +696,15 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 mb-6">
-                  <div className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1.5">Academic Group</p>
-                    <p className="text-xs font-black text-superior-teal truncate">{student.group}</p>
+                  <div className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100 relative group overflow-hidden">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1.5 flex items-center gap-1"><School size={10} /> Admitted In</p>
+                    <p className="text-xs font-black text-superior-teal truncate" title={student.category}>{student.category}</p>
+                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mt-0.5 truncate" title={student.group}>{student.group}</p>
                   </div>
                   <div className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1.5">Attendance</p>
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1.5 flex items-center gap-1"><CheckCircle2 size={10} /> Attendance</p>
                     <p className="text-xs font-black text-emerald-600">
-                      {Math.round((student.attendance.present / (student.attendance.present + student.attendance.absent || 1)) * 100)}% Present
+                      {Math.round((student.attendance?.present / ((student.attendance?.present || 0) + (student.attendance?.absent || 0) || 1)) * 100) || 0}% Present
                     </p>
                   </div>
                 </div>
@@ -717,6 +733,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                 <TableHead>Student Details</TableHead>
                 <TableHead>Program/Class</TableHead>
                 <TableHead>Section</TableHead>
+                <TableHead>Subjects</TableHead>
                 <TableHead>Contact Info</TableHead>
                 <TableHead>Total Package</TableHead>
                 <TableHead>Balance</TableHead>
@@ -736,7 +753,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                          <div className="flex items-center gap-3">
                            <div className="w-10 h-10 rounded-[10px] overflow-hidden bg-slate-100 flex-shrink-0">
                              {student.photo ? (
-                               <img src={student.photo} className="w-full h-full object-cover" />
+                               <img src={student.photo} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                              ) : (
                                <div className="w-full h-full flex items-center justify-center text-slate-400 font-bold text-lg bg-slate-200">{student.fullName.charAt(0)}</div>
                              )}
@@ -744,13 +761,19 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                            <div className="flex flex-col">
                               <span className="text-sm font-black text-slate-900 group-hover:text-superior-teal transition-colors tracking-tight">{student.fullName}</span>
                               <span className="text-[10px] font-black text-superior-gold uppercase tracking-widest">{student.id}</span>
+                              {student.bloodGroup && (
+                                <span className="text-[8px] mt-1 px-1 py-0.5 w-fit rounded-[4px] bg-red-50 text-red-600 font-bold flex items-center gap-0.5" title="Blood Group">
+                                  <Droplet size={8} /> {student.bloodGroup}
+                                </span>
+                              )}
                            </div>
                          </div>
                       </TableCell>
                       <TableCell>
                          <div className="flex flex-col">
-                           <span className="text-xs font-black text-slate-700">{student.category}</span>
-                           <span className="text-[10px] text-slate-500 font-black tracking-widest uppercase">{student.group}</span>
+                           <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Admitted In</span>
+                           <span className="text-xs font-black text-superior-teal max-w-[150px] truncate" title={student.category}>{student.category}</span>
+                           <span className="text-[10px] text-slate-500 font-black tracking-widest uppercase max-w-[150px] truncate" title={student.group}>{student.group}</span>
                          </div>
                       </TableCell>
                       <TableCell>
@@ -759,9 +782,40 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                          </Badge>
                       </TableCell>
                       <TableCell>
-                         <div className="flex flex-col">
-                            <span className="text-xs font-black text-slate-600 font-mono tracking-tight">{student.contact}</span>
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">Guardian: {student.fatherName.split(' ')[0]}</span>
+                         <div className="flex flex-wrap gap-1 max-w-[120px]">
+                           {Array.isArray(student.subjects) && student.subjects.length > 0 ? (
+                             student.subjects.map((sub: string, i: number) => (
+                               <Badge key={i} variant="outline" className="text-[8px] font-black uppercase bg-slate-50 text-slate-500 border-slate-200 px-1 py-0 cursor-help" title={sub}>
+                                 {sub === 'Diploma in IT Subjects' ? 'DIT' : sub === 'BS Subjects' ? 'BS' : sub === 'Computer Science' ? 'CS' : sub.substring(0, 3)}
+                               </Badge>
+                             ))
+                           ) : (
+                             <span className="text-[10px] text-slate-300">-</span>
+                           )}
+                         </div>
+                      </TableCell>
+                      <TableCell>
+                         <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1.5 text-slate-600">
+                               <Phone size={10} className="text-slate-400" />
+                               <span className="text-[10px] font-black font-mono tracking-tight">{student.contact}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                               <User size={10} className="text-slate-400 shrink-0" />
+                               <span className="text-[9px] font-bold text-slate-400 uppercase truncate max-w-[120px]" title={`Father / Guardian: ${student.fatherName}`}>{student.fatherName.split(' ')[0]}</span>
+                            </div>
+                            {student.email && (
+                             <div className="flex items-center gap-1.5 min-w-0">
+                                <Mail size={10} className="text-slate-400 shrink-0" />
+                                <span className="text-[9px] font-medium text-slate-500 truncate max-w-[120px]" title={student.email}>{student.email}</span>
+                             </div>
+                            )}
+                            {student.address && (
+                             <div className="flex items-center gap-1.5 min-w-0">
+                                <MapPin size={10} className="text-slate-400 shrink-0" />
+                                <span className="text-[9px] font-medium text-slate-500 truncate max-w-[120px]" title={student.address}>{student.address}</span>
+                             </div>
+                            )}
                          </div>
                       </TableCell>
                       <TableCell>
@@ -795,29 +849,32 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
         </div>
       )}
 
-      {totalPages > 1 && (
+      {mergedStudents.length > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 mt-4 border-t border-slate-100">
           <p className="text-sm font-bold text-slate-500">
-            Showing Page {currentPage} of {totalPages}
+            Showing {visibleStudents.length} of {filteredStudents.length} Students {mergedStudents.length !== filteredStudents.length ? `(Total: ${mergedStudents.length})` : ''} 
+            {totalPages > 1 && ` | Page ${currentPage} of ${totalPages}`}
           </p>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
-            >
-              Next
-            </Button>
-          </div>
+          {totalPages > 1 && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -987,7 +1044,7 @@ function StudentProfile({ student, data, initialTab = 'overview', onEdit, onDown
           <div className="relative group shrink-0">
             <div className="w-32 h-32 md:w-44 md:h-44 rounded-2xl border-4 border-white/20 bg-white/10 backdrop-blur-md overflow-hidden">
               {student.photo ? (
-                <img src={student.photo} alt="" className="w-full h-full object-cover" />
+                <img src={student.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-white/40">
                   <User size={64} />
@@ -1463,7 +1520,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
           <div className="relative group">
             <div className="w-32 h-32 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center overflow-hidden transition-colors group-hover:border-superior-teal">
               {formData.photo ? (
-                <img src={formData.photo} alt="" className="w-full h-full object-cover" />
+                <img src={formData.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
                 <>
                   <Camera className="text-slate-400 mb-2" size={24} />
@@ -1484,9 +1541,20 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {['Inter Part-1 Boys', 'Inter Part-2 Boys', 'Inter Part-1 Girls', 'Inter Part-2 Girls'].map(cat => (
-                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                ))}
+                {(() => {
+                   let cats = ['Inter Part-1 Boys', 'Inter Part-2 Boys', 'Inter Part-1 Girls', 'Inter Part-2 Girls'];
+                   const program = student.programType?.toLowerCase() || 'yearly';
+                   if (program === 'dit') cats = ['DIT Boys', 'DIT Girls'];
+                   else if (program === 'ukl3') cats = ['UK L3 Boys', 'UK L3 Girls'];
+                   else if (program === 'bs') cats = ["BS Boys", "BS Girls"];
+                   
+                   if (student.gender === 'Male') cats = cats.filter(c => c.toLowerCase().includes("boys"));
+                   else if (student.gender === 'Female') cats = cats.filter(c => c.toLowerCase().includes("girls"));
+                   
+                   return cats.map(cat => (
+                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                   ));
+                })()}
               </SelectContent>
             </Select>
           </div>

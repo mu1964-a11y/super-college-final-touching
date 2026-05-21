@@ -36,7 +36,14 @@ export default function AttendanceView({ data }: { data: any }) {
   const students = useMemo(() => {
     const raw: any[] = [...(data?.students || [])];
     data?.admissions?.forEach((a: any) => {
-      if (a.isAdmitted || a.status === 'Admitted/Confirmed' || Number(a.feeReceived) > 0) {
+      const isConfirmed = a.isAdmitted === true || 
+                          a.status === "Admitted/Confirmed" || 
+                          a.status === "Admitted" || 
+                          a.status === "Confirmed" || 
+                          a.status === "Full Paid" || 
+                          a.status === "Partial Paid" || 
+                          Number(a.feeReceived) > 0;
+      if (isConfirmed) {
         if (!raw.some((s: any) => s.admissionId === a.id || s.id === (a.studentId || a.id))) {
           raw.push({
             id: a.studentId || a.id,
@@ -55,19 +62,28 @@ export default function AttendanceView({ data }: { data: any }) {
   }, [data?.students, data?.admissions]);
 
   const sectionOptions = React.useMemo(() => {
-    return Array.from(new Set(data?.settings?.predefinedSections?.map((s: any) => s.name).filter(Boolean))) as string[];
-  }, [data?.settings?.predefinedSections]);
+    let sections = data?.settings?.predefinedSections || [];
+    if (classFilter && classFilter !== 'all') {
+      if (classFilter.toLowerCase().includes('boys')) {
+        sections = sections.filter((s: any) => s.gender === 'Male');
+      } else if (classFilter.toLowerCase().includes('girls')) {
+        sections = sections.filter((s: any) => s.gender === 'Female');
+      }
+    }
+    return Array.from(new Set(sections.map((s: any) => s.name).filter(Boolean))) as string[];
+  }, [data?.settings?.predefinedSections, classFilter]);
 
-  const classOptions = React.useMemo(() => {
-     return Array.from(new Set(students.map((s: any) => s.currentClass || s.groupName).filter(Boolean))) as string[];
-  }, [students]);
+  const classOptions = [
+    "Inter Part-1 Boys", "Inter Part-2 Boys", "Inter Part-1 Girls", "Inter Part-2 Girls", 
+    "DIT Boys", "DIT Girls", "UK L3 Boys", "UK L3 Girls", "BS Boys", "BS Girls"
+  ];
 
   const filteredStudents = useMemo(() => {
     return students.filter((s: any) => {
       const matchName = (s.fullName || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
              (s.studentId || '').toLowerCase().includes(searchTerm.toLowerCase());
       const matchSection = sectionFilter === 'all' || s.section === sectionFilter;
-      const matchClass = classFilter === 'all' || s.currentClass === classFilter || s.groupName === classFilter;
+      const matchClass = classFilter === 'all' || s.category === classFilter || s.currentClass === classFilter || s.groupName === classFilter;
       return matchName && matchSection && matchClass;
     });
   }, [students, searchTerm, sectionFilter, classFilter]);
@@ -76,24 +92,50 @@ export default function AttendanceView({ data }: { data: any }) {
   const [dailyEntries, setDailyEntries] = useState<Record<string, Partial<StudentAttendanceRecord>>>({});
 
   useEffect(() => {
+    // Only re-initialize dailyEntries if selectedDate changes, not when filters change.
+    // We use all students to persist data even when filtered out.
     const existingForDate = records.filter(r => r.date === selectedDate);
-    const newEntries: Record<string, Partial<StudentAttendanceRecord>> = {};
     
-    filteredStudents.forEach((student: any) => {
-      const existing = existingForDate.find(r => r.studentId === student.id);
-      if (existing) {
-        newEntries[student.id] = { ...existing };
-      } else {
-        newEntries[student.id] = {
-          studentId: student.id,
-          date: selectedDate,
-          status: 'Present',
-          notes: ''
-        };
-      }
+    setDailyEntries(prev => {
+      const newEntries = { ...prev };
+      let initializedCount = 0;
+      
+      students.forEach((student: any) => {
+        // If we switch to a new date, `prev` might have the previous date's entries or be empty.
+        // If `prev[student.id]?.date === selectedDate`, we've already initialized it.
+        if (!newEntries[student.id] || newEntries[student.id].date !== selectedDate) {
+          const existing = existingForDate.find(r => r.studentId === student.id);
+          if (existing) {
+            newEntries[student.id] = { ...existing };
+          } else {
+            newEntries[student.id] = {
+              studentId: student.id,
+              date: selectedDate,
+              status: 'Present',
+              notes: ''
+            };
+          }
+          initializedCount++;
+        }
+      });
+      
+      // If nothing new was added, just return prev to avoid unnecessary re-renders
+      return initializedCount > 0 ? newEntries : prev;
     });
-    setDailyEntries(newEntries);
-  }, [selectedDate, filteredStudents, records]);
+  }, [selectedDate, students, records]);
+
+  const markAllFiltered = (status: StudentAttendanceStatus) => {
+    setDailyEntries(prev => {
+      const updated = { ...prev };
+      filteredStudents.forEach((student: any) => {
+        if (updated[student.id]) {
+          updated[student.id] = { ...updated[student.id], status };
+        }
+      });
+      return updated;
+    });
+    toast.success(`Marked all ${filteredStudents.length} filtered students as ${status}`);
+  };
 
   const handleEntryChange = (studentId: string, field: keyof StudentAttendanceRecord, value: string) => {
     setDailyEntries(prev => ({
@@ -195,38 +237,38 @@ export default function AttendanceView({ data }: { data: any }) {
 
   const downloadIndividualPDF = (student: any) => {
     const doc = new jsPDF();
-    const title = `${data?.settings?.collegeName || 'College'}\nIndividual Attendance Report\nMonth: ${reportMonth}`;
-    
-    doc.setFontSize(14);
-    doc.text(title, 14, 15);
-    doc.setFontSize(11);
-    doc.text(`Student Name: ${student.fullName}`, 14, 30);
-    doc.text(`Student ID: ${student.studentId || 'N/A'}`, 14, 36);
-    doc.text(`Section: ${student.section || 'N/A'}`, 14, 42);
+    import('../lib/pdfHelpers').then(({ addStandardLetterhead }) => {
+      addStandardLetterhead(doc, `Individual Attendance Report - ${reportMonth}`);
+      
+      doc.setFontSize(11);
+      doc.text(`Student Name: ${student.fullName}`, 14, 65);
+      doc.text(`Student ID: ${student.studentId || 'N/A'}`, 14, 71);
+      doc.text(`Section: ${student.section || 'N/A'}`, 14, 77);
 
-    const monthRecords = records
-      .filter(r => r.studentId === student.id && r.date.startsWith(reportMonth))
-      .sort((a, b) => a.date.localeCompare(b.date));
+      const monthRecords = records
+        .filter(r => r.studentId === student.id && r.date.startsWith(reportMonth))
+        .sort((a, b) => a.date.localeCompare(b.date));
 
-    const tableData = monthRecords.map(r => [
-      r.date,
-      r.status,
-      r.notes || '-'
-    ]);
+      const tableData = monthRecords.map(r => [
+        r.date,
+        r.status,
+        r.notes || '-'
+      ]);
 
-    autoTable(doc, {
-      startY: 50,
-      head: [['Date', 'Status', 'Notes']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: { fillColor: [4, 120, 87] }
+      autoTable(doc, {
+        startY: 85,
+        head: [['Date', 'Status', 'Notes']],
+        body: tableData,
+        theme: 'grid',
+        headStyles: { fillColor: [4, 120, 87] }
+      });
+
+      const stats = getMonthlyStats(student.id);
+      const finalY = (doc as any).lastAutoTable.finalY || 85;
+      doc.text(`Summary: Present: ${stats.present}, Absent: ${stats.absent}, Late: ${stats.late}, Leave: ${stats.leave}, Holiday: ${stats.holiday}`, 14, finalY + 10);
+
+      doc.save(`Attendance_${student.fullName.replace(/\s+/g, '_')}_${reportMonth}.pdf`);
     });
-
-    const stats = getMonthlyStats(student.id);
-    const finalY = (doc as any).lastAutoTable.finalY || 50;
-    doc.text(`Summary: Present: ${stats.present}, Absent: ${stats.absent}, Late: ${stats.late}, Leave: ${stats.leave}, Holiday: ${stats.holiday}`, 14, finalY + 10);
-
-    doc.save(`Attendance_${student.fullName.replace(/\s+/g, '_')}_${reportMonth}.pdf`);
   };
 
 
@@ -301,6 +343,25 @@ export default function AttendanceView({ data }: { data: any }) {
             
             {activeTab === 'daily' ? (
               <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1 mr-4">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="h-11 rounded-xl text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-200"
+                    onClick={() => markAllFiltered('Present')}
+                  >
+                    All Present
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="h-11 rounded-xl text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
+                    onClick={() => markAllFiltered('Absent')}
+                  >
+                    All Absent
+                  </Button>
+                </div>
+
                 <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
                   <CalendarDays size={16} className="text-slate-400" />
                   <Input 

@@ -32,6 +32,9 @@ import {
   Database,
   ScrollText,
   Building,
+  Mail,
+  Droplet,
+  MapPin,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
@@ -77,7 +80,7 @@ import { SUBJECTS, ACADEMIC_GROUPS, COMPULSORY_SUBJECTS } from "../constants";
 import { Admission, AdmissionStatus, Gender } from "../types";
 import { HighlightText } from "./HighlightText";
 import { toast } from "sonner";
-import { toPng } from "html-to-image";
+import html2canvas from "html2canvas-pro";
 import { jsPDF } from "jspdf";
 import * as XLSX from "xlsx";
 import FeeReceipt from "./FeeReceipt";
@@ -148,7 +151,17 @@ export default function AdmissionsView({
             .includes(debouncedSearch.toLowerCase()) ||
           (a.studentId &&
             a.studentId.toLowerCase().includes(debouncedSearch.toLowerCase()));
-        const matchesFee = feeFilter === "all" || a.status === feeFilter;
+        const received = Number(a.feeReceived || 0);
+        const total = Number(a.totalPackage || 0);
+        let calcFeeStatus = "";
+        if (received >= total && total > 0) {
+          calcFeeStatus = "Full Paid";
+        } else if (received > 0) {
+          calcFeeStatus = "Partial Paid";
+        } else {
+          calcFeeStatus = "Not Paid";
+        }
+        const matchesFee = feeFilter === "all" || calcFeeStatus === feeFilter;
         const matchesGender =
           genderFilter === "all" || a.gender === genderFilter;
 
@@ -172,7 +185,15 @@ export default function AdmissionsView({
         }
 
         // Diversion Logic: Only show students who are NOT yet fully admitted (haven't paid initial fee)
-        const isFullyEnrolled = a.isAdmitted || a.feeReceived > 0;
+        const statusStr = a.status as string;
+        const isFullyEnrolled = a.isAdmitted === true ||
+        statusStr === "Admitted/Confirmed" ||
+        statusStr === "Admitted" ||
+        statusStr === "Confirmed" ||
+        statusStr === "Full Paid" ||
+        statusStr === "Partial Paid" ||
+        Number(a.feeReceived) > 0;
+        
         const matchesAdmitted =
           admittedFilter === "all" ||
           (admittedFilter === "Admitted" && isFullyEnrolled) ||
@@ -1312,6 +1333,12 @@ export default function AdmissionsView({
                 <TableHead className="font-black text-slate-400 uppercase tracking-widest text-[10px] py-5">
                   Contact
                 </TableHead>
+                <TableHead className="font-black text-slate-400 uppercase tracking-widest text-[10px] py-5">
+                  Program & Section
+                </TableHead>
+                <TableHead className="font-black text-slate-400 uppercase tracking-widest text-[10px] py-5">
+                  Subjects
+                </TableHead>
                 <TableHead className="text-right font-black text-slate-400 uppercase tracking-widest text-[10px] py-5">
                   Total Fee
                 </TableHead>
@@ -1332,7 +1359,7 @@ export default function AdmissionsView({
             <TableBody>
               {visibleAdmissions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-64 text-center">
+                  <TableCell colSpan={11} className="h-64 text-center">
                     <div className="flex flex-col items-center justify-center text-slate-400">
                       <Search size={48} className="mb-4 opacity-20" />
                       <p className="font-bold uppercase tracking-widest text-xs">
@@ -1439,6 +1466,23 @@ export default function AdmissionsView({
                             <p className="text-[10px] text-slate-400 font-bold mt-0.5">
                               {admission.date}
                             </p>
+                            <div className="flex items-center gap-2 mt-1">
+                               {admission.bloodGroup && (
+                                  <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-red-50 text-red-600 font-bold flex items-center gap-0.5" title="Blood Group">
+                                     <Droplet size={8} /> {admission.bloodGroup}
+                                  </span>
+                               )}
+                               {admission.email && (
+                                  <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-slate-100 text-slate-500 font-medium flex items-center gap-0.5 max-w-[100px] truncate" title={admission.email}>
+                                     <Mail size={8} /> {admission.email}
+                                  </span>
+                               )}
+                               {admission.address && (
+                                  <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-slate-100 text-slate-500 font-medium flex items-center gap-0.5 max-w-[120px] truncate" title={admission.address}>
+                                     <MapPin size={8} /> {admission.address}
+                                  </span>
+                               )}
+                            </div>
                           </div>
                         </div>
                       </TableCell>
@@ -1461,6 +1505,28 @@ export default function AdmissionsView({
                               : ""
                           }
                         />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-black text-superior-teal max-w-[120px] truncate" title={admission.category}>{admission.category}</span>
+                          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mt-0.5 max-w-[120px] truncate" title={admission.group}>{admission.group}</span>
+                          {admission.section && admission.section !== '-' && (
+                            <Badge variant="outline" className="mt-1 w-fit text-[8px] px-1 py-0 h-4 border-slate-200 text-slate-600 bg-slate-50">{admission.section}</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1 max-w-[120px]">
+                          {admission.subjects && admission.subjects.length > 0 ? (
+                            admission.subjects.map((sub: string, i: number) => (
+                              <Badge key={i} variant="outline" className="text-[8px] font-black uppercase bg-slate-50 text-slate-500 border-slate-200 px-1 py-0 cursor-help" title={sub}>
+                                {sub === 'Diploma in IT Subjects' ? 'DIT' : sub === 'BS Subjects' ? 'BS' : sub === 'Computer Science' ? 'CS' : sub.substring(0, 3)}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-[10px] text-slate-300">-</span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right font-black text-slate-800 text-sm">
                         Rs.{" "}
@@ -1553,29 +1619,32 @@ export default function AdmissionsView({
         </div>
       </div>
 
-      {totalPages > 1 && (
+      {data.admissions.length > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 mt-4 border-t border-slate-100 pb-8">
           <p className="text-sm font-bold text-slate-500">
-            Showing Page {currentPage} of {totalPages}
+            Showing {visibleAdmissions.length} of {filteredAdmissions.length} Admissions {data.admissions.length !== filteredAdmissions.length ? `(Total: ${data.admissions.length})` : ''} 
+            {totalPages > 1 && ` | Page ${currentPage} of ${totalPages}`}
           </p>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
-            >
-              Next
-            </Button>
-          </div>
+          {totalPages > 1 && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -2143,16 +2212,21 @@ function EditAdmissionDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {[
-                      "Inter Part-1 Boys",
-                      "Inter Part-2 Boys",
-                      "Inter Part-1 Girls",
-                      "Inter Part-2 Girls",
-                    ].map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
-                      </SelectItem>
-                    ))}
+                    {(() => {
+                      let cats = ["Inter Part-1 Boys", "Inter Part-2 Boys", "Inter Part-1 Girls", "Inter Part-2 Girls"];
+                      const program = formData.programType?.toLowerCase() || 'yearly';
+                      if (program === 'dit') cats = ['DIT Boys', 'DIT Girls'];
+                      else if (program === 'ukl3') cats = ['UK L3 Boys', 'UK L3 Girls'];
+                      else if (program === 'bs') cats = ["BS Boys", "BS Girls"];
+                      
+                      if (formData.gender === "Male") cats = cats.filter(c => c.toLowerCase().includes("boys"));
+                      else if (formData.gender === "Female") cats = cats.filter(c => c.toLowerCase().includes("girls"));
+                      return cats.map((cat) => (
+                        <SelectItem key={cat} value={cat}>
+                          {cat}
+                        </SelectItem>
+                      ));
+                    })()}
                   </SelectContent>
                 </Select>
               </div>
@@ -3367,6 +3441,12 @@ function AdmissionForm({
     if (program === "ukl3") result = ["UK L3 Boys", "UK L3 Girls"];
     if (program === "bs") result = ["BS Boys", "BS Girls"];
 
+    if (formData.gender === "Male") {
+      result = result.filter(c => c.toLowerCase().includes("boys") || c.toLowerCase().includes("male"));
+    } else if (formData.gender === "Female") {
+      result = result.filter(c => c.toLowerCase().includes("girls") || c.toLowerCase().includes("female"));
+    }
+
     // Ensure the default category is valid for the current program
     setFormData((prev) => {
       if (!result.includes(prev.category)) {
@@ -3376,7 +3456,7 @@ function AdmissionForm({
     });
 
     return result;
-  }, [program]);
+  }, [program, formData.gender]);
 
   const months = [
     "Jan",
@@ -3507,17 +3587,8 @@ function AdmissionForm({
 
     const toastId = toast.loading("Preparing Admission Form PDF...");
     try {
-      const dataUrl = await toPng(previewRef.current, {
-        quality: 1.0,
-        pixelRatio: 2,
-        backgroundColor: "#ffffff",
-        cacheBust: true,
-        includeQueryParams: true,
-        style: {
-          margin: "0",
-          padding: "0",
-        },
-      });
+      const canvas = await html2canvas(previewRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
+      const dataUrl = canvas.toDataURL('image/png', 1.0);
 
       const imgProps = new Image();
       imgProps.src = dataUrl;
@@ -3697,17 +3768,8 @@ function AdmissionForm({
 
     const toastId = toast.loading("Rendering A4 Admission Form...");
     try {
-      const dataUrl = await toPng(previewRef.current, {
-        quality: 1.0,
-        pixelRatio: 2,
-        backgroundColor: "#ffffff",
-        cacheBust: true,
-        includeQueryParams: true,
-        style: {
-          margin: "0",
-          padding: "0",
-        },
-      });
+      const canvas = await html2canvas(previewRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
+      const dataUrl = canvas.toDataURL('image/png', 1.0);
 
       const imgProps = new Image();
       imgProps.src = dataUrl;

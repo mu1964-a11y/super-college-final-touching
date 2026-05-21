@@ -1,273 +1,6 @@
+const fs = require('fs');
 
-import * as React from 'react';
-import { useState, useMemo, useEffect } from 'react';
-import { 
-  Search, 
-  Filter, 
-  Plus, 
-  FileText, 
-  Download, 
-  Upload, 
-  Calendar, 
-  User, 
-  BookOpen, 
-  ChevronRight,
-  TrendingUp,
-  Award,
-  AlertCircle,
-  Printer,
-  History
-} from 'lucide-react';
-import { motion } from 'motion/react';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger,
-  DialogClose
-} from '@/components/ui/dialog';
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuLabel, 
-  DropdownMenuSeparator, 
-  DropdownMenuTrigger 
-} from '@/components/ui/dropdown-menu';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { School, GraduationCap, Globe, Edit, Trash2, MoreHorizontal, Check } from 'lucide-react';
-import { Label } from '@/components/ui/label';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import { AcademicRecord, Student, Staff } from '../types';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-
-export const generateProfessionalResultCard = (records: any[], data: any, doc: jsPDF, isFirstPage: boolean) => {
-  if (!records || records.length === 0) return; if (!isFirstPage) doc.addPage(); const record = records[0];
-
-  const settings = data.settings;
-  const cName = settings?.collegeName || 'SUPERIOR GROUP OF COLLEGES';
-  const cCampus = settings?.campusName || 'MAIN CAMPUS';
-  const cAddress = settings?.address || 'City Name';
-  const cContact = settings?.contactNumber || 'Contact';
-  const logo = settings?.logo;
-  
-  let sumObtained = 0; let sumTotal = 0; records.forEach((r: any) => { sumObtained += Number(r.obtainedMarks) || 0; sumTotal += Number(r.totalMarks) || 0; }); const percentage = sumTotal > 0 ? (sumObtained / sumTotal) * 100 : 0;
-  const grade = percentage >= 80 ? 'A+' : percentage >= 70 ? 'A' : percentage >= 60 ? 'B' : percentage >= 50 ? 'C' : 'F';
-  const statusText = percentage >= 50 ? 'PASS' : 'FAIL';
-  
-  const pageWidth = 595.28;
-  const pageHeight = 841.89;
-
-  // Background and borders
-  doc.setFillColor(252, 252, 252);
-  doc.rect(0, 0, pageWidth, pageHeight, 'F');
-  
-  doc.setDrawColor(5, 59, 50); // Superior Teal
-  doc.setLineWidth(3);
-  doc.rect(20, 20, pageWidth - 40, pageHeight - 40);
-
-  // Inner border
-  doc.setDrawColor(200, 200, 200);
-  doc.setLineWidth(0.5);
-  doc.rect(25, 25, pageWidth - 50, pageHeight - 50);
-
-  let currentY = 80;
-
-  // Header Title
-  doc.setFontSize(24);
-  doc.setTextColor(5, 59, 50);
-  doc.setFont('times', 'bold');
-  const titleWidth = doc.getTextWidth(cName.toUpperCase());
-  
-  // Logic to handle logo next to the title
-  if (logo) {
-    try {
-      doc.addImage(logo, 'JPEG', (pageWidth - titleWidth)/2 - 35, currentY - 24, 25, 25);
-      doc.text(cName.toUpperCase(), (pageWidth - titleWidth)/2, currentY);
-    } catch (e) {
-      doc.text(cName.toUpperCase(), (pageWidth - titleWidth)/2, currentY);
-    }
-  } else {
-    doc.text(cName.toUpperCase(), (pageWidth - titleWidth)/2, currentY);
-  }
-
-  currentY += 25;
-  
-  // Campus & Subheading
-  doc.setFontSize(12);
-  doc.setTextColor(80, 80, 80);
-  doc.setFont('helvetica', 'normal');
-  const subTitleText = `${cCampus.toUpperCase()}`;
-  const subTitleWidth = doc.getTextWidth(subTitleText);
-  doc.text(subTitleText, (pageWidth - subTitleWidth)/2, currentY);
-
-  currentY += 15;
-  doc.setFontSize(9);
-  const contactText = `${cAddress} | ${cContact}`;
-  const contactWidth = doc.getTextWidth(contactText);
-  doc.text(contactText, (pageWidth - contactWidth)/2, currentY);
-
-  currentY += 40;
-
-  // Result Card Badge
-  doc.setFillColor(5, 59, 50);
-  doc.rect((pageWidth - 200)/2, currentY, 200, 25, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
-  const badgeText = "OFFICIAL RESULT CARD";
-  const badgeWidth = doc.getTextWidth(badgeText);
-  doc.text(badgeText, (pageWidth - badgeWidth)/2, currentY + 17);
-
-  currentY += 60;
-
-  // Details Wrapper
-  const startX = 60;
-
-  doc.setFontSize(11);
-  doc.setTextColor(0, 0, 0);
-  
-  // Left Column
-  doc.setFont('helvetica', 'bold');
-  doc.text("Student Name:", startX, currentY);
-  doc.setFont('helvetica', 'normal');
-  doc.text(record.studentName || 'N/A', startX + 100, currentY);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text("Roll / ID No:", startX, currentY + 25);
-  doc.setFont('helvetica', 'normal');
-  doc.text(record.studentId || 'N/A', startX + 100, currentY + 25);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text("Class / Program:", startX, currentY + 50);
-  doc.setFont('helvetica', 'normal');
-  doc.text(record.class || 'N/A', startX + 100, currentY + 50);
-
-  // Right Column
-  const rightX = pageWidth / 2 + 30;
-
-  doc.setFont('helvetica', 'bold');
-  doc.text("Exam Type:", rightX, currentY);
-  doc.setFont('helvetica', 'normal');
-  doc.text(record.testType || 'N/A', rightX + 80, currentY);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text("Date of Exam:", rightX, currentY + 25);
-  doc.setFont('helvetica', 'normal');
-  doc.text(record.date || 'N/A', rightX + 80, currentY + 25);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text("Section/Group:", rightX, currentY + 50);
-  doc.setFont('helvetica', 'normal');
-  doc.text(record.section || 'N/A', rightX + 80, currentY + 50);
-
-  currentY += 80;
-
-  // Draw table for marks
-  autoTable(doc, {
-    startY: currentY,
-    margin: { left: 50, right: 50 },
-    head: [['Subject / Exam Component', 'Total Marks', 'Marks Obtained', 'Percentage', 'Grade']],
-    body: records.map((r: any) => {
-      const p = Number(r.totalMarks) > 0 ? (Number(r.obtainedMarks) / Number(r.totalMarks)) * 100 : 0;
-      const g = p >= 80 ? 'A+' : p >= 70 ? 'A' : p >= 60 ? 'B' : p >= 50 ? 'C' : 'F';
-      return [
-        `${r.subject} - ${r.testName || 'Examination'}`, 
-        (r.totalMarks || 0).toString(), 
-        (r.obtainedMarks || 0).toString(), 
-        `${p.toFixed(1)}%`, 
-        g
-      ];
-    }).concat([
-      [ 'TOTAL', sumTotal.toString(), sumObtained.toString(), `${percentage.toFixed(1)}%`, grade ]
-    ]),
-    headStyles: {
-      fillColor: [5, 59, 50],
-      textColor: 255,
-      halign: 'center',
-      fontStyle: 'bold'
-    },
-    bodyStyles: {
-      halign: 'center',
-      textColor: 50,
-      fontSize: 11
-    },
-    theme: 'grid',
-    styles: {
-      cellPadding: 10
-    }
-  });
-
-  currentY = (doc as any).lastAutoTable.finalY + 40;
-
-  // Summary box
-  doc.setDrawColor(5, 59, 50);
-  doc.setLineWidth(1);
-  doc.setLineDashPattern([4, 4], 0);
-  doc.rect(50, currentY, pageWidth - 100, 60);
-  
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  if (statusText === 'PASS') {
-    doc.setTextColor(34, 197, 94); // Green
-  } else {
-    doc.setTextColor(239, 68, 68); // Red
-  }
-  doc.text(`Result Status: ${statusText}`, 70, currentY + 35);
-  
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(11);
-  doc.text(`Remarks:`, 250, currentY + 35);
-  doc.setFont('helvetica', 'normal');
-  doc.text(record.remarks || (statusText === 'PASS' ? 'Satisfactory Performance' : 'Needs Improvement'), 315, currentY + 35);
-  
-  doc.setLineDashPattern([], 0);
-
-  currentY += 150;
-
-  // Signatures
-  doc.setFontSize(10);
-  doc.setTextColor(0, 0, 0);
-
-  doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.5);
-
-  doc.line(60, currentY, 200, currentY);
-  doc.text("Subject Teacher", 95, currentY + 15);
-
-  doc.line(pageWidth - 200, currentY, pageWidth - 60, currentY);
-  doc.text("Principal", pageWidth - 145, currentY + 15);
-
-  // Footer
-  doc.setFontSize(8);
-  doc.setTextColor(150, 150, 150);
-  doc.text(`Generated on ${new Date().toLocaleDateString()} by SGC Management System`, pageWidth / 2, pageHeight - 30, { align: 'center' });
-};
-
-
+const bottomPart = `
 export default function AcademicView({ data }: { data: any }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedGroup, setSelectedGroup] = useState<string>("all");
@@ -291,7 +24,7 @@ export default function AcademicView({ data }: { data: any }) {
   const [activeTab, setActiveTab] = useState("marks");
 
   const studentsList = data.students || [];
-  const activeStudents = useMemo(() => studentsList.filter((s: Student & { status?: string }) => s.status !== "Struck Off"), [studentsList]);
+  const activeStudents = useMemo(() => studentsList.filter((s: Student) => s.status !== "Struck Off"), [studentsList]);
 
   const selectedStudent = useMemo(() => {
     return activeStudents.find((s: Student) => s.id === selectedStudentId) || null;
@@ -302,7 +35,7 @@ export default function AcademicView({ data }: { data: any }) {
     return activeStudents.filter((s: Student) => {
       const matchesSearch = (s.fullName || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
                            (s.id || "").toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesGroup = selectedGroup === "all" || s.group === selectedGroup;
+      const matchesGroup = selectedGroup === "all" || s.class === selectedGroup;
       const matchesSection = selectedSection === "all" || s.section === selectedSection;
       return matchesSearch && matchesGroup && matchesSection;
     });
@@ -317,30 +50,8 @@ export default function AcademicView({ data }: { data: any }) {
   // Handle + Record marks opens modal
   const handleOpenRecordModal = () => {
     setIsRecordModalOpen(true);
-    
-    let subjectsList: string[] = selectedStudent?.subjects || [];
-    
-    // Auto fetch from admission record directly if student model is missing subjects
-    if (subjectsList.length === 0 && selectedStudent?.admissionId) {
-      const adm = data.admissions?.find((a: any) => a.id === selectedStudent.admissionId);
-      if (adm && adm.subjects && adm.subjects.length > 0) {
-        subjectsList = adm.subjects;
-      }
-    }
-    
-    if (subjectsList.length === 0) {
-      // Auto fetch from student's own past records
-      subjectsList = Array.from(new Set(studentRecords.map((r: any) => r.subject))).filter(Boolean) as string[];
-      
-      // If still empty, fetch from other records in the same group/class
-      if (subjectsList.length === 0 && selectedStudent) {
-        const groupRecords = (data.academicRecords || []).filter((r: any) => r.class === selectedStudent.group);
-        subjectsList = Array.from(new Set(groupRecords.map((r: any) => r.subject))).filter(Boolean) as string[];
-      }
-    }
-
-    if (subjectsList.length > 0) {
-      setRecordSubjects(subjectsList.map((sub: string) => ({
+    if (selectedStudent && selectedStudent.subjects && selectedStudent.subjects.length > 0) {
+      setRecordSubjects(selectedStudent.subjects.map((sub: string) => ({
         subject: sub, teacher: "", obtained: "", total: "50"
       })));
     } else {
@@ -360,7 +71,7 @@ export default function AcademicView({ data }: { data: any }) {
     const recordsToSave = validRows.map(r => ({
       studentId: selectedStudent.id,
       studentName: selectedStudent.fullName,
-      class: selectedStudent.group,
+      class: selectedStudent.class,
       section: selectedStudent.section,
       testName: "Exam", 
       testType: recordTestType,
@@ -374,7 +85,7 @@ export default function AcademicView({ data }: { data: any }) {
 
     if (data.addBulkAcademicRecords) {
       data.addBulkAcademicRecords(recordsToSave);
-      toast.success(`Saved ${recordsToSave.length} subject entries.`);
+      toast.success(\`Saved \${recordsToSave.length} subject entries.\`);
     } else if (data.addAcademicRecord) {
       recordsToSave.forEach(r => data.addAcademicRecord(r));
       toast.success("Academic records saved.");
@@ -413,7 +124,7 @@ export default function AcademicView({ data }: { data: any }) {
       return;
     }
     generateProfessionalResultCard(records, data, doc, true);
-    doc.save(`Result_Card_${selectedStudent.fullName.replace(/\s+/g, "_")}_${selectedMonth}.pdf`);
+    doc.save(\`Result_Card_\${selectedStudent.fullName.replace(/\\s+/g, "_")}_\${selectedMonth}.pdf\`);
     toast.success("PDF exported successfully");
   };
 
@@ -423,12 +134,12 @@ export default function AcademicView({ data }: { data: any }) {
       "Exam Type": r.testType,
       "Date": r.date,
       "Subject": r.subject,
-      "Marks": `${r.obtainedMarks} / ${r.totalMarks}`,
+      "Marks": \`\${r.obtainedMarks} / \${r.totalMarks}\`,
       "Percentage": (Number(r.totalMarks) > 0 ? (Number(r.obtainedMarks)/Number(r.totalMarks)*100).toFixed(1) : 0) + "%"
     })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "History");
-    XLSX.writeFile(wb, `History_${selectedStudent?.fullName}.xlsx`);
+    XLSX.writeFile(wb, \`History_\${selectedStudent?.fullName}.xlsx\`);
   };
 
   // Basic Month Name formatting
@@ -495,15 +206,15 @@ export default function AcademicView({ data }: { data: any }) {
         {!selectedStudent && (
           <div className="mt-4">
             <h3 className="font-semibold text-emerald-800 mb-2">Select a student profile</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 border border-transparent pb-10">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-2">
               {filteredStudents.length > 0 ? filteredStudents.map((s: Student) => (
-                <div key={s.id} onClick={() => setSelectedStudentId(s.id)} className="p-4 border rounded-xl cursor-pointer hover:-translate-y-1.5 hover:shadow-lg hover:bg-emerald-50 hover:border-emerald-300 transition-all duration-300 flex items-center gap-3 bg-white">
-                  <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shadow-sm">
+                <div key={s.id} onClick={() => setSelectedStudentId(s.id)} className="p-3 border rounded-xl cursor-pointer hover:bg-emerald-50 hover:border-emerald-200 transition-colors flex items-center gap-3 bg-white">
+                  <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
                     {(s.fullName || "??").substring(0, 2).toUpperCase()}
                   </div>
                   <div>
                     <div className="font-semibold text-sm text-gray-900">{s.fullName}</div>
-                    <div className="text-xs text-emerald-600">{s.id} • {s.group} {s.section !== '-' ? "• SEC " + s.section : ""}</div>
+                    <div className="text-xs text-emerald-600">{s.id} • {s.class} {s.section !== '-' ? "• SEC " + s.section : ""}</div>
                   </div>
                 </div>
               )) : (
@@ -530,7 +241,7 @@ export default function AcademicView({ data }: { data: any }) {
                   <div className="text-xs text-gray-600 mt-1 flex flex-wrap gap-2 items-center">
                     <span>{selectedStudent.id}</span> • 
                     <Badge variant="secondary" className="bg-purple-100 text-purple-800 hover:bg-purple-200 border-0">SEC {selectedStudent.section}</Badge>
-                    <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border-0">{selectedStudent.group}</Badge>
+                    <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border-0">{selectedStudent.class}</Badge>
                      {selectedStudent.gender && <span className="text-emerald-700 font-medium">{selectedStudent.gender}</span>}
                   </div>
                 </div>
@@ -766,7 +477,7 @@ export default function AcademicView({ data }: { data: any }) {
                </div>
                <div>
                   <h3 className="font-bold text-gray-900 text-lg">{selectedStudent?.fullName}</h3>
-                  <p className="text-xs text-gray-500">{selectedStudent?.id} • {selectedStudent?.group} {selectedStudent?.section !== "-" ? "SEC " + selectedStudent?.section : ""}</p>
+                  <p className="text-xs text-gray-500">{selectedStudent?.id} • {selectedStudent?.class} {selectedStudent?.section !== "-" ? "SEC " + selectedStudent?.section : ""}</p>
                </div>
             </div>
             <div className="flex gap-2 items-center bg-gray-50 p-1.5 rounded-lg border border-gray-100 shadow-sm">
@@ -817,21 +528,12 @@ export default function AcademicView({ data }: { data: any }) {
                  <div></div>
                </div>
                
-               <datalist id="registered-subjects">
-                  {Array.from(new Set([
-                    ...(selectedStudent?.subjects || []),
-                    ...(data.academicRecords?.map((r: any) => r.subject) || [])
-                  ])).filter(Boolean).map(subj => (
-                    <option key={subj as string} value={subj as string} />
-                  ))}
-               </datalist>
-
                {recordSubjects.map((row, index) => {
                  const percentageValue = Number(row.total) > 0 && row.obtained !== "" ? (Number(row.obtained) / Number(row.total)) * 100 : 0;
                  const percentage = Number(row.total) > 0 && row.obtained !== "" ? percentageValue.toFixed(0) + "%" : "—";
                  return (
                  <div key={index} className="grid grid-cols-[2fr_2fr_100px_100px_80px_40px] gap-3 items-center mb-3">
-                   <Input list="registered-subjects" value={row.subject} placeholder="e.g. Chemistry" onChange={e => {
+                   <Input value={row.subject} placeholder="e.g. Chemistry" onChange={e => {
                      const upd = [...recordSubjects]; upd[index].subject = e.target.value; setRecordSubjects(upd);
                    }} className="bg-gray-50 border-gray-200 focus-visible:ring-emerald-500" />
                    <Input value={row.teacher} placeholder="Teacher name (Optional)" onChange={e => {
@@ -852,37 +554,9 @@ export default function AcademicView({ data }: { data: any }) {
                  </div>
                )})}
 
-               <div className="flex items-center justify-center gap-4 mt-4 mb-2">
-                 <Button variant="outline" className="border-dashed border-gray-300 text-gray-600 hover:text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50" onClick={() => setRecordSubjects([...recordSubjects, {subject: "", teacher: "", obtained: "", total: "50"}])}>
-                   + Add subject
-                 </Button>
-                 <Button variant="outline" className="border-dashed border-emerald-300 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50" onClick={() => {
-                   let subs = selectedStudent?.subjects || [];
-                   
-                   // Fallback 1: check the admission record directly if student model subjects are somehow missing
-                   if (subs.length === 0 && selectedStudent?.admissionId) {
-                     const adm = data.admissions?.find((a: any) => a.id === selectedStudent.admissionId);
-                     if (adm && adm.subjects && adm.subjects.length > 0) {
-                       subs = adm.subjects;
-                     }
-                   }
-                   
-                   // Fallback 2: auto fetch from student's own past records
-                   if (subs.length === 0) subs = Array.from(new Set(studentRecords.map((r: any) => r.subject))).filter(Boolean) as string[];
-                   
-                   // Fallback 3: fetch from other records in the same group/class
-                   if (subs.length === 0) subs = Array.from(new Set((data.academicRecords || []).filter((r: any) => r.class === selectedStudent?.group).map((r: any) => r.subject))).filter(Boolean) as string[];
-                   
-                   if (subs.length > 0) {
-                     setRecordSubjects(subs.map(s => ({ subject: s, teacher: "", obtained: "", total: "50" })));
-                     toast.success(`Fetched ${subs.length} subjects`);
-                   } else {
-                     toast.error("No subjects found to fetch.");
-                   }
-                 }}>
-                   <Download className="w-4 h-4 mr-2" /> Auto-fetch student subjects
-                 </Button>
-               </div>
+               <Button variant="outline" className="w-full mt-2 border-dashed border-gray-300 text-gray-600 hover:text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50" onClick={() => setRecordSubjects([...recordSubjects, {subject: "", teacher: "", obtained: "", total: "50"}])}>
+                 + Add subject
+               </Button>
              </div>
           </div>
 
@@ -898,3 +572,8 @@ export default function AcademicView({ data }: { data: any }) {
     </motion.div>
   );
 }
+`;
+
+const result = fs.readFileSync('/app/applet/topPart.txt', 'utf8') + '\n' + bottomPart;
+fs.writeFileSync('/app/applet/src/components/AcademicView.tsx', result);
+console.log('File successfully generated at /app/applet/src/components/AcademicView.tsx');

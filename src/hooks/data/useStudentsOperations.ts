@@ -22,6 +22,7 @@ export function useStudentsOperations(ctx: any) {
         email: student.email,
         blood_group: student.bloodGroup,
         address: student.address,
+        photo: student.photo,
         total_package: student.totalPackage,
         monthly_fee: student.monthlyFee,
         academic_part: student.academicPart || 'Part-1'
@@ -43,10 +44,12 @@ export function useStudentsOperations(ctx: any) {
           category: updates.category,
           group: updates.group,
           section: updates.section,
+          subjects: updates.subjects,
           contact: updates.contact,
           email: updates.email,
           blood_group: updates.bloodGroup,
           address: updates.address,
+          photo: updates.photo,
           total_package: updates.totalPackage,
           fee_received: updates.feeReceived,
           monthly_fee: updates.monthlyFee,
@@ -58,6 +61,7 @@ export function useStudentsOperations(ctx: any) {
         
         if (error) throw error;
         fetchData(true);
+        logActivity("Student Updated", `Student ${updates.fullName || id} details changed`, "warning");
         toast.success("Student details updated");
       } catch (e: any) {
         toast.error(`Failed to update student: ${e.message}`);
@@ -183,6 +187,22 @@ export function useStudentsOperations(ctx: any) {
     };
     const saveStudentAttendanceLogs = async (records: any[]) => {
       try {
+        // Optimistic UI Update
+        if (ctx.setStudentAttendance) {
+          ctx.setStudentAttendance((prev: any[]) => {
+            const current = [...prev];
+            records.forEach(r => {
+              const idx = current.findIndex(a => a.studentId === r.studentId && a.date === r.date);
+              if (idx >= 0) {
+                current[idx] = { ...current[idx], status: r.status, notes: r.notes || '' };
+              } else {
+                current.push({ studentId: r.studentId, date: r.date, status: r.status, notes: r.notes || '' });
+              }
+            });
+            return current;
+          });
+        }
+        
         const { error } = await supabase.from('student_attendance').upsert(
           records.map(r => ({
             student_id: r.studentId,
@@ -200,6 +220,7 @@ export function useStudentsOperations(ctx: any) {
         return true;
       } catch (e: any) {
         toast.error(`Failed to save attendance: ${e.message}`);
+        fetchData(true); // Revert optimistic changes
         return false;
       }
     };

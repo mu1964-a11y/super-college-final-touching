@@ -15,7 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { toPng } from 'html-to-image';
+import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 import { Admission } from '../types';
 
@@ -64,18 +64,8 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
     if (!slipRef.current) return;
     const toastId = toast.loading("Generating High-Fidelity Slip...");
     try {
-      const dataUrl = await toPng(slipRef.current, {
-        quality: 1.0,
-        pixelRatio: 2,
-        backgroundColor: '#ffffff',
-        cacheBust: true,
-        includeQueryParams: true,
-        style: {
-          transform: 'none',
-          transformOrigin: 'top left',
-          margin: '0',
-        }
-      });
+      const canvas = await html2canvas(slipRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
+      const dataUrl = canvas.toDataURL('image/png', 1.0);
       
       const imgProps = new Image();
       imgProps.src = dataUrl;

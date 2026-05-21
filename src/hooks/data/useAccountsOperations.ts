@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus } from '../../types';
 
 export function useAccountsOperations(ctx: any) {
-  const { generateStudentId, user, admissions, students, staff, expenses, fetchData } = ctx;
+  const { generateStudentId, user, admissions, students, staff, expenses, fetchData, logActivity } = ctx;
   const addIncome = async (inc: Omit<Income, 'id'>) => {
     try {
       const { error } = await supabase.from('income').insert({
@@ -228,15 +228,24 @@ export function useAccountsOperations(ctx: any) {
           installments
         };
 
+        // Optimistic UI Update
+        if (ctx.setStudents) {
+          ctx.setStudents((prev: any[]) => prev.map(s => s.id === student.id ? { ...s, feeLedger: updatedLedger } : s));
+        }
+
         const { error } = await supabase.from('students').update({
           fee_ledger: updatedLedger
         }).eq('id', student.id);
 
-        if (error) throw error;
-        // await fetchData(true);
+        if (error) {
+          throw error;
+        }
+        
+        logActivity("Fee Plan Updated", `Installment plan changed for student ${studentId}`, "warning");
         toast.success("Installment plan updated");
       } catch (e: any) {
         toast.error(`Update failed: ${e.message}`);
+        fetchData(true); // Revert optimistic changes on failure
       }
     };
 
@@ -277,6 +286,7 @@ export function useAccountsOperations(ctx: any) {
         }
 
         // await fetchData(true);
+        logActivity("Fee Package Updated", `Fee package changed for student/admission ${studentId}`, "warning");
         toast.success("Fee package updated");
       } catch (e: any) {
         toast.error(`Update failed: ${e.message}`);

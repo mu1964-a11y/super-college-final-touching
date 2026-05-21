@@ -61,15 +61,23 @@ export function useSettingsOperations(ctx: any) {
   const updatePermission = async (permission: Omit<UserPermission, 'id'>) => {
       try {
         // 1. Call Node backend to create user in Auth (so they can actually log in)
-        const response = await fetch('/api/create-user', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: permission.email,
-            password: permission.customPassword,
-            displayName: permission.displayName
-          })
-        });
+        let response;
+        try {
+          response = await fetch('/api/create-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: permission.email,
+              password: permission.customPassword,
+              displayName: permission.displayName
+            })
+          });
+        } catch (fetchErr: any) {
+          if (fetchErr.message === 'Failed to fetch') {
+            throw new Error('Could not reach backend API (Failed to fetch). Ensure server is running.');
+          }
+          throw fetchErr;
+        }
         
         const data = await response.json();
         

@@ -1,0 +1,268 @@
+
+import * as React from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { 
+  Search, 
+  Filter, 
+  Plus, 
+  FileText, 
+  Download, 
+  Upload, 
+  Calendar, 
+  User, 
+  BookOpen, 
+  ChevronRight,
+  TrendingUp,
+  Award,
+  AlertCircle,
+  Printer,
+  History
+} from 'lucide-react';
+import { motion } from 'motion/react';
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogTrigger,
+  DialogClose
+} from '@/components/ui/dialog';
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuLabel, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { School, GraduationCap, Globe, Edit, Trash2, MoreHorizontal } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { AcademicRecord, Student, Staff } from '../types';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+export const generateProfessionalResultCard = (records: any[], data: any, doc: jsPDF, isFirstPage: boolean) => {
+  if (!records || records.length === 0) return; if (!isFirstPage) doc.addPage(); const record = records[0];
+
+  const settings = data.settings;
+  const cName = settings?.collegeName || 'SUPERIOR GROUP OF COLLEGES';
+  const cCampus = settings?.campusName || 'MAIN CAMPUS';
+  const cAddress = settings?.address || 'City Name';
+  const cContact = settings?.contactNumber || 'Contact';
+  const logo = settings?.logo;
+  
+  let sumObtained = 0; let sumTotal = 0; records.forEach((r: any) => { sumObtained += Number(r.obtainedMarks) || 0; sumTotal += Number(r.totalMarks) || 0; }); const percentage = sumTotal > 0 ? (sumObtained / sumTotal) * 100 : 0;
+  const grade = percentage >= 80 ? 'A+' : percentage >= 70 ? 'A' : percentage >= 60 ? 'B' : percentage >= 50 ? 'C' : 'F';
+  const statusText = percentage >= 50 ? 'PASS' : 'FAIL';
+  
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+
+  // Background and borders
+  doc.setFillColor(252, 252, 252);
+  doc.rect(0, 0, pageWidth, pageHeight, 'F');
+  
+  doc.setDrawColor(5, 59, 50); // Superior Teal
+  doc.setLineWidth(3);
+  doc.rect(20, 20, pageWidth - 40, pageHeight - 40);
+
+  // Inner border
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.5);
+  doc.rect(25, 25, pageWidth - 50, pageHeight - 50);
+
+  let currentY = 80;
+
+  // Header Title
+  doc.setFontSize(24);
+  doc.setTextColor(5, 59, 50);
+  doc.setFont('times', 'bold');
+  const titleWidth = doc.getTextWidth(cName.toUpperCase());
+  
+  // Logic to handle logo next to the title
+  if (logo) {
+    try {
+      doc.addImage(logo, 'JPEG', (pageWidth - titleWidth)/2 - 35, currentY - 24, 25, 25);
+      doc.text(cName.toUpperCase(), (pageWidth - titleWidth)/2, currentY);
+    } catch (e) {
+      doc.text(cName.toUpperCase(), (pageWidth - titleWidth)/2, currentY);
+    }
+  } else {
+    doc.text(cName.toUpperCase(), (pageWidth - titleWidth)/2, currentY);
+  }
+
+  currentY += 25;
+  
+  // Campus & Subheading
+  doc.setFontSize(12);
+  doc.setTextColor(80, 80, 80);
+  doc.setFont('helvetica', 'normal');
+  const subTitleText = `${cCampus.toUpperCase()}`;
+  const subTitleWidth = doc.getTextWidth(subTitleText);
+  doc.text(subTitleText, (pageWidth - subTitleWidth)/2, currentY);
+
+  currentY += 15;
+  doc.setFontSize(9);
+  const contactText = `${cAddress} | ${cContact}`;
+  const contactWidth = doc.getTextWidth(contactText);
+  doc.text(contactText, (pageWidth - contactWidth)/2, currentY);
+
+  currentY += 40;
+
+  // Result Card Badge
+  doc.setFillColor(5, 59, 50);
+  doc.rect((pageWidth - 200)/2, currentY, 200, 25, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  const badgeText = "OFFICIAL RESULT CARD";
+  const badgeWidth = doc.getTextWidth(badgeText);
+  doc.text(badgeText, (pageWidth - badgeWidth)/2, currentY + 17);
+
+  currentY += 60;
+
+  // Details Wrapper
+  const startX = 60;
+
+  doc.setFontSize(11);
+  doc.setTextColor(0, 0, 0);
+  
+  // Left Column
+  doc.setFont('helvetica', 'bold');
+  doc.text("Student Name:", startX, currentY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(record.studentName || 'N/A', startX + 100, currentY);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text("Roll / ID No:", startX, currentY + 25);
+  doc.setFont('helvetica', 'normal');
+  doc.text(record.studentId || 'N/A', startX + 100, currentY + 25);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text("Class / Program:", startX, currentY + 50);
+  doc.setFont('helvetica', 'normal');
+  doc.text(record.class || 'N/A', startX + 100, currentY + 50);
+
+  // Right Column
+  const rightX = pageWidth / 2 + 30;
+
+  doc.setFont('helvetica', 'bold');
+  doc.text("Exam Type:", rightX, currentY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(record.testType || 'N/A', rightX + 80, currentY);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text("Date of Exam:", rightX, currentY + 25);
+  doc.setFont('helvetica', 'normal');
+  doc.text(record.date || 'N/A', rightX + 80, currentY + 25);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text("Section/Group:", rightX, currentY + 50);
+  doc.setFont('helvetica', 'normal');
+  doc.text(record.section || 'N/A', rightX + 80, currentY + 50);
+
+  currentY += 80;
+
+  // Draw table for marks
+  autoTable(doc, {
+    startY: currentY,
+    margin: { left: 50, right: 50 },
+    head: [['Subject / Exam Component', 'Total Marks', 'Marks Obtained', 'Percentage', 'Grade']],
+    body: records.map((r: any) => {
+      const p = Number(r.totalMarks) > 0 ? (Number(r.obtainedMarks) / Number(r.totalMarks)) * 100 : 0;
+      const g = p >= 80 ? 'A+' : p >= 70 ? 'A' : p >= 60 ? 'B' : p >= 50 ? 'C' : 'F';
+      return [
+        `${r.subject} - ${r.testName || 'Examination'}`, 
+        (r.totalMarks || 0).toString(), 
+        (r.obtainedMarks || 0).toString(), 
+        `${p.toFixed(1)}%`, 
+        g
+      ];
+    }).concat([
+      [ 'TOTAL', sumTotal.toString(), sumObtained.toString(), `${percentage.toFixed(1)}%`, grade ]
+    ]),
+    headStyles: {
+      fillColor: [5, 59, 50],
+      textColor: 255,
+      halign: 'center',
+      fontStyle: 'bold'
+    },
+    bodyStyles: {
+      halign: 'center',
+      textColor: 50,
+      fontSize: 11
+    },
+    theme: 'grid',
+    styles: {
+      cellPadding: 10
+    }
+  });
+
+  currentY = (doc as any).lastAutoTable.finalY + 40;
+
+  // Summary box
+  doc.setDrawColor(5, 59, 50);
+  doc.setLineWidth(1);
+  doc.setLineDashPattern([4, 4], 0);
+  doc.rect(50, currentY, pageWidth - 100, 60);
+  
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  if (statusText === 'PASS') {
+    doc.setTextColor(34, 197, 94); // Green
+  } else {
+    doc.setTextColor(239, 68, 68); // Red
+  }
+  doc.text(`Result Status: ${statusText}`, 70, currentY + 35);
+  
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(11);
+  doc.text(`Remarks:`, 250, currentY + 35);
+  doc.setFont('helvetica', 'normal');
+  doc.text(record.remarks || (statusText === 'PASS' ? 'Satisfactory Performance' : 'Needs Improvement'), 315, currentY + 35);
+  
+  doc.setLineDashPattern([], 0);
+
+  currentY += 150;
+
+  // Signatures
+  doc.setFontSize(10);
+  doc.setTextColor(0, 0, 0);
+
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.5);
+
+  doc.line(60, currentY, 200, currentY);
+  doc.text("Subject Teacher", 95, currentY + 15);
+
+  doc.line(pageWidth - 200, currentY, pageWidth - 60, currentY);
+  doc.text("Principal", pageWidth - 145, currentY + 15);
+
+  // Footer
+  doc.setFontSize(8);
+  doc.setTextColor(150, 150, 150);
+  doc.text(`Generated on ${new Date().toLocaleDateString()} by SGC Management System`, pageWidth / 2, pageHeight - 30, { align: 'center' });
+};

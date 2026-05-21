@@ -739,6 +739,7 @@ function StaffProfile({ member, data, onEdit }: { member: Staff, data: any, onEd
                   src={member.photo} 
                   alt="" 
                   className="w-full h-full object-cover" 
+                  referrerPolicy="no-referrer"
                   onError={() => setImageError(true)}
                 />
               ) : member.photo && imageError ? (

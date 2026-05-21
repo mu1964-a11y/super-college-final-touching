@@ -122,10 +122,13 @@ export default function FeeManagementView({
 
     (data.admissions || []).forEach((a: any) => {
       const isEnrolled =
-        a.isAdmitted ||
+        a.isAdmitted === true ||
         a.status === "Admitted/Confirmed" ||
-        a.feeReceived > 0 ||
-        a.totalPackage > 0;
+        a.status === "Admitted" ||
+        a.status === "Confirmed" ||
+        a.status === "Full Paid" ||
+        a.status === "Partial Paid" ||
+        Number(a.feeReceived) > 0;
       const exists = raw.some(
         (s: any) => s.admissionId === a.id || s.id === a.studentId,
       );
@@ -509,8 +512,6 @@ export default function FeeManagementView({
       doc.setFontSize(9);
       doc.setTextColor(150, 150, 150);
       doc.text("Description", rightX, thY);
-      doc.text("Qty", 390, thY, { align: "center" });
-      doc.text("Unit price", 460, thY, { align: "right" });
       doc.text("Amount", 560, thY, { align: "right" });
 
       doc.setDrawColor(230, 230, 230);
@@ -556,10 +557,6 @@ export default function FeeManagementView({
 
       doc.setFontSize(9);
       doc.setTextColor(0, 0, 0);
-      doc.text("1", 390, tdY, { align: "center" });
-      doc.text(`Rs${totalPackage.toLocaleString()}`, 460, tdY, {
-        align: "right",
-      });
       doc.text(`Rs${totalPackage.toLocaleString()}`, 560, tdY, {
         align: "right",
       });
@@ -1442,6 +1439,7 @@ export default function FeeManagementView({
                                       src={student.photo}
                                       alt=""
                                       className="w-full h-full object-cover"
+                                      referrerPolicy="no-referrer"
                                       onError={(e) => {
                                         const target =
                                           e.target as HTMLImageElement;

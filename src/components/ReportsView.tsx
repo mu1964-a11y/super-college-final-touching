@@ -42,7 +42,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { toPng } from 'html-to-image';
+import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 import { useReactToPrint } from 'react-to-print';
 
@@ -82,17 +82,8 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
       reportRef.current.style.height = 'auto';
       reportRef.current.style.overflow = 'visible';
       
-      const dataUrl = await toPng(reportRef.current, { 
-        cacheBust: true, 
-        backgroundColor: '#ffffff',
-        includeQueryParams: true,
-        style: {
-          overflow: 'visible',
-          height: 'auto',
-          margin: "0",
-          padding: "0"
-        }
-      });
+      const canvas = await html2canvas(reportRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
+      const dataUrl = canvas.toDataURL('image/png', 1.0);
       
       reportRef.current.style.cssText = originalStyle;
       

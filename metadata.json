@@ -2,5 +2,7 @@
   "name": "SCJ Management System lms final",
   "description": "A comprehensive college management system for Superior Group of Colleges Jahanian, featuring admissions, student management, staff management, and financial tracking.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

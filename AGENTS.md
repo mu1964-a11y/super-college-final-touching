@@ -58,4 +58,8 @@ As the project grows over the upcoming months, strictly adhere to these rules:
    - Use dynamic conditional labels depending on props or context instead of hardcoding strings. For instance: `gender === 'Male' ? 'Boys Campus' : gender === 'Female' ? 'Girls Campus' : 'Student Records'` or `All Campuses`.
 7. **Tabs & Modular UIs**:
    - Complex views like `FeeManagementView` use tab-based navigation (`collect`, `records`, `structure`, `defaulters`) to cleanly separate concerns and improve UX. Never break this separated structure.
+8. **Language Preference**:
+   - MUST ALWAYS COMMUNICATE AND REPLY IN ENGLISH OR HINGLISH ONLY. Do not use pure Urdu responses.
+9. **Session Normalization**:
+   - A logic hook is applied in `App.tsx` (`normalizeSession`) that forces any usage of `2026-2028` (or similar 4-digit ended sessions) to be read, processed, and tracked as `2026-28`. Keep this in your logic, the system will naturally consider `2026-2028` as `2026-28`.
 

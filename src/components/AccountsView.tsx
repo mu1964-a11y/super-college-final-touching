@@ -56,7 +56,6 @@ import FeeReceipt from './FeeReceipt';
 import AdmissionSlip from './AdmissionSlip';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { 
   Student, 
@@ -561,7 +560,7 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
                       >
                         <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-sm font-black text-superior-teal shrink-0 overflow-hidden shadow-inner">
                           {student.photo ? (
-                            <img src={student.photo} alt="" className="w-full h-full object-cover" />
+                            <img src={student.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           ) : (
                             student.fullName.charAt(0)
                           )}
@@ -730,7 +729,7 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
           <div className="flex items-center gap-5">
             <div className="w-16 h-16 rounded-2xl bg-white shadow-sm border border-slate-100 flex items-center justify-center text-superior-teal font-black text-2xl overflow-hidden shadow-inner">
               {student.photo ? (
-                <img src={student.photo} alt="" className="w-full h-full object-cover" />
+                <img src={student.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
                 student.fullName.charAt(0)
               )}

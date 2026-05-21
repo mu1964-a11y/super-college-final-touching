@@ -24,6 +24,9 @@ import {
   BookOpen,
   Award,
   Calendar,
+  Home,
+  Layers,
+  Sparkles,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useSupabaseData } from "./hooks/useSupabaseData";
@@ -89,11 +92,13 @@ const NavSection = ({
   title: string;
   children: React.ReactNode;
 }) => (
-  <div className="mt-6 mb-2">
-    <h3 className="px-6 text-[10px] font-medium text-white/30 uppercase tracking-[0.15em] mb-2">
-      {title}
-    </h3>
-    {children}
+  <div className="mt-4 mb-2">
+    <div className="px-5 mb-1.5">
+      <h3 className="text-[10px] font-semibold text-white/40 uppercase tracking-widest font-mono">
+        {title}
+      </h3>
+    </div>
+    <div className="space-y-[1px] px-2">{children}</div>
   </div>
 );
 
@@ -127,69 +132,84 @@ const NavItem = ({
     activePage === id || subItems?.some((s) => s.id === activePage);
 
   return (
-    <div className="mb-0.5">
-      <motion.button
-        whileTap={{ scale: 0.98 }}
+    <div className="w-full">
+      <button
         onClick={() => {
           if (subItems && onToggleMenu) onToggleMenu(id);
           else if (onNavClick) onNavClick(id as Page, null, null);
         }}
         className={cn(
-          "w-full flex items-center justify-between px-6 py-2.5 transition-all duration-200 group relative",
+          "w-full flex items-center justify-between px-3 py-[7px] rounded-lg transition-colors group relative overflow-hidden",
           isActive
-            ? "bg-white/10 text-white border-l-[2.5px] border-superior-gold"
-            : "text-white/60 hover:bg-white/8 hover:text-white",
+            ? "bg-superior-gold/10 text-white"
+            : "text-white/60 hover:bg-white/5 hover:text-white",
         )}
       >
         {isActive && (
-          <motion.div
-            layoutId="nav-active-box"
-            className="absolute inset-0 border-2 border-superior-gold/30 bg-white/5 pointer-events-none"
-            initial={false}
-            transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-          />
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-4 bg-superior-gold rounded-r-md" />
         )}
-        <div className="flex items-center gap-3 relative z-10">
-          <Icon
-            size={18}
+        <div className="flex items-center gap-3 relative z-10 w-full">
+          <Icon 
+            size={16} 
+            strokeWidth={isActive ? 2.5 : 2}
             className={cn(
-              isActive ? "text-white" : "text-white/40 group-hover:text-white",
+              "transition-colors flex-shrink-0 ml-1",
+              isActive ? "text-superior-gold" : "text-white/40 group-hover:text-white/80"
             )}
           />
-          <span className="font-medium text-[13px]">{label}</span>
+          <span className={cn(
+            "text-[12px] transition-all tracking-normal text-left truncate flex-1",
+            isActive ? "font-semibold text-superior-gold" : "font-medium"
+          )}>{label}</span>
         </div>
         {subItems && (
           <div
             className={cn(
-              "transition-transform duration-200 relative z-10",
-              isExpanded ? "rotate-180" : "",
+              "transition-transform duration-200 relative z-10 flex-shrink-0 ml-2",
+              isExpanded ? "rotate-180 text-superior-gold" : "opacity-40 group-hover:opacity-100",
             )}
           >
-            <ChevronDown size={14} className="opacity-40" />
+            <ChevronDown size={14} />
           </div>
         )}
-      </motion.button>
+      </button>
 
-      {subItems && isExpanded && (
-        <div className="bg-black/10 py-1">
-          {subItems.map((sub, idx) => (
-            <button
-              key={`${sub.id}-${idx}`}
-              onClick={() => onNavClick && onNavClick(sub.id, sub.filter, id)}
-              className={cn(
-                "w-full text-left pl-14 pr-6 py-2 text-[12px] transition-all duration-200",
-                activePage === sub.id &&
-                  (activeFilter === sub.filter ||
-                    (!activeFilter && !sub.filter))
-                  ? "text-superior-gold font-medium"
-                  : "text-white/40 hover:text-white hover:bg-white/5",
-              )}
-            >
-              {sub.label}
-            </button>
-          ))}
-        </div>
-      )}
+      <AnimatePresence>
+        {subItems && isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="overflow-hidden relative"
+          >
+            <div className="absolute left-[20px] top-0 bottom-2 w-[1px] bg-white/10" />
+            <div className="py-1 flex flex-col gap-0.5 pl-[14px]">
+              {subItems.map((sub, idx) => {
+                const isSubActive = activePage === sub.id && (activeFilter === sub.filter || (!activeFilter && !sub.filter));
+                return (
+                  <button
+                    key={`${sub.id}-${idx}`}
+                    onClick={() => onNavClick && onNavClick(sub.id, sub.filter, id)}
+                    className={cn(
+                      "w-full text-left pl-6 pr-3 py-1.5 rounded-lg text-[11px] transition-colors relative group/sub tracking-wide",
+                      isSubActive
+                        ? "text-superior-gold font-medium bg-superior-gold/5"
+                        : "text-white/50 hover:text-white hover:bg-white/5",
+                    )}
+                  >
+                    <div className={cn(
+                      "absolute left-0 top-1/2 -translate-y-1/2 w-4 h-[1px] transition-colors",
+                      isSubActive ? "bg-superior-gold" : "bg-white/10 group-hover/sub:bg-white/30"
+                    )} />
+                    {sub.label}
+                  </button>
+                )
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -202,6 +222,7 @@ export default function App() {
   const [hideLedgerAlert, setHideLedgerAlert] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [loadingCountdown, setLoadingCountdown] = useState(5);
   const [isBrandingLoaded, setIsBrandingLoaded] = useState(false);
   const [showLoginForm, setShowLoginForm] = useState(false);
   const [email, setEmail] = useState("");
@@ -211,10 +232,28 @@ export default function App() {
   const [brandingSettings, setBrandingSettings] = useState<{
     name: string;
     logo: string | null;
-  }>({
-    name: "Superior College",
-    logo: null,
+  }>(() => {
+    try {
+      const savedLogo = localStorage.getItem('college_logo');
+      const savedName = localStorage.getItem('college_name');
+      return {
+        name: savedName || "Superior College",
+        logo: savedLogo || null,
+      };
+    } catch {
+      return { name: "Superior College", logo: null };
+    }
   });
+
+  // Countdown timer for app loading screen
+  React.useEffect(() => {
+    if (user && loadingCountdown > 0) {
+      const timer = setTimeout(() => {
+        setLoadingCountdown((prev) => prev - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [user, loadingCountdown]);
 
   // Dark mode init
   React.useEffect(() => {
@@ -259,10 +298,19 @@ export default function App() {
             data.logo ||
             data.config?.logo ||
             data.config?.logo_url;
+            
+          const finalName = data.college_name || data.name || "Superior College";
           setBrandingSettings({
-            name: data.college_name || data.name || "Superior College",
+            name: finalName,
             logo: logoSource || null,
           });
+          
+          try {
+            if (logoSource) localStorage.setItem('college_logo', logoSource);
+            localStorage.setItem('college_name', finalName);
+          } catch(e) {
+            console.warn("localStorage sync error:", e);
+          }
 
           // Debugging help - if logo is still not showing but we have data
           if (!logoSource) {
@@ -386,40 +434,66 @@ export default function App() {
     if (data.settings) {
       const logoSource = data.settings.logo;
       if (logoSource) {
-        setBrandingSettings((prev) => ({
-          name: data.settings.collegeName || prev.name,
-          logo: logoSource,
-        }));
+        setBrandingSettings((prev) => {
+          const newName = data.settings.collegeName || prev.name;
+          try {
+            localStorage.setItem('college_logo', logoSource);
+            localStorage.setItem('college_name', newName);
+          } catch(e) {
+            console.warn("localStorage sync error:", e);
+          }
+          return {
+            name: newName,
+            logo: logoSource,
+          };
+        });
       } else if (data.settings.collegeName) {
-        setBrandingSettings((prev) => ({
-          ...prev,
-          name: data.settings.collegeName,
-        }));
+        setBrandingSettings((prev) => {
+          try {
+            localStorage.setItem('college_name', data.settings.collegeName);
+          } catch(e) {
+            console.warn("localStorage sync error:", e);
+          }
+          return {
+            ...prev,
+            name: data.settings.collegeName,
+          };
+        });
       }
     }
   }, [data.settings]);
+
+  // Normalize session format so 2026-2028 becomes 2026-28
+  const normalizeSession = (s: string | null | undefined): string => {
+    if (!s) return "";
+    let trimmed = s.trim();
+    if (trimmed.match(/^\d{4}-\d{4}$/)) {
+      const parts = trimmed.split('-');
+      if (parts[1].length === 4) {
+        trimmed = `${parts[0]}-${parts[1].substring(2)}`;
+      }
+    }
+    return trimmed;
+  };
 
   // All Unique Sessions from Data
   const availableSessions = useMemo(() => {
     const sessionSet = new Set<string>();
 
-    // Add default common sessions (Removed 2026-2028 from system)
     ["2024-26", "2025-27", "2026-28", "2027-29"].forEach((s) =>
-      sessionSet.add(s.trim()),
+      sessionSet.add(s),
     );
 
-    // Add sessions from settings
     if (data.settings?.academicSession) {
-      sessionSet.add(data.settings.academicSession.trim());
+      sessionSet.add(normalizeSession(data.settings.academicSession));
     }
 
-    // Add sessions found in records
     data.admissions.forEach(
-      (a) => a.session && sessionSet.add(a.session.trim()),
+      (a) => a.session && sessionSet.add(normalizeSession(a.session)),
     );
-    data.students.forEach((s) => s.session && sessionSet.add(s.session.trim()));
-    data.incomes.forEach((i) => i.session && sessionSet.add(i.session.trim()));
-    data.expenses.forEach((e) => e.session && sessionSet.add(e.session.trim()));
+    data.students.forEach((s) => s.session && sessionSet.add(normalizeSession(s.session)));
+    data.incomes.forEach((i) => i.session && sessionSet.add(normalizeSession(i.session)));
+    data.expenses.forEach((e) => e.session && sessionSet.add(normalizeSession(e.session)));
 
     return Array.from(sessionSet).sort();
   }, [
@@ -434,9 +508,7 @@ export default function App() {
   const hasLoadedSettingsInitial = React.useRef(false);
   React.useEffect(() => {
     if (data.settings?.academicSession && !hasLoadedSettingsInitial.current) {
-      // On initial load, we might want to default to 'all' if the academicSession results in 0 items
-      // But for now, let's just set it and let DashboardView handle the "No Data" suggestion
-      setSelectedSession(data.settings.academicSession);
+      setSelectedSession(normalizeSession(data.settings.academicSession));
       hasLoadedSettingsInitial.current = true;
     }
   }, [data.settings?.academicSession]);
@@ -444,13 +516,9 @@ export default function App() {
   // Filtered Data based on session
   const filteredData = useMemo(() => {
     const filterBySession = (list: any[]) => {
-      // Show everything if 'all' is selected
       if (selectedSession === "all") return list;
-
-      // Strict matching for session with trim
       return list.filter(
-        (item) =>
-          (item.session || "").trim() === (selectedSession || "").trim(),
+        (item) => normalizeSession(item.session) === normalizeSession(selectedSession)
       );
     };
 
@@ -463,17 +531,17 @@ export default function App() {
       incomes: filterBySession(data.incomes),
       expenses: filterBySession(data.expenses),
       academicRecords: filterBySession(data.academicRecords),
-      // Action wrappers to inject session
+      // Action wrappers to inject session. Always save as normalized version.
       addLead: (lead: any) =>
-        data.addLead({ ...lead, session: selectedSession }),
+        data.addLead({ ...lead, session: normalizeSession(selectedSession) }),
       addAdmission: (admission: any) =>
-        data.addAdmission({ ...admission, session: selectedSession }),
+        data.addAdmission({ ...admission, session: normalizeSession(selectedSession) }),
       addStudent: (student: any) =>
-        data.addStudent({ ...student, session: selectedSession }),
+        data.addStudent({ ...student, session: normalizeSession(selectedSession) }),
       addExpense: (expense: any) =>
-        data.addExpense({ ...expense, session: selectedSession }),
+        data.addExpense({ ...expense, session: normalizeSession(selectedSession) }),
       addIncome: (income: any) =>
-        data.addIncome({ ...income, session: selectedSession }),
+        data.addIncome({ ...income, session: normalizeSession(selectedSession) }),
     };
   }, [data, selectedSession, availableSessions]);
 
@@ -523,8 +591,8 @@ export default function App() {
     `;
   }, [settings]);
 
-  const SUPER_ADMIN_EMAIL = "mughalazam1964@gmail.com";
-  const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL;
+  const SUPER_ADMIN_EMAILS = ["mughalazam1964@gmail.com", "akhtar147jhn@gmail.com"];
+  const isSuperAdmin = user?.email ? SUPER_ADMIN_EMAILS.includes(user.email) : false;
 
   const userPermission = useMemo(
     () => data.permissions.find((p) => p.email === user?.email),
@@ -718,14 +786,85 @@ export default function App() {
     setExpandedMenu(parentMenu || autoParent);
   };
 
-  if (authLoading || !isBrandingLoaded) {
+  if (authLoading || (!user && !isBrandingLoaded)) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-[#042e27] via-[#085a4e] to-[#011a15] relative overflow-hidden">
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-          className="w-12 h-12 rounded-full border-4 border-white/10 border-t-superior-gold"
-        />
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-[#042e27] via-[#085a4e] to-[#011a15] relative overflow-hidden font-sans">
+        <div className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none">
+          <motion.div
+            animate={{ rotateX: 360, rotateZ: 360 }}
+            transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
+            className="w-[120vw] h-[120vw] lg:w-[80vw] lg:h-[80vw] absolute opacity-30"
+            style={{ transformStyle: "preserve-3d", perspective: "1000px" }}
+          >
+            <div
+              className="absolute inset-10 rounded-full border border-superior-gold/20 shadow-[0_0_100px_rgba(201,168,76,0.1)]"
+              style={{ transform: "rotateX(70deg)" }}
+            />
+          </motion.div>
+          <div className="absolute w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10 mix-blend-overlay" />
+          <div className="absolute w-full h-full bg-gradient-to-t from-[#011a15] via-transparent to-transparent z-0" />
+        </div>
+
+        <div className="relative z-10 flex flex-col items-center justify-center">
+          {brandingSettings.logo ? (
+            <div className="relative mb-10 w-44 h-44 flex items-center justify-center">
+               <div className="absolute inset-0 rounded-full overflow-hidden shadow-[0_0_30px_rgba(201,168,76,0.2)] bg-[#011a15]">
+                 <motion.img 
+                   src={brandingSettings.logo}
+                   alt="College Logo"
+                   className="w-full h-full object-cover"
+                   initial={{ opacity: 0, scale: 0.8 }}
+                   animate={{ opacity: 1, scale: 1 }}
+                   transition={{ duration: 0.8 }}
+                 />
+               </div>
+               
+               {/* Overlay countdown in the center layout style but empty block to match structure */}
+               <div className="absolute inset-0 flex items-center justify-center z-20">
+                   <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="w-12 h-12 border-4 border-superior-gold/20 border-t-superior-gold rounded-full shadow-[0_0_15px_rgba(201,168,76,0.5)]"
+                   />
+               </div>
+               
+               {/* 360 spinner rings */}
+               <motion.div
+                 animate={{ rotate: 360 }}
+                 transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                 className="absolute inset-[-10px] rounded-full border border-superior-gold/20 border-t-superior-gold/80 shadow-[0_0_20px_rgba(201,168,76,0.3)] z-10"
+               />
+               <motion.div
+                 animate={{ rotate: -360 }}
+                 transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+                 className="absolute inset-[-24px] rounded-full border border-white/5 border-b-white/30 z-10 pointer-events-none"
+               />
+            </div>
+          ) : (
+            <div className="relative mb-10 w-32 h-32 flex flex-col items-center justify-center bg-white/5 rounded-full border border-white/10 backdrop-blur-md">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                  className="w-12 h-12 rounded-full border-4 border-white/10 border-t-superior-gold"
+                />
+              <motion.div
+                 animate={{ rotate: 360 }}
+                 transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                 className="absolute inset-0 rounded-full border border-superior-gold/20 border-t-superior-gold/80 pointer-events-none"
+               />
+            </div>
+          )}
+
+        <div className="relative z-10 text-center space-y-3">
+          <h2 className="text-xl md:text-2xl font-black text-white tracking-[0.2em] uppercase">
+            {brandingSettings.name}
+          </h2>
+          
+            <p className="text-superior-gold font-medium text-xs md:text-sm tracking-widest uppercase animate-pulse mt-4">
+              Connecting to secure environment...
+            </p>
+        </div>
+        </div>
       </div>
     );
   }
@@ -971,77 +1110,123 @@ export default function App() {
     );
   }
 
-  if (data.loading) {
+  if (data.loading || loadingCountdown > 0) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-superior-teal gap-8 relative overflow-hidden">
-        {/* Decorative Background Elements */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-superior-gold/10 rounded-full translate-y-1/2 -translate-x-1/2 blur-3xl" />
-
-        <motion.div
-          animate={{ scale: [1, 1.1, 1] }}
-          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-          className="relative"
-        >
-          {/* Animated Ring */}
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-[#042e27] via-[#085a4e] to-[#011a15] relative overflow-hidden font-sans">
+        <div className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none">
           <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-            className="absolute -inset-4 border-2 border-dashed border-white/20 rounded-full"
-          />
-
-          <motion.div className="w-56 h-56 rounded-full bg-white flex items-center justify-center shadow-3xl relative z-10 border-8 border-white overflow-hidden shadow-[0_45px_100px_-20px_rgba(0,0,0,0.5)]">
-            {brandingSettings.logo ? (
-              <img
-                src={brandingSettings.logo}
-                alt="Branding"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as any).style.display = "none";
-                  const parent = (e.target as any).parentElement;
-                  if (parent && !parent.querySelector(".fallback-icon")) {
-                    parent.innerHTML =
-                      '<div class="fallback-icon flex items-center justify-center text-superior-teal"><svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-school"><path d="M14 22v-4a2 2 0 1 0-4 0v4"/><path d="m18 10 4 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8l4-2"/><path d="M18 5v17"/><path d="m3 12 8-4h2l8 4"/><path d="M6 5v17"/><circle cx="12" cy="9" r="2"/></svg></div>';
-                  }
-                }}
-              />
-            ) : (
-              <School size={80} className="text-superior-teal" />
-            )}
+            animate={{ rotateX: 360, rotateZ: 360 }}
+            transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
+            className="w-[120vw] h-[120vw] lg:w-[80vw] lg:h-[80vw] absolute opacity-30"
+            style={{ transformStyle: "preserve-3d", perspective: "1000px" }}
+          >
+            <div
+              className="absolute inset-10 rounded-full border border-superior-gold/20 shadow-[0_0_100px_rgba(201,168,76,0.1)]"
+              style={{ transform: "rotateX(70deg)" }}
+            />
           </motion.div>
-        </motion.div>
+          <div className="absolute w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10 mix-blend-overlay" />
+          <div className="absolute w-full h-full bg-gradient-to-t from-[#011a15] via-transparent to-transparent z-0" />
+        </div>
 
-        <div className="space-y-4 text-center relative z-10">
-          <div className="space-y-1">
-            <h2 className="text-white font-display font-black text-3xl uppercase tracking-[0.1em]">
-              {brandingSettings.name}
-            </h2>
-            <p className="text-superior-gold text-[12px] font-black uppercase tracking-[0.6em] ml-1">
-              Academic Portal
+        <div className="relative z-10 flex flex-col items-center justify-center">
+          {brandingSettings.logo ? (
+            <div className="relative mb-10 w-44 h-44 flex items-center justify-center">
+               <div className="absolute inset-0 rounded-full overflow-hidden shadow-[0_0_30px_rgba(201,168,76,0.2)] bg-[#011a15]">
+                 <motion.img 
+                   src={brandingSettings.logo}
+                   alt="College Logo"
+                   className="w-full h-full object-cover"
+                   initial={{ opacity: 0, scale: 0.8 }}
+                   animate={{ opacity: 1, scale: 1 }}
+                   transition={{ duration: 0.8 }}
+                 />
+               </div>
+               
+               {/* Overlay countdown in the center */}
+               <div className="absolute inset-0 flex items-center justify-center z-20">
+                 {loadingCountdown > 0 ? (
+                   <motion.div
+                      key={loadingCountdown}
+                      initial={{ scale: 1.5, opacity: 0, y: 10 }}
+                      animate={{ scale: 1, opacity: 1, y: 0 }}
+                      className="text-6xl font-black text-white drop-shadow-[0_0_20px_rgba(201,168,76,0.8)]"
+                      style={{ textShadow: "0px 4px 20px rgba(0,0,0,0.8)" }}
+                   >
+                     {loadingCountdown}
+                   </motion.div>
+                 ) : (
+                   <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="w-12 h-12 border-4 border-superior-gold/20 border-t-superior-gold rounded-full shadow-[0_0_15px_rgba(201,168,76,0.5)]"
+                   />
+                 )}
+               </div>
+               
+               {/* 360 spinner rings */}
+               <motion.div
+                 animate={{ rotate: 360 }}
+                 transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                 className="absolute inset-[-10px] rounded-full border border-superior-gold/20 border-t-superior-gold/80 shadow-[0_0_20px_rgba(201,168,76,0.3)] z-10"
+               />
+               <motion.div
+                 animate={{ rotate: -360 }}
+                 transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+                 className="absolute inset-[-24px] rounded-full border border-white/5 border-b-white/30 z-10 pointer-events-none"
+               />
+            </div>
+          ) : (
+            <div className="relative mb-10 w-32 h-32 flex flex-col items-center justify-center bg-white/5 rounded-full border border-white/10 backdrop-blur-md">
+              {loadingCountdown > 0 ? (
+                <motion.div
+                  key={loadingCountdown}
+                  initial={{ scale: 1.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="text-5xl font-black text-white drop-shadow-[0_0_20px_rgba(201,168,76,0.8)]"
+                >
+                  {loadingCountdown}
+                </motion.div>
+              ) : (
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                  className="w-12 h-12 rounded-full border-4 border-white/10 border-t-superior-gold"
+                />
+              )}
+              <motion.div
+                 animate={{ rotate: 360 }}
+                 transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                 className="absolute inset-0 rounded-full border border-superior-gold/20 border-t-superior-gold/80 pointer-events-none"
+               />
+            </div>
+          )}
+
+        <div className="relative z-10 text-center space-y-3">
+          <h2 className="text-xl md:text-2xl font-black text-white tracking-[0.2em] uppercase">
+            {brandingSettings.name}
+          </h2>
+          
+          {user && (
+            <motion.p 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-base text-superior-gold font-medium mt-4 tracking-wide"
+            >
+              Welcome back, <span className="text-white font-bold">{user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Admin"}</span>! Logging you in...
+            </motion.p>
+          )}
+
+          {loadingCountdown > 0 ? (
+            <p className="text-white/60 font-medium text-xs md:text-sm tracking-widest uppercase flex items-center justify-center gap-2 mt-4">
+              Preparing workspace...
             </p>
-          </div>
-
-          <div className="flex flex-col items-center gap-3">
-            <div className="flex items-center gap-2">
-              <motion.div
-                animate={{ opacity: [0.3, 1, 0.3] }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-                className="w-2 h-2 rounded-full bg-superior-gold shadow-[0_0_10px_rgba(201,168,76,0.8)]"
-              />
-              <p className="text-white/60 text-[10px] font-black uppercase tracking-[0.4em]">
-                Syncing Records
-              </p>
-            </div>
-
-            <div className="w-56 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
-              <motion.div
-                className="h-full bg-gradient-to-r from-superior-gold to-yellow-400 shadow-[0_0_15px_rgba(201,168,76,0.5)]"
-                initial={{ width: "0%" }}
-                animate={{ width: "100%" }}
-                transition={{ duration: 2.5, repeat: Infinity, ease: "linear" }}
-              />
-            </div>
-          </div>
+          ) : (
+            <p className="text-superior-gold font-medium text-xs md:text-sm tracking-widest uppercase animate-pulse mt-4">
+              Finalizing setup...
+            </p>
+          )}
+        </div>
         </div>
       </div>
     );
@@ -1063,63 +1248,69 @@ export default function App() {
 
             {/* Sidebar as Floating Drawer */}
             <motion.aside
-              initial={{ x: -280 }}
+              initial={{ x: -250 }}
               animate={{ x: 0 }}
-              exit={{ x: -280 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed left-0 top-0 bottom-0 w-[280px] bg-superior-teal text-white z-50 flex flex-col shadow-2xl"
+              exit={{ x: -250 }}
+              transition={{ type: "spring", damping: 30, stiffness: 200 }}
+              className="fixed left-0 top-0 bottom-0 w-[250px] bg-[#053229] text-white z-50 flex flex-col shadow-[20px_0_40px_rgba(0,0,0,0.6)] border-r border-white/[0.04] overflow-hidden"
             >
-              {/* Sidebar Pattern Overlay */}
-              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.03] pointer-events-none" />
+              {/* Premium Minimalist Background Effects */}
+              <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-superior-gold/[0.06] to-transparent z-0 pointer-events-none" />
+              <div className="absolute -top-40 -left-40 w-80 h-80 bg-superior-gold/[0.05] rounded-full blur-[100px] z-0 pointer-events-none" />
 
-              <div className="p-8 h-24 flex items-center justify-between relative z-10">
-                <div className="flex items-center gap-4">
-                  <div className="w-11 h-11 rounded-full bg-white flex items-center justify-center flex-shrink-0 shadow-xl shadow-black/20 transform rotate-3 overflow-hidden">
-                    {brandingSettings.logo ? (
-                      <img
-                        src={brandingSettings.logo}
-                        alt="Logo"
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as any).style.display = "none";
-                          const parent = (e.target as any).parentElement;
-                          if (
-                            parent &&
-                            !parent.querySelector(".fallback-icon")
-                          ) {
-                            parent.innerHTML =
-                              '<div class="fallback-icon flex items-center justify-center text-superior-teal"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-school"><path d="M14 22v-4a2 2 0 1 0-4 0v4"/><path d="m18 10 4 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8l4-2"/><path d="M18 5v17"/><path d="m3 12 8-4h2l8 4"/><path d="M6 5v17"/><circle cx="12" cy="9" r="2"/></svg></div>';
-                          }
-                        }}
-                      />
-                    ) : (
-                      <School size={24} className="text-superior-teal" />
-                    )}
+              <div className="px-4 py-3 h-14 flex items-center justify-between relative z-10 border-b border-white/[0.04]">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-superior-gold/45 to-transparent p-[1px] flex items-center justify-center flex-shrink-0 shadow-lg">
+                    <div className="w-full h-full rounded-full bg-white overflow-hidden flex items-center justify-center p-0.5">
+                      {brandingSettings.logo ? (
+                        <img
+                          src={brandingSettings.logo}
+                          alt="Logo"
+                          className="w-full h-full rounded-full object-contain"
+                          onError={(e) => {
+                            (e.target as any).style.display = "none";
+                            const parent = (e.target as any).parentElement;
+                            if (
+                              parent &&
+                              !parent.querySelector(".fallback-icon")
+                            ) {
+                              parent.innerHTML =
+                                '<div class="fallback-icon flex items-center justify-center text-superior-teal"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-school"><path d="M14 22v-4a2 2 0 1 0-4 0v4"/><path d="m18 10 4 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8l4-2"/><path d="M18 5v17"/><path d="m3 12 8-4h2l8 4"/><path d="M6 5v17"/><circle cx="12" cy="9" r="2"/></svg></div>';
+                            }
+                          }}
+                        />
+                      ) : (
+                        <School size={16} className="text-superior-teal" />
+                      )}
+                    </div>
                   </div>
-                  <div className="overflow-hidden text-left">
-                    <h1 className="font-display font-black text-xl leading-none text-white tracking-tight">
+                  <div className="overflow-hidden text-left flex flex-col justify-center">
+                    <h1 className="font-sans font-bold text-[14px] leading-tight tracking-wide text-white/95">
                       {settings?.collegeName
                         ?.split(" ")
                         .map((w: string) => w[0])
                         .join("") || "SCJ"}
                     </h1>
-                    <p className="text-[10px] text-superior-gold uppercase tracking-[0.25em] font-black mt-1">
-                      Management
-                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-superior-gold animate-pulse" />
+                      <p className="text-[8px] text-white/60 font-mono tracking-widest font-bold uppercase">
+                        Workspace
+                      </p>
+                    </div>
                   </div>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => setIsSidebarOpen(false)}
-                  className="text-white/40 hover:text-white hover:bg-white/10 rounded-xl"
+                  className="text-white/30 hover:text-white hover:bg-white/5 rounded-lg h-7 w-7"
                 >
-                  <X size={20} />
+                  <X size={14} />
                 </Button>
               </div>
 
-              <ScrollArea className="flex-1 px-2 relative z-10">
-                <nav className="pb-8 space-y-1">
+              <ScrollArea className="flex-1 px-3 mt-1 relative z-10 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                <nav className="pb-4 space-y-0.5">
                   {allowedSections.includes("dashboard") && (
                     <NavSection title="Main Console">
                       <NavItem
@@ -1318,12 +1509,23 @@ export default function App() {
                 </nav>
               </ScrollArea>
 
-              <div className="p-6 border-t border-white/5 bg-black/20 relative z-10">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)] animate-pulse" />
-                  <p className="text-[10px] text-white/50 font-black uppercase tracking-[0.2em]">
-                    System Online
-                  </p>
+              <div className="p-2.5 relative z-10 bg-transparent border-t border-white/[0.04]">
+                <div className="flex items-center justify-between px-2 py-1.5 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group border border-transparent hover:border-white/5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-superior-gold/80 to-yellow-600/80 flex items-center justify-center text-white font-bold text-xs shadow-md">
+                      {(user?.user_metadata?.full_name || "Admin")[0].toUpperCase()}
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[11px] font-semibold text-white/90 truncate max-w-[100px]">
+                        {user?.user_metadata?.full_name || "System Admin"}
+                      </span>
+                      <span className="text-[9px] text-white/40 flex items-center gap-1.5 font-medium tracking-wide mt-0.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/80" />
+                        Active session
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronDown size={14} className="text-white/20 group-hover:text-white/60 transition-colors" />
                 </div>
               </div>
             </motion.aside>
@@ -1352,6 +1554,58 @@ export default function App() {
             </div>
           </div>
 
+          {/* Shortcut Modules Floating Bar */}
+          <div className="hidden lg:flex flex-1 justify-center">
+            <div className="flex items-center gap-2 p-1 bg-transparent border-none">
+              {[
+                { id: "dashboard", label: "Dashboard", Icon: Home, color: "text-blue-500", shadow: "drop-shadow-[0_4px_6px_rgba(59,130,246,0.6)]" },
+                { id: "leads", label: "Marketing", Icon: Sparkles, color: "text-pink-500", shadow: "drop-shadow-[0_4px_6px_rgba(236,72,153,0.6)]" },
+                { id: "admissions", label: "Admissions", Icon: Layers, color: "text-purple-500", shadow: "drop-shadow-[0_4px_6px_rgba(168,85,247,0.6)]" },
+                { id: "students", label: "Students", Icon: Users, color: "text-emerald-500", shadow: "drop-shadow-[0_4px_6px_rgba(16,185,129,0.6)]" },
+                { id: "staff", label: "Staff", Icon: Briefcase, color: "text-amber-500", shadow: "drop-shadow-[0_4px_6px_rgba(245,158,11,0.6)]" },
+                { id: "fee", label: "Accounts", Icon: Wallet, color: "text-teal-500", shadow: "drop-shadow-[0_4px_6px_rgba(20,184,166,0.6)]" },
+                { id: "academic", label: "Academic", Icon: GraduationCap, color: "text-indigo-500", shadow: "drop-shadow-[0_4px_6px_rgba(99,102,241,0.6)]" },
+                { id: "attendance", label: "Attendance", Icon: CheckCircle2, color: "text-green-500", shadow: "drop-shadow-[0_4px_6px_rgba(34,197,94,0.6)]" },
+                { id: "reports", label: "Reports", Icon: BarChart3, color: "text-rose-500", shadow: "drop-shadow-[0_4px_6px_rgba(244,63,94,0.6)]" },
+                { id: "settings", label: "Settings", Icon: SettingsIcon, color: "text-slate-600 dark:text-slate-300", shadow: "drop-shadow-[0_4px_6px_rgba(100,116,139,0.6)]" },
+              ]
+                .map((mod) => {
+                  const isActive = activePage === mod.id || activePage.startsWith(mod.id);
+                  return (
+                    <div key={mod.id} className="relative group flex items-center justify-center">
+                      <motion.button
+                        whileHover={{ scale: 1.15, y: -4, rotate: 2 }}
+                        transition={{ duration: 0.3, type: "spring", stiffness: 300 }}
+                        onClick={() => handleNavClick(mod.id as Page)}
+                        className={cn(
+                          "flex items-center justify-center w-[46px] h-[46px] rounded-[16px] transition-all duration-300 relative",
+                          isActive
+                            ? `bg-white/80 dark:bg-slate-800/80 shadow-[0_4px_12px_rgba(0,0,0,0.05)] border border-white/50 dark:border-slate-700/50 ring-2 ring-white/20 ring-offset-1 ring-offset-slate-50 dark:ring-offset-slate-900`
+                            : "bg-white/20 dark:bg-slate-800/20 backdrop-blur-md border border-white/30 dark:border-slate-700/30 hover:bg-white/60 dark:hover:bg-slate-800/60 shadow-sm"
+                        )}
+                      >
+                        <mod.Icon 
+                          size={22} 
+                          strokeWidth={isActive ? 2.5 : 2} 
+                          className={cn(
+                            "transition-all duration-300",
+                            isActive 
+                              ? `${mod.color} ${mod.shadow} scale-110` 
+                              : `text-slate-500 dark:text-slate-400 group-hover:${mod.color} group-hover:${mod.shadow} group-hover:scale-110`
+                          )}
+                        />
+                      </motion.button>
+                      
+                      {/* Tooltip */}
+                      <div className="absolute top-[56px] left-1/2 -translate-x-1/2 px-3 py-1.5 bg-slate-800 dark:bg-white text-white dark:text-slate-900 text-[11px] font-bold tracking-widest rounded-[8px] opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-[60] whitespace-nowrap shadow-xl">
+                        {mod.label}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+
           <div className="flex items-center gap-4">
             <Button
               onClick={handleLogout}
@@ -1367,7 +1621,7 @@ export default function App() {
             <div className="h-8 w-[1px] bg-slate-100 dark:bg-slate-800 mx-2" />
 
             <div className="flex items-center gap-3">
-              {isAdmin && (
+              {isSuperAdmin && (
                 <NotificationPanel
                   notifications={data.notifications}
                   onMarkRead={data.markNotificationRead}

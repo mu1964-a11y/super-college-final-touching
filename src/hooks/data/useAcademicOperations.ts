@@ -60,5 +60,43 @@ export function useAcademicOperations(ctx: any) {
         toast.error("Academic records import failed: " + (e.message || "Unknown error"));
       }
     };
-  return { addAcademicRecord, importAcademicRecords };
+
+    const updateAcademicRecord = async (id: string, updates: Partial<AcademicRecord>) => {
+      try {
+        const payload: any = {};
+        if (updates.studentName !== undefined) payload.student_name = updates.studentName;
+        if (updates.class !== undefined) payload.class = updates.class;
+        if (updates.section !== undefined) payload.section = updates.section;
+        if (updates.testName !== undefined) payload.test_name = updates.testName;
+        if (updates.testType !== undefined) payload.test_type = updates.testType;
+        if (updates.date !== undefined) payload.date = updates.date;
+        if (updates.subject !== undefined) payload.subject = updates.subject;
+        if (updates.totalMarks !== undefined) payload.total_marks = updates.totalMarks;
+        if (updates.obtainedMarks !== undefined) payload.obtained_marks = updates.obtainedMarks;
+        if (updates.teacherId !== undefined) payload.teacher_id = updates.teacherId;
+        if (updates.remarks !== undefined) payload.remarks = updates.remarks;
+
+        const { error } = await supabase.from('academic_records').update(payload).eq('id', id);
+        if (error) throw error;
+        if (fetchData) await fetchData(true);
+        toast.success("Academic record updated");
+      } catch (e: any) {
+        console.error("Update record failed:", e);
+        toast.error("Failed to update academic record: " + (e.message || "Unknown error"));
+      }
+    };
+
+    const deleteAcademicRecord = async (id: string) => {
+      try {
+        const { error } = await supabase.from('academic_records').delete().eq('id', id);
+        if (error) throw error;
+        if (fetchData) await fetchData(true);
+        toast.success("Academic record deleted");
+      } catch (e: any) {
+        console.error("Delete record failed:", e);
+        toast.error("Failed to delete academic record: " + (e.message || "Unknown error"));
+      }
+    };
+
+  return { addAcademicRecord, importAcademicRecords, addBulkAcademicRecords: importAcademicRecords, updateAcademicRecord, deleteAcademicRecord };
 }

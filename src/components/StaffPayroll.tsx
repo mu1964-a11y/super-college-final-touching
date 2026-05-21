@@ -623,6 +623,15 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
                         <TableCell className="font-semibold text-slate-700 print:text-black print:py-2">Gross Base Salary</TableCell>
                         <TableCell className="text-right font-bold text-slate-800 print:text-black print:py-2">{baseSalary.toLocaleString()}</TableCell>
                       </TableRow>
+
+                      <TableRow className="print:border-b print:border-slate-300">
+                        <TableCell className="text-slate-500 font-medium print:text-black print:py-2">
+                          Total Lectures Given
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-slate-500 print:text-black print:py-2">
+                          {totalLecturesCount} ({regularLecturesCount} Reg, {extraLecturesCount} Ext)
+                        </TableCell>
+                      </TableRow>
                       
                       {extraAllowance > 0 && (
                         <TableRow className="print:border-b print:border-slate-300">

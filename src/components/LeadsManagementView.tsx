@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useRef, useDeferredValue } from 'react';
+import { addStandardLetterhead } from '../lib/pdfHelpers';
 import { 
   Search, 
   Download, 
@@ -237,9 +238,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
 
   const exportToPDF = () => {
     const doc = new jsPDF();
-    doc.text("Leads Management Report", 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 22);
+    addStandardLetterhead(doc, "Leads Management Report");
     
     const tableData = filteredLeads.map(l => [
       l.studentName,
@@ -256,7 +255,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
     autoTable(doc, {
       head: [['Student Name', 'Father Name', 'Package', 'By', 'School', 'Area', 'Phone', 'Grade', 'Subjects']],
       body: tableData,
-      startY: 30,
+      startY: 70,
     });
 
     doc.save(`Leads_Report_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -779,29 +778,32 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
           </div>
         </div>
           
-          {totalPages > 1 && (
+          {leads.length > 0 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-6 border-t border-slate-100">
               <p className="text-sm font-bold text-slate-500">
-                Showing Page {currentPage} of {totalPages}
+                Showing {visibleLeads.length} of {filteredLeads.length} Leads {leads.length !== filteredLeads.length ? `(Total: ${leads.length})` : ''} 
+                {totalPages > 1 && ` | Page ${currentPage} of ${totalPages}`}
               </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
-                >
-                  Next
-                </Button>
-              </div>
+              {totalPages > 1 && (
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    className="rounded-xl border-slate-200 text-slate-500 hover:text-superior-teal hover:bg-superior-teal/5 font-bold px-6 h-10 disabled:opacity-50"
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -58,6 +58,7 @@ export function useStaffOperations(ctx: any) {
         }).eq('id', id);
         if (error) throw error;
         // await fetchData(true);
+        logActivity("Staff Updated", `Staff ${updates.fullName || id} details changed`, "warning");
         toast.success("Staff details updated");
       } catch (e: any) {
         toast.error(`Failed to update staff: ${e.message}`);
