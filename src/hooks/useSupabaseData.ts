@@ -439,12 +439,13 @@ export function useSupabaseData(user: any) {
     };
   }, [userId, fetchData, debouncedFetchData]);
 
-  const logActivity = async (title: string, message: string, type: 'info' | 'alert' | 'success' | 'warning' = 'info') => {
+  const logActivity = async (title: string, message: string | object, type: 'info' | 'alert' | 'success' | 'warning' = 'info') => {
     if (!user) return;
     try {
+      const finalMessage = typeof message === 'object' && message !== null ? JSON.stringify(message) : String(message);
       await supabase.from('notifications').insert({
         title,
-        message,
+        message: finalMessage,
         type,
         actor_name: user.displayName || user.email,
         is_read: false

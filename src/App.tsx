@@ -27,6 +27,11 @@ import {
   Home,
   Layers,
   Sparkles,
+  Mail,
+  Lock,
+  UserCheck,
+  LogIn,
+  Key,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useSupabaseData } from "./hooks/useSupabaseData";
@@ -408,6 +413,12 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
+      // Clear AI Copilot persistent state
+      Object.keys(window.localStorage).forEach(key => {
+        if (key.startsWith("scj_ai_")) {
+          window.localStorage.removeItem(key);
+        }
+      });
       const { error } = await supabase.auth.signOut();
       if (error) {
         const errMsg = typeof error === 'string' ? error : (error.message || String(error));
@@ -871,103 +882,134 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="h-screen w-full flex bg-gradient-to-br from-[#042e27] via-[#085a4e] to-[#011a15] relative overflow-hidden font-sans">
-        {/* Animated 3D Welcome Background */}
+      <div className="h-screen w-full flex bg-gradient-to-br from-[#021c17] via-[#053229] to-[#011410] relative overflow-hidden font-sans select-none">
+        {/* Animated 3D Welcome Background with majestic curves */}
         <div className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none">
           <motion.div
-            animate={{ rotateX: 360, rotateZ: 360 }}
-            transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
-            className="w-[120vw] h-[120vw] lg:w-[80vw] lg:h-[80vw] absolute opacity-30"
-            style={{ transformStyle: "preserve-3d", perspective: "1000px" }}
+            animate={{ rotate: 360 }}
+            transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
+            className="w-[140vw] h-[140vw] lg:w-[100vw] lg:h-[100vw] absolute opacity-20 pointer-events-none"
           >
             <div
-              className="absolute inset-10 rounded-full border border-superior-gold/20 shadow-[0_0_100px_rgba(201,168,76,0.1)]"
-              style={{ transform: "rotateX(70deg)" }}
+              className="absolute inset-10 rounded-full border border-superior-gold/10 shadow-[0_0_120px_rgba(201,168,76,0.05)]"
             />
             <div
-              className="absolute inset-20 rounded-[30%] border border-superior-teal/40 shadow-[0_0_80px_rgba(8,90,78,0.3)]"
-              style={{ transform: "rotateY(60deg) rotateZ(45deg)" }}
-            />
-            <div
-              className="absolute inset-40 rounded-full border-2 border-white/5"
-              style={{ transform: "rotateZ(30deg) scale(0.8)" }}
+              className="absolute inset-40 rounded-full border-2 border-white/[0.02]"
             />
           </motion.div>
-          <div className="absolute w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10 mix-blend-overlay" />
-          <div className="absolute w-full h-full bg-gradient-to-t from-[#011a15] via-transparent to-transparent z-0" />
+          {/* Majestic background circles and arc matching the screenshot */}
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[850px] h-[850px] rounded-full border border-superior-gold/10 z-0 pointer-events-none hidden md:block" />
+          <div className="absolute right-[-100px] top-1/2 -translate-y-1/2 w-[1000px] h-[1000px] rounded-full border border-white/[0.02] z-0 pointer-events-none hidden md:block" />
+          
+          {/* Glowing particle stars matching screenshot precisely */}
+          <div className="absolute top-[35%] left-[45%] w-1.5 h-1.5 bg-superior-gold/80 rounded-full shadow-[0_0_12px_#c9a84c] z-0 pointer-events-none animate-pulse" />
+          <div className="absolute bottom-[28%] left-[43%] w-1.5 h-1.5 bg-superior-gold/80 rounded-full shadow-[0_0_12px_#c9a84c] z-0 pointer-events-none animate-pulse" />
+          <div className="absolute top-[62%] right-[10%] w-1 h-1 bg-white/60 rounded-full shadow-[0_0_8px_#ffffff] z-0 pointer-events-none animate-ping" />
+          
+          <div className="absolute w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-5 mix-blend-overlay" />
+          <div className="absolute w-full h-full bg-gradient-to-t from-[#011410] via-transparent to-transparent z-0" />
         </div>
 
-        {/* The Welcome Content - slides to right when login form appears */}
+        {/* The Welcome Content - custom layout */}
         <motion.div
           animate={{
-            scale: showLoginForm ? 0.9 : 1,
+            scale: showLoginForm ? 0.95 : 1,
             opacity: showLoginForm ? 0.9 : 1,
           }}
           transition={{ type: "spring", damping: 30, stiffness: 100 }}
           className={cn(
-            "absolute inset-0 flex flex-col items-center justify-center z-10 transition-all duration-700 text-white",
+            "absolute inset-0 flex flex-col items-center justify-center z-10 transition-all duration-700 text-white p-6 md:p-12",
             showLoginForm
               ? "w-full md:w-[55%] xl:w-[65%] md:left-[45%] xl:left-[35%] hidden md:flex"
               : "w-full left-0",
           )}
         >
-          <motion.div
-            animate={{ y: [0, -15, 0] }}
-            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-            className="relative mb-8 md:mb-12"
-          >
-            <div className="w-32 h-32 md:w-48 md:h-48 bg-white/5 backdrop-blur-xl rounded-full border border-white/10 shadow-[0_40px_80px_rgba(0,0,0,0.5),inset_0_2px_5px_rgba(255,255,255,0.2)] flex items-center justify-center relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-white/10 to-transparent pointer-events-none" />
-              {brandingSettings.logo ? (
-                <img
-                  src={brandingSettings.logo}
-                  alt="Logo"
-                  className="w-full h-full object-cover relative z-10"
-                />
-              ) : (
-                <School
-                  size={80}
-                  className="text-superior-gold filter drop-shadow-lg relative z-10 w-16 h-16 md:w-24 md:h-24"
-                />
-              )}
-            </div>
-            <div className="absolute -bottom-10 -right-10 w-24 h-24 md:w-32 md:h-32 bg-superior-gold/20 blur-[50px] rounded-full" />
-          </motion.div>
+          {/* Large Logo layout shown during initial countdown screen of 2.5s */}
+          {!showLoginForm && (
+            <motion.div
+              animate={{ y: [0, -10, 0] }}
+              transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+              className="relative mb-8 md:mb-12"
+            >
+              <div className="w-32 h-32 md:w-44 md:h-44 bg-white/5 backdrop-blur-2xl rounded-full border border-white/10 shadow-[0_30px_60px_rgba(0,0,0,0.6),inset_0_2px_5px_rgba(255,255,255,0.1)] flex items-center justify-center relative overflow-hidden p-1">
+                <div className="w-full h-full bg-white rounded-full flex items-center justify-center p-4">
+                  {brandingSettings.logo ? (
+                    <img
+                      src={brandingSettings.logo}
+                      alt="Logo"
+                      className="w-full h-full object-contain rounded-full"
+                    />
+                  ) : (
+                    <School
+                      size={60}
+                      className="text-[#053229]"
+                    />
+                  )}
+                </div>
+              </div>
+              <div className="absolute -bottom-6 -right-6 w-20 h-20 bg-superior-gold/15 blur-[40px] rounded-full" />
+            </motion.div>
+          )}
 
-          <motion.div className="text-center p-6 md:p-8 max-w-[90%] md:max-w-xl xl:max-w-3xl backdrop-blur-sm bg-black/10 rounded-3xl border border-white/5 shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-48 h-48 md:w-64 md:h-64 bg-superior-teal/10 blur-[80px] rounded-full -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+          <div className="text-center sm:text-left md:max-w-2xl xl:max-w-3xl relative z-10">
             <div>
-              <h1 className="text-3xl md:text-5xl xl:text-7xl font-black mb-4 md:mb-6 tracking-tighter bg-clip-text text-transparent bg-gradient-to-br from-white via-white to-white/40 leading-tight">
+              {/* Display text styled exactly like the screenshot with elegant styling */}
+              <h1 className="text-4xl md:text-5xl xl:text-7xl font-sans font-black tracking-tight leading-[1.1] text-white">
                 Welcome to
                 <br />
-                {brandingSettings.name}
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-superior-gold via-yellow-400 to-[#e3c16f]">
+                  {brandingSettings.name || "Superior College"}
+                </span>
+                {!(brandingSettings.name || "").toLowerCase().includes("jahanian") && (
+                  <>
+                    <br />
+                    Jahanian
+                  </>
+                )}
               </h1>
             </div>
 
             <div>
-              <p className="text-lg md:text-xl xl:text-2xl text-superior-gold font-medium tracking-[0.2em] uppercase mb-3 md:mb-4 flex items-center justify-center gap-3">
-                <span className="h-[2px] w-6 md:w-12 bg-superior-gold/50 rounded-full hidden sm:block" />
-                Academic Portal
-                <span className="h-[2px] w-6 md:w-12 bg-superior-gold/50 rounded-full hidden sm:block" />
-              </p>
+              {/* Gold Graduation Cap divider matching the screenshot */}
+              <div className="flex items-center gap-4 w-full max-w-xl my-6">
+                <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent to-superior-gold/40" />
+                <GraduationCap className="text-superior-gold w-6 h-6 shrink-0 filter drop-shadow-[0_0_8px_rgba(201,168,76,0.6)]" />
+                <div className="h-[1px] flex-1 bg-gradient-to-l from-transparent to-superior-gold/40" />
+              </div>
               
-              <p className="text-sm md:text-base xl:text-lg text-white/60 font-medium leading-relaxed max-w-xl mx-auto mb-6">
+              <p className="text-sm md:text-base text-white/60 font-medium leading-relaxed max-w-xl mb-8">
                 Experience the next generation of academic management. Secure, 
-                A unified ecosystem for students, staff, and administration. 
-                Streamlined operations at your fingertips, crafted for excellence.</p>
+                unified ecosystem for students, staff, and administration. 
+                Streamlined operations at your fingertips, crafted for excellence.
+              </p>
 
-              <div className="flex flex-wrap items-center justify-center gap-2 md:gap-4 mt-6">
+              {/* Grid with 3 columns matching second half of first screenshot */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mt-10 w-full max-w-2xl">
                 {[
-                  { icon: Shield, text: "Enterprise Security" },
-                  { icon: Zap, text: "Lightning Fast" },
-                  { icon: Database, text: "Real-time Sync" }
-                ].map((feature, i) => (
-                  <div 
-                    key={i}
-                    className="flex items-center gap-2 bg-white/5 border border-white/10 px-3 md:px-4 py-1.5 md:py-2 rounded-full backdrop-blur-md"
-                  >
-                    <feature.icon size={14} className="text-superior-gold" />
-                    <span className="text-[10px] md:text-xs font-bold text-white/80 uppercase tracking-wider">{feature.text}</span>
+                  {
+                    icon: Shield,
+                    title: "Enterprise Security",
+                    desc: "Advanced protection for your data"
+                  },
+                  {
+                    icon: Zap,
+                    title: "Lightning Fast",
+                    desc: "Optimized for speed and performance"
+                  },
+                  {
+                    icon: Database,
+                    title: "Real-time Sync",
+                    desc: "Always up-to-date information"
+                  }
+                ].map((feat, i) => (
+                  <div key={i} className="flex flex-col items-center sm:items-start text-center sm:text-left gap-3">
+                    <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center shadow-lg shadow-black/20 hover:border-superior-gold/30 hover:bg-white/10 transition-all duration-300">
+                      <feat.icon className="text-superior-gold w-5 h-5 filter drop-shadow-[0_0_4px_rgba(201,168,76,0.5)]" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-bold text-white tracking-widest uppercase">{feat.title}</h3>
+                      <p className="text-[11px] text-white/50 mt-1 leading-normal font-medium">{feat.desc}</p>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -977,15 +1019,15 @@ export default function App() {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 1 }}
-                className="mt-8 md:mt-12 flex items-center gap-4 justify-center text-superior-gold text-[10px] md:text-xs font-black uppercase tracking-[0.3em]"
+                transition={{ delay: 0.5 }}
+                className="mt-12 flex items-center gap-4 justify-center sm:justify-start text-superior-gold text-[10px] md:text-xs font-black uppercase tracking-[0.3em]"
               >
                 <motion.div
                   animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }}
                   transition={{ duration: 1.5, repeat: Infinity }}
                   className="w-2 h-2 bg-superior-gold rounded-full shadow-[0_0_10px_rgba(201,168,76,0.8)]"
                 />
-                Initializing Workspace
+                Initializing Secure Access
                 <motion.div
                   animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }}
                   transition={{ duration: 1.5, repeat: Infinity, delay: 0.5 }}
@@ -993,10 +1035,10 @@ export default function App() {
                 />
               </motion.div>
             )}
-          </motion.div>
+          </div>
         </motion.div>
 
-        {/* The Login Panel */}
+        {/* The Login Panel - floating glassmorphic card on the left */}
         <AnimatePresence>
           {showLoginForm && (
             <motion.div
@@ -1005,101 +1047,167 @@ export default function App() {
               exit={{ x: "-100%", opacity: 0 }}
               transition={{
                 type: "spring",
-                damping: 25,
-                stiffness: 150,
-                duration: 0.5,
+                damping: 30,
+                stiffness: 120,
               }}
-              className="absolute top-0 left-0 w-full md:w-[45%] xl:w-[35%] h-full z-20 flex flex-col items-center justify-center relative overflow-hidden shadow-[30px_0_100px_rgba(0,0,0,0.5)] bg-white/5 backdrop-blur-2xl border-r border-white/10"
+              className="absolute md:fixed top-0 left-0 w-full md:w-[45%] xl:w-[35%] h-full z-20 flex flex-col items-center justify-center p-4 sm:p-6 md:p-8"
             >
-              {/* Decorative Side Panel Elements */}
-              <div className="absolute top-0 right-0 w-1 h-full bg-gradient-to-b from-transparent via-superior-gold/30 to-transparent" />
-              <div className="absolute -top-32 -left-32 w-64 h-64 bg-superior-teal/10 blur-[80px] rounded-full pointer-events-none" />
+              {/* Glassmorphic card design matching the screenshot precisely */}
+              <div className="w-full max-w-[420px] bg-[#03241e]/75 border border-white/10 rounded-[2.5rem] shadow-[0_45px_100px_-15px_rgba(0,0,0,0.85),inset_0_1px_2px_rgba(255,255,255,0.15)] p-6 md:p-8 relative overflow-hidden backdrop-blur-2xl">
+                {/* Subtle internal glowing spots */}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-superior-gold/5 blur-[50px] rounded-full pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-32 h-32 bg-superior-teal/10 blur-[50px] rounded-full pointer-events-none" />
 
-              <div className="w-full max-w-[420px] p-6 md:p-8 xl:p-12 relative z-10 scale-95 md:scale-100">
-                <div className="mb-8 md:mb-10 text-center md:text-left">
-                  <h2 className="text-2xl md:text-3xl xl:text-4xl font-black text-white uppercase tracking-tighter leading-none mb-3">
+                <div className="mb-6 text-center">
+                  {/* Glowing Logo Circle */}
+                  <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center p-1.5 border-2 border-superior-gold/40 shadow-[0_0_20px_rgba(201,168,76,0.3)] mx-auto mb-3.5 relative">
+                    {brandingSettings.logo ? (
+                      <img
+                        src={brandingSettings.logo}
+                        alt="Logo"
+                        className="w-full h-full object-contain rounded-full"
+                      />
+                    ) : (
+                      <School
+                        size={36}
+                        className="text-[#053229]"
+                      />
+                    )}
+                  </div>
+
+                  <h2 className="text-xl md:text-2xl font-sans font-black text-white uppercase tracking-[0.1em] mt-2 mb-1">
                     Superior
-                    <br />
-                    <span className="text-superior-gold">Staff Portal</span>
                   </h2>
-                  <div className="h-1 w-16 bg-superior-gold rounded-full mx-auto md:mx-0 mb-4" />
-                  <p className="text-xs md:text-sm text-white/50 font-medium leading-relaxed">
-                    Please sign in with your
-                    <br />
-                    <span className="text-white font-bold uppercase tracking-wider text-[10px] md:text-xs shadow-white/10 drop-shadow">
-                      Secure Credentials
-                    </span>
+                  <p className="text-xs font-bold text-superior-gold tracking-[0.2em] uppercase">
+                    Staff Portal
                   </p>
+                  
+                  {/* Spacer divider */}
+                  <div className="h-[2px] w-10 bg-superior-gold/30 rounded-full mx-auto my-3" />
+
+                  {/* Secure connection sub-badge */}
+                  <div className="flex items-center gap-1.5 justify-center bg-[#053229]/50 border border-white/5 px-2.5 py-1 rounded-full w-fit mx-auto">
+                    <Shield size={11} className="text-superior-gold shrink-0" />
+                    <span className="text-[9px] font-black text-white/75 uppercase tracking-widest leading-none">
+                      Secure Access • Trusted Platform
+                    </span>
+                  </div>
                 </div>
 
                 <form
                   onSubmit={handleLogin}
-                  className="space-y-6 flex flex-col border-none bg-transparent shadow-none p-0"
+                  className="space-y-4 flex flex-col border-none bg-transparent shadow-none p-0"
                 >
                   {loginError && (
                     <motion.div
-                      initial={{ opacity: 0, y: -10 }}
+                      initial={{ opacity: 0, y: -5 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="bg-red-500/20 text-red-100 text-[11px] font-bold p-4 rounded-xl border border-red-500/30 uppercase tracking-wide flex items-start gap-3 backdrop-blur-md"
+                      className="bg-red-500/10 text-red-100 text-[10px] font-bold p-3.5 rounded-xl border border-red-500/20 uppercase tracking-widest flex items-start gap-2.5 backdrop-blur-md"
                     >
                       <AlertTriangle
-                        size={16}
-                        className="shrink-0 mt-0.5 text-red-400"
+                        size={14}
+                        className="shrink-0 mt-0.5 text-red-500"
                       />
                       <span>{loginError}</span>
                     </motion.div>
                   )}
 
-                  <div className="space-y-5">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-white/60 uppercase tracking-widest ml-1">
+                  <div className="space-y-4">
+                    {/* Admin Email container */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-white/50 uppercase tracking-widest ml-1">
                         Admin Email
                       </label>
-                      <Input
-                        placeholder="Example: admin@superior.edu"
-                        type="email"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="bg-black/20 border-white/10 text-white placeholder:text-white/30 h-14 rounded-2xl focus:ring-2 focus:ring-superior-gold/50 focus:border-superior-gold/50 transition-all text-sm font-medium backdrop-blur-md"
-                      />
+                      <div className="relative">
+                        <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
+                        <Input
+                          placeholder="admin@superior.edu"
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="pl-12 bg-black/30 border border-white/10 text-white placeholder:text-white/20 h-13 rounded-xl focus:border-superior-gold/40 focus:ring-1 focus:ring-superior-gold/40 text-sm font-medium backdrop-blur-md w-full"
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-white/60 uppercase tracking-widest ml-1">
+
+                    {/* Password container */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-white/50 uppercase tracking-widest ml-1">
                         Password
                       </label>
                       <div className="relative">
+                        <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
                         <Input
                           placeholder="Enter Secure Key"
                           type={showPassword ? "text" : "password"}
                           required
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          className="bg-black/20 border-white/10 text-white placeholder:text-white/30 h-14 pr-12 rounded-2xl focus:ring-2 focus:ring-superior-gold/50 focus:border-superior-gold/50 transition-all text-sm font-medium backdrop-blur-md"
+                          className="pl-12 pr-12 bg-black/30 border border-white/10 text-white placeholder:text-white/20 h-13 rounded-xl focus:border-superior-gold/40 focus:ring-1 focus:ring-superior-gold/40 text-sm font-medium backdrop-blur-md w-full"
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors"
+                          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition-colors"
                         >
-                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
                       </div>
                     </div>
                   </div>
 
+                  {/* Remember me and Forgot Password */}
+                  <div className="flex items-center justify-between px-1 text-xs">
+                    <label className="flex items-center gap-2 text-white/50 font-medium cursor-pointer">
+                      <input
+                        type="checkbox"
+                        defaultChecked
+                        className="rounded border-white/10 bg-black/20 focus:ring-0 checked:bg-superior-gold checked:border-superior-gold h-4 w-4 shrink-0"
+                      />
+                      <span>Remember me</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => toast.info("Contact management to change administrator password.")}
+                      className="text-superior-gold hover:text-yellow-400 font-bold tracking-wide transition-colors"
+                    >
+                      Forgot Password?
+                    </button>
+                  </div>
+
+                  {/* SIGN IN Button with Gradient */}
                   <Button
                     type="submit"
-                    className="w-full bg-superior-gold hover:bg-yellow-500 text-slate-900 mt-4 h-14 rounded-2xl text-[12px] font-black uppercase tracking-[0.2em] shadow-[0_10px_30px_rgba(201,168,76,0.3)] hover:shadow-[0_15px_40px_rgba(201,168,76,0.4)] active:scale-[0.98] transition-all"
+                    className="w-full bg-gradient-to-r from-superior-gold to-[#b7953d] hover:brightness-110 text-slate-950 mt-4 h-13 rounded-xl text-xs font-black uppercase tracking-[0.2em] shadow-[0_8px_20px_rgba(201,168,76,0.2)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer border-none"
                   >
-                    Initialize Access
+                    SIGN IN
+                    <LogIn size={14} className="stroke-[3]" />
                   </Button>
 
-                  {/* Mobile Only Help Text */}
-                  <div className="mt-8 text-center lg:hidden">
-                    <p className="text-[10px] text-white/40 font-medium uppercase tracking-[0.1em]">
-                      {brandingSettings.name} • Official
-                    </p>
+                  {/* Divider line OR */}
+                  <div className="flex items-center gap-3 my-2">
+                    <div className="h-[1px] flex-1 bg-white/5" />
+                    <span className="text-[9px] text-white/25 font-bold tracking-widest uppercase">
+                      OR
+                    </span>
+                    <div className="h-[1px] flex-1 bg-white/5" />
+                  </div>
+
+                  {/* LOGIN WITH SECURE KEY */}
+                  <button
+                    type="button"
+                    onClick={() => toast.info("Secure physical safety credentials is set to SuperAdmin control.")}
+                    className="w-full bg-white/[0.03] hover:bg-white/[0.08] text-white/90 border border-white/10 transition-all duration-200 h-13 rounded-xl text-xs font-bold uppercase tracking-[0.15em] flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Shield size={14} className="text-superior-gold shrink-0" />
+                    LOGIN WITH SECURE KEY
+                  </button>
+
+                  {/* Padd lock footer description */}
+                  <div className="flex items-center gap-2 justify-center pt-4 text-white/30 text-[10px] font-medium tracking-wide">
+                    <Lock size={11} className="text-superior-gold" />
+                    <span>Your data is protected with enterprise-grade security</span>
                   </div>
                 </form>
               </div>
@@ -1111,122 +1219,186 @@ export default function App() {
   }
 
   if (data.loading || loadingCountdown > 0) {
+    const percentMap: Record<number, number> = {
+      5: 18,
+      4: 42,
+      3: 68,
+      2: 88,
+      1: 96,
+      0: 100
+    };
+    const currentPercent = percentMap[loadingCountdown] || 15;
+    
+    const steps = [
+      { id: 1, label: "AUTHENTICATING", icon: UserCheck },
+      { id: 2, label: "VERIFYING", icon: Database },
+      { id: 3, label: "SECURING", icon: Shield },
+      { id: 4, label: "FINALIZING", icon: CheckCircle2 }
+    ];
+
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-[#042e27] via-[#085a4e] to-[#011a15] relative overflow-hidden font-sans">
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-[#021c17] via-[#053229] to-[#011410] relative overflow-hidden font-sans select-none">
+        {/* Animated Background effects */}
         <div className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none">
           <motion.div
-            animate={{ rotateX: 360, rotateZ: 360 }}
-            transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
-            className="w-[120vw] h-[120vw] lg:w-[80vw] lg:h-[80vw] absolute opacity-30"
-            style={{ transformStyle: "preserve-3d", perspective: "1000px" }}
+            animate={{ rotate: -360 }}
+            transition={{ duration: 50, repeat: Infinity, ease: "linear" }}
+            className="w-[140vw] h-[140vw] lg:w-[100vw] lg:h-[100vw] absolute opacity-15 pointer-events-none"
           >
-            <div
-              className="absolute inset-10 rounded-full border border-superior-gold/20 shadow-[0_0_100px_rgba(201,168,76,0.1)]"
-              style={{ transform: "rotateX(70deg)" }}
-            />
+            <div className="absolute inset-20 rounded-full border border-superior-teal/30 shadow-[0_0_80px_rgba(8,90,78,0.15)]" />
+            <div className="absolute inset-40 rounded-full border border-superior-gold/5" />
           </motion.div>
-          <div className="absolute w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10 mix-blend-overlay" />
+          
+          {/* Subtle glowing spheres in the background */}
+          <div className="absolute top-[20%] left-[25%] w-80 h-80 bg-superior-teal/20 blur-[120px] rounded-full pointer-events-none" />
+          <div className="absolute bottom-[20%] right-[25%] w-80 h-80 bg-superior-gold/5 blur-[100px] rounded-full pointer-events-none animate-pulse" />
+          
+          <div className="absolute w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-5 mix-blend-overlay" />
           <div className="absolute w-full h-full bg-gradient-to-t from-[#011a15] via-transparent to-transparent z-0" />
         </div>
 
-        <div className="relative z-10 flex flex-col items-center justify-center">
-          {brandingSettings.logo ? (
-            <div className="relative mb-10 w-44 h-44 flex items-center justify-center">
-               <div className="absolute inset-0 rounded-full overflow-hidden shadow-[0_0_30px_rgba(201,168,76,0.2)] bg-[#011a15]">
-                 <motion.img 
-                   src={brandingSettings.logo}
-                   alt="College Logo"
-                   className="w-full h-full object-cover"
-                   initial={{ opacity: 0, scale: 0.8 }}
-                   animate={{ opacity: 1, scale: 1 }}
-                   transition={{ duration: 0.8 }}
-                 />
-               </div>
-               
-               {/* Overlay countdown in the center */}
-               <div className="absolute inset-0 flex items-center justify-center z-20">
-                 {loadingCountdown > 0 ? (
-                   <motion.div
-                      key={loadingCountdown}
-                      initial={{ scale: 1.5, opacity: 0, y: 10 }}
-                      animate={{ scale: 1, opacity: 1, y: 0 }}
-                      className="text-6xl font-black text-white drop-shadow-[0_0_20px_rgba(201,168,76,0.8)]"
-                      style={{ textShadow: "0px 4px 20px rgba(0,0,0,0.8)" }}
-                   >
-                     {loadingCountdown}
-                   </motion.div>
-                 ) : (
-                   <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="w-12 h-12 border-4 border-superior-gold/20 border-t-superior-gold rounded-full shadow-[0_0_15px_rgba(201,168,76,0.5)]"
-                   />
-                 )}
-               </div>
-               
-               {/* 360 spinner rings */}
-               <motion.div
-                 animate={{ rotate: 360 }}
-                 transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-                 className="absolute inset-[-10px] rounded-full border border-superior-gold/20 border-t-superior-gold/80 shadow-[0_0_20px_rgba(201,168,76,0.3)] z-10"
-               />
-               <motion.div
-                 animate={{ rotate: -360 }}
-                 transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-                 className="absolute inset-[-24px] rounded-full border border-white/5 border-b-white/30 z-10 pointer-events-none"
-               />
-            </div>
-          ) : (
-            <div className="relative mb-10 w-32 h-32 flex flex-col items-center justify-center bg-white/5 rounded-full border border-white/10 backdrop-blur-md">
-              {loadingCountdown > 0 ? (
-                <motion.div
-                  key={loadingCountdown}
-                  initial={{ scale: 1.5, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className="text-5xl font-black text-white drop-shadow-[0_0_20px_rgba(201,168,76,0.8)]"
-                >
-                  {loadingCountdown}
-                </motion.div>
-              ) : (
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                  className="w-12 h-12 rounded-full border-4 border-white/10 border-t-superior-gold"
-                />
-              )}
-              <motion.div
-                 animate={{ rotate: 360 }}
-                 transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                 className="absolute inset-0 rounded-full border border-superior-gold/20 border-t-superior-gold/80 pointer-events-none"
-               />
-            </div>
-          )}
-
-        <div className="relative z-10 text-center space-y-3">
-          <h2 className="text-xl md:text-2xl font-black text-white tracking-[0.2em] uppercase">
-            {brandingSettings.name}
-          </h2>
+        {/* Outer relative wrapper container */}
+        <div className="relative z-10 flex flex-col items-center justify-center px-4 w-full max-w-2xl">
           
+          {/* Main Logo Sphere */}
+          <div className="relative mb-8 w-40 h-40 flex items-center justify-center">
+            {/* Glowing inner rings */}
+            <div className="absolute inset-2 rounded-full border border-superior-gold/30 shadow-[0_0_40px_rgba(201,168,76,0.35)] animate-pulse" />
+            <div className="absolute inset-0 rounded-full border-2 border-white/5 border-t-superior-gold shadow-[0_0_30px_rgba(201,168,76,0.2)] bg-[#011a15] overflow-hidden p-[2px]">
+              <div className="w-full h-full rounded-full bg-white flex items-center justify-center p-3">
+                {brandingSettings.logo ? (
+                  <img src={brandingSettings.logo} alt="Logo" className="w-full h-full object-contain rounded-full" />
+                ) : (
+                  <School size={72} className="text-[#053229]" />
+                )}
+              </div>
+            </div>
+            {/* Countdown HUD Center Overlaid */}
+            {loadingCountdown > 0 && (
+              <div className="absolute -bottom-2 -right-2 bg-slate-900/90 border border-superior-gold/50 rounded-full w-10 h-10 flex items-center justify-center z-20 shadow-lg text-superior-gold font-sans font-black text-sm">
+                {loadingCountdown}s
+              </div>
+            )}
+            
+            {/* Rotating Outer Rings */}
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
+              className="absolute inset-[-12px] rounded-full border border-superior-gold/25 border-t-superior-gold/90"
+            />
+            <motion.div
+              animate={{ rotate: -360 }}
+              transition={{ duration: 12, repeat: Infinity, ease: "linear" }}
+              className="absolute inset-[-24px] rounded-full border border-white/5 border-b-white/30 pointer-events-none"
+            />
+          </div>
+
+          {/* Heading Text display */}
+          <div className="text-center space-y-1 mt-2">
+            <h1 className="text-xs md:text-sm font-bold text-superior-gold tracking-[0.3em] uppercase">
+              {brandingSettings.name || "Superior College"}
+            </h1>
+            {!(brandingSettings.name || "").toLowerCase().includes("jahanian") && (
+              <h2 className="text-3xl md:text-5xl font-sans font-black text-white tracking-[0.1em] uppercase drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">
+                Jahanian
+              </h2>
+            )}
+          </div>
+
+          {/* Graduation Cap Lines Divider */}
+          <div className="flex items-center gap-3 w-56 my-4 mx-auto">
+            <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent to-superior-gold/40" />
+            <GraduationCap className="text-superior-gold w-4.5 h-4.5 shrink-0 filter drop-shadow-[0_0_4px_#c9a84c]" />
+            <div className="h-[1px] flex-1 bg-gradient-to-l from-transparent to-superior-gold/40" />
+          </div>
+
+          {/* Welcome subtitle message with Name Highlighted in Gold */}
           {user && (
-            <motion.p 
-              initial={{ opacity: 0, y: 10 }}
+            <motion.p
+              initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-base text-superior-gold font-medium mt-4 tracking-wide"
+              className="text-xs md:text-sm text-white/60 font-medium tracking-wide mb-6"
             >
-              Welcome back, <span className="text-white font-bold">{user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Admin"}</span>! Logging you in...
+              Welcome back, <span className="text-superior-gold font-black shadow-superior-gold/10 drop-shadow">{user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Admin"}</span>! Logging you in...
             </motion.p>
           )}
 
-          {loadingCountdown > 0 ? (
-            <p className="text-white/60 font-medium text-xs md:text-sm tracking-widest uppercase flex items-center justify-center gap-2 mt-4">
-              Preparing workspace...
-            </p>
-          ) : (
-            <p className="text-superior-gold font-medium text-xs md:text-sm tracking-widest uppercase animate-pulse mt-4">
-              Finalizing setup...
-            </p>
-          )}
-        </div>
+          {/* Premium Glazzmorphic Checklist / Stepper Card */}
+          <div className="relative z-10 w-full max-w-xl bg-[#03241e]/75 border border-white/10 rounded-[2rem] p-6 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.85)] backdrop-blur-xl mt-4">
+            {/* Steps line horizontal layout */}
+            <div className="flex items-center justify-between relative mb-8 px-4">
+              {/* Connecting line behind icons */}
+              <div className="absolute top-[22px] left-10 right-10 h-[2px] bg-white/5 z-0 rounded-full">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-superior-gold to-yellow-400"
+                  initial={{ width: "0%" }}
+                  animate={{ width: `${Math.min(100, (Math.max(0, 5 - loadingCountdown - 1) / 3) * 100)}%` }}
+                  transition={{ duration: 0.5 }}
+                />
+              </div>
+
+              {steps.map((st) => {
+                const currentProgressIndex = 5 - loadingCountdown; // steps counts up: 0,1,2,3,4,5
+                const isCompleted = currentProgressIndex >= st.id;
+                const isActive = currentProgressIndex === st.id - 1;
+                const isPending = currentProgressIndex < st.id - 1;
+
+                return (
+                  <div key={st.id} className="flex flex-col items-center z-10 relative flex-1">
+                    <motion.div
+                      animate={isActive ? { scale: [1, 1.08, 1] } : {}}
+                      transition={{ duration: 2, repeat: Infinity }}
+                      className={cn(
+                        "w-11 h-11 rounded-full border flex items-center justify-center transition-all duration-300 shadow-md",
+                        isCompleted
+                          ? "bg-superior-gold border-superior-gold text-slate-950"
+                          : isActive
+                          ? "bg-[#053229] border-superior-gold text-superior-gold shadow-[0_0_15px_rgba(201,168,76,0.5)]"
+                          : "bg-[#021814]/80 border-white/5 text-white/30"
+                      )}
+                    >
+                      {isCompleted ? (
+                        <CheckCircle2 size={18} className="stroke-[3]" />
+                      ) : (
+                        <st.icon size={16} className={cn(isActive && "animate-pulse")} />
+                      )}
+                    </motion.div>
+                    <span
+                      className={cn(
+                        "text-[9px] font-black tracking-wider uppercase mt-3 transition-colors duration-300",
+                        isCompleted ? "text-white" : isActive ? "text-superior-gold" : "text-white/30"
+                      )}
+                    >
+                      {st.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Dynamic system percentage loader in gold gradient bar */}
+            <div className="space-y-2 px-2 mt-6">
+              <div className="flex justify-between items-center text-[10px] font-black tracking-widest text-[#c9a84c] uppercase">
+                <span>Enterprise Core System</span>
+                <span>{currentPercent}%</span>
+              </div>
+              <div className="w-full h-2.5 bg-black/40 rounded-full overflow-hidden border border-white/5 relative">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-[#e3c16f] via-superior-gold to-yellow-400 shadow-[0_0_10px_rgba(201,168,76,0.5)] rounded-full"
+                  initial={{ width: "15%" }}
+                  animate={{ width: `${currentPercent}%` }}
+                  transition={{ duration: 0.5 }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Shield safety caption */}
+          <div className="flex items-center gap-1.5 mt-8 text-white/40 text-[10px] uppercase font-black tracking-widest">
+            <Shield size={12} className="text-superior-gold shrink-0" />
+            <span>Secure Connection • Protecting Your Workspace</span>
+          </div>
+
         </div>
       </div>
     );

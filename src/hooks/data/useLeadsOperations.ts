@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
 import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus } from '../../types';
+import { diffObjects, LEAD_FIELD_LABELS } from '../../utils/changeTracker';
 
 export function useLeadsOperations(ctx: any) {
   const { user, generateStudentId, leads, setLeads, admissions, setAdmissions, settings, isBulkOperatingRef, logActivity, fetchData } = ctx;
@@ -31,7 +32,13 @@ export function useLeadsOperations(ctx: any) {
       
       // Replace temp ID with real ID
       setLeads(prev => prev.map(l => l.id === tempId ? { ...l, id: data.id, dateAdded: data.date_added } : l));
-      logActivity("Lead Added", `New lead ${lead.studentName} added`, 'info');
+      logActivity("Lead Added", {
+        summary: `New lead ${lead.studentName} added`,
+        action: "add",
+        module: "Lead",
+        targetName: lead.studentName,
+        fullRecord: lead
+      }, 'info');
       toast.success("Lead added successfully");
     } catch (e: any) {
       setLeads(prev => prev.filter(l => l.id !== tempId));
@@ -62,7 +69,15 @@ export function useLeadsOperations(ctx: any) {
         is_converted: updates.isConverted
       }).eq('id', id);
       if (error) throw error;
-      logActivity("Lead Updated", `Lead ${updates.studentName || id} details changed`, "warning");
+      const oldLead = leads.find((l: any) => l.id === id);
+      const changes = diffObjects(oldLead, updates, LEAD_FIELD_LABELS);
+      logActivity("Lead Updated", {
+        summary: `Lead ${updates.studentName || oldLead?.studentName || id} details changed`,
+        action: "update",
+        module: "Lead",
+        targetName: updates.studentName || oldLead?.studentName || id,
+        changes: changes.length > 0 ? changes : [{ field: "General details", old: "Existing values", new: "Updated values" }]
+      }, "warning");
       toast.success("Lead updated");
     } catch (e) {
       setLeads(backupLeads); // Revert
@@ -84,7 +99,14 @@ export function useLeadsOperations(ctx: any) {
         return;
       }
 
-      logActivity("Lead Deleted", `Lead record removed`, 'alert');
+      const oldLeadForDelete = leads.find((l: any) => l.id === id);
+      logActivity("Lead Deleted", {
+        summary: `Lead ${oldLeadForDelete?.studentName || id} record removed`,
+        action: "delete",
+        module: "Lead",
+        targetName: oldLeadForDelete?.studentName || id,
+        deletedRecord: oldLeadForDelete || { id }
+      }, 'alert');
       toast.success("Lead record deleted successfully");
     } catch (e: any) {
       setLeads(backupLeads);

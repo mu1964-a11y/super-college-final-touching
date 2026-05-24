@@ -3,7 +3,7 @@
 
 @theme {
   --font-sans: var(--font-family, "Inter"), ui-sans-serif, system-ui, sans-serif;
-  --font-urdu: "Noto Nastaliq Urdu", serif;
+  --font-urdu: "Jameel Noori Nastaleeq", "Noto Nastaliq Urdu", "Urdu Typesetting", serif;
   
   --color-superior-teal: var(--primary-color, #085a4e);
   --color-superior-teal-light: color-mix(in srgb, var(--primary-color, #085a4e) 80%, white);

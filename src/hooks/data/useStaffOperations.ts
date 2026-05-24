@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
 import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus } from '../../types';
+import { diffObjects, STAFF_FIELD_LABELS } from '../../utils/changeTracker';
 
 export function useStaffOperations(ctx: any) {
   const { generateStudentId, user, staff, setStaff, isBulkOperatingRef, logActivity, fetchData } = ctx;
@@ -30,6 +31,13 @@ export function useStaffOperations(ctx: any) {
           throw error;
         }
         await fetchData(true);
+        logActivity("Staff Added", {
+          summary: `Staff member ${member.fullName} (${member.role}) added successfully`,
+          action: "add",
+          module: "Staff",
+          targetName: member.fullName,
+          fullRecord: member
+        }, 'success');
         toast.success("Staff member added successfully");
       } catch (e: any) {
         toast.error(`Failed to add staff: ${e.message}`);
@@ -38,6 +46,9 @@ export function useStaffOperations(ctx: any) {
 
   const updateStaff = async (id: string, updates: Partial<Staff>) => {
       try {
+        const oldMember = staff.find((s: any) => s.id === id);
+        const changes = diffObjects(oldMember, updates, STAFF_FIELD_LABELS);
+
         setStaff((prev: Staff[]) => prev.map(s => s.id === id ? { ...s, ...updates } : s));
         const { error } = await supabase.from('staff').update({
           full_name: updates.fullName,
@@ -57,8 +68,15 @@ export function useStaffOperations(ctx: any) {
           specialization: updates.specialization
         }).eq('id', id);
         if (error) throw error;
-        // await fetchData(true);
-        logActivity("Staff Updated", `Staff ${updates.fullName || id} details changed`, "warning");
+        
+        logActivity("Staff Updated", {
+          summary: `Staff ${updates.fullName || oldMember?.fullName || id} details changed`,
+          action: "update",
+          module: "Staff",
+          targetName: updates.fullName || oldMember?.fullName || id,
+          changes: changes.length > 0 ? changes : [{ field: "General details", old: "Existing values", new: "Updated values" }]
+        }, "warning");
+        
         toast.success("Staff details updated");
       } catch (e: any) {
         toast.error(`Failed to update staff: ${e.message}`);
@@ -67,9 +85,17 @@ export function useStaffOperations(ctx: any) {
 
   const deleteStaff = async (id: string) => {
       try {
+        const oldMember = staff.find((s: any) => s.id === id);
         const { error } = await supabase.from('staff').delete().eq('id', id);
         if (error) throw error;
-        // await fetchData(true);
+        await fetchData(true);
+        logActivity("Staff Deleted", {
+          summary: `Staff member ${oldMember?.fullName || id} removed`,
+          action: "delete",
+          module: "Staff",
+          targetName: oldMember?.fullName || id,
+          deletedRecord: oldMember || { id }
+        }, 'alert');
         toast.success("Staff member removed");
       } catch (e: any) {
         toast.error(`Failed to delete staff: ${e.message}`);

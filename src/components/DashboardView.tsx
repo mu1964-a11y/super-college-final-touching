@@ -83,7 +83,7 @@ import {
   AreaChart,
   Area,
 } from "recharts";
-import { Sparkles } from "lucide-react";
+import { Sparkles, BrainCircuit } from "lucide-react";
 import AiCopilotView from "./AiCopilotView";
 
 export default function DashboardView({
@@ -1106,7 +1106,7 @@ export default function DashboardView({
             { id: "overview", label: "Overview", icon: LayoutDashboard },
             { id: "directors", label: "Directors", icon: ShieldCheck },
             { id: "staff", label: "Staff", icon: Users },
-            { id: "ai_copilot", label: "SCJ AI Intellect", icon: Sparkles },
+            { id: "ai_copilot", label: "SCJ Nexus AI", icon: BrainCircuit },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -1822,6 +1822,92 @@ export default function DashboardView({
               icon={Redo2}
               color="indigo"
             />
+          </div>
+
+          {/* Directors Revenue Share Blocks */}
+          <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-[2.5rem] p-6 md:p-8 border border-slate-200/50 dark:border-slate-800 shadow-sm mt-6 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-gradient-to-bl from-superior-gold/5 via-transparent to-transparent rounded-full blur-3xl pointer-events-none" />
+            
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6 relative z-10">
+              <div>
+                <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                  <span className="p-1.5 rounded-xl bg-superior-gold/10 text-superior-gold">
+                    <ShieldCheck size={16} />
+                  </span>
+                  Directors Equity & Revenue Distribution
+                </h4>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mt-1">
+                  Real-time division of overall gross collections based on directorial equity holding
+                </p>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800/80 px-3.5 py-2 rounded-xl border border-slate-200/60 dark:border-slate-750 shadow-xs">
+                  Total gross: Rs. {directorsAnalytics.totalEarnings.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 relative z-10 font-sans">
+              {[
+                { name: "M Akhtar", share: 44, role: "Chief Executive Partner", color: "from-emerald-50 to-teal-50/20 dark:from-emerald-950/20 dark:to-teal-950/5 border-emerald-200/60 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-400", bgBadge: "bg-emerald-100/80 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300" },
+                { name: "M Saleem", share: 35, role: "Management Director", color: "from-amber-50 to-yellow-50/20 dark:from-amber-950/20 dark:to-yellow-950/5 border-amber-200/60 dark:border-amber-900/60 text-amber-700 dark:text-amber-400", bgBadge: "bg-amber-100/80 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300" },
+                { name: "Ehsan Ahsan", share: 15, role: "Advisory Director", color: "from-blue-50 to-indigo-50/20 dark:from-blue-950/20 dark:to-indigo-950/5 border-blue-200/60 dark:border-blue-900/60 text-blue-700 dark:text-blue-400", bgBadge: "bg-blue-100/80 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300" },
+                { name: "M Siddiq", share: 6, role: "Operational Coordinator", color: "from-purple-50 to-pink-50/20 dark:from-purple-950/20 dark:to-pink-950/5 border-purple-200/60 dark:border-purple-900/60 text-purple-700 dark:text-purple-400", bgBadge: "bg-purple-100/80 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300" }
+              ].map((director, idx) => {
+                const partnerShareVal = Math.round(directorsAnalytics.totalEarnings * (director.share / 100));
+                return (
+                  <motion.div
+                    key={idx}
+                    whileHover={{ y: -4, scale: 1.01 }}
+                    className={`bg-gradient-to-br ${director.color} border p-5 rounded-[1.8rem] space-y-4 shadow-xs relative overflow-hidden group`}
+                  >
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-current opacity-[0.02] rounded-bl-full pointer-events-none transition-all duration-300 group-hover:scale-125" />
+                    
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <h5 className="font-sans font-black text-slate-800 dark:text-white text-base leading-tight">
+                          {director.name}
+                        </h5>
+                        <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mt-0.5">
+                          {director.role}
+                        </p>
+                      </div>
+                      <span className={`text-[10px] font-mono font-black uppercase px-2.5 py-1 rounded-full ${director.bgBadge} tracking-tight shrink-0`}>
+                        {director.share}%
+                      </span>
+                    </div>
+
+                    <div className="space-y-1 relative z-10">
+                      <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">
+                        Dividend Share Amount
+                      </span>
+                      <span className="font-sans font-black text-xl text-slate-800 dark:text-slate-100 block tracking-tight">
+                        Rs. {partnerShareVal.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="w-full h-1.5 bg-slate-150 dark:bg-slate-800/80 rounded-full overflow-hidden">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${director.share}%` }}
+                          transition={{ duration: 0.8, delay: idx * 0.1 }}
+                          className={`h-full rounded-full ${
+                            director.share >= 40 
+                              ? "bg-emerald-500" 
+                              : director.share >= 30 
+                              ? "bg-amber-500" 
+                              : director.share >= 10 
+                              ? "bg-blue-500" 
+                              : "bg-purple-500"
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">

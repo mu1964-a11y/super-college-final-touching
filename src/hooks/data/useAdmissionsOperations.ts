@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
 import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus } from '../../types';
+import { diffObjects, ADMISSION_FIELD_LABELS } from '../../utils/changeTracker';
 
 export function useAdmissionsOperations(ctx: any) {
   const { user, generateStudentId, admissions, setAdmissions, students, settings, isBulkOperatingRef, logActivity, fetchData } = ctx;
@@ -107,7 +108,13 @@ export function useAdmissionsOperations(ctx: any) {
       
       setAdmissions(prev => prev.map(a => a.id === optimisticId ? { ...a, id: data.id, dateApplied: data.date_applied } : a));
       
-      logActivity("Admission Recorded", `${admission.fullName} application added`, 'success');
+      logActivity("Admission Recorded", {
+        summary: `${admission.fullName} application added`,
+        action: "add",
+        module: "Admission",
+        targetName: admission.fullName,
+        fullRecord: admission
+      }, 'success');
       toast.success("Admission added successfully");
     } catch (e: any) {
       setAdmissions(prev => prev.filter(a => a.id !== optimisticId));
@@ -238,7 +245,14 @@ export function useAdmissionsOperations(ctx: any) {
         }
         
         fetchData(true);
-        logActivity("Admission Updated", `Admission ${updates.fullName || id} details changed`, "warning");
+        const changes = diffObjects(existingAdmission, updates, ADMISSION_FIELD_LABELS);
+        logActivity("Admission Updated", {
+          summary: `Admission ${updates.fullName || existingAdmission?.fullName || id} details changed`,
+          action: "update",
+          module: "Admission",
+          targetName: updates.fullName || existingAdmission?.fullName || id,
+          changes: changes.length > 0 ? changes : [{ field: "General details", old: "Existing values", new: "Updated values" }]
+        }, "warning");
         toast.success("Admission details updated");
       } catch (e: any) {
         console.error("Update Admission Error:", e);
@@ -248,6 +262,7 @@ export function useAdmissionsOperations(ctx: any) {
 
   const deleteAdmission = async (id: string) => {
       try {
+        const targetAdmission = admissions.find(a => a.id === id);
         const { error, count } = await supabase.from('admissions').delete({ count: 'exact' }).eq('id', id);
         if (error) throw error;
         if (count === 0) {
@@ -255,6 +270,13 @@ export function useAdmissionsOperations(ctx: any) {
           return;
         }
         fetchData(true);
+        logActivity("Admission Deleted", {
+          summary: `Admission ${targetAdmission?.fullName || id} record removed`,
+          action: "delete",
+          module: "Admission",
+          targetName: targetAdmission?.fullName || id,
+          deletedRecord: targetAdmission || { id }
+        }, 'alert');
         toast.success("Admission record deleted successfully");
       } catch (e: any) {
         console.error("Delete Admission Error:", e);

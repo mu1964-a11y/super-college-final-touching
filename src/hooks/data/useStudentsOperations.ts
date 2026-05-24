@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
 import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus } from '../../types';
+import { diffObjects, STUDENT_FIELD_LABELS } from '../../utils/changeTracker';
 
 export function useStudentsOperations(ctx: any) {
   const { user, generateStudentId, admissions, students, setStudents, isBulkOperatingRef, logActivity, fetchData } = ctx;
@@ -28,7 +29,13 @@ export function useStudentsOperations(ctx: any) {
         academic_part: student.academicPart || 'Part-1'
       });
       if (error) throw error;
-      logActivity("Student Added", `New student ${student.fullName} initialized`, 'success');
+      logActivity("Student Added", {
+        summary: `New student ${student.fullName} initialized`,
+        action: "add",
+        module: "Student",
+        targetName: student.fullName,
+        fullRecord: student
+      }, 'success');
       toast.success("Student added");
     } catch (e) {
       setStudents(prev => prev.filter(s => s.id !== id));
@@ -38,6 +45,9 @@ export function useStudentsOperations(ctx: any) {
 
   const updateStudent = async (id: string, updates: Partial<Student>) => {
       try {
+        const oldStudent = students.find((s: any) => s.id === id);
+        const changes = diffObjects(oldStudent, updates, STUDENT_FIELD_LABELS);
+
         const { error } = await supabase.from('students').update({
           full_name: updates.fullName,
           father_name: updates.fatherName,
@@ -61,7 +71,15 @@ export function useStudentsOperations(ctx: any) {
         
         if (error) throw error;
         fetchData(true);
-        logActivity("Student Updated", `Student ${updates.fullName || id} details changed`, "warning");
+        
+        logActivity("Student Updated", {
+          summary: `Student ${updates.fullName || oldStudent?.fullName || id} details changed`,
+          action: "update",
+          module: "Student",
+          targetName: updates.fullName || oldStudent?.fullName || id,
+          changes: changes.length > 0 ? changes : [{ field: "General details", old: "Existing values", new: "Updated values" }]
+        }, "warning");
+        
         toast.success("Student details updated");
       } catch (e: any) {
         toast.error(`Failed to update student: ${e.message}`);
@@ -70,12 +88,20 @@ export function useStudentsOperations(ctx: any) {
 
   const deleteStudent = async (id: string) => {
     const backupStudents = [...students];
+    const targetStudent = students.find((s: any) => s.id === id);
     setStudents(prev => prev.filter(s => s.id !== id));
 
     try {
       const { error } = await supabase.from('students').delete().eq('id', id);
       if (error) throw error;
       fetchData(true);
+      logActivity("Student Deleted", {
+        summary: `Student ${targetStudent?.fullName || id} record removed`,
+        action: "delete",
+        module: "Student",
+        targetName: targetStudent?.fullName || id,
+        deletedRecord: targetStudent || { id }
+      }, 'alert');
       toast.success("Student removed");
     } catch (e) {
       setStudents(backupStudents);
