@@ -26,12 +26,34 @@ class ErrorBoundary extends React.Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo);
+    const msg = error?.message || '';
+    if (msg.toLowerCase().includes('refresh token') || msg.toLowerCase().includes('refresh_token')) {
+      try {
+        localStorage.removeItem('scj-auth');
+        window.location.reload();
+      } catch (err) {
+        console.warn("Storage item cleanup failed during error catch:", err);
+      }
+    }
   }
 
   public render() {
     if (this.state.hasError) {
       let errorMessage = "An unexpected error occurred.";
       let firestoreInfo: any = null;
+
+      const errorMsgText = this.state.error?.message || '';
+      if (errorMsgText.toLowerCase().includes('refresh token') || errorMsgText.toLowerCase().includes('refresh_token')) {
+        try {
+          localStorage.removeItem('scj-auth');
+        } catch (err) {
+          console.warn("Storage item cleanup failed during render error handler:", err);
+        }
+        setTimeout(() => {
+          window.location.reload();
+        }, 100);
+        return null;
+      }
 
       try {
         if (this.state.error?.message) {

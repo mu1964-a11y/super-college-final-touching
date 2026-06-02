@@ -225,6 +225,10 @@ ${detailedDatabaseCtx}
       res.json({ text: response.text || "No output generated" });
     } catch (error: any) {
       console.error("Gemini Chat API Error:", error.message || error);
+      const errMsg = error?.message || "";
+      if (errMsg.includes("PERMISSION_DENIED") || errMsg.includes("Lightning dunning decision is deny")) {
+        return res.status(500).json({ error: "Your Gemini API Key has billing or quota issues. Please check your Google Cloud Console for project billing status." });
+      }
       res.status(500).json({ error: error.message || "Failed to process chat with AI" });
     }
   });
@@ -266,6 +270,10 @@ College Metrics Data:
       res.json({ text: response.text || "No output generated" });
     } catch (error: any) {
       console.error("Gemini Analyse API Error:", error.message || error);
+      const errMsg = error?.message || "";
+      if (errMsg.includes("PERMISSION_DENIED") || errMsg.includes("Lightning dunning decision is deny")) {
+        return res.status(500).json({ error: "Your Gemini API Key has billing or quota issues. Please check your Google Cloud Console for project billing status." });
+      }
       res.status(500).json({ error: error.message || "Failed to analyze college metrics with AI" });
     }
   });
@@ -413,7 +421,35 @@ College Metrics Data:
       }
     } catch (error: any) {
       console.error("Gemini Generate Image API Error:", error.message || error);
+      const errMsg = error?.message || "";
+      if (errMsg.includes("PERMISSION_DENIED") || errMsg.includes("Lightning dunning decision is deny")) {
+        return res.status(500).json({ error: "Your Gemini API Key has billing or quota issues. Please check your Google Cloud Console for project billing status." });
+      }
       return res.status(500).json({ error: error?.message || "Failed to generate image with Gemini" });
+    }
+  });
+
+  // Securely fetch all permissions bypassing RLS
+  app.get("/api/permissions", async (req, res) => {
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.VITE_SUPABASE_URL) {
+      return res.status(500).json({ error: "Missing Supabase configuration on backend" });
+    }
+
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabaseAdmin = createClient(
+        process.env.VITE_SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+      );
+
+      const { data, error } = await supabaseAdmin.from('permissions').select('*');
+      if (error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.json(data);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
     }
   });
 
@@ -445,8 +481,13 @@ College Metrics Data:
 
         if (error) {
           // If user already exists, Supabase throws error, which we can catch or ignore based on code
-          if (error.message && (error.message.includes("already registered") || error.message.includes("already exists"))) {
-             return res.json({ message: "User already exists in Auth, updating permissions..." });
+          if (error.message && (error.message.includes("already registered") || error.message.includes("already been registered") || error.message.includes("already exists"))) {
+             const { data: searchData } = await supabaseAdmin.auth.admin.listUsers();
+             const existingUser = searchData.users?.find(u => u.email === email);
+             if (existingUser && password) {
+               await supabaseAdmin.auth.admin.updateUserById(existingUser.id, { password, user_metadata: { display_name: displayName } });
+             }
+             return res.json({ message: "User already exists in Auth, updating permissions and password..." });
           }
           return res.status(400).json({ error: error.message });
         }

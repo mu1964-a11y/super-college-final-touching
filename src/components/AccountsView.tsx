@@ -709,14 +709,15 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
   };
 
   const getBalanceStatus = () => {
-    const balance = student.feeLedger.remainingBalance;
-    const hasOverdue = student.feeLedger.installments?.some(inst => 
+    const feeLedger = student.feeLedger || { totalPackage: 0, remainingBalance: 0, installments: [] };
+    const balance = feeLedger.remainingBalance || 0;
+    const hasOverdue = feeLedger.installments?.some(inst => 
       inst.status === 'Unpaid' && new Date(inst.dueDate) < new Date() && new Date(inst.dueDate).toDateString() !== new Date().toDateString()
     );
 
     if (hasOverdue && balance > 0) return <Badge className="bg-red-600 text-white animate-pulse">Overdue</Badge>;
     if (balance <= 0) return <Badge className="bg-emerald-100 text-emerald-700 font-bold">Fully Paid</Badge>;
-    if (balance < student.feeLedger.totalPackage) return <Badge className="bg-orange-100 text-orange-700 font-bold">Partial Paid</Badge>;
+    if (balance < feeLedger.totalPackage) return <Badge className="bg-orange-100 text-orange-700 font-bold">Partial Paid</Badge>;
     return <Badge className="bg-slate-100 text-slate-700 font-bold">Not Paid</Badge>;
   };
 
@@ -903,12 +904,12 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {student.feeLedger.transactions.length === 0 ? (
+                  {(student.feeLedger?.transactions || []).length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="h-32 text-center text-slate-400 italic">No transactions recorded yet.</TableCell>
                     </TableRow>
                   ) : (
-                    student.feeLedger.transactions.map((tx: FeeTransaction) => (
+                    (student.feeLedger?.transactions || []).map((tx: FeeTransaction) => (
                       <TableRow key={tx.id} className="border-b border-slate-50 hover:bg-slate-50/30 transition-colors group">
                         <TableCell className="py-5 px-6 text-sm font-medium text-slate-600">{tx.date}</TableCell>
                         <TableCell className="py-5 px-6">
@@ -959,7 +960,8 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
 }
 
 function InstallmentBuilder({ student, data }: { student: Student, data: any }) {
-  const [installments, setInstallments] = useState<Installment[]>(student.feeLedger.installments || []);
+  const feeLedger = student.feeLedger || { totalPackage: 0, installments: [] };
+  const [installments, setInstallments] = useState<Installment[]>(feeLedger.installments || []);
 
   const addRow = () => {
     const newInstallment: Installment = {
@@ -980,9 +982,10 @@ function InstallmentBuilder({ student, data }: { student: Student, data: any }) 
   };
 
   const handleSave = () => {
+    const feeLedger = student.feeLedger || { totalPackage: 0 };
     const total = installments.reduce((acc, curr) => acc + Number(curr.amount), 0);
-    if (total > student.feeLedger.totalPackage) {
-      toast.warning(`Warning: Total installments (Rs. ${(total || 0).toLocaleString()}) exceed total package (Rs. ${(student.feeLedger.totalPackage || 0).toLocaleString()})`);
+    if (total > feeLedger.totalPackage) {
+      toast.warning(`Warning: Total installments (Rs. ${(total || 0).toLocaleString()}) exceed total package (Rs. ${(feeLedger.totalPackage || 0).toLocaleString()})`);
     }
     data.updateInstallments(student.id, installments);
     toast.success("Installment plan updated!");
@@ -1084,7 +1087,7 @@ function InstallmentBuilder({ student, data }: { student: Student, data: any }) 
         <p className="text-sm font-medium text-slate-600">Total Planned:</p>
         <p className={cn(
           "text-lg font-black",
-          installments.reduce((acc, curr) => acc + Number(curr.amount), 0) > student.feeLedger.totalPackage ? "text-red-600" : "text-superior-teal"
+          installments.reduce((acc, curr) => acc + Number(curr.amount), 0) > (student.feeLedger?.totalPackage || 0) ? "text-red-600" : "text-superior-teal"
         )}>
           Rs. {(installments.reduce((acc, curr) => acc + Number(curr.amount), 0) || 0).toLocaleString()}
         </p>

@@ -345,9 +345,10 @@ export default function App() {
         const { data, error } = response;
         if (error) {
           const errMsg = typeof error === 'string' ? error : (error.message || String(error));
-          if (errMsg.toLowerCase().includes("refresh token")) {
+          if (errMsg.toLowerCase().includes("refresh token") || errMsg.toLowerCase().includes("refresh_token")) {
             window.localStorage.removeItem("scj-auth");
             supabase.auth.signOut({ scope: "local" }).catch(() => {});
+            window.location.reload();
           } else {
             console.error("Session error:", error);
           }
@@ -357,9 +358,10 @@ export default function App() {
       })
       .catch((err) => {
         const errMsg = typeof err === 'string' ? err : (err?.message || String(err));
-        if (errMsg.toLowerCase().includes("refresh token")) {
+        if (errMsg.toLowerCase().includes("refresh token") || errMsg.toLowerCase().includes("refresh_token")) {
           window.localStorage.removeItem("scj-auth");
           supabase.auth.signOut({ scope: "local" }).catch(() => {});
+          window.location.reload();
         } else {
           console.warn("Got session error:", err);
         }
@@ -422,9 +424,11 @@ export default function App() {
       const { error } = await supabase.auth.signOut();
       if (error) {
         const errMsg = typeof error === 'string' ? error : (error.message || String(error));
-        if (errMsg.toLowerCase().includes("refresh token")) {
+        if (errMsg.toLowerCase().includes("refresh token") || errMsg.toLowerCase().includes("refresh_token")) {
           window.localStorage.removeItem("scj-auth");
           await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+          window.location.reload();
+          return;
         }
       }
     } catch (e) {
@@ -668,12 +672,7 @@ export default function App() {
 
     const allowed = (userPermission?.sections || []).filter((s) => {
       const parent = parentMap[s] || s;
-      return (
-        modulesFromSettings.includes(parent) ||
-        parent === "fee" ||
-        s === "accounts" ||
-        modulesFromSettings.includes("accounts")
-      );
+      return modulesFromSettings.includes(parent) || modulesFromSettings.includes(s);
     });
 
     // If a parent is explicitly allowed, allow all its mapped children
@@ -701,11 +700,11 @@ export default function App() {
         "admissions-ukl3": "admissions",
         "admissions-dit": "admissions",
         "admissions-bs": "admissions",
-        "fee-boys": "accounts",
-        "fee-girls": "accounts",
-        "fee-ukl3": "accounts",
-        "fee-dit": "accounts",
-        "fee-bs": "accounts",
+        "fee-boys": "fee",
+        "fee-girls": "fee",
+        "fee-ukl3": "fee",
+        "fee-dit": "fee",
+        "fee-bs": "fee",
         "students-boys": "students",
         "students-girls": "students",
         "students-ukl3": "students",
@@ -727,7 +726,8 @@ export default function App() {
         const defaultPages: Record<string, Page> = {
           admissions: "admissions-fsc",
           students: "students-boys",
-          accounts: "fee-boys",
+          fee: "fee-boys",
+          accounts: "accounts",
         };
 
         setActivePage(defaultPages[firstSection] || (firstSection as Page));
@@ -788,8 +788,8 @@ export default function App() {
       {
         "students-boys": "students",
         "students-girls": "students",
-        "fee-boys": "fee-boys",
-        "fee-girls": "fee-boys",
+        "fee-boys": "fee",
+        "fee-girls": "fee",
         staff: "staff",
         accounts: "accounts",
       }[pageId as string] || null;
@@ -1835,9 +1835,7 @@ export default function App() {
               >
                 <div className="text-right hidden sm:block">
                   <p className="text-[10px] font-black text-slate-800 dark:text-slate-300 leading-none uppercase tracking-widest group-hover:text-superior-teal dark:group-hover:text-superior-gold">
-                    {isAdmin
-                      ? "Master Admin"
-                      : userPermission?.displayName || "Sub Admin"}
+                    {userPermission?.displayName || (isAdmin ? "Master Admin" : "Sub Admin")}
                   </p>
                 </div>
                 <div
@@ -1845,9 +1843,11 @@ export default function App() {
                     "w-8 h-8 rounded-xl border-2 border-superior-gold flex items-center justify-center text-[10px] font-black text-superior-teal bg-superior-gold/10 shadow-sm",
                   )}
                 >
-                  {isAdmin
-                    ? "AD"
-                    : userPermission?.displayName?.[0] || "U"}
+                  {userPermission?.displayName
+                    ? (userPermission.displayName.trim().split(/\s+/).length > 1
+                        ? (userPermission.displayName.trim().split(/\s+/)[0][0] + userPermission.displayName.trim().split(/\s+/).slice(-1)[0][0]).toUpperCase()
+                        : userPermission.displayName.trim().substring(0, 2).toUpperCase())
+                    : (isAdmin ? "AD" : "U")}
                 </div>
               </div>
             </div>

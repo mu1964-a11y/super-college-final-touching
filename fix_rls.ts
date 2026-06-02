@@ -7,7 +7,7 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 async function run() {
-  const { data, error } = await supabase.rpc('get_policies_for_table', { table_name: 'permissions' });
+  const { data, error } = await supabase.from('permissions').select('*').limit(1);
   console.log(data, error);
 }
 run();

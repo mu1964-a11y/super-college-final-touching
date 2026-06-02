@@ -21,7 +21,8 @@ const SECTIONS = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'leads', label: 'Lead Pipeline' },
   { id: 'admissions', label: 'Admissions' },
-  { id: 'accounts', label: 'Fee Collection / Accounts' },
+  { id: 'fee', label: 'Fees & Billing' },
+  { id: 'accounts', label: 'Expenses & Income' },
   { id: 'students', label: 'Students' },
   { id: 'attendance', label: 'Attendance' },
   { id: 'academic', label: 'Academic Records' },
@@ -50,6 +51,7 @@ export default function AccessControlDialog({
 }: AccessControlDialogProps) {
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [password, setPassword] = useState('');
   const [selectedSections, setSelectedSections] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -65,12 +67,14 @@ export default function AccessControlDialog({
     onUpdate({
       email,
       displayName,
+      customPassword: password,
       sections: isAdmin ? SECTIONS.map(s => s.id) : selectedSections,
       isAdmin
     });
     // Reset
     setEmail('');
     setDisplayName('');
+    setPassword('');
     setSelectedSections([]);
     setIsAdmin(false);
     setIsConfirming(false);
@@ -85,6 +89,7 @@ export default function AccessControlDialog({
   const handleEdit = (p: UserPermission) => {
     setEmail(p.email || '');
     setDisplayName(p.displayName || '');
+    setPassword('');
     setSelectedSections(p.sections || []);
     setIsAdmin(p.isAdmin || false);
     setIsConfirming(false);
@@ -130,6 +135,21 @@ export default function AccessControlDialog({
                       onChange={(e) => setDisplayName(e.target.value)}
                     />
                   </div>
+                </div>
+
+                <div className="space-y-1.5 mt-4">
+                  <Label className="text-[11px] font-black uppercase tracking-widest text-slate-400 ml-1">Login Password</Label>
+                  <div className="relative">
+                    <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                    <Input 
+                      type="text"
+                      placeholder="Enter secure password"
+                      className="pl-12 h-12 rounded-2xl bg-white border-slate-100 shadow-sm font-bold focus:ring-superior-teal/20"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-400 ml-1 mt-1 leading-tight">Must provide a password for new users. Leave blank if editing without changing existing password.</p>
                 </div>
 
                 <div className="pt-4 border-t border-slate-200">

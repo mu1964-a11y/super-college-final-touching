@@ -6,10 +6,27 @@ import ErrorBoundary from './components/ErrorBoundary';
 
 window.addEventListener('unhandledrejection', (event) => {
   const errMsg = event.reason ? String(event.reason) : '';
-  if (errMsg.toLowerCase().includes('refresh token')) {
+  if (errMsg.toLowerCase().includes('refresh token') || errMsg.toLowerCase().includes('refresh_token')) {
     event.preventDefault(); // Suppress the console error
-    window.localStorage.removeItem('scj-auth');
-    // We can also trigger a local reload if desired, but this is enough to stop the error locally
+    try {
+      window.localStorage.removeItem('scj-auth');
+      window.location.reload();
+    } catch (err) {
+      console.warn("Unable to clear storage during reload rejection:", err);
+    }
+  }
+});
+
+window.addEventListener('error', (event) => {
+  const errMsg = event.message ? String(event.message) : '';
+  if (errMsg.toLowerCase().includes('refresh token') || errMsg.toLowerCase().includes('refresh_token')) {
+    event.preventDefault(); // Suppress the console error
+    try {
+      window.localStorage.removeItem('scj-auth');
+      window.location.reload();
+    } catch (err) {
+      console.warn("Unable to clear storage during reload error:", err);
+    }
   }
 });
 

@@ -108,7 +108,7 @@ export function useSupabaseData(user: any) {
         staffTimetableResult,
         staffAdvancesResult,
         settingsResult,
-        permissionsResult,
+        permissionsResponse,
         notificationsResult,
         academicRecordsResult,
         salaryPaymentsResult,
@@ -124,7 +124,7 @@ export function useSupabaseData(user: any) {
         supabase.from('staff_timetable').select('*').limit(1000),
         supabase.from('staff_advances').select('*').order('date_issued', { ascending: false }).limit(500),
         supabase.from('settings').select('*').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
-        supabase.from('permissions').select('*'),
+        fetch('/api/permissions').then(res => res.json()).catch(() => []),
         supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(1000),
         fetchAllRecords('academic_records', 'date'),
         fetchAllRecords('salary_payments', 'date'),
@@ -136,7 +136,7 @@ export function useSupabaseData(user: any) {
       const { data: staffTimetableData } = staffTimetableResult;
       const { data: staffAdvancesData } = staffAdvancesResult;
       const { data: settingsData } = settingsResult;
-      const { data: permissionsData } = permissionsResult;
+      const permissionsData = Array.isArray(permissionsResponse) ? permissionsResponse : (permissionsResponse?.data || []);
       const { data: notificationsData } = notificationsResult;
       const academicRecordsData = academicRecordsResult || [];
       const salaryPaymentsData  = salaryPaymentsResult || [];
