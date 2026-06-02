@@ -453,6 +453,50 @@ College Metrics Data:
     }
   });
 
+  // Securely check if email is registered in system
+  app.get("/api/check-email", async (req, res) => {
+    const { email } = req.query;
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+    const checkEmail = String(email).trim().toLowerCase();
+    
+    // Normalize Sajid's email spelling typo
+    const normalizedEmail = checkEmail === "msajidbloch798@gmail.com" ? "msajidbaloch798@gmail.com" : checkEmail;
+
+    const SUPER_ADMIN_EMAILS = ["mughalazam1964@gmail.com", "akhtar147jhn@gmail.com"];
+    if (SUPER_ADMIN_EMAILS.includes(normalizedEmail)) {
+      return res.json({ exists: true });
+    }
+
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.VITE_SUPABASE_URL) {
+      return res.status(500).json({ error: "Missing Supabase configuration on backend" });
+    }
+
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabaseAdmin = createClient(
+        process.env.VITE_SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+      );
+
+      const { data, error } = await supabaseAdmin
+        .from('permissions')
+        .select('email')
+        .eq('email', normalizedEmail)
+        .maybeSingle();
+
+      if (error) {
+        return res.json({ exists: false, error: error.message });
+      }
+
+      return res.json({ exists: !!data });
+    } catch (e: any) {
+      return res.json({ exists: false, error: e.message });
+    }
+  });
+
   // Securely create users in Supabase Auth from the Node.js backend
   app.post("/api/create-user", async (req, res) => {
     const { email, password, displayName } = req.body;

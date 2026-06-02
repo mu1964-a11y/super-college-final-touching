@@ -403,12 +403,43 @@ export default function App() {
     e.preventDefault();
     setAuthLoading(true);
     setLoginError("");
+
+    const loginEmail = email.trim().toLowerCase();
+    const loginPassword = password;
+
+    if (!loginEmail || !loginPassword) {
+      setLoginError("Please enter both email and password.\nMeharbani farma kar email aur password dono likhein.");
+      setAuthLoading(false);
+      return;
+    }
+
+    // Step 1: Verify on backend if email exists
+    try {
+      const checkRes = await fetch(`/api/check-email?email=${encodeURIComponent(loginEmail)}`);
+      const checkData = await checkRes.json();
+
+      if (!checkData.exists) {
+        setLoginError("❌ Incorrect Username / Email (No such registered user)\nYe email / username ghalat hai. Is naam ka koi sub-admin system mein register nahi hai.");
+        setAuthLoading(false);
+        return;
+      }
+    } catch (checkErr) {
+      console.warn("Email exists pre-verification failed, processing login directly:", checkErr);
+    }
+
+    // Step 2: Proceed with standard authentication
     const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+      email: loginEmail,
+      password: loginPassword,
     });
+
     if (error) {
-      setLoginError(error.message);
+      const errMsg = error.message.toLowerCase();
+      if (errMsg.includes("invalid login credentials") || errMsg.includes("invalid_credentials") || errMsg.includes("incorrect")) {
+        setLoginError("❌ Incorrect Password (Password Ghalat Hai)\nApka email/username bilkul theek hai, lekin password ghalat hai. Dubara check kar ke likhein.");
+      } else {
+        setLoginError(`❌ Authentication Failed:\n${error.message}`);
+      }
       setAuthLoading(false);
     }
   };
@@ -1108,13 +1139,13 @@ export default function App() {
                     <motion.div
                       initial={{ opacity: 0, y: -5 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="bg-red-500/10 text-red-100 text-[10px] font-bold p-3.5 rounded-xl border border-red-500/20 uppercase tracking-widest flex items-start gap-2.5 backdrop-blur-md"
+                      className="bg-red-500/15 text-red-200 text-xs font-semibold p-4 rounded-2xl border border-red-500/30 flex items-start gap-3 backdrop-blur-md whitespace-pre-line text-left leading-relaxed shadow-lg shadow-black/20"
                     >
                       <AlertTriangle
-                        size={14}
-                        className="shrink-0 mt-0.5 text-red-500"
+                        size={16}
+                        className="shrink-0 mt-0.5 text-red-400"
                       />
-                      <span>{loginError}</span>
+                      <span className="flex-1 font-medium">{loginError}</span>
                     </motion.div>
                   )}
 
@@ -1718,11 +1749,11 @@ export default function App() {
                 <div className="flex items-center justify-between px-2 py-1.5 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group border border-transparent hover:border-white/5">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-superior-gold/80 to-yellow-600/80 flex items-center justify-center text-white font-bold text-xs shadow-md">
-                      {(user?.user_metadata?.full_name || "Admin")[0].toUpperCase()}
+                      {(userPermission?.displayName || user?.user_metadata?.full_name || (isAdmin ? "Master Admin" : "Admin"))[0].toUpperCase()}
                     </div>
                     <div className="flex flex-col">
                       <span className="text-[11px] font-semibold text-white/90 truncate max-w-[100px]">
-                        {user?.user_metadata?.full_name || "System Admin"}
+                        {userPermission?.displayName || user?.user_metadata?.full_name || (isAdmin ? "Master Admin" : "System Admin")}
                       </span>
                       <span className="text-[9px] text-white/40 flex items-center gap-1.5 font-medium tracking-wide mt-0.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/80" />
