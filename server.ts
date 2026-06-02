@@ -483,7 +483,7 @@ College Metrics Data:
           // If user already exists, Supabase throws error, which we can catch or ignore based on code
           if (error.message && (error.message.includes("already registered") || error.message.includes("already been registered") || error.message.includes("already exists"))) {
              const { data: searchData } = await supabaseAdmin.auth.admin.listUsers();
-             const existingUser = searchData.users?.find(u => u.email === email);
+             const existingUser = (searchData.users as any[])?.find((u: any) => (u.email || '').toLowerCase() === email.toLowerCase());
              if (existingUser && password) {
                await supabaseAdmin.auth.admin.updateUserById(existingUser.id, { password, user_metadata: { display_name: displayName } });
              }

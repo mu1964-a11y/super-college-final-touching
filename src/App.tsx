@@ -607,12 +607,18 @@ export default function App() {
   }, [settings]);
 
   const SUPER_ADMIN_EMAILS = ["mughalazam1964@gmail.com", "akhtar147jhn@gmail.com"];
-  const isSuperAdmin = user?.email ? SUPER_ADMIN_EMAILS.includes(user.email) : false;
-
-  const userPermission = useMemo(
-    () => data.permissions.find((p) => p.email === user?.email),
-    [data.permissions, user?.email],
+  const isSuperAdmin = useMemo(
+    () => user?.email ? SUPER_ADMIN_EMAILS.map(e => e.toLowerCase()).includes(user.email.toLowerCase()) : false,
+    [user?.email]
   );
+
+  const userPermission = useMemo(() => {
+    if (!user?.email) return undefined;
+    const email = user.email.toLowerCase().trim();
+    // Normalize Sajid's email spelling typo (msajidbloch798@gmail.com -> msajidbaloch798@gmail.com)
+    const targetEmail = email === "msajidbloch798@gmail.com" ? "msajidbaloch798@gmail.com" : email;
+    return data.permissions.find((p) => p.email?.toLowerCase().trim() === targetEmail);
+  }, [data.permissions, user?.email]);
   const isAdmin = useMemo(
     () => isSuperAdmin || userPermission?.isAdmin,
     [isSuperAdmin, userPermission?.isAdmin],
@@ -797,7 +803,7 @@ export default function App() {
     setExpandedMenu(parentMenu || autoParent);
   };
 
-  if (authLoading || (!user && !isBrandingLoaded)) {
+  if (authLoading || (!user && !isBrandingLoaded) || (user && data.loading)) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-[#042e27] via-[#085a4e] to-[#011a15] relative overflow-hidden font-sans">
         <div className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none">
@@ -1404,6 +1410,33 @@ export default function App() {
     );
   }
 
+  if (!isSuperAdmin && !hasAnyAccess) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-[#021c17] via-[#053229] to-[#011410] font-sans p-6 text-center select-none">
+        <div className="max-w-md w-full bg-[#03241e]/75 border border-white/10 rounded-[2.5rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.85)] p-8 backdrop-blur-3xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/10 blur-[50px] rounded-full pointer-events-none" />
+          <div className="w-20 h-20 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-inner">
+            <Shield size={40} className="text-red-400 animate-pulse" />
+          </div>
+          <h2 className="text-2xl font-black text-white uppercase tracking-[0.1em] mb-2">Access Restrained</h2>
+          <p className="text-white/60 text-sm mb-6 leading-relaxed">
+            Your account (<span className="text-superior-gold font-mono">{user?.email}</span>) is verified, but has not been assigned to any sub-admin module by the Master Admin yet.
+          </p>
+          <div className="h-[2px] w-12 bg-superior-gold/20 rounded-full mx-auto mb-6" />
+          <p className="text-xs text-superior-gold tracking-[0.15em] uppercase font-black mb-6 animate-pulse">
+            Awaiting Approval
+          </p>
+          <Button 
+            onClick={handleLogout}
+            className="w-full h-12 rounded-2xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white font-bold shadow-[0_4px_15px_rgba(239,68,68,0.3)] duration-300 transition-all"
+          >
+            Sign Out
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-white dark:bg-slate-950 overflow-hidden relative">
       <AnimatePresence>
@@ -1741,6 +1774,7 @@ export default function App() {
                 { id: "reports", label: "Reports", Icon: BarChart3, color: "text-rose-500", shadow: "drop-shadow-[0_4px_6px_rgba(244,63,94,0.6)]" },
                 { id: "settings", label: "Settings", Icon: SettingsIcon, color: "text-slate-600 dark:text-slate-300", shadow: "drop-shadow-[0_4px_6px_rgba(100,116,139,0.6)]" },
               ]
+                .filter((mod) => allowedSections.includes(mod.id))
                 .map((mod) => {
                   const isActive = activePage === mod.id || activePage.startsWith(mod.id);
                   return (
