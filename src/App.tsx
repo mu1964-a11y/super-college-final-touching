@@ -646,9 +646,14 @@ export default function App() {
   const userPermission = useMemo(() => {
     if (!user?.email) return undefined;
     const email = user.email.toLowerCase().trim();
-    // Normalize Sajid's email spelling typo (msajidbloch798@gmail.com -> msajidbaloch798@gmail.com)
-    const targetEmail = email === "msajidbloch798@gmail.com" ? "msajidbaloch798@gmail.com" : email;
-    return data.permissions.find((p) => p.email?.toLowerCase().trim() === targetEmail);
+    return data.permissions.find((p) => {
+      const pEmail = p.email?.toLowerCase().trim();
+      if (!pEmail) return false;
+      const isSajidDb = pEmail === "msajidbloch798@gmail.com" || pEmail === "msajidbaloch798@gmail.com";
+      const isSajidUser = email === "msajidbloch798@gmail.com" || email === "msajidbaloch798@gmail.com";
+      if (isSajidDb && isSajidUser) return true;
+      return pEmail === email;
+    });
   }, [data.permissions, user?.email]);
   const isAdmin = useMemo(
     () => isSuperAdmin || userPermission?.isAdmin,

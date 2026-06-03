@@ -461,11 +461,18 @@ College Metrics Data:
     }
     const checkEmail = String(email).trim().toLowerCase();
     
-    // Normalize Sajid's email spelling typo
-    const normalizedEmail = checkEmail === "msajidbloch798@gmail.com" ? "msajidbaloch798@gmail.com" : checkEmail;
-
     const SUPER_ADMIN_EMAILS = ["mughalazam1964@gmail.com", "akhtar147jhn@gmail.com"];
-    if (SUPER_ADMIN_EMAILS.includes(normalizedEmail)) {
+    
+    // Support both variants for Sajid's email spelling
+    const targetEmails = [checkEmail];
+    if (checkEmail === "msajidbloch798@gmail.com") {
+      targetEmails.push("msajidbaloch798@gmail.com");
+    } else if (checkEmail === "msajidbaloch798@gmail.com") {
+      targetEmails.push("msajidbloch798@gmail.com");
+    }
+
+    const isSuperAdmin = targetEmails.some((e) => SUPER_ADMIN_EMAILS.includes(e));
+    if (isSuperAdmin) {
       return res.json({ exists: true });
     }
 
@@ -484,14 +491,13 @@ College Metrics Data:
       const { data, error } = await supabaseAdmin
         .from('permissions')
         .select('email')
-        .eq('email', normalizedEmail)
-        .maybeSingle();
+        .in('email', targetEmails);
 
       if (error) {
         return res.json({ exists: false, error: error.message });
       }
 
-      return res.json({ exists: !!data });
+      return res.json({ exists: Array.isArray(data) ? data.length > 0 : !!data });
     } catch (e: any) {
       return res.json({ exists: false, error: e.message });
     }
