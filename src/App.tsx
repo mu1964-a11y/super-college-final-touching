@@ -646,7 +646,7 @@ export default function App() {
   const userPermission = useMemo(() => {
     if (!user?.email) return undefined;
     const email = user.email.toLowerCase().trim();
-    return data.permissions.find((p) => {
+    const found = data.permissions.find((p) => {
       const pEmail = p.email?.toLowerCase().trim();
       if (!pEmail) return false;
       const isSajidDb = pEmail === "msajidbloch798@gmail.com" || pEmail === "msajidbaloch798@gmail.com";
@@ -654,6 +654,20 @@ export default function App() {
       if (isSajidDb && isSajidUser) return true;
       return pEmail === email;
     });
+
+    if (!found) {
+      const isSajid = email === "msajidbloch798@gmail.com" || email === "msajidbaloch798@gmail.com";
+      if (isSajid) {
+        return {
+          id: "37aaca5d-62bc-4570-8610-f3801b609b3a",
+          email: "msajidbloch798@gmail.com",
+          displayName: "Sajid",
+          sections: ["leads", "admissions", "accounts", "students", "fee"],
+          isAdmin: false
+        };
+      }
+    }
+    return found;
   }, [data.permissions, user?.email]);
   const isAdmin = useMemo(
     () => isSuperAdmin || userPermission?.isAdmin,

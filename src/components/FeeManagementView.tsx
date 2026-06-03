@@ -379,6 +379,7 @@ export default function FeeManagementView({
     const doc = new jsPDF("p", "pt", "a4");
     const collegeNameText =
       data.settings?.collegeName?.toUpperCase() || "SUPERIOR COLLEGE JAHANIAN";
+    const logo = data.settings?.logo || localStorage.getItem("college_logo");
 
     filteredStudents.forEach((student: any, index: number) => {
       if (index > 0 && index % 4 === 0) {
@@ -390,36 +391,61 @@ export default function FeeManagementView({
 
       // Box coords
       const boxX = 20;
-      const boxY = yOffset + 10;
+      const boxY = yOffset + 12; // Shifted down a bit to fill the area nicely
       const boxW = 555;
-      const boxH = 190;
+      const boxH = 188; // Slightly compact height to fit perfectly in 210.47 segment
 
       doc.setDrawColor(200, 200, 200);
       doc.setFillColor(253, 254, 254);
       doc.roundedRect(boxX, boxY, boxW, boxH, 6, 6, "FD");
 
-      // Header: College Name
-      doc.setFontSize(14);
+      // Header: Center-aligned College Name (Full Width Centered)
+      doc.setFontSize(13);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(5, 59, 50); // Superior Teal
-      doc.text(collegeNameText, 595.28 / 2, boxY + 20, { align: "center" });
+      doc.text(collegeNameText, 595.28 / 2, boxY + 24, { align: "center" });
 
       // Horizontal Divider
       doc.setDrawColor(220, 220, 220);
-      doc.line(boxX, boxY + 30, boxX + boxW, boxY + 30);
+      doc.line(boxX, boxY + 38, boxX + boxW, boxY + 38);
 
       // Vertical Divider
       const splitX = 180;
-      doc.line(splitX, boxY + 30, splitX, boxY + boxH);
+      doc.line(splitX, boxY + 38, splitX, boxY + boxH);
 
-      // --- Left Column ---
-      let leftY = boxY + 50;
+      // --- Left Column Logo and Details Block ---
+      if (logo) {
+        try {
+          doc.saveGraphicsState();
+          // Position logo at the top of the left column, perfectly centered
+          const colLogoSize = 38;
+          const colLogoX = boxX + (160 - colLogoSize) / 2;
+          const colLogoY = boxY + 44;
+
+          // Circular clipping path using null style so outer square or black backgrounds do not show
+          doc.circle(colLogoX + colLogoSize / 2, colLogoY + colLogoSize / 2, colLogoSize / 2, null as any);
+          doc.clip();
+          doc.discardPath();
+
+          const isPng = logo.startsWith("data:image/png") || logo.startsWith("data:image/gif") || logo.includes("png") || logo.includes("PNG");
+          const format = isPng ? "PNG" : "JPEG";
+
+          // Draw full-color college logo
+          doc.addImage(logo, format, colLogoX, colLogoY, colLogoSize, colLogoSize);
+          doc.restoreGraphicsState();
+        } catch (e) {
+          console.warn("Error drawing circular left panel logo:", e);
+        }
+      }
+
+      // Shifting "FEE VOUCHER" and details downwards towards the empty space to fit perfectly below the logo
+      let leftY = boxY + 98;
 
       doc.setFontSize(12);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(0, 0, 0);
       doc.text("FEE VOUCHER", 30, leftY);
-      leftY += 18;
+      leftY += 15;
 
       doc.setFontSize(9);
       doc.setTextColor(100, 100, 100);
@@ -429,7 +455,7 @@ export default function FeeManagementView({
         30,
         leftY,
       );
-      leftY += 20;
+      leftY += 15;
 
       doc.setFontSize(9);
       doc.setTextColor(0, 0, 0);
@@ -447,7 +473,7 @@ export default function FeeManagementView({
           140 - doc.getTextWidth(label),
         );
         doc.text(valText, 30 + doc.getTextWidth(label), leftY);
-        leftY += Math.max(12, valText.length * 10);
+        leftY += Math.max(11, valText.length * 10);
       };
 
       renderLeftField("Name: ", student.fullName);
@@ -500,15 +526,15 @@ export default function FeeManagementView({
       doc.text(
         `Rs${lastAmount.toLocaleString()} paid on ${lastDate}`,
         rightX,
-        boxY + 55,
+        boxY + 60, // shifted down to match left column spacing
       );
 
       doc.setFontSize(9);
       doc.setTextColor(220, 38, 38);
-      doc.text(`Due Date: ${dueDateStr}`, 560, boxY + 53, { align: "right" });
+      doc.text(`Due Date: ${dueDateStr}`, 560, boxY + 58, { align: "right" });
 
       // Table headers
-      const thY = boxY + 80;
+      const thY = boxY + 84; // shifted down for breathing room
       doc.setFontSize(9);
       doc.setTextColor(150, 150, 150);
       doc.text("Description", rightX, thY);
@@ -518,7 +544,7 @@ export default function FeeManagementView({
       doc.line(rightX, thY + 5, 560, thY + 5);
 
       // Table Content
-      const tdY = thY + 20;
+      const tdY = thY + 18;
       doc.setFontSize(9);
       doc.setTextColor(0, 0, 0);
       doc.setFont("helvetica", "normal");
@@ -550,9 +576,9 @@ export default function FeeManagementView({
       );
 
       const totalPackage =
-        student.totalPackage || student.feeLedger?.totalPackage || 0;
+          student.totalPackage || student.feeLedger?.totalPackage || 0;
       const received =
-        student.feeReceived || student.feeLedger?.totalReceived || 0;
+          student.feeReceived || student.feeLedger?.totalReceived || 0;
       const balance = totalPackage - received;
 
       doc.setFontSize(9);
@@ -561,25 +587,25 @@ export default function FeeManagementView({
         align: "right",
       });
 
-      // Totals Area
-      const totalsY = boxY + 135;
-      doc.line(380, totalsY - 10, 560, totalsY - 10);
+      // Totals Area (perfectly shifted down to fill the height beautifully)
+      const totalsY = boxY + 138;
+      doc.line(380, totalsY - 8, 560, totalsY - 8);
 
       doc.text("Subtotal", 380, totalsY);
       doc.text(`Rs${totalPackage.toLocaleString()}`, 560, totalsY, {
         align: "right",
       });
 
-      doc.line(380, totalsY + 6, 560, totalsY + 6);
+      doc.line(380, totalsY + 5, 560, totalsY + 5);
 
-      doc.text("Total Paid", 380, totalsY + 20);
-      doc.text(`Rs${received.toLocaleString()}`, 560, totalsY + 20, {
+      doc.text("Total Paid", 380, totalsY + 18);
+      doc.text(`Rs${received.toLocaleString()}`, 560, totalsY + 18, {
         align: "right",
       });
 
       doc.setFont("helvetica", "bold");
-      doc.text("Remaining Balance", 380, totalsY + 38);
-      doc.text(`Rs${balance.toLocaleString()}`, 560, totalsY + 38, {
+      doc.text("Remaining Balance", 380, totalsY + 34);
+      doc.text(`Rs${balance.toLocaleString()}`, 560, totalsY + 34, {
         align: "right",
       });
 
