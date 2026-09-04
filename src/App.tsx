@@ -32,10 +32,12 @@ import {
   UserCheck,
   LogIn,
   Key,
+  MessageCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useSupabaseData } from "./hooks/useSupabaseData";
 import { supabase, isSupabaseConfigured } from "./lib/supabase";
+import { safeLocalStorage } from "./utils/safeStorage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -55,6 +57,7 @@ import FeeManagementView from "./components/FeeManagementView";
 import AttendanceView from "./components/AttendanceView";
 import SettingsView from "./components/SettingsView";
 import AcademicView from "./components/AcademicView";
+import WhatsAppCenterView from "./components/WhatsAppCenterView";
 
 import { Settings as SettingsIcon } from "lucide-react";
 import AccessControlDialog from "./components/AccessControl";
@@ -88,7 +91,8 @@ type Page =
   | "library"
   | "academic"
   | "classes"
-  | "timetable";
+  | "timetable"
+  | "whatsapp-center";
 
 const NavSection = ({
   title,
@@ -238,16 +242,12 @@ export default function App() {
     name: string;
     logo: string | null;
   }>(() => {
-    try {
-      const savedLogo = localStorage.getItem('college_logo');
-      const savedName = localStorage.getItem('college_name');
-      return {
-        name: savedName || "Superior College",
-        logo: savedLogo || null,
-      };
-    } catch {
-      return { name: "Superior College", logo: null };
-    }
+    const savedLogo = safeLocalStorage.getItem('college_logo');
+    const savedName = safeLocalStorage.getItem('college_name');
+    return {
+      name: savedName || "Superior College",
+      logo: savedLogo || null,
+    };
   });
 
   // Countdown timer for app loading screen
@@ -262,13 +262,14 @@ export default function App() {
 
   // Dark mode init
   React.useEffect(() => {
-    const savedTheme = localStorage.getItem("theme");
-    if (savedTheme === "dark" || (!savedTheme && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+    const savedTheme = safeLocalStorage.getItem("theme");
+
+    if (savedTheme === "dark" || (!savedTheme && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
       document.documentElement.classList.add("dark");
-      localStorage.setItem("theme", "dark");
+      safeLocalStorage.setItem("theme", "dark");
     } else {
       document.documentElement.classList.remove("dark");
-      localStorage.setItem("theme", "light");
+      safeLocalStorage.setItem("theme", "light");
     }
     
     // Listen for custom themechange event
@@ -293,6 +294,14 @@ export default function App() {
           .maybeSingle();
 
         if (error) {
+          const errMsg = error.message || String(error);
+          if (errMsg.toLowerCase().includes("refresh token") || errMsg.toLowerCase().includes("refresh_token")) {
+            console.warn("Detected invalid refresh token in branding fetch. Clearing auth session.");
+            safeLocalStorage.removeItem("scj-auth");
+            supabase.auth.signOut({ scope: "local" }).catch(() => {});
+            window.location.reload();
+            return;
+          }
           console.warn("Branding fetch query error:", error);
           return;
         }
@@ -310,12 +319,8 @@ export default function App() {
             logo: logoSource || null,
           });
           
-          try {
-            if (logoSource) localStorage.setItem('college_logo', logoSource);
-            localStorage.setItem('college_name', finalName);
-          } catch(e) {
-            console.warn("localStorage sync error:", e);
-          }
+          if (logoSource) safeLocalStorage.setItem('college_logo', logoSource);
+          safeLocalStorage.setItem('college_name', finalName);
 
           // Debugging help - if logo is still not showing but we have data
           if (!logoSource) {
@@ -325,6 +330,14 @@ export default function App() {
           console.log("No branding settings record found in database.");
         }
       } catch (err) {
+        const errMsg = typeof err === 'string' ? err : (err as any)?.message || String(err);
+        if (errMsg.toLowerCase().includes("refresh token") || errMsg.toLowerCase().includes("refresh_token")) {
+          console.warn("Detected invalid refresh token in branding fetch catch block. Clearing auth session.");
+          safeLocalStorage.removeItem("scj-auth");
+          supabase.auth.signOut({ scope: "local" }).catch(() => {});
+          window.location.reload();
+          return;
+        }
         console.warn("Branding fetch fatal error:", err);
       } finally {
         setIsBrandingLoaded(true);
@@ -345,8 +358,16 @@ export default function App() {
         const { data, error } = response;
         if (error) {
           const errMsg = typeof error === 'string' ? error : (error.message || String(error));
-          if (errMsg.toLowerCase().includes("refresh token") || errMsg.toLowerCase().includes("refresh_token")) {
-            window.localStorage.removeItem("scj-auth");
+          const lowerMsg = errMsg.toLowerCase();
+          if (lowerMsg.includes("refresh token") || lowerMsg.includes("refresh_token") || lowerMsg.includes("session_not_found") || lowerMsg.includes("invalid_grant")) {
+            safeLocalStorage.removeItem("scj-auth");
+            // Also remove the generic supabase storage items if any exist
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i);
+              if (key && (key.includes('supabase') || key.includes('scj-auth') || key.includes('sb-'))) {
+                localStorage.removeItem(key);
+              }
+            }
             supabase.auth.signOut({ scope: "local" }).catch(() => {});
             window.location.reload();
           } else {
@@ -358,8 +379,15 @@ export default function App() {
       })
       .catch((err) => {
         const errMsg = typeof err === 'string' ? err : (err?.message || String(err));
-        if (errMsg.toLowerCase().includes("refresh token") || errMsg.toLowerCase().includes("refresh_token")) {
-          window.localStorage.removeItem("scj-auth");
+        const lowerMsg = errMsg.toLowerCase();
+        if (lowerMsg.includes("refresh token") || lowerMsg.includes("refresh_token") || lowerMsg.includes("session_not_found") || lowerMsg.includes("invalid_grant")) {
+          safeLocalStorage.removeItem("scj-auth");
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.includes('supabase') || key.includes('scj-auth') || key.includes('sb-'))) {
+              localStorage.removeItem(key);
+            }
+          }
           supabase.auth.signOut({ scope: "local" }).catch(() => {});
           window.location.reload();
         } else {
@@ -447,16 +475,16 @@ export default function App() {
   const handleLogout = async () => {
     try {
       // Clear AI Copilot persistent state
-      Object.keys(window.localStorage).forEach(key => {
+      safeLocalStorage.keys().forEach(key => {
         if (key.startsWith("scj_ai_")) {
-          window.localStorage.removeItem(key);
+          safeLocalStorage.removeItem(key);
         }
       });
       const { error } = await supabase.auth.signOut();
       if (error) {
         const errMsg = typeof error === 'string' ? error : (error.message || String(error));
         if (errMsg.toLowerCase().includes("refresh token") || errMsg.toLowerCase().includes("refresh_token")) {
-          window.localStorage.removeItem("scj-auth");
+          safeLocalStorage.removeItem("scj-auth");
           await supabase.auth.signOut({ scope: "local" }).catch(() => {});
           window.location.reload();
           return;
@@ -482,12 +510,8 @@ export default function App() {
       if (logoSource) {
         setBrandingSettings((prev) => {
           const newName = data.settings.collegeName || prev.name;
-          try {
-            localStorage.setItem('college_logo', logoSource);
-            localStorage.setItem('college_name', newName);
-          } catch(e) {
-            console.warn("localStorage sync error:", e);
-          }
+          safeLocalStorage.setItem('college_logo', logoSource);
+          safeLocalStorage.setItem('college_name', newName);
           return {
             name: newName,
             logo: logoSource,
@@ -495,11 +519,7 @@ export default function App() {
         });
       } else if (data.settings.collegeName) {
         setBrandingSettings((prev) => {
-          try {
-            localStorage.setItem('college_name', data.settings.collegeName);
-          } catch(e) {
-            console.warn("localStorage sync error:", e);
-          }
+          safeLocalStorage.setItem('college_name', data.settings.collegeName);
           return {
             ...prev,
             name: data.settings.collegeName,
@@ -722,7 +742,7 @@ export default function App() {
       return Array.from(new Set([
         ...modulesFromSettings, 
         ...Object.keys(parentMap), 
-        "dashboard", "fee", "academic", "attendance", "library", "accounts", "classes", "timetable", "reports", "leads", "admissions", "students", "staff", "settings"
+        "dashboard", "fee", "academic", "attendance", "library", "accounts", "classes", "timetable", "reports", "leads", "admissions", "students", "staff", "settings", "whatsapp-center"
       ]));
     }
 
@@ -1761,6 +1781,21 @@ export default function App() {
                       )}
                     </NavSection>
                   )}
+
+                  {allowedSections.includes("whatsapp-center") && (
+                    <NavSection title="Additional">
+                      <NavItem
+                        id="whatsapp-center"
+                        label="WhatsApp Center"
+                        icon={MessageCircle}
+                        expandedMenu={expandedMenu}
+                        activePage={activePage}
+                        activeFilter={activeFilter}
+                        onToggleMenu={toggleMenu}
+                        onNavClick={handleNavClick}
+                      />
+                    </NavSection>
+                  )}
                 </nav>
               </ScrollArea>
 
@@ -1890,10 +1925,10 @@ export default function App() {
                   const newTheme = document.documentElement.classList.contains("dark") ? "light" : "dark";
                   if (newTheme === "dark") {
                     document.documentElement.classList.add("dark");
-                    localStorage.setItem("theme", "dark");
+                    safeLocalStorage.setItem("theme", "dark");
                   } else {
                     document.documentElement.classList.remove("dark");
-                    localStorage.setItem("theme", "light");
+                    safeLocalStorage.setItem("theme", "light");
                   }
                   // Force a re-render for icon if needed, or we can just use CSS to show/hide icons
                   window.dispatchEvent(new Event('themechange'));
@@ -2072,6 +2107,9 @@ export default function App() {
                 )}
                 {activePage === "academic" && (
                   <AcademicView data={filteredData} />
+                )}
+                {activePage === "whatsapp-center" && (
+                  <WhatsAppCenterView data={filteredData} />
                 )}
               </motion.div>
               

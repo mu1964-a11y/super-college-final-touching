@@ -270,6 +270,9 @@ export interface Expense {
   addedBy: string;
   paymentMethod?: 'Cash' | 'Bank Transfer' | 'Cheque';
   session?: string;
+  expenseType?: 'Daily' | 'Monthly' | 'Operational';
+  voucherNo?: string;
+  paidTo?: string;
 }
 
 export interface Income {

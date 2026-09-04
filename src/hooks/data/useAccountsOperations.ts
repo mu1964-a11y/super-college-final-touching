@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus } from '../../types';
 
 export function useAccountsOperations(ctx: any) {
-  const { generateStudentId, user, admissions, students, staff, expenses, fetchData, logActivity } = ctx;
+  const { generateStudentId, user, admissions, students, staff, expenses, setExpenses, fetchData, logActivity } = ctx;
   const addIncome = async (inc: Omit<Income, 'id'>) => {
     try {
       const { error } = await supabase.from('income').insert({
@@ -27,23 +27,112 @@ export function useAccountsOperations(ctx: any) {
 
   const addExpense = async (expense: Omit<Expense, 'id'>) => {
       try {
-        const { error, data } = await supabase.from('expenses').insert({
-          description: expense.description,
-          amount: expense.amount,
+        const tags: string[] = [];
+        if (expense.expenseType) tags.push(`[${expense.expenseType}]`);
+        if (expense.paidTo?.trim()) tags.push(`[Paid to: ${expense.paidTo.trim()}]`);
+        if (expense.voucherNo?.trim()) tags.push(`[Voucher: ${expense.voucherNo.trim()}]`);
+        
+        const combinedDescription = tags.length > 0
+          ? `${tags.join(' ')} ${expense.description || ''}`.trim()
+          : (expense.description || '');
+
+        const payload: any = {
+          description: combinedDescription,
+          amount: Number(expense.amount),
           category: expense.category,
           date: expense.date,
-          recorded_by: user?.email || 'System'
-        }).select().single();
+          added_by: user?.email || 'Admin Office',
+          payment_method: expense.paymentMethod || 'Cash'
+        };
+        if (expense.session) payload.session = expense.session;
+        if (expense.expenseType) payload.expense_type = expense.expenseType;
+        if (expense.paidTo) payload.paid_to = expense.paidTo;
+        if (expense.voucherNo) payload.voucher_no = expense.voucherNo;
+
+        let currentPayload = { ...payload };
+        let insertResult = await supabase.from('expenses').insert(currentPayload).select().single();
+
+        // Automatic retry and schema-cache fallback if any column is missing in user's Supabase table
+        let retryCount = 0;
+        while (insertResult.error && retryCount < 6) {
+          retryCount++;
+          const errMsg = insertResult.error.message || '';
+
+          if (errMsg.includes('added_by')) {
+            delete currentPayload.added_by;
+            currentPayload.recorded_by = user?.email || 'Admin Office';
+            insertResult = await supabase.from('expenses').insert(currentPayload).select().single();
+            continue;
+          }
+
+          // Match: Could not find the '<column>' column of 'expenses' in the schema cache
+          const match = errMsg.match(/Could not find the '([^']+)' column/i);
+          if (match && match[1]) {
+            const missingCol = match[1];
+            delete currentPayload[missingCol];
+            insertResult = await supabase.from('expenses').insert(currentPayload).select().single();
+            continue;
+          }
+
+          // If payment_method or any other optional column failed
+          if (errMsg.includes('payment_method') && currentPayload.payment_method) {
+            delete currentPayload.payment_method;
+            insertResult = await supabase.from('expenses').insert(currentPayload).select().single();
+            continue;
+          }
+
+          break;
+        }
+
+        if (insertResult.error) throw insertResult.error;
         
-        if (error) throw error;
-        // await fetchData(true);
-        toast.success("Expense recorded");
-        return data.id;
+        const createdId = insertResult.data?.id || `exp-${Date.now()}`;
+        const newExp: Expense = {
+          id: createdId,
+          date: expense.date,
+          category: expense.category,
+          amount: Number(expense.amount),
+          description: combinedDescription,
+          addedBy: user?.email || 'Admin Office',
+          paymentMethod: expense.paymentMethod || 'Cash',
+          session: expense.session,
+          expenseType: expense.expenseType,
+          voucherNo: expense.voucherNo,
+          paidTo: expense.paidTo
+        };
+
+        if (setExpenses) {
+          setExpenses((prev: Expense[]) => [newExp, ...(prev || [])]);
+        }
+
+        logActivity?.("Expense Added", `Expense of Rs. ${expense.amount} under ${expense.category} added`, "info");
+        toast.success("Expense recorded successfully");
+        return createdId;
       } catch (e: any) {
         toast.error(`Failed to record expense: ${e.message}`);
         return '';
       }
     };
+
+  const deleteExpense = async (id: string) => {
+    try {
+      if (setExpenses) {
+        setExpenses((prev: Expense[]) => prev.filter((e: Expense) => e.id !== id));
+      }
+      const { error } = await supabase.from('expenses').delete().eq('id', id);
+      if (error) {
+        if (fetchData) await fetchData(true);
+        throw error;
+      }
+      if (fetchData) {
+        await fetchData(true);
+      }
+      logActivity?.("Expense Deleted", `Expense record removed`, "warning");
+      toast.success("Expense deleted successfully");
+    } catch (e: any) {
+      toast.error(`Failed to delete expense: ${e.message}`);
+    }
+  };
 
   const recordFeePayment = async (studentId: string, payment: FeePayment, fallbackName?: string) => {
     try {
@@ -323,5 +412,5 @@ export function useAccountsOperations(ctx: any) {
         toast.error(`Salary record failed: ${e.message}`);
       }
     };
-  return { addIncome, addExpense, recordFeePayment, recordFeeTransaction, updateInstallments, updateFeePackage, addSalaryPayment };
+  return { addIncome, addExpense, deleteExpense, recordFeePayment, recordFeeTransaction, updateInstallments, updateFeePackage, addSalaryPayment };
 }

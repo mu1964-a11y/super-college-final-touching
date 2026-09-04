@@ -63,6 +63,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
+import { safeLocalStorage } from "../utils/safeStorage";
 
 import { getUnifiedTransactions } from "../utils/fee";
 import { useDebounce } from "../hooks/useDebounce";
@@ -379,7 +380,7 @@ export default function FeeManagementView({
     const doc = new jsPDF("p", "pt", "a4");
     const collegeNameText =
       data.settings?.collegeName?.toUpperCase() || "SUPERIOR COLLEGE JAHANIAN";
-    const logo = data.settings?.logo || localStorage.getItem("college_logo");
+    const logo = data.settings?.logo || safeLocalStorage.getItem("college_logo");
 
     filteredStudents.forEach((student: any, index: number) => {
       if (index > 0 && index % 4 === 0) {

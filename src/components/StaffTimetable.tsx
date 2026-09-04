@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, Calendar, Plus, X, Clock } from 'lucide-react';
 import { toast } from 'sonner';
+import { safeLocalStorage } from '../utils/safeStorage';
 
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -48,7 +49,7 @@ export default function StaffTimetable({ staffList, timetableRecords = [], onAdd
     if (timetableRecords.length > 0) {
       setEntries(timetableRecords);
     } else {
-      const stored = localStorage.getItem('staffTimetable');
+      const stored = safeLocalStorage.getItem('staffTimetable');
       if (stored) {
         try {
           setEntries(JSON.parse(stored));
@@ -61,7 +62,7 @@ export default function StaffTimetable({ staffList, timetableRecords = [], onAdd
 
   const saveEntries = (newEntries: TimetableEntry[]) => {
     setEntries(newEntries);
-    localStorage.setItem('staffTimetable', JSON.stringify(newEntries));
+    safeLocalStorage.setItem('staffTimetable', JSON.stringify(newEntries));
   };
 
   const filteredStaff = staffList.filter(s => {

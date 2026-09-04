@@ -169,6 +169,28 @@ CREATE TABLE IF NOT EXISTS expenses (
   description TEXT,
   payment_method TEXT DEFAULT 'Cash',
   added_by TEXT,
+  session TEXT,
+  expense_type TEXT DEFAULT 'Daily',
+  paid_to TEXT,
+  voucher_no TEXT,
+  recorded_by TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS session TEXT;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'Cash';
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS expense_type TEXT DEFAULT 'Daily';
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS paid_to TEXT;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS voucher_no TEXT;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS recorded_by TEXT;
+
+-- Dynamic Custom Expense Heads / Categories
+CREATE TABLE IF NOT EXISTS expense_heads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT UNIQUE NOT NULL,
+  group_name TEXT DEFAULT 'Other Expenses',
+  default_type TEXT DEFAULT 'Daily',
+  is_custom BOOLEAN DEFAULT true,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 

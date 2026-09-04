@@ -19,6 +19,7 @@ import {
   Award
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { safeLocalStorage } from "../utils/safeStorage";
 
 interface AiCopilotProps {
   collegeContext: {
@@ -47,7 +48,7 @@ interface ChatMessage {
 
 const getLocalStorage = <T,>(key: string, defaultValue: T): T => {
   try {
-    const item = localStorage.getItem(key);
+    const item = safeLocalStorage.getItem(key);
     if (item === null) return defaultValue;
     return JSON.parse(item);
   } catch (error) {
@@ -57,7 +58,7 @@ const getLocalStorage = <T,>(key: string, defaultValue: T): T => {
 
 const getLocalStorageHistory = (key: string, defaultHistory: ChatMessage[]): ChatMessage[] => {
   try {
-    const item = localStorage.getItem(key);
+    const item = safeLocalStorage.getItem(key);
     if (!item) return defaultHistory;
     const items = JSON.parse(item);
     return items.map((msg: any) => ({
@@ -71,7 +72,7 @@ const getLocalStorageHistory = (key: string, defaultHistory: ChatMessage[]): Cha
 
 const safeSetLocalStorage = (key: string, value: any) => {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    safeLocalStorage.setItem(key, JSON.stringify(value));
   } catch (error) {
     console.warn(`[LocalStorage Safe-Guard] Failed to save key "${key}":`, error);
     try {
@@ -79,26 +80,26 @@ const safeSetLocalStorage = (key: string, value: any) => {
       if (key === "scj_ai_imageGallery" && Array.isArray(value)) {
         if (value.length > 1) {
           // Keep only the most recent image
-          localStorage.setItem(key, JSON.stringify(value.slice(-1)));
+          safeLocalStorage.setItem(key, JSON.stringify(value.slice(-1)));
         } else {
-          localStorage.removeItem(key);
+          safeLocalStorage.removeItem(key);
         }
       } else if (key === "scj_ai_designOptions" && Array.isArray(value)) {
         if (value.length > 1) {
           // Keep only the single latest design option
-          localStorage.setItem(key, JSON.stringify(value.slice(-1)));
+          safeLocalStorage.setItem(key, JSON.stringify(value.slice(-1)));
         } else {
-          localStorage.removeItem(key);
+          safeLocalStorage.removeItem(key);
         }
       } else if (key === "scj_ai_chatHistory" && Array.isArray(value)) {
         if (value.length > 3) {
           // Crop the history to the latest 3 elements only
-          localStorage.setItem(key, JSON.stringify(value.slice(-3)));
+          safeLocalStorage.setItem(key, JSON.stringify(value.slice(-3)));
         } else {
-          localStorage.removeItem(key);
+          safeLocalStorage.removeItem(key);
         }
       } else {
-        localStorage.removeItem(key);
+        safeLocalStorage.removeItem(key);
       }
     } catch (innerError) {
       console.error(`[LocalStorage Safe-Guard] Critical recovery failure for key "${key}":`, innerError);
@@ -411,16 +412,51 @@ How can I assist you with college strategy, custom notices, or student audits to
   useEffect(() => {
     try {
       // Clean up loading states from localStorage to unstick if stuck
-      localStorage.removeItem("scj_ai_isGeneratingImage");
-      localStorage.removeItem("scj_ai_isChatLoading");
-      localStorage.removeItem("scj_ai_isAnalysisLoading");
-      localStorage.removeItem("scj_ai_isNoticeLoading");
-      localStorage.removeItem("scj_ai_isAiDesigning");
-      localStorage.removeItem("scj_ai_isEnhancingPrompt");
+      safeLocalStorage.removeItem("scj_ai_isGeneratingImage");
+      safeLocalStorage.removeItem("scj_ai_isChatLoading");
+      safeLocalStorage.removeItem("scj_ai_isAnalysisLoading");
+      safeLocalStorage.removeItem("scj_ai_isNoticeLoading");
+      safeLocalStorage.removeItem("scj_ai_isAiDesigning");
+      safeLocalStorage.removeItem("scj_ai_isEnhancingPrompt");
     } catch (e) {
       console.warn("Cleanup error in localStorage:", e);
     }
   }, []);
+
+  // Dynamically update welcome message statistics to always be perfectly in sync with real-time collegeContext
+  useEffect(() => {
+    if (collegeContext) {
+      setChatHistory(prev => {
+        const welcomeIdx = prev.findIndex(msg => msg.id === "welcome");
+        if (welcomeIdx !== -1) {
+          const updatedContent = `### Welcome to the **Superior Nexus AI**! 🏛️⚡
+
+I am your active artificial intelligence counsel, preloaded with the real-time operational database of **Superior College Jahanian**. 
+
+Currently, I have fully indexed and have administrative lookup access to:
+* **${collegeContext.studentCount}** registered students detail catalogs (${collegeContext.boysCount} Boys / ${collegeContext.girlsCount} Girls programs)
+* **${collegeContext.staffCount}** active teachers & workforce profiles
+* **${(collegeContext.marksList || []).length}** test results & exam academic records
+* **Rs. ${collegeContext.outstandingDues.toLocaleString()}** in student outstanding dues
+* Monthly payroll liability of **Rs. ${collegeContext.staffWageLiability.toLocaleString()}**
+
+**Super Admin Privileges Active:** You can ask me absolute details about *any* specific student, teacher, class attendance, fees, outstanding dues, or exam test marks. I will lookup the live tables and give you precise bulleted reports. 
+
+How can I assist you with college strategy, custom notices, or student audits today?`;
+
+          if (prev[welcomeIdx].content !== updatedContent) {
+            const copy = [...prev];
+            copy[welcomeIdx] = {
+              ...copy[welcomeIdx],
+              content: updatedContent
+            };
+            return copy;
+          }
+        }
+        return prev;
+      });
+    }
+  }, [collegeContext]);
 
   useEffect(() => {
     safeSetLocalStorage("scj_ai_activeTab", activeTab);
@@ -1304,15 +1340,13 @@ User's basic idea: "${imageGenPrompt}"`,
   };
 
   const renderParagraphBlock = (para: string, pIdx: number, isUser: boolean) => {
-    // Check if Urdu characters are dominant
+    // Check if Urdu characters are dominant or have significant presence
     const isUrduScript = (text: string) => {
       const cleanText = text.replace(/\|/g, " ").trim();
       const countUrdu = (cleanText.match(/[\u0600-\u06FF]/g) || []).length;
       const countLatin = (cleanText.match(/[A-Za-z]/g) || []).length;
-      if (countUrdu > 0 && countLatin > 8) {
-        return false;
-      }
-      return countUrdu > 0 && countUrdu > countLatin;
+      // If there are at least 4 Urdu characters, or any Urdu characters making up at least 12% of the alpha characters, it's Urdu script
+      return countUrdu > 4 || (countUrdu > 0 && countUrdu > countLatin * 0.12);
     };
 
     const isUrduHead = isUrduScript(para);

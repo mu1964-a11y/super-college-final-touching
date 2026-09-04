@@ -303,15 +303,37 @@ CREATE TABLE "staff_advances" (
 );
 
 -- 15. Expenses
-CREATE TABLE "expenses" (
+CREATE TABLE IF NOT EXISTS "expenses" (
     "id" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    "date" DATE NOT NULL,
+    "date" DATE NOT NULL DEFAULT CURRENT_DATE,
     "category" TEXT NOT NULL,
     "amount" NUMERIC NOT NULL,
     "description" TEXT NOT NULL,
-    "added_by" TEXT NOT NULL,
-    "payment_method" TEXT,
+    "added_by" TEXT NOT NULL DEFAULT 'Admin',
+    "payment_method" TEXT DEFAULT 'Cash',
     "session" TEXT,
+    "expense_type" TEXT DEFAULT 'Daily',
+    "paid_to" TEXT,
+    "voucher_no" TEXT,
+    "recorded_by" TEXT,
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- Ensure existing expenses table gets newly supported columns seamlessly
+ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "session" TEXT;
+ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "payment_method" TEXT DEFAULT 'Cash';
+ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "expense_type" TEXT DEFAULT 'Daily';
+ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "paid_to" TEXT;
+ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "voucher_no" TEXT;
+ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "recorded_by" TEXT;
+
+-- Dynamic Expense Heads / Categories Table (allows unlimited custom & new heads)
+CREATE TABLE IF NOT EXISTS "expense_heads" (
+    "id" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "name" TEXT UNIQUE NOT NULL,
+    "group_name" TEXT NOT NULL DEFAULT 'Other Expenses',
+    "default_type" TEXT NOT NULL DEFAULT 'Daily',
+    "is_custom" BOOLEAN DEFAULT true,
     "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 

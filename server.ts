@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import "dotenv/config";
+import { whatsappBridge } from "./server/whatsappBridge.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,6 +27,59 @@ function getGenAI() {
     });
   }
   return aiClientInstance;
+}
+
+// Resilient helper to handle model generation with dynamic fallback to prevent 503 errors on high-demand models
+async function generateContentWithFallback(ai: GoogleGenAI, options: { model: string; contents: any; config?: any }) {
+  const preferredModel = options.model || "gemini-3.5-flash";
+  const fallbacks = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"];
+  const modelsToTry = [preferredModel, ...fallbacks.filter(f => f !== preferredModel)];
+
+  let lastError: any = null;
+  for (const modelName of modelsToTry) {
+    const maxRetries = 2;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`[Gemini SDK Wrapper] Attempting content generation with model: ${modelName} (Attempt ${attempt}/${maxRetries})`);
+        const response = await ai.models.generateContent({
+          ...options,
+          model: modelName,
+        });
+        console.log(`[Gemini SDK Wrapper] Content generation successful with model: ${modelName}`);
+        return response;
+      } catch (err: any) {
+        lastError = err;
+        const errMsg = err?.message || JSON.stringify(err);
+        console.warn(`[Gemini SDK Wrapper] Attempt ${attempt} failed for ${modelName}:`, errMsg);
+        
+        // Fast path exit if key is invalid, permission denied, or billing dunning blocked
+        if (
+          errMsg.includes("PERMISSION_DENIED") || 
+          errMsg.includes("API key not valid") ||
+          errMsg.includes("Lightning dunning decision is deny")
+        ) {
+          throw err;
+        }
+
+        const isTransient = errMsg.includes("503") || 
+                            errMsg.includes("UNAVAILABLE") || 
+                            errMsg.includes("429") || 
+                            errMsg.includes("RESOURCE_EXHAUSTED") || 
+                            errMsg.includes("high demand") || 
+                            errMsg.includes("temporary");
+                            
+        if (!isTransient || attempt === maxRetries) {
+          break; // move on to next fallback model
+        }
+
+        // Wait with a simple backoff before retrying
+        const delay = attempt * 1000;
+        console.log(`[Gemini SDK Wrapper] Transient error detected. Retrying ${modelName} in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  throw lastError;
 }
 
 async function startServer() {
@@ -165,7 +219,7 @@ C) PROPOSED RECOVERY ACTIONS (KAISE IMPROVE KIA JAYE):
 4. DETAIL RICH REPORTS: If asked about an individual student, output a majestic executive summary table detailing their name, enrollment details, category/genders (Boys vs Girls), board preparatory examination highlights, and full balance ledger (fee package, paid amount, outstanding dues).
 5. NO HALLUCINATION: If records are not found in the directories, gracefully suggest searching other modules or double checking terms. Never use mock data.
 6. COMPOSURE & TONE: Keep responses exceptionally clean, deeply analytical, polished, and structured into logical sections with clear display headings. Use bold highlighting, bulleted sections, and Markdown tables to convey high-fidelity data intelligence.
-7. COMPLETENESS & REDUCING TRUNCATION (CRITICAL): You must ALWAYS generate complete, coherent, fully finished responses. Never leave any sentence, bullet, or block half-written or cut off. If the requested information is massive, summarize strategic metrics and highlight the most critical details first, then output the data, ensuring the overall response remains fully completed.
+7. COMPLETENESS & MAXIMUM DEPTH (CRITICAL): You must ALWAYS generate exceptionally comprehensive, detailed, exhaustive, and fully finished responses. The user must get complete, end-to-end knowledge from every aspect (har lehaz se mukammal knowledge). Never provide short, lazy, or overly summarized responses. Never leave any sentence, bullet, table, or block half-written or cut off. If a user asks a question, cover all logical context, figures, explanations, and strategic suggestions thoroughly so they are fully satisfied.
 8. COLOR CODING & EMPHASIS SYSTEM (CRITICAL FOR HIGHLIGHTS):
    - **Important Things / Key Data**: Wrap highly important numbers, financial metrics, names, and key accomplishments in standard Markdown bold formatting (**bold text**). The frontend will automatically render these in premium Teal Green to highlight status achievements.
    - **Precautionary / Warning Details (Precautions)**: For any alerts, arrears warnings, pending debt notices, rule infractions, late arrivals, or precautionary data, you MUST prefix the sentence/clause key with ⚠️ WARNING: or 🚨 PRECAUTION: (or wrap them clearly). The frontend will display these items in prominent Red with special attention styles.
@@ -212,7 +266,7 @@ ${detailedDatabaseCtx}
         parts: [{ text: message }],
       });
 
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithFallback(ai, {
         model: "gemini-3.5-flash",
         contents: formattedContents,
         config: {
@@ -259,7 +313,7 @@ College Metrics Data:
         instruction = "You are an Elite Institutional Advisor. Provide a full strategic review, identifying immediate administrative bottlenecks, cashflow health, and a 3-month action plan to bolster admissions and operational oversight.";
       }
 
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithFallback(ai, {
         model: "gemini-3.5-flash",
         contents: `${instruction}\n\n${statsText}`,
         config: {
@@ -548,6 +602,263 @@ College Metrics Data:
       }
     } catch (e: any) {
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ==========================================
+  // WHATSAPP BAILEYS BRIDGE & AI AUTOMATION ROUTES
+  // ==========================================
+
+  // 1. Get WhatsApp Connection Status & QR Code
+  app.get("/api/whatsapp/status", (req, res) => {
+    try {
+      const status = whatsappBridge.getStatus();
+      res.json(status);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 2. Initialize / Reconnect Baileys WhatsApp Socket
+  app.post("/api/whatsapp/connect", async (req, res) => {
+    try {
+      const { forceFresh } = req.body || {};
+      const status = await whatsappBridge.init(Boolean(forceFresh));
+      res.json(status);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 3. Disconnect / Unlink WhatsApp Device
+  app.post("/api/whatsapp/disconnect", async (req, res) => {
+    try {
+      await whatsappBridge.disconnect();
+      res.json({ success: true, message: "WhatsApp disconnected successfully." });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 4. Send Single Direct WhatsApp Message
+  app.post("/api/whatsapp/send", async (req, res) => {
+    try {
+      const { phone, message } = req.body;
+      if (!phone || !message) {
+        return res.status(400).json({ error: "Phone and message are required." });
+      }
+
+      const result = await whatsappBridge.sendMessage(phone, message);
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 5. Send Bulk WhatsApp Messages with Anti-Ban Delay
+  app.post("/api/whatsapp/send-bulk", async (req, res) => {
+    try {
+      const { items, delaySeconds = 3 } = req.body;
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: "Items array is required." });
+      }
+
+      const results = await whatsappBridge.sendBulk(items, delaySeconds);
+      const successful = results.filter((r) => r.success).length;
+
+      res.json({
+        total: items.length,
+        successful,
+        failed: items.length - successful,
+        results,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 6. WhatsApp AI Natural Language Command Processor
+  app.post("/api/whatsapp/ai-command", async (req, res) => {
+    try {
+      const { command, students = [], attendanceRecords = [], autoSend = false } = req.body;
+      if (!command) {
+        return res.status(400).json({ error: "Command string is required." });
+      }
+
+      const ai = getGenAI();
+      const prompt = `You are an automated College Administration AI for Superior Group of Colleges Jahanian.
+The administrator provided this natural language command in Urdu/Hinglish/English: "${command}".
+
+Analyze the intent and return ONLY valid JSON matching this schema:
+{
+  "targetAudience": "absent_students" | "fee_defaulters" | "specific_class" | "all_students" | "custom",
+  "audienceDescription": "Brief description of the intended recipients in English/Hinglish",
+  "messageTemplate": "Polite, official, high-impact college notification in Roman Urdu and English with placeholders: {{studentName}}, {{rollNo}}, {{className}}, {{date}}, {{fatherName}}, {{balance}}.",
+  "summary": "Short 1-sentence explanation of what will be performed"
+}
+
+Make sure the messageTemplate mentions 'Superior College Jahanian', addresses the parent respectfully, and includes necessary placeholders.
+Return strictly the raw JSON without markdown code fences.`;
+
+      const aiRes = await generateContentWithFallback(ai, {
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+        },
+      });
+
+      let parsed: any;
+      try {
+        const text = aiRes.text || "{}";
+        parsed = JSON.parse(text);
+      } catch (parseErr) {
+        parsed = {
+          targetAudience: "absent_students",
+          audienceDescription: "Absent students today",
+          messageTemplate:
+            "Assalam o Alaikum {{fatherName}}, apka beta/beti {{studentName}} (Roll No: {{rollNo}}, Class: {{className}}) aaj {{date}} ko Superior College Jahanian se ghair hazir (Absent) hai. Baraye meherbani ghair haziri ki waja college office me muttala farmaiyein.",
+          summary: "Send absent alert to parents of absent students",
+        };
+      }
+
+      const todayStr = new Date().toISOString().split("T")[0];
+      const matchingRecipients: Array<{
+        id: string;
+        name: string;
+        fatherName: string;
+        rollNo: string;
+        className: string;
+        phone: string;
+        message: string;
+      }> = [];
+
+      const isAbsentTarget =
+        parsed.targetAudience === "absent_students" ||
+        command.toLowerCase().includes("absent") ||
+        command.toLowerCase().includes("ghair hazir") ||
+        command.toLowerCase().includes("gair hazir");
+
+      const isFeeTarget =
+        parsed.targetAudience === "fee_defaulters" ||
+        command.toLowerCase().includes("fee") ||
+        command.toLowerCase().includes("dues") ||
+        command.toLowerCase().includes("arrears");
+
+      if (isAbsentTarget) {
+        // Collect absent IDs from attendance records
+        const absentStudentIds = new Set<string>();
+        attendanceRecords.forEach((att: any) => {
+          const status = (att.status || "").toLowerCase();
+          if (status === "absent") {
+            const sid = att.student_id || att.studentId || att.id;
+            if (sid) absentStudentIds.add(String(sid));
+          }
+        });
+
+        students.forEach((s: any) => {
+          const sid = String(s.id);
+          const sRoll = String(s.rollNumber || s.rollNo || "");
+          const isAbsent =
+            absentStudentIds.has(sid) ||
+            (sRoll && absentStudentIds.has(sRoll)) ||
+            (attendanceRecords.length === 0 && (s.attendanceStatus === "Absent" || s.status === "Absent"));
+
+          if (isAbsent) {
+            const rawPhone = s.fatherPhone || s.phone || s.guardianPhone || s.contact || "";
+            const resolvedMsg = parsed.messageTemplate
+              .replace(/{{studentName}}/g, s.fullName || s.name || "Student")
+              .replace(/{{fatherName}}/g, s.fatherName || "Mohtaram Walid")
+              .replace(/{{rollNo}}/g, s.rollNumber || s.rollNo || "N/A")
+              .replace(/{{className}}/g, `${s.className || s.class || ""} ${s.section || ""}`.trim() || "College Class")
+              .replace(/{{date}}/g, todayStr);
+
+            matchingRecipients.push({
+              id: s.id,
+              name: s.fullName || s.name || "Student",
+              fatherName: s.fatherName || "",
+              rollNo: s.rollNumber || s.rollNo || "",
+              className: `${s.className || s.class || ""} ${s.section || ""}`.trim(),
+              phone: rawPhone,
+              message: resolvedMsg,
+            });
+          }
+        });
+      } else if (isFeeTarget) {
+        students.forEach((s: any) => {
+          const balance = s.feeLedger?.remainingBalance || s.remainingBalance || s.balance || 0;
+          if (balance > 0) {
+            const rawPhone = s.fatherPhone || s.phone || s.guardianPhone || s.contact || "";
+            const resolvedMsg = parsed.messageTemplate
+              .replace(/{{studentName}}/g, s.fullName || s.name || "Student")
+              .replace(/{{fatherName}}/g, s.fatherName || "Mohtaram Walid")
+              .replace(/{{rollNo}}/g, s.rollNumber || s.rollNo || "N/A")
+              .replace(/{{className}}/g, `${s.className || s.class || ""} ${s.section || ""}`.trim() || "College Class")
+              .replace(/{{balance}}/g, `Rs. ${Number(balance).toLocaleString()}`)
+              .replace(/{{date}}/g, todayStr);
+
+            matchingRecipients.push({
+              id: s.id,
+              name: s.fullName || s.name || "Student",
+              fatherName: s.fatherName || "",
+              rollNo: s.rollNumber || s.rollNo || "",
+              className: `${s.className || s.class || ""} ${s.section || ""}`.trim(),
+              phone: rawPhone,
+              message: resolvedMsg,
+            });
+          }
+        });
+      } else {
+        // Broad message to all or top matching students
+        students.slice(0, 50).forEach((s: any) => {
+          const rawPhone = s.fatherPhone || s.phone || s.guardianPhone || s.contact || "";
+          const resolvedMsg = parsed.messageTemplate
+            .replace(/{{studentName}}/g, s.fullName || s.name || "Student")
+            .replace(/{{fatherName}}/g, s.fatherName || "Mohtaram Walid")
+            .replace(/{{rollNo}}/g, s.rollNumber || s.rollNo || "N/A")
+            .replace(/{{className}}/g, `${s.className || s.class || ""} ${s.section || ""}`.trim() || "College Class")
+            .replace(/{{date}}/g, todayStr);
+
+          matchingRecipients.push({
+            id: s.id,
+            name: s.fullName || s.name || "Student",
+            fatherName: s.fatherName || "",
+            rollNo: s.rollNumber || s.rollNo || "",
+            className: `${s.className || s.class || ""} ${s.section || ""}`.trim(),
+            phone: rawPhone,
+            message: resolvedMsg,
+          });
+        });
+      }
+
+      let dispatchResults: any = null;
+      if (autoSend && matchingRecipients.length > 0) {
+        dispatchResults = await whatsappBridge.sendBulk(
+          matchingRecipients.map((r) => ({
+            id: r.id,
+            phone: r.phone,
+            name: r.name,
+            message: r.message,
+          })),
+          3
+        );
+      }
+
+      res.json({
+        success: true,
+        commandAnalysis: parsed,
+        recipientsCount: matchingRecipients.length,
+        recipients: matchingRecipients,
+        sampleMessage: matchingRecipients[0]?.message || parsed.messageTemplate,
+        autoDispatched: Boolean(autoSend && dispatchResults !== null),
+        dispatchResults,
+      });
+    } catch (e: any) {
+      console.error("[WhatsApp AI Command Error]:", e);
+      res.status(500).json({ error: e.message || "Failed to process AI WhatsApp command." });
     }
   });
 

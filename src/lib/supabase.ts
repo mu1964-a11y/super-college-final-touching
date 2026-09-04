@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { safeLocalStorage } from '../utils/safeStorage';
 
 const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL;
 const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY;
@@ -11,7 +12,7 @@ export const supabase = createClient(
   {
     auth: {
       storageKey: 'scj-auth',
-      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      storage: safeLocalStorage,
     }
   }
 );

@@ -1149,7 +1149,7 @@ export default function DashboardView({
           </Badge>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" style={{ perspective: 1000 }}>
           {[
             { 
               name: "Intermediate (FSC)", 
@@ -1189,7 +1189,7 @@ export default function DashboardView({
               boys: academicPerformance.ukL3BoysCount,
               girls: academicPerformance.ukL3GirlsCount,
               page: 'students-ukl3',
-              status: academicPerformance.ukL3Count > 20 ? "Active" : academicPerformance.ukL3Count > 0 ? "Low intake" : "No enrollment"
+              status: academicPerformance.ukL3Count > 20 ? "Active" : academicPerformance.ukL3Count > 0 ? "No enrollment" : "No enrollment"
             }
           ].map((prog) => {
             const boysPercent = prog.total > 0 ? Math.round((prog.boys / prog.total) * 100) : 0;
@@ -1198,18 +1198,22 @@ export default function DashboardView({
             return (
               <motion.div
                 key={prog.name}
-                whileHover={{ y: -5 }}
+                whileHover={{ 
+                  y: -12,
+                  scale: 1.04,
+                  rotateX: 6,
+                  rotateY: -4,
+                  boxShadow: "0 20px 40px rgba(0,0,0,0.15), 0 8px 16px rgba(0,0,0,0.06)"
+                }}
+                transition={{ type: "spring", stiffness: 350, damping: 22 }}
                 className={cn(
-                  "bg-white rounded-2xl p-5 border shadow-xs relative overflow-hidden flex flex-col justify-between border-slate-200",
+                  "bg-white rounded-2xl p-5 border-2 relative overflow-hidden flex flex-col justify-between transition-colors duration-300",
+                  prog.color === "emerald" ? "border-emerald-500 shadow-lg shadow-emerald-500/5" : 
+                  prog.color === "blue" ? "border-blue-500 shadow-lg shadow-blue-500/5" : 
+                  prog.color === "rose" ? "border-rose-500 shadow-lg shadow-rose-500/5" : "border-indigo-500 shadow-lg shadow-indigo-500/5"
                 )}
+                style={{ transformStyle: "preserve-3d" }}
               >
-                {/* Left accent border */}
-                <div className={cn(
-                  "absolute left-0 top-0 w-1 h-full",
-                  prog.color === "emerald" ? "bg-emerald-500" : 
-                  prog.color === "blue" ? "bg-blue-500" : 
-                  prog.color === "rose" ? "bg-rose-500" : "bg-indigo-500"
-                )} />
                 
                 <div className="flex items-start justify-between mb-2">
                   <div className={cn(

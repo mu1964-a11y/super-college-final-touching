@@ -1,6 +1,7 @@
 import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { safeLocalStorage } from '../utils/safeStorage';
 
 interface Props {
   children?: ReactNode;
@@ -28,12 +29,8 @@ class ErrorBoundary extends React.Component<Props, State> {
     console.error('Uncaught error:', error, errorInfo);
     const msg = error?.message || '';
     if (msg.toLowerCase().includes('refresh token') || msg.toLowerCase().includes('refresh_token')) {
-      try {
-        localStorage.removeItem('scj-auth');
-        window.location.reload();
-      } catch (err) {
-        console.warn("Storage item cleanup failed during error catch:", err);
-      }
+      safeLocalStorage.removeItem('scj-auth');
+      window.location.reload();
     }
   }
 
@@ -44,11 +41,7 @@ class ErrorBoundary extends React.Component<Props, State> {
 
       const errorMsgText = this.state.error?.message || '';
       if (errorMsgText.toLowerCase().includes('refresh token') || errorMsgText.toLowerCase().includes('refresh_token')) {
-        try {
-          localStorage.removeItem('scj-auth');
-        } catch (err) {
-          console.warn("Storage item cleanup failed during render error handler:", err);
-        }
+        safeLocalStorage.removeItem('scj-auth');
         setTimeout(() => {
           window.location.reload();
         }, 100);

@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth } from 'date-fns';
+import { safeLocalStorage } from '../utils/safeStorage';
 
 interface StaffAttendanceProps {
   staffList: Staff[];
@@ -42,7 +43,7 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
     if (attendanceRecords && attendanceRecords.length > 0) {
       setRecords(attendanceRecords);
     } else {
-      const stored = localStorage.getItem('staffAttendanceRecords');
+      const stored = safeLocalStorage.getItem('staffAttendanceRecords');
       if (stored) {
         try {
           setRecords(JSON.parse(stored));
@@ -107,7 +108,7 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
     });
     
     setRecords(newRecordsList);
-    localStorage.setItem('staffAttendanceRecords', JSON.stringify(newRecordsList));
+    safeLocalStorage.setItem('staffAttendanceRecords', JSON.stringify(newRecordsList));
     
     if (onSaveAttendance) {
       // Just save the records for the selected date

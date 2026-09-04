@@ -1,9 +1,44 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;700&family=Outfit:wght@400;600;700;900&family=Space+Grotesk:wght@400;500;600;700&family=Playfair+Display:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+@font-face {
+  font-family: 'Jameel Noori Nastaleeq';
+  src: local('Jameel Noori Nastaleeq'),
+       local('Jameel-Noori-Nastaleeq'),
+       local('Jameel Noori Nastaliq'),
+       local('Jameel-Noori-Nastaliq'),
+       url('https://cdn.jsdelivr.net/gh/nafeeslms/urdu-fonts@main/fonts/Jameel-Noori-Nastaleeq.ttf') format('truetype'),
+       url('https://cdn.jsdelivr.net/gh/urdutext/urdu-fonts/Jameel%20Noori%20Nastaleeq.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Jameel Noori Nastaliq';
+  src: local('Jameel Noori Nastaleeq'),
+       local('Jameel-Noori-Nastaleeq'),
+       local('Jameel Noori Nastaliq'),
+       local('Jameel-Noori-Nastaliq'),
+       url('https://cdn.jsdelivr.net/gh/nafeeslms/urdu-fonts@main/fonts/Jameel-Noori-Nastaleeq.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Jameel Noori Nastaleeq Kasheeda';
+  src: local('Jameel Noori Nastaleeq Kasheeda'),
+       url('https://cdn.jsdelivr.net/gh/nafeeslms/urdu-fonts@main/fonts/Jameel-Noori-Nastaleeq-Kasheeda.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600;700&family=Outfit:wght@400;600;700;900&family=Space+Grotesk:wght@400;500;600;700&family=Playfair+Display:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: var(--font-family, "Inter"), ui-sans-serif, system-ui, sans-serif;
   --font-urdu: "Jameel Noori Nastaleeq", "Noto Nastaliq Urdu", "Urdu Typesetting", serif;
+  --font-nastaleeq: "Jameel Noori Nastaleeq", "Noto Nastaliq Urdu", "Urdu Typesetting", serif;
   
   --color-superior-teal: var(--primary-color, #085a4e);
   --color-superior-teal-light: color-mix(in srgb, var(--primary-color, #085a4e) 80%, white);
@@ -78,9 +113,16 @@
 }
 
 @layer utilities {
+  .font-nastaleeq, .font-urdu {
+    font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', 'Urdu Typesetting', serif !important;
+    line-height: 1.8 !important;
+    text-rendering: optimizeLegibility;
+  }
+
   .urdu-text {
     direction: rtl;
-    font-family: var(--font-urdu);
+    font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', 'Urdu Typesetting', serif !important;
+    line-height: 1.8 !important;
   }
 
   .sidebar-active {

@@ -13,6 +13,25 @@ import {
   SalaryPayment, FeePayment, Installment, FeeTransaction, AdmissionStatus 
 } from '../types';
 import { toast } from 'sonner';
+import { safeLocalStorage } from '../utils/safeStorage';
+
+function safeParseArray(val: any): string[] {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string' && val.trim() !== '') {
+    const trimmed = val.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed.map(String);
+      } catch {
+        // Fall back to splitting by comma if structure looks like JSON but is invalid
+      }
+    }
+    // Handle plain text or comma-separated list
+    return trimmed.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return [];
+}
 
 export function useSupabaseData(user: any) {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -37,14 +56,14 @@ export function useSupabaseData(user: any) {
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [actionedItems, setActionedItems] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('scj_actioned') || '[]'); } catch { return []; }
+    try { return JSON.parse(safeLocalStorage.getItem('scj_actioned') || '[]'); } catch { return []; }
   });
 
   const markActioned = useCallback((id: string) => {
     setActionedItems(prev => {
       if (prev.includes(id)) return prev;
       const next = [...prev, id];
-      localStorage.setItem('scj_actioned', JSON.stringify(next));
+      safeLocalStorage.setItem('scj_actioned', JSON.stringify(next));
       return next;
     });
   }, []);
@@ -192,7 +211,7 @@ export function useSupabaseData(user: any) {
       })));
       if (studentsData) {
         const mappedStudents = studentsData.map(s => {
-          let parsedSubjects = Array.isArray(s.subjects) ? s.subjects : (typeof s.subjects === 'string' ? JSON.parse(s.subjects || '[]') : []);
+          let parsedSubjects = safeParseArray(s.subjects);
           
           let linkedAdmission = null;
           if (s.admission_id && admissionsData) {
@@ -202,7 +221,7 @@ export function useSupabaseData(user: any) {
           // Fallback to admissions table if missing in students
           if (parsedSubjects.length === 0 && linkedAdmission) {
              if (linkedAdmission.subjects) {
-                 parsedSubjects = Array.isArray(linkedAdmission.subjects) ? linkedAdmission.subjects : (typeof linkedAdmission.subjects === 'string' ? JSON.parse(linkedAdmission.subjects || '[]') : []);
+                 parsedSubjects = safeParseArray(linkedAdmission.subjects);
              }
           }
 

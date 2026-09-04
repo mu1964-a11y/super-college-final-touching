@@ -51,12 +51,32 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog';
+import { supabase } from '../lib/supabase';
 import FeeReceipt from './FeeReceipt';
 import AdmissionSlip from './AdmissionSlip';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { 
+  ResponsiveContainer, 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  Tooltip, 
+  PieChart, 
+  Pie, 
+  Cell, 
+  Legend 
+} from 'recharts';
+import { 
+  COLLEGE_EXPENSE_HEADS_CONFIG, 
+  ALL_EXPENSE_HEAD_NAMES, 
+  EXPENSE_GROUPS 
+} from '../constants/expenseCategories';
 import { 
   Student, 
   Income, 
@@ -65,6 +85,48 @@ import {
   Installment,
   Admission
 } from '../types';
+
+export function parseExpenseDetails(exp: Expense) {
+  const description = exp.description || '';
+  let expenseType: 'Daily' | 'Monthly' | 'Operational' | 'General' = exp.expenseType || 'General';
+  let paidTo = exp.paidTo || '';
+  let voucherNo = exp.voucherNo || '';
+
+  if (!exp.expenseType) {
+    if (description.includes('[Daily]')) expenseType = 'Daily';
+    else if (description.includes('[Monthly]')) expenseType = 'Monthly';
+    else if (description.includes('[Operational]')) expenseType = 'Operational';
+    else {
+      const match = COLLEGE_EXPENSE_HEADS_CONFIG.find(
+        c => c.name.toLowerCase() === (exp.category || '').toLowerCase()
+      );
+      if (match) expenseType = match.defaultType;
+    }
+  }
+
+  if (!paidTo) {
+    const match = description.match(/\[Paid to:\s*([^\]]+)\]/i);
+    if (match) paidTo = match[1];
+  }
+
+  if (!voucherNo) {
+    const match = description.match(/\[Voucher:\s*([^\]]+)\]/i);
+    if (match) voucherNo = match[1];
+  }
+
+  const cleanDescription = description
+    .replace(/\[(Daily|Monthly|Operational)\]/gi, '')
+    .replace(/\[Paid to:[^\]]+\]/gi, '')
+    .replace(/\[Voucher:[^\]]+\]/gi, '')
+    .trim();
+
+  return {
+    expenseType,
+    paidTo,
+    voucherNo,
+    cleanDescription: cleanDescription || description
+  };
+}
 
 export default function AccountsView({ data, initialTab }: { data: any, initialTab?: string | null }) {
   const [activeTab, setActiveTab] = useState(initialTab || 'summary');
@@ -75,6 +137,9 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
   const [isAddEntryOpen, setIsAddEntryOpen] = useState(false);
   const [incomeTypeFilter, setIncomeTypeFilter] = useState('all');
   const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('all');
+  const [expenseNatureFilter, setExpenseNatureFilter] = useState<'all' | 'Daily' | 'Monthly' | 'Operational'>('all');
+  const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
+  const [isDeletingExpense, setIsDeletingExpense] = useState(false);
   const [incomeFilters, setIncomeFilters] = useState({ startDate: '', endDate: '', minAmount: '', maxAmount: '' });
   const [expenseFilters, setExpenseFilters] = useState({ startDate: '', endDate: '', minAmount: '', maxAmount: '' });
 
@@ -141,13 +206,241 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
     return fromIncomes + fromPendingAdmissions;
   }, [activeIncomes, data.students, data.admissions]);
 
-  const totalExpenses = data.expenses.reduce((acc: number, curr: Expense) => acc + (curr.amount || 0), 0);
+  const totalExpenses = (data.expenses || []).reduce((acc: number, curr: Expense) => acc + (curr.amount || 0), 0);
   const netBalance = totalIncome - totalExpenses;
 
+  // Filtered Expenses with multi-field search and nature filtering
+  const filteredExpenses = React.useMemo(() => {
+    return (data.expenses || [])
+      .filter((exp: Expense) => {
+        const details = parseExpenseDetails(exp);
+        const search = expenseSearch.toLowerCase().trim();
+        const matchesSearch = !search || 
+          (exp.description || '').toLowerCase().includes(search) || 
+          (exp.category || '').toLowerCase().includes(search) ||
+          (details.paidTo && details.paidTo.toLowerCase().includes(search)) ||
+          (details.voucherNo && details.voucherNo.toLowerCase().includes(search));
+
+        const matchesCat = expenseCategoryFilter === 'all' || exp.category === expenseCategoryFilter;
+        const matchesNature = expenseNatureFilter === 'all' || details.expenseType === expenseNatureFilter;
+
+        let matchesDate = true;
+        if (expenseFilters.startDate) matchesDate = matchesDate && new Date(exp.date) >= new Date(expenseFilters.startDate);
+        if (expenseFilters.endDate) matchesDate = matchesDate && new Date(exp.date) <= new Date(expenseFilters.endDate);
+
+        let matchesAmount = true;
+        if (expenseFilters.minAmount) matchesAmount = matchesAmount && (exp.amount || 0) >= Number(expenseFilters.minAmount);
+        if (expenseFilters.maxAmount) matchesAmount = matchesAmount && (exp.amount || 0) <= Number(expenseFilters.maxAmount);
+
+        return matchesSearch && matchesCat && matchesNature && matchesDate && matchesAmount;
+      })
+      .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [data.expenses, expenseSearch, expenseCategoryFilter, expenseNatureFilter, expenseFilters]);
+
+  const filteredTotalAmount = React.useMemo(() => {
+    return filteredExpenses.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+  }, [filteredExpenses]);
+
+  const dailyTotalAmount = React.useMemo(() => {
+    return filteredExpenses
+      .filter(e => parseExpenseDetails(e).expenseType === 'Daily')
+      .reduce((acc, curr) => acc + (curr.amount || 0), 0);
+  }, [filteredExpenses]);
+
+  const monthlyTotalAmount = React.useMemo(() => {
+    return filteredExpenses
+      .filter(e => parseExpenseDetails(e).expenseType === 'Monthly')
+      .reduce((acc, curr) => acc + (curr.amount || 0), 0);
+  }, [filteredExpenses]);
+
+  const operationalTotalAmount = React.useMemo(() => {
+    return filteredExpenses
+      .filter(e => {
+        const t = parseExpenseDetails(e).expenseType;
+        return t === 'Operational' || t === 'General';
+      })
+      .reduce((acc, curr) => acc + (curr.amount || 0), 0);
+  }, [filteredExpenses]);
+
+  const allAvailableExpenseCategories = React.useMemo(() => {
+    const fromDb = (data.expenses || []).map((e: Expense) => e.category).filter(Boolean);
+    return Array.from(new Set([...ALL_EXPENSE_HEAD_NAMES, ...fromDb])).sort();
+  }, [data.expenses]);
+
+  // Monthly Comparison (Last 6 Months)
+  const monthlyChartData = React.useMemo(() => {
+    const monthsMap: Record<string, { month: string; income: number; expense: number; net: number }> = {};
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleString('en-US', { month: 'short' });
+      monthsMap[key] = { month: label, income: 0, expense: 0, net: 0 };
+    }
+
+    (activeIncomes || []).forEach((inc: any) => {
+      if (inc.date) {
+        const key = inc.date.slice(0, 7);
+        if (monthsMap[key]) {
+          monthsMap[key].income += Number(inc.amount) || 0;
+        }
+      }
+    });
+
+    (data.expenses || []).forEach((exp: any) => {
+      if (exp.date) {
+        const key = exp.date.slice(0, 7);
+        if (monthsMap[key]) {
+          monthsMap[key].expense += Number(exp.amount) || 0;
+        }
+      }
+    });
+
+    return Object.values(monthsMap).map(m => ({
+      ...m,
+      net: m.income - m.expense
+    }));
+  }, [activeIncomes, data.expenses]);
+
+  // Category Breakdown Data (Top 5 + Others)
+  const categoryChartData = React.useMemo(() => {
+    const catMap: Record<string, number> = {};
+    (data.expenses || []).forEach((exp: Expense) => {
+      const c = exp.category || 'Miscellaneous';
+      catMap[c] = (catMap[c] || 0) + (Number(exp.amount) || 0);
+    });
+
+    const sorted = Object.entries(catMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value }));
+
+    if (sorted.length <= 5) return sorted;
+    const top5 = sorted.slice(0, 5);
+    const othersVal = sorted.slice(5).reduce((acc, curr) => acc + curr.value, 0);
+    if (othersVal > 0) {
+      top5.push({ name: 'Others', value: othersVal });
+    }
+    return top5;
+  }, [data.expenses]);
+
+  const PIE_COLORS = ['#085a4e', '#d97706', '#e11d48', '#2563eb', '#7c3aed', '#059669', '#64748b'];
+
+  const confirmDeleteExpense = async () => {
+    if (!expenseToDelete) return;
+    setIsDeletingExpense(true);
+    try {
+      if (data.deleteExpense) {
+        await data.deleteExpense(expenseToDelete.id);
+      } else {
+        const { error } = await supabase.from('expenses').delete().eq('id', expenseToDelete.id);
+        if (error) throw error;
+        if (data.fetchData) await data.fetchData(true);
+        toast.success("Expense deleted successfully");
+      }
+      setExpenseToDelete(null);
+    } catch (e: any) {
+      toast.error(`Failed to delete expense: ${e.message}`);
+    } finally {
+      setIsDeletingExpense(false);
+    }
+  };
+
+  const handleExportExpensesPDF = () => {
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      // Header Banner
+      doc.setFillColor(8, 90, 78);
+      doc.rect(0, 0, 210, 32, 'F');
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(15);
+      doc.setFont('helvetica', 'bold');
+      doc.text("SUPERIOR GROUP OF COLLEGES", 105, 12, { align: 'center' });
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text("Jahanian Campus - Accounts & Expenses Statement", 105, 19, { align: 'center' });
+
+      const filterSummaryText = `Generated: ${new Date().toLocaleDateString('en-GB')} | Category: ${expenseCategoryFilter === 'all' ? 'All Heads' : expenseCategoryFilter} | Type: ${expenseNatureFilter === 'all' ? 'All Types' : expenseNatureFilter}`;
+      doc.setFontSize(8);
+      doc.text(filterSummaryText, 105, 26, { align: 'center' });
+
+      // Table Data
+      const headers = [["Date", "Head / Category", "Type", "Paid To / Voucher", "Description", "Amount (Rs.)"]];
+      const rows = filteredExpenses.map((exp: Expense) => {
+        const details = parseExpenseDetails(exp);
+        const refInfo = [details.paidTo, details.voucherNo].filter(Boolean).join(' | ') || '-';
+        return [
+          exp.date || '-',
+          exp.category || '-',
+          details.expenseType || 'General',
+          refInfo,
+          details.cleanDescription || '-',
+          (exp.amount || 0).toLocaleString()
+        ];
+      });
+
+      autoTable(doc, {
+        head: headers,
+        body: rows,
+        startY: 38,
+        theme: 'grid',
+        headStyles: {
+          fillColor: [8, 90, 78],
+          textColor: [255, 255, 255],
+          fontSize: 8,
+          fontStyle: 'bold',
+          halign: 'left'
+        },
+        styles: {
+          fontSize: 8,
+          cellPadding: 2.5
+        },
+        columnStyles: {
+          0: { cellWidth: 20 },
+          1: { cellWidth: 40 },
+          2: { cellWidth: 20 },
+          3: { cellWidth: 32 },
+          4: { cellWidth: 50 },
+          5: { cellWidth: 28, halign: 'right', fontStyle: 'bold' }
+        },
+        foot: [[
+          { content: 'Total Filtered Expenses', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9 } },
+          { content: `Rs. ${filteredTotalAmount.toLocaleString()}`, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9, textColor: [180, 20, 20] } }
+        ]],
+        footStyles: {
+          fillColor: [245, 247, 250],
+          textColor: [20, 20, 20]
+        }
+      });
+
+      const finalY = (doc as any).lastAutoTable?.finalY || 200;
+      if (finalY < 250) {
+        doc.setFontSize(9);
+        doc.setTextColor(100);
+        doc.text("Accountant / Admin Officer Signature", 20, finalY + 25);
+        doc.line(20, finalY + 20, 75, finalY + 20);
+
+        doc.text("Principal / Director Signature", 140, finalY + 25);
+        doc.line(140, finalY + 20, 195, finalY + 20);
+      }
+
+      doc.save(`Expenses-Statement-${new Date().toISOString().split('T')[0]}.pdf`);
+      toast.success("Expense statement downloaded successfully!");
+    } catch (err: any) {
+      toast.error("Failed to generate PDF: " + err.message);
+    }
+  };
+
   return (
-    <div className="space-y-8 pb-12">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+    <div className="space-y-6 pb-12">
+      {/* Header Section - Exactly matching SS1 Student Records layout */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
           <div className="flex items-center gap-3">
             <h3 className="text-3xl font-display font-black text-superior-teal tracking-tight">
@@ -159,143 +452,245 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
         </div>
         
         <div className="flex items-center gap-4">
-          <div className="bg-white px-6 py-4 rounded-3xl flex items-center gap-5 border border-slate-100 shadow-sm">
-            <div className="text-right">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Net Balance</p>
-              <p className={cn(
-                "text-2xl font-display font-black tracking-tight",
-                netBalance >= 0 ? "text-emerald-600" : "text-rose-600"
-              )}>Rs. {netBalance.toLocaleString()}</p>
-            </div>
-            <div className={cn(
-              "w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner",
-              netBalance >= 0 ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
-            )}>
-              <Wallet size={24} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Financial Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10">
-        <motion.div 
-          whileHover={{ y: -5 }}
-          className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden group"
-        >
-          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-full -mr-16 -mt-16 transition-transform duration-500 group-hover:scale-110"></div>
-          <div className="relative z-10">
-            <div className="flex items-center justify-between mb-8">
-              <div className="w-14 h-14 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-200">
-                <TrendingUp size={28} />
-              </div>
-              <div className="flex flex-col items-end">
-                <Badge className="bg-emerald-100 text-emerald-700 border-none font-black px-3 py-1 rounded-lg">Live</Badge>
-                <span className="text-[10px] text-slate-400 font-bold mt-1">Real-time Data</span>
-              </div>
-            </div>
-            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Total Income</p>
-            <h3 className="text-4xl font-display font-black tracking-tight text-slate-800">Rs. {(totalIncome || 0).toLocaleString()}</h3>
-          </div>
-        </motion.div>
-
-        <motion.div 
-          whileHover={{ y: -5 }}
-          className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden group"
-        >
-          <div className="absolute top-0 right-0 w-32 h-32 bg-rose-50 rounded-full -mr-16 -mt-16 transition-transform duration-500 group-hover:scale-110"></div>
-          <div className="relative z-10">
-            <div className="flex items-center justify-between mb-8">
-              <div className="w-14 h-14 bg-rose-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-rose-200">
-                <TrendingDown size={28} />
-              </div>
-              <div className="flex flex-col items-end">
-                <Badge className="bg-rose-100 text-rose-700 border-none font-black px-3 py-1 rounded-lg">Live</Badge>
-                <span className="text-[10px] text-slate-400 font-bold mt-1">Real-time Data</span>
-              </div>
-            </div>
-            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Total Expenses</p>
-            <h3 className="text-4xl font-display font-black tracking-tight text-slate-800">Rs. {(totalExpenses || 0).toLocaleString()}</h3>
-          </div>
-        </motion.div>
-
-        <motion.div 
-          whileHover={{ y: -5 }}
-          className="bg-superior-teal p-8 rounded-[2.5rem] text-white relative overflow-hidden group border-none shadow-xl shadow-superior-teal/20"
-        >
-          <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 blur-2xl group-hover:bg-white/20 transition-all duration-500"></div>
-          <div className="absolute bottom-0 left-0 w-24 h-24 bg-black/10 rounded-full -ml-12 -mb-12 blur-xl"></div>
-          <div className="relative z-10">
-            <div className="flex items-center justify-between mb-8">
-              <div className="w-14 h-14 bg-white/20 rounded-2xl backdrop-blur-md border border-white/20 flex items-center justify-center">
-                <Wallet size={28} className="text-superior-gold" />
-              </div>
-              <Badge className="bg-superior-gold text-superior-teal border-none font-black px-3 py-1 rounded-lg">Healthy</Badge>
-            </div>
-            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-white/60 mb-1">Net Profit/Loss</p>
-            <h3 className="text-4xl font-display font-black tracking-tight">Rs. {(netBalance || 0).toLocaleString()}</h3>
-          </div>
-        </motion.div>
-      </div>
-
-      <Tabs value={activeTab} className="w-full" onValueChange={setActiveTab}>
-        <div className="flex items-center justify-between mb-8">
-          <TabsList className="bg-slate-100/50 p-1.5 rounded-2xl border border-slate-200/50 h-auto">
-            <TabsTrigger value="summary" className="rounded-xl font-bold px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all">Summary</TabsTrigger>
-            <TabsTrigger value="income" className="rounded-xl font-bold px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all">Income</TabsTrigger>
-            <TabsTrigger value="expenses" className="rounded-xl font-bold px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all">Expenses</TabsTrigger>
-            <TabsTrigger value="fee-manager" className="rounded-xl font-bold px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all">Fee Manager</TabsTrigger>
-          </TabsList>
-          
-          <div className="flex items-center gap-3">
-            <Button variant="outline" className="rounded-xl border-slate-200 font-bold text-slate-600 h-11 px-5">
-              <Calendar size={16} className="mr-2 text-superior-gold" />
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              className="h-14 rounded-[2rem] border-slate-200 text-slate-600 hover:text-superior-teal hover:bg-slate-50 flex items-center gap-2 font-bold px-5 text-sm"
+            >
+              <Calendar size={16} className="text-superior-gold" />
               This Month
             </Button>
             <Button 
-              className="bg-superior-teal text-white hover:bg-superior-teal/90 rounded-xl font-bold h-11 px-5 shadow-lg shadow-superior-teal/10"
+              className="h-14 rounded-[2rem] bg-superior-teal text-white hover:bg-superior-teal/90 flex items-center gap-2 font-bold px-6 text-sm shadow-md shadow-superior-teal/15 cursor-pointer"
               onClick={() => setIsAddEntryOpen(true)}
             >
-              <Plus size={18} className="mr-2" />
+              <Plus size={18} />
               Add Entry
             </Button>
           </div>
-        </div>
 
-        <Dialog open={isAddEntryOpen} onOpenChange={setIsAddEntryOpen}>
-          <AddEntryDialog data={data} onClose={() => setIsAddEntryOpen(false)} />
-        </Dialog>
+          <div className="bg-white px-8 py-4 rounded-[2rem] border border-slate-100 flex items-center gap-6 shadow-sm">
+            <div className="text-right">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Net Balance</p>
+              <p className={cn(
+                "text-3xl font-display font-black leading-none",
+                netBalance >= 0 ? "text-superior-teal" : "text-rose-600"
+              )}>Rs. {netBalance.toLocaleString()}</p>
+            </div>
+            <div className={cn(
+              "w-14 h-14 rounded-2xl flex items-center justify-center shadow-inner",
+              netBalance >= 0 ? "bg-superior-teal/5 text-superior-teal" : "bg-rose-50 text-rose-600"
+            )}>
+              <Wallet size={28} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Dialog open={isAddEntryOpen} onOpenChange={setIsAddEntryOpen}>
+        <AddEntryDialog data={data} onClose={() => setIsAddEntryOpen(false)} />
+      </Dialog>
+
+      {/* Delete Expense Confirmation Dialog */}
+      <Dialog open={!!expenseToDelete} onOpenChange={(open) => !open && !isDeletingExpense && setExpenseToDelete(null)}>
+        <DialogContent className="max-w-md p-6 rounded-3xl bg-white border border-slate-100 shadow-2xl">
+          <DialogHeader className="space-y-3 text-center sm:text-left">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto sm:mx-0 shadow-inner">
+              <Trash2 size={24} />
+            </div>
+            <DialogTitle className="text-xl font-display font-black text-slate-800">
+              Delete Expense Record?
+            </DialogTitle>
+            <DialogDescription className="text-sm text-slate-500 font-medium leading-relaxed">
+              Are you sure you want to delete the expense of <span className="font-black text-rose-600">Rs. {(expenseToDelete?.amount || 0).toLocaleString()}</span> ({expenseToDelete?.category}) recorded on {expenseToDelete?.date}? This action is permanent and will remove the record.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="mt-6 flex flex-col sm:flex-row gap-2.5 sm:gap-3">
+            <Button
+              variant="outline"
+              disabled={isDeletingExpense}
+              onClick={() => setExpenseToDelete(null)}
+              className="rounded-xl border-slate-200 font-bold h-11 px-5 flex-1 hover:bg-slate-50 cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={isDeletingExpense}
+              onClick={confirmDeleteExpense}
+              className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold h-11 px-5 flex-1 shadow-md shadow-rose-200 cursor-pointer"
+            >
+              {isDeletingExpense ? "Deleting..." : "Yes, Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Primary Navigation Tabs - Exactly matching SS1 Student Records Tabs design */}
+      <Tabs value={activeTab} className="w-full" onValueChange={setActiveTab}>
+        <TabsList className="bg-slate-100 p-1.5 rounded-2xl w-full flex items-center justify-start overflow-x-auto scrollbar-hide h-auto border border-slate-200/50 mb-6">
+          <TabsTrigger 
+            value="summary" 
+            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+          >
+            <BarChart3 size={15} className="mr-2 inline-block" />
+            Financial Summary
+          </TabsTrigger>
+          <TabsTrigger 
+            value="income" 
+            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+          >
+            <TrendingUp size={15} className="mr-2 inline-block" />
+            Income Records
+          </TabsTrigger>
+          <TabsTrigger 
+            value="expenses" 
+            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+          >
+            <TrendingDown size={15} className="mr-2 inline-block" />
+            Expenses Manager
+          </TabsTrigger>
+          <TabsTrigger 
+            value="fee-manager" 
+            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+          >
+            <Receipt size={15} className="mr-2 inline-block" />
+            Fee Collections
+          </TabsTrigger>
+        </TabsList>
 
         <TabsContent value="summary" className="space-y-6">
+          {/* Financial Summary Metric Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 shadow-sm">
+                  <TrendingUp size={24} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-0.5">Total Income</p>
+                  <h4 className="text-2xl font-display font-black text-slate-800 leading-tight">
+                    Rs. {(totalIncome || 0).toLocaleString()}
+                  </h4>
+                </div>
+              </div>
+              <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50 border-none font-bold text-xs px-2.5 py-1 rounded-lg">Live</Badge>
+            </div>
+
+            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 shadow-sm">
+                  <TrendingDown size={24} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-0.5">Total Expenses</p>
+                  <h4 className="text-2xl font-display font-black text-slate-800 leading-tight">
+                    Rs. {(totalExpenses || 0).toLocaleString()}
+                  </h4>
+                </div>
+              </div>
+              <Badge className="bg-rose-50 text-rose-700 hover:bg-rose-50 border-none font-bold text-xs px-2.5 py-1 rounded-lg">Live</Badge>
+            </div>
+
+            <div className={cn(
+              "p-5 rounded-3xl border shadow-sm flex items-center justify-between text-white transition-all",
+              netBalance >= 0 ? "bg-superior-teal border-superior-teal/30 shadow-superior-teal/15" : "bg-rose-700 border-rose-800"
+            )}>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-white/15 text-superior-gold flex items-center justify-center shrink-0">
+                  <Wallet size={24} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/70 mb-0.5">Net Profit / Loss</p>
+                  <h4 className="text-2xl font-display font-black text-white leading-tight">
+                    Rs. {(netBalance || 0).toLocaleString()}
+                  </h4>
+                </div>
+              </div>
+              <Badge className={cn(
+                "border-none font-bold text-xs px-3 py-1 rounded-lg",
+                netBalance >= 0 ? "bg-superior-gold text-superior-teal" : "bg-white/20 text-white"
+              )}>
+                {netBalance >= 0 ? "Healthy" : "Deficit"}
+              </Badge>
+            </div>
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
+            <Card className="rounded-[2rem] border-slate-100 shadow-sm overflow-hidden">
+              <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <BarChart3 size={18} className="text-superior-teal" />
-                  Monthly Comparison
+                  Monthly Comparison (Income vs Expenses)
                 </CardTitle>
+                <p className="text-xs text-slate-400 font-medium">Trends across the last 6 months</p>
               </CardHeader>
-              <CardContent className="h-[300px] flex items-center justify-center text-slate-400 italic bg-slate-50 rounded-xl m-4 mt-0">
-                [Income vs Expense Bar Chart]
+              <CardContent className="h-[320px] p-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthlyChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} stroke="#94a3b8" />
+                    <YAxis tickLine={false} axisLine={false} fontSize={11} stroke="#94a3b8" tickFormatter={(v) => `Rs.${v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}`} />
+                    <Tooltip 
+                      formatter={(val: any) => [`Rs. ${Number(val).toLocaleString()}`, '']}
+                      contentStyle={{ backgroundColor: '#ffffff', borderRadius: '1rem', border: '1px solid #f1f5f9', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }}
+                    />
+                    <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                    <Bar dataKey="income" name="Income" fill="#059669" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="expense" name="Expense" fill="#e11d48" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
+            <Card className="rounded-[2rem] border-slate-100 shadow-sm overflow-hidden">
+              <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <PieChartIcon size={18} className="text-superior-teal" />
-                  Expense Breakdown
+                  Top Expense Categories Breakdown
                 </CardTitle>
+                <p className="text-xs text-slate-400 font-medium">Distribution by college spending heads</p>
               </CardHeader>
-              <CardContent className="h-[300px] flex items-center justify-center text-slate-400 italic bg-slate-50 rounded-xl m-4 mt-0">
-                [Expense Category Pie Chart]
+              <CardContent className="h-[320px] p-4 flex flex-col justify-center">
+                {categoryChartData.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-slate-400 italic text-sm">
+                    No expense records available yet
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={categoryChartData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={95}
+                        innerRadius={50}
+                        paddingAngle={3}
+                      >
+                        {categoryChartData.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        formatter={(val: any) => [`Rs. ${Number(val).toLocaleString()}`, 'Amount']}
+                        contentStyle={{ backgroundColor: '#ffffff', borderRadius: '1rem', border: '1px solid #f1f5f9', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: '11px' }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
           </div>
           
-          <Button className="w-full bg-superior-teal text-white hover:bg-superior-teal/90">
-            <Download size={16} className="mr-2" /> Download Full Financial Report (JPG)
-          </Button>
+          <div className="flex flex-wrap gap-4">
+            <Button 
+              onClick={handleExportExpensesPDF}
+              className="flex-1 bg-superior-teal text-white hover:bg-superior-teal/90 rounded-2xl h-12 font-bold shadow-lg shadow-superior-teal/10"
+            >
+              <Download size={16} className="mr-2" /> Download Expense Statement (PDF)
+            </Button>
+          </div>
         </TabsContent>
 
         <TabsContent value="income" className="space-y-6">
@@ -415,107 +810,271 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
       </TabsContent>
 
       <TabsContent value="expenses" className="space-y-6">
-          <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col gap-4">
+          {/* Quick Expense Metric Cards - Minimal & Compact */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <div className="bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Filtered Total</p>
+                <h4 className="text-xl font-display font-black text-rose-600">Rs. {filteredTotalAmount.toLocaleString()}</h4>
+                <p className="text-[11px] text-slate-400 font-bold">{filteredExpenses.length} Records</p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold shrink-0">
+                <TrendingDown size={18} />
+              </div>
+            </div>
+
+            <div className="bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-amber-500 mb-0.5">Daily / Petty Cash</p>
+                <h4 className="text-xl font-display font-black text-slate-800">Rs. {dailyTotalAmount.toLocaleString()}</h4>
+                <p className="text-[11px] text-slate-400 font-bold">Fuel, Repairs, Tea</p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold shrink-0">
+                <Clock size={18} />
+              </div>
+            </div>
+
+            <div className="bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500 mb-0.5">Monthly / Fixed</p>
+                <h4 className="text-xl font-display font-black text-slate-800">Rs. {monthlyTotalAmount.toLocaleString()}</h4>
+                <p className="text-[11px] text-slate-400 font-bold">Rent, Bills, Salaries</p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shrink-0">
+                <Calendar size={18} />
+              </div>
+            </div>
+
+            <div className="bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-sky-500 mb-0.5">Operational & Board</p>
+                <h4 className="text-xl font-display font-black text-slate-800">Rs. {operationalTotalAmount.toLocaleString()}</h4>
+                <p className="text-[11px] text-slate-400 font-bold">Challans, Projects, Misc</p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center font-bold shrink-0">
+                <Receipt size={18} />
+              </div>
+            </div>
+          </div>
+
+          {/* Filters & Actions Panel */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col gap-4">
             <div className="flex flex-wrap items-center gap-4">
               <div className="relative flex-1 min-w-[280px]">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 <Input 
-                  placeholder="Search by description or category..." 
-                  className="pl-12 h-12 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all"
+                  placeholder="Search by description, head, paid to, or voucher #..." 
+                  className="pl-12 h-12 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-medium"
                   value={expenseSearch}
                   onChange={(e) => setExpenseSearch(e.target.value)}
                 />
               </div>
+
+              {/* Expense Category Head Filter */}
               <Select value={expenseCategoryFilter} onValueChange={setExpenseCategoryFilter}>
-                <SelectTrigger className="w-[180px] h-12 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold">
-                  <SelectValue placeholder="Category" />
+                <SelectTrigger className="w-[260px] h-12 rounded-2xl bg-slate-50 border border-slate-200 hover:border-superior-teal/30 focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-sm">
+                  <SelectValue placeholder="All Categories / Heads" />
                 </SelectTrigger>
-                <SelectContent className="rounded-2xl border-slate-100 shadow-xl">
-                  <SelectItem value="all">All Categories</SelectItem>
-                  <SelectItem value="Staff Salaries">Staff Salaries</SelectItem>
-                  <SelectItem value="Electricity Bills">Utility Bills</SelectItem>
-                  <SelectItem value="Maintenance & Repairs">Maintenance</SelectItem>
-                  <SelectItem value="Miscellaneous">Miscellaneous</SelectItem>
+                <SelectContent align="start" alignItemWithTrigger={false} className="w-[var(--anchor-width)] min-w-[320px] sm:min-w-[420px] rounded-2xl border-slate-100 shadow-2xl max-h-[420px] p-2 bg-white">
+                  <SelectItem value="all" className="font-bold py-2.5 px-3 rounded-xl cursor-pointer">
+                    All Heads ({allAvailableExpenseCategories.length})
+                  </SelectItem>
+                  {allAvailableExpenseCategories.map(cat => (
+                    <SelectItem key={cat} value={cat} className="py-2 px-3 rounded-xl text-sm font-medium cursor-pointer">
+                      {cat}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+
+              {/* Expense Nature Filter */}
+              <Select value={expenseNatureFilter} onValueChange={(v: any) => setExpenseNatureFilter(v)}>
+                <SelectTrigger className="w-[200px] h-12 rounded-2xl bg-slate-50 border border-slate-200 hover:border-superior-teal/30 focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-sm">
+                  <SelectValue placeholder="Expense Type" />
+                </SelectTrigger>
+                <SelectContent align="start" alignItemWithTrigger={false} className="rounded-2xl border-slate-100 shadow-2xl p-2 bg-white min-w-[220px]">
+                  <SelectItem value="all" className="py-2.5 px-3 rounded-xl font-bold cursor-pointer">All Types</SelectItem>
+                  <SelectItem value="Daily" className="py-2.5 px-3 rounded-xl cursor-pointer">
+                    <div className="flex items-center justify-between w-full gap-2">
+                      <span className="font-medium">Daily</span>
+                      <span className="font-nastaleeq text-xs font-normal text-slate-500">(روزمرہ)</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="Monthly" className="py-2.5 px-3 rounded-xl cursor-pointer">
+                    <div className="flex items-center justify-between w-full gap-2">
+                      <span className="font-medium">Monthly</span>
+                      <span className="font-nastaleeq text-xs font-normal text-slate-500">(ماہانہ)</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="Operational" className="py-2.5 px-3 rounded-xl cursor-pointer">
+                    <div className="flex items-center justify-between w-full gap-2">
+                      <span className="font-medium">Operational</span>
+                      <span className="font-nastaleeq text-xs font-normal text-slate-500">(چالان / پروجیکٹس)</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Button 
+                onClick={handleExportExpensesPDF}
+                variant="outline"
+                className="h-12 px-5 rounded-2xl border-slate-200 font-bold text-slate-700 hover:bg-slate-50"
+              >
+                <Download size={16} className="mr-2 text-superior-teal" />
+                Export PDF
+              </Button>
+
+              <Button 
+                onClick={() => setIsAddEntryOpen(true)}
+                className="h-12 px-5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-lg shadow-rose-200"
+              >
+                <Plus size={18} className="mr-2" />
+                Add Expense
+              </Button>
             </div>
             
-            {/* Phase 3: Module-Wise Deep Filtering (Expense) */}
+            {/* Deep Filtering by Date and Amount */}
             <div className="flex flex-wrap items-center gap-4 pt-4 border-t border-slate-50">
               <div className="flex items-center gap-2">
                 <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest w-12">From</Label>
-                <Input type="date" className="h-10 w-[140px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30" 
+                <Input type="date" className="h-10 w-[140px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 font-medium" 
                   value={expenseFilters.startDate} onChange={(e) => setExpenseFilters({...expenseFilters, startDate: e.target.value})} />
               </div>
               <div className="flex items-center gap-2">
                 <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest w-10">To</Label>
-                <Input type="date" className="h-10 w-[140px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30" 
+                <Input type="date" className="h-10 w-[140px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 font-medium" 
                   value={expenseFilters.endDate} onChange={(e) => setExpenseFilters({...expenseFilters, endDate: e.target.value})} />
               </div>
               <div className="flex items-center gap-2">
                 <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest w-24">Min Amount</Label>
-                <Input type="number" placeholder="Rs. 0" className="h-10 w-[120px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30" 
+                <Input type="number" placeholder="Rs. 0" className="h-10 w-[120px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 font-medium" 
                   value={expenseFilters.minAmount} onChange={(e) => setExpenseFilters({...expenseFilters, minAmount: e.target.value})} />
               </div>
               <div className="flex items-center gap-2">
                 <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest w-24">Max Amount</Label>
-                <Input type="number" placeholder="Rs. Any" className="h-10 w-[120px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30" 
+                <Input type="number" placeholder="Rs. Any" className="h-10 w-[120px] rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 font-medium" 
                   value={expenseFilters.maxAmount} onChange={(e) => setExpenseFilters({...expenseFilters, maxAmount: e.target.value})} />
               </div>
-              <Button onClick={() => setExpenseFilters({startDate:'', endDate:'', minAmount:'', maxAmount:''})} variant="ghost" className="h-10 px-4 text-slate-400 hover:text-red-500 rounded-xl">
-                Clear Filters
+              <Button 
+                onClick={() => {
+                  setExpenseFilters({startDate:'', endDate:'', minAmount:'', maxAmount:''});
+                  setExpenseSearch('');
+                  setExpenseCategoryFilter('all');
+                  setExpenseNatureFilter('all');
+                }} 
+                variant="ghost" 
+                className="h-10 px-4 text-slate-400 hover:text-red-500 rounded-xl"
+              >
+                Reset All
               </Button>
             </div>
           </div>
 
+          {/* Expenses Table */}
           <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader className="bg-slate-50/50">
                   <TableRow className="border-b border-slate-100">
                     <TableHead className="py-5 px-6 font-black uppercase text-[10px] tracking-widest text-slate-400">Date</TableHead>
-                    <TableHead className="py-5 px-6 font-black uppercase text-[10px] tracking-widest text-slate-400">Category</TableHead>
-                  <TableHead className="py-5 px-6 font-black uppercase text-[10px] tracking-widest text-slate-400">Description</TableHead>
-                  <TableHead className="py-5 px-6 font-black uppercase text-[10px] tracking-widest text-slate-400">Method</TableHead>
-                  <TableHead className="py-5 px-6 font-black uppercase text-[10px] tracking-widest text-slate-400 text-right">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.expenses
-                  .filter((exp: Expense) => {
-                    const matchesSearch = exp.description.toLowerCase().includes(expenseSearch.toLowerCase()) || 
-                                          exp.category.toLowerCase().includes(expenseSearch.toLowerCase());
-                    const matchesCat = expenseCategoryFilter === 'all' || exp.category === expenseCategoryFilter;
-                    
-                    let matchesDate = true;
-                    if (expenseFilters.startDate) matchesDate = matchesDate && new Date(exp.date) >= new Date(expenseFilters.startDate);
-                    if (expenseFilters.endDate) matchesDate = matchesDate && new Date(exp.date) <= new Date(expenseFilters.endDate);
-                    
-                    let matchesAmount = true;
-                    if (expenseFilters.minAmount) matchesAmount = matchesAmount && (exp.amount || 0) >= Number(expenseFilters.minAmount);
-                    if (expenseFilters.maxAmount) matchesAmount = matchesAmount && (exp.amount || 0) <= Number(expenseFilters.maxAmount);
-
-                    return matchesSearch && matchesCat && matchesDate && matchesAmount;
-                  })
-                  .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                  .map((exp: Expense) => (
-                    <TableRow key={exp.id} className="border-b border-slate-50 hover:bg-slate-50/30 transition-colors group">
-                      <TableCell className="py-5 px-6 text-sm font-medium text-slate-600">{exp.date}</TableCell>
-                      <TableCell className="py-5 px-6">
-                        <Badge className="bg-rose-50 text-rose-600 border-none font-black px-3 py-1 rounded-lg">{exp.category}</Badge>
+                    <TableHead className="py-5 px-6 font-black uppercase text-[10px] tracking-widest text-slate-400">Head / Category</TableHead>
+                    <TableHead className="py-5 px-6 font-black uppercase text-[10px] tracking-widest text-slate-400">Type</TableHead>
+                    <TableHead className="py-5 px-6 font-black uppercase text-[10px] tracking-widest text-slate-400">Paid To & Voucher</TableHead>
+                    <TableHead className="py-5 px-6 font-black uppercase text-[10px] tracking-widest text-slate-400">Description</TableHead>
+                    <TableHead className="py-5 px-6 font-black uppercase text-[10px] tracking-widest text-slate-400">Method</TableHead>
+                    <TableHead className="py-5 px-6 font-black uppercase text-[10px] tracking-widest text-slate-400 text-right">Amount</TableHead>
+                    <TableHead className="py-5 px-6 font-black uppercase text-[10px] tracking-widest text-slate-400 text-center">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredExpenses.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-16 text-center text-slate-400">
+                        <div className="flex flex-col items-center justify-center gap-3">
+                          <Receipt size={36} className="text-slate-300" />
+                          <p className="font-bold">No expenses found matching the criteria</p>
+                          <Button 
+                            onClick={() => setIsAddEntryOpen(true)}
+                            size="sm"
+                            className="bg-superior-teal text-white rounded-xl font-bold mt-2"
+                          >
+                            <Plus size={14} className="mr-1" /> Add New Expense
+                          </Button>
+                        </div>
                       </TableCell>
-                      <TableCell className="py-5 px-6 text-sm font-bold text-slate-800">{exp.description}</TableCell>
-                      <TableCell className="py-5 px-6">
-                        <Badge variant="outline" className="rounded-lg border-slate-100 bg-slate-50/50 text-slate-500 font-bold">{exp.paymentMethod || 'Cash'}</Badge>
-                      </TableCell>
-                      <TableCell className="py-5 px-6 text-right font-display font-black text-rose-600 text-lg">Rs. {(exp.amount || 0).toLocaleString()}</TableCell>
                     </TableRow>
-                  ))
-                }
-              </TableBody>
-            </Table>
+                  ) : (
+                    filteredExpenses.map((exp: Expense) => {
+                      const details = parseExpenseDetails(exp);
+                      return (
+                        <TableRow key={exp.id} className="border-b border-slate-50 hover:bg-slate-50/40 transition-colors group">
+                          <TableCell className="py-4 px-6 text-sm font-medium text-slate-600 whitespace-nowrap">
+                            {exp.date}
+                          </TableCell>
+                          <TableCell className="py-4 px-6">
+                            <Badge className="bg-rose-50 text-rose-700 border-rose-100 font-black px-3 py-1 rounded-lg">
+                              {exp.category || 'General'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-4 px-6 whitespace-nowrap">
+                            {details.expenseType === 'Daily' ? (
+                              <Badge className="bg-amber-50 text-amber-700 border-amber-200 font-bold px-2.5 py-0.5 rounded-lg text-xs">
+                                Daily Petty Cash
+                              </Badge>
+                            ) : details.expenseType === 'Monthly' ? (
+                              <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 font-bold px-2.5 py-0.5 rounded-lg text-xs">
+                                Monthly Fixed
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-sky-50 text-sky-700 border-sky-200 font-bold px-2.5 py-0.5 rounded-lg text-xs">
+                                Operational
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-4 px-6 text-xs text-slate-600">
+                            {details.paidTo || details.voucherNo ? (
+                              <div className="flex flex-col gap-0.5">
+                                {details.paidTo && (
+                                  <span className="font-bold text-slate-800">To: {details.paidTo}</span>
+                                )}
+                                {details.voucherNo && (
+                                  <span className="text-slate-400 font-mono">Voucher: {details.voucherNo}</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-300">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-4 px-6 text-sm font-medium text-slate-700 max-w-[280px] truncate" title={details.cleanDescription}>
+                            {details.cleanDescription || exp.description || '-'}
+                          </TableCell>
+                          <TableCell className="py-4 px-6 whitespace-nowrap">
+                            <Badge variant="outline" className="rounded-lg border-slate-200 bg-slate-50 text-slate-600 font-bold">
+                              {exp.paymentMethod || 'Cash'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-4 px-6 text-right font-display font-black text-rose-600 text-lg whitespace-nowrap">
+                            Rs. {(exp.amount || 0).toLocaleString()}
+                          </TableCell>
+                          <TableCell className="py-4 px-6 text-center">
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => setExpenseToDelete(exp)}
+                              className="h-9 w-9 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl cursor-pointer"
+                              title="Delete Record"
+                            >
+                              <Trash2 size={16} />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </div>
-        </div>
       </TabsContent>
 
       <TabsContent value="fee-manager" className="space-y-6">
@@ -1097,23 +1656,42 @@ function InstallmentBuilder({ student, data }: { student: Student, data: any }) 
 }
 
 function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
-  const [type, setType] = useState<'income' | 'expense'>('expense');
+  const [type, setType] = useState<'expense' | 'income'>('expense');
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     amount: '',
-    category: '',
+    category: 'Refreshment',
+    customCategory: '',
+    expenseType: 'Daily' as 'Daily' | 'Monthly' | 'Operational',
+    paidTo: '',
+    voucherNo: '',
     description: '',
     paymentMethod: 'Cash' as any,
     studentName: '', // For misc income
   });
 
-  const categories = type === 'expense' 
-    ? ['Staff Salaries', 'Electricity Bills', 'Utility Bills', 'Maintenance & Repairs', 'Rent', 'Stationery', 'Miscellaneous']
-    : ['Miscellaneous', 'Asset Sale', 'Donation', 'Other Revenue'];
+  const incomeCategories = ['Miscellaneous', 'Asset Sale', 'Donation', 'Prospectus Sale', 'Uniform / Badges', 'Other Revenue'];
+
+  const handleCategoryChange = (val: string) => {
+    if (val === '__custom__') {
+      setFormData(prev => ({ ...prev, category: '__custom__' }));
+      return;
+    }
+    const matched = COLLEGE_EXPENSE_HEADS_CONFIG.find(h => h.name === val);
+    setFormData(prev => ({
+      ...prev,
+      category: val,
+      expenseType: matched ? matched.defaultType : prev.expenseType
+    }));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.amount || Number(formData.amount) <= 0 || !formData.category) {
+    const finalCategory = type === 'expense' 
+      ? (formData.category === '__custom__' ? formData.customCategory.trim() : formData.category)
+      : formData.category;
+
+    if (!formData.amount || Number(formData.amount) <= 0 || !finalCategory) {
       toast.error("Please fill all required fields correctly");
       return;
     }
@@ -1122,20 +1700,23 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
       data.addExpense({
         date: formData.date,
         amount: Number(formData.amount),
-        category: formData.category,
+        category: finalCategory,
         description: formData.description,
-        addedBy: data.currentUser?.email || 'Admin',
-        paymentMethod: formData.paymentMethod
+        addedBy: data.currentUser?.email || 'Admin Office',
+        paymentMethod: formData.paymentMethod,
+        expenseType: formData.expenseType,
+        paidTo: formData.paidTo?.trim() || undefined,
+        voucherNo: formData.voucherNo?.trim() || undefined
       });
     } else {
       data.addIncome({
         date: formData.date,
         amount: Number(formData.amount),
-        feeType: formData.category,
+        feeType: finalCategory,
         description: formData.description,
         studentName: formData.studentName || 'Manual Entry',
         status: 'Full',
-        recordedBy: data.currentUser?.email || 'Admin',
+        recordedBy: data.currentUser?.email || 'Admin Office',
         paymentMethod: formData.paymentMethod
       });
     }
@@ -1143,60 +1724,259 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
   };
 
   return (
-    <DialogContent className="max-w-md rounded-[2rem]">
-      <DialogHeader>
-        <DialogTitle className="text-2xl font-display font-black text-superior-teal tracking-tight flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-superior-gold flex items-center justify-center text-superior-teal shadow-lg shadow-superior-gold/20">
-            <Plus size={20} />
+    <DialogContent className="w-[95vw] max-w-4xl rounded-[2.5rem] p-6 sm:p-9 max-h-[92vh] overflow-y-auto shadow-2xl border-slate-100">
+      <DialogHeader className="pb-2 border-b border-slate-100">
+        <DialogTitle className="text-2xl sm:text-3xl font-display font-black text-superior-teal tracking-tight flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-superior-gold flex items-center justify-center text-superior-teal shadow-lg shadow-superior-gold/20 shrink-0">
+            <Plus size={22} />
           </div>
-          Add New Entry
+          <span>Add Financial Transaction</span>
         </DialogTitle>
-        <DialogDescription>Record a manual transaction into the finance ledger.</DialogDescription>
+        <DialogDescription className="text-sm text-slate-500 font-medium pt-1">
+          Record college expenses or miscellaneous income in the official accounts ledger.
+        </DialogDescription>
       </DialogHeader>
 
-      <form onSubmit={handleSubmit} className="space-y-6 py-4">
+      <form onSubmit={handleSubmit} className="space-y-6 pt-2">
         <Tabs value={type} onValueChange={(v: any) => setType(v)} className="w-full">
-          <TabsList className="grid grid-cols-2 rounded-2xl bg-slate-100 p-1">
-            <TabsTrigger value="expense" className="rounded-xl font-bold data-[state=active]:bg-rose-600 data-[state=active]:text-white transition-all">Expense</TabsTrigger>
-            <TabsTrigger value="income" className="rounded-xl font-bold data-[state=active]:bg-emerald-600 data-[state=active]:text-white transition-all">Income</TabsTrigger>
+          <TabsList className="grid grid-cols-2 rounded-2xl bg-slate-100 p-1.5 h-auto">
+            <TabsTrigger value="expense" className="rounded-xl font-bold py-3 text-sm sm:text-base data-[state=active]:bg-rose-600 data-[state=active]:text-white transition-all flex items-center justify-center gap-2">
+              <span>Expense</span>
+              <span className="font-nastaleeq text-base font-normal tracking-normal">(کالج خرچہ)</span>
+            </TabsTrigger>
+            <TabsTrigger value="income" className="rounded-xl font-bold py-3 text-sm sm:text-base data-[state=active]:bg-emerald-600 data-[state=active]:text-white transition-all flex items-center justify-center gap-2">
+              <span>Income</span>
+              <span className="font-nastaleeq text-base font-normal tracking-normal">(آمدن)</span>
+            </TabsTrigger>
           </TabsList>
         </Tabs>
 
-        <div className="grid grid-cols-2 gap-4">
+        {/* Expense Nature Selector */}
+        {type === 'expense' && (
+          <div className="space-y-2.5 bg-slate-50/80 p-4 rounded-3xl border border-slate-100">
+            <div className="flex items-center justify-between px-1">
+              <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+                Expense Frequency / Nature
+              </Label>
+              <span className="text-[11px] text-slate-400 font-bold">Automatic filtering & tracking</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, expenseType: 'Daily' })}
+                className={cn(
+                  "py-3 px-4 rounded-2xl font-bold text-sm border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer",
+                  formData.expenseType === 'Daily'
+                    ? "bg-amber-500 text-white border-amber-600 shadow-md shadow-amber-200 ring-2 ring-amber-400/30"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                )}
+              >
+                <span>Daily / Petty Cash</span>
+                <span className={cn(
+                  "font-nastaleeq text-sm font-normal",
+                  formData.expenseType === 'Daily' ? "text-amber-100" : "text-slate-500"
+                )}>
+                  روزمرہ اخراجات
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, expenseType: 'Monthly' })}
+                className={cn(
+                  "py-3 px-4 rounded-2xl font-bold text-sm border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer",
+                  formData.expenseType === 'Monthly'
+                    ? "bg-indigo-600 text-white border-indigo-700 shadow-md shadow-indigo-200 ring-2 ring-indigo-400/30"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                )}
+              >
+                <span>Monthly / Fixed</span>
+                <span className={cn(
+                  "font-nastaleeq text-sm font-normal",
+                  formData.expenseType === 'Monthly' ? "text-indigo-100" : "text-slate-500"
+                )}>
+                  ماہانہ اخراجات / بلز
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, expenseType: 'Operational' })}
+                className={cn(
+                  "py-3 px-4 rounded-2xl font-bold text-sm border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer",
+                  formData.expenseType === 'Operational'
+                    ? "bg-sky-600 text-white border-sky-700 shadow-md shadow-sky-200 ring-2 ring-sky-400/30"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                )}
+              >
+                <span>Operational / Board</span>
+                <span className={cn(
+                  "font-nastaleeq text-sm font-normal",
+                  formData.expenseType === 'Operational' ? "text-sky-100" : "text-slate-500"
+                )}>
+                  چالان / پروجیکٹس
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div className="space-y-2">
             <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Date</Label>
             <Input 
               type="date" 
               value={formData.date}
               onChange={e => setFormData({...formData, date: e.target.value})}
-              className="h-11 rounded-xl bg-slate-50 border-slate-200"
+              className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-medium text-base px-4"
             />
           </div>
           <div className="space-y-2">
-            <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Amount (Rs.)</Label>
+            <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Amount (Rs.) *</Label>
             <Input 
               type="number" 
               placeholder="0.00"
               value={formData.amount}
               onChange={e => setFormData({...formData, amount: e.target.value})}
-              className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold"
+              className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-black text-xl text-rose-600 px-4"
+              required
             />
           </div>
         </div>
 
+        {/* Category Head Selection */}
         <div className="space-y-2">
-          <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Category</Label>
-          <Select value={formData.category || ""} onValueChange={v => setFormData({...formData, category: v})}>
-            <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
-              <SelectValue placeholder="Select category..." />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl shadow-xl border-slate-100">
-              {categories.map(c => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex justify-between items-center ml-1">
+            <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+              {type === 'expense' ? 'Expense Head / Category *' : 'Income Category *'}
+            </Label>
+            {type === 'expense' && (
+              <span className="text-[11px] text-superior-teal font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full">
+                40+ College Heads Available
+              </span>
+            )}
+          </div>
+
+          {type === 'expense' ? (
+            <div className="space-y-2">
+              <Select value={formData.category} onValueChange={handleCategoryChange}>
+                <SelectTrigger className="w-full h-13 rounded-2xl bg-slate-50 border border-slate-200 hover:border-superior-teal/50 font-bold px-4 text-base shadow-sm transition-all flex items-center justify-between cursor-pointer">
+                  <SelectValue placeholder="Select College Expense Head..." />
+                </SelectTrigger>
+                <SelectContent 
+                  align="start" 
+                  alignItemWithTrigger={false}
+                  className="w-[var(--anchor-width)] min-w-[360px] sm:min-w-[660px] max-w-[95vw] max-h-[480px] rounded-3xl p-3 shadow-2xl border-slate-200 bg-white"
+                >
+                  <div className="px-2 py-1.5 mb-2 bg-slate-50 rounded-xl flex items-center justify-between text-xs text-slate-500 font-bold border border-slate-100">
+                    <span>Click any head to select. Automatically sets frequency.</span>
+                    <span className="text-superior-teal">8 Main Groups</span>
+                  </div>
+
+                  {EXPENSE_GROUPS.map(grp => {
+                    const heads = COLLEGE_EXPENSE_HEADS_CONFIG.filter(h => h.group === grp);
+                    if (heads.length === 0) return null;
+                    return (
+                      <div key={grp} className="mb-3">
+                        <div className="px-3 py-1.5 text-xs font-black uppercase tracking-wider text-superior-teal bg-emerald-50/80 rounded-xl flex items-center justify-between mb-1 sticky top-0 z-10 backdrop-blur-sm border border-emerald-100/50">
+                          <span>{grp}</span>
+                          <span className="text-[10px] font-bold text-superior-teal/70">{heads.length} Heads</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 px-1">
+                          {heads.map(h => (
+                            <SelectItem 
+                              key={h.name} 
+                              value={h.name} 
+                              className="py-2.5 px-3 rounded-xl text-sm font-semibold cursor-pointer hover:bg-slate-100 focus:bg-emerald-50 focus:text-emerald-900 transition-colors"
+                            >
+                              <div className="flex items-center justify-between w-full gap-2">
+                                <span className="truncate">{h.name}</span>
+                                <span className={cn(
+                                  "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0",
+                                  h.defaultType === 'Daily' ? "bg-amber-100 text-amber-800" :
+                                  h.defaultType === 'Monthly' ? "bg-indigo-100 text-indigo-800" :
+                                  "bg-sky-100 text-sky-800"
+                                )}>
+                                  {h.defaultType}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  
+                  <div className="pt-2 border-t border-slate-100 mt-2 px-1">
+                    <SelectItem value="__custom__" className="py-3 px-3 rounded-xl text-sm font-bold text-superior-teal hover:bg-emerald-50 focus:bg-emerald-50">
+                      <div className="flex items-center gap-2">
+                        <span>+ Custom Head /</span>
+                        <span className="font-nastaleeq text-sm font-normal">دیگر خرچہ درج کریں...</span>
+                      </div>
+                    </SelectItem>
+                  </div>
+                </SelectContent>
+              </Select>
+
+              {formData.category === '__custom__' && (
+                <div className="pt-1">
+                  <Input 
+                    placeholder="Enter custom expense head name..."
+                    value={formData.customCategory}
+                    onChange={e => setFormData({...formData, customCategory: e.target.value})}
+                    className="h-12 rounded-2xl bg-amber-50/50 border-amber-200 font-bold text-amber-900 text-base px-4"
+                    autoFocus
+                  />
+                </div>
+              )}
+            </div>
+          ) : (
+            <Select value={formData.category} onValueChange={v => setFormData({...formData, category: v})}>
+              <SelectTrigger className="w-full h-13 rounded-2xl bg-slate-50 border-slate-200 font-bold px-4 text-base">
+                <SelectValue placeholder="Select income category..." />
+              </SelectTrigger>
+              <SelectContent 
+                align="start" 
+                alignItemWithTrigger={false}
+                className="w-[var(--anchor-width)] min-w-[320px] sm:min-w-[440px] rounded-2xl shadow-2xl border-slate-100 p-2"
+              >
+                {incomeCategories.map(c => (
+                  <SelectItem key={c} value={c} className="py-2.5 px-3 rounded-xl text-sm font-semibold cursor-pointer">
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
+
+        {/* Vendor / Paid To & Voucher No */}
+        {type === 'expense' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div className="space-y-2">
+              <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                Paid To / Vendor Name
+              </Label>
+              <Input 
+                placeholder="e.g. Munir Electrician, PTCL, PSO"
+                value={formData.paidTo}
+                onChange={e => setFormData({...formData, paidTo: e.target.value})}
+                className="h-12 rounded-2xl bg-slate-50 border-slate-200 text-sm font-medium px-4"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                Voucher / Slip / Challan #
+              </Label>
+              <Input 
+                placeholder="e.g. V-104, Challan #892"
+                value={formData.voucherNo}
+                onChange={e => setFormData({...formData, voucherNo: e.target.value})}
+                className="h-12 rounded-2xl bg-slate-50 border-slate-200 text-sm font-mono font-medium px-4"
+              />
+            </div>
+          </div>
+        )}
 
         {type === 'income' && (
           <div className="space-y-2">
@@ -1205,45 +1985,70 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
               placeholder="e.g. Scrap Sale or Payer Name"
               value={formData.studentName}
               onChange={e => setFormData({...formData, studentName: e.target.value})}
-              className="h-11 rounded-xl bg-slate-50 border-slate-200"
+              className="h-12 rounded-2xl bg-slate-50 border-slate-200 text-base px-4"
             />
           </div>
         )}
 
-        <div className="space-y-2">
-          <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Description</Label>
-          <Input 
-            placeholder="Additional details..."
-            value={formData.description}
-            onChange={e => setFormData({...formData, description: e.target.value})}
-            className="h-11 rounded-xl bg-slate-50 border-slate-200"
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div className="space-y-2">
+            <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Payment Method</Label>
+            <Select value={formData.paymentMethod || "Cash"} onValueChange={v => setFormData({...formData, paymentMethod: v})}>
+              <SelectTrigger className="w-full h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold px-4 text-base">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent 
+                align="start" 
+                alignItemWithTrigger={false}
+                className="w-[var(--anchor-width)] min-w-[280px] rounded-2xl shadow-xl border-slate-100 p-2"
+              >
+                <SelectItem value="Cash" className="py-2.5 px-3 rounded-xl cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">Cash</span>
+                    <span className="font-nastaleeq text-sm font-normal text-slate-500">(کیش)</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="Bank Transfer" className="py-2.5 px-3 rounded-xl cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">Bank Transfer</span>
+                    <span className="font-nastaleeq text-sm font-normal text-slate-500">(بینک)</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="Cheque" className="py-2.5 px-3 rounded-xl cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">Cheque</span>
+                    <span className="font-nastaleeq text-sm font-normal text-slate-500">(چیک)</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Description / Particulars</Label>
+            <Input 
+              placeholder="e.g. 50 liters generator diesel"
+              value={formData.description}
+              onChange={e => setFormData({...formData, description: e.target.value})}
+              className="h-12 rounded-2xl bg-slate-50 border-slate-200 text-sm font-medium px-4"
+            />
+          </div>
         </div>
 
-        <div className="space-y-2">
-          <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Payment Method</Label>
-          <Select value={formData.paymentMethod || ""} onValueChange={v => setFormData({...formData, paymentMethod: v})}>
-            <SelectTrigger className="h-11 rounded-xl bg-slate-50 border-slate-200 font-bold">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl shadow-xl border-slate-100">
-              <SelectItem value="Cash">Cash</SelectItem>
-              <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-              <SelectItem value="Cheque">Cheque</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="pt-4 flex gap-3">
-          <Button variant="ghost" className="flex-1 rounded-xl font-bold h-12" type="button" onClick={onClose}>Cancel</Button>
+        <div className="pt-4 flex gap-4 border-t border-slate-100">
+          <Button variant="ghost" className="flex-1 rounded-2xl font-bold h-13 text-base" type="button" onClick={onClose}>
+            Cancel
+          </Button>
           <Button 
             className={cn(
-              "flex-1 text-white rounded-xl font-bold h-12 shadow-lg",
-              type === 'expense' ? "bg-rose-600 hover:bg-rose-700 shadow-rose-200" : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200"
+              "flex-1 text-white rounded-2xl font-bold h-13 text-base shadow-xl transition-all cursor-pointer",
+              type === 'expense' 
+                ? "bg-rose-600 hover:bg-rose-700 shadow-rose-200 active:scale-[0.99]" 
+                : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200 active:scale-[0.99]"
             )}
             type="submit"
           >
-            Record {type === 'expense' ? 'Expense' : 'Income'}
+            Save {type === 'expense' ? 'Expense Record' : 'Income Entry'}
           </Button>
         </div>
       </form>

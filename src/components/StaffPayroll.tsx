@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Search, Calculator, Printer, CreditCard, Clock, FileText, ChevronLeft, Plus } from 'lucide-react';
 import { format, subMonths } from 'date-fns';
 import { toast } from 'sonner';
+import { safeLocalStorage } from '../utils/safeStorage';
 
 interface StaffPayrollProps {
   staffList: Staff[];
@@ -62,7 +63,7 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
     if (advances && advances.length > 0) {
       setLocalAdvances(advances);
     } else {
-      const storedAdvances = localStorage.getItem('staffAdvances');
+      const storedAdvances = safeLocalStorage.getItem('staffAdvances');
       if (storedAdvances) {
         try {
           setLocalAdvances(JSON.parse(storedAdvances));
@@ -72,11 +73,11 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
       }
     }
     
-    // We didn't pass attendanceRecords as prop to this component in StaffView, but we could. For now, fetch from localStorage or use prop if we add it.
+    // We didn't pass attendanceRecords as prop to this component in StaffView, but we could. For now, fetch from safeLocalStorage or use prop if we add it.
     if (attendanceRecords.length > 0) {
       setLocalAttendance(attendanceRecords);
     } else {
-      const storedAttendance = localStorage.getItem('staffAttendanceRecords');
+      const storedAttendance = safeLocalStorage.getItem('staffAttendanceRecords');
       if (storedAttendance) {
         try {
           setLocalAttendance(JSON.parse(storedAttendance));
@@ -89,7 +90,7 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
 
   const saveAdvances = (newAdvances: AdvanceEntry[]) => {
     setLocalAdvances(newAdvances);
-    localStorage.setItem('staffAdvances', JSON.stringify(newAdvances));
+    safeLocalStorage.setItem('staffAdvances', JSON.stringify(newAdvances));
   };
 
   const filteredStaff = useMemo(() => {
