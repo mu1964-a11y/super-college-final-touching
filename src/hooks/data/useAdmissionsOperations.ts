@@ -93,7 +93,9 @@ export function useAdmissionsOperations(ctx: any) {
         secondary_contact: admission.secondaryContact,
         email: admission.email,
         blood_group: admission.bloodGroup,
-        reference: admission.reference,
+        reference: admission.concessionReason 
+          ? `Concession: ${admission.concessionReason} | ${admission.reference || ''}`.trim() 
+          : admission.reference,
         gender: admission.gender,
         photo_url: admission.photo,
         student_id: admission.studentId || (admission.feeReceived > 0 ? generateStudentId(admission.group) : null),
@@ -169,7 +171,9 @@ export function useAdmissionsOperations(ctx: any) {
           secondary_contact: updates.secondaryContact,
           email: updates.email,
           blood_group: updates.bloodGroup,
-          reference: updates.reference,
+          reference: updates.concessionReason !== undefined
+            ? `Concession: ${updates.concessionReason} | ${(updates.reference || existingAdmission?.reference || '').replace(/^Concession:[^|]*\|?/, '').trim()}`.trim()
+            : updates.reference,
           gender: updates.gender,
           category: updates.category,
           group: updates.group,
@@ -204,6 +208,12 @@ export function useAdmissionsOperations(ctx: any) {
               admission_id: id,
               full_name: updates.fullName || existingAdmission?.fullName || 'Unknown',
               father_name: updates.fatherName || existingAdmission?.fatherName || 'Unknown',
+              college_no: updates.collegeNo || existingAdmission?.collegeNo || null,
+              bay_form_no: updates.bayFormNo || existingAdmission?.bayFormNo || null,
+              dob: updates.dob || existingAdmission?.dob || null,
+              previous_class: updates.previousClass || existingAdmission?.previousClass || null,
+              previous_marks: updates.previousMarks ?? existingAdmission?.previousMarks ?? 0,
+              board_roll_no: updates.boardRollNo || existingAdmission?.boardRollNo || null,
               category: updates.category || existingAdmission?.category || 'N/A',
               group: updates.group || existingAdmission?.group || 'N/A',
               section: updates.section || existingAdmission?.section || 'Unassigned',
@@ -228,6 +238,12 @@ export function useAdmissionsOperations(ctx: any) {
             await supabase.from('students').update({
               full_name: updates.fullName || existingAdmission?.fullName,
               father_name: updates.fatherName || existingAdmission?.fatherName,
+              college_no: updates.collegeNo || existingAdmission?.collegeNo,
+              bay_form_no: updates.bayFormNo || existingAdmission?.bayFormNo,
+              dob: updates.dob || existingAdmission?.dob,
+              previous_class: updates.previousClass || existingAdmission?.previousClass,
+              previous_marks: updates.previousMarks ?? existingAdmission?.previousMarks,
+              board_roll_no: updates.boardRollNo || existingAdmission?.boardRollNo,
               category: updates.category || existingAdmission?.category,
               group: updates.group || existingAdmission?.group,
               section: updates.section || existingAdmission?.section,
@@ -385,6 +401,12 @@ export function useAdmissionsOperations(ctx: any) {
           admission_id: admissionId,
           full_name: admission.fullName,
           father_name: admission.fatherName,
+          college_no: admission.collegeNo || null,
+          bay_form_no: admission.bayFormNo || null,
+          dob: admission.dob || null,
+          previous_class: admission.previousClass || null,
+          board_roll_no: admission.boardRollNo || null,
+          previous_marks: admission.previousMarks ?? 0,
           category: admission.category || 'N/A',
           group: admission.group || 'N/A',
           section: admission.section || 'A',
@@ -409,7 +431,8 @@ export function useAdmissionsOperations(ctx: any) {
         if (studentError) throw studentError;
         fetchData(true);
         toast.success("Student confirmed and moved to Management!");
-      } catch (e) {
+      } catch (e: any) {
+        console.error("confirmAdmission error:", e);
         toast.error("Failed to confirm admission");
       }
     };

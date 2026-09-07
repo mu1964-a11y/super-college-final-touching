@@ -71,6 +71,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { HighlightText } from './HighlightText';
 import FeeReceipt from './FeeReceipt';
+import StudentIDCardModal from './StudentIDCardModal';
 import { compressImage } from '../lib/imageUtils';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -90,7 +91,9 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
   const [subjectFilter] = useState('all');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
-  const [dialogType, setDialogType] = useState<'profile' | 'profile_academic' | 'profile_fees' | 'edit' | 'pay' | 'receipt' | 'delete' | 'bulkDelete' | null>(null);
+  const [dialogType, setDialogType] = useState<'profile' | 'profile_academic' | 'profile_fees' | 'edit' | 'pay' | 'receipt' | 'delete' | 'bulkDelete' | 'id_card' | 'bulk_promote' | 'migrate_section' | null>(null);
+  const [targetMigrateSection, setTargetMigrateSection] = useState<string>('');
+  const [targetPromoteSession, setTargetPromoteSession] = useState<string>(data?.settings?.academicSession || '2026-28');
   const [payConfig, setPayConfig] = useState<{ month?: string, year?: number }>({});
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
@@ -137,7 +140,18 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           admissionId: a.id,
           fullName: a.fullName,
           fatherName: a.fatherName,
-          contact: a.contactNumber,
+          collegeNo: a.collegeNo || (a as any).college_no,
+          bayFormNo: a.bayFormNo || (a as any).bay_form_no,
+          dob: a.dob,
+          previousClass: a.previousClass || (a as any).previous_class,
+          boardRollNo: a.boardRollNo || (a as any).board_roll_no,
+          previousMarks: a.previousMarks ?? (a as any).previous_marks,
+          contact: a.contactNumber || a.contact,
+          fatherContact: a.fatherContact || (a as any).father_contact,
+          secondaryContact: a.secondaryContact || (a as any).secondary_contact,
+          email: a.email,
+          bloodGroup: a.bloodGroup,
+          concessionReason: a.concessionReason || (a as any).concession_reason,
           address: a.address || '',
           gender: derivedGender,
           category: a.category || 'Inter Part-1 Boys',
@@ -429,20 +443,32 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button 
+              onClick={() => setDialogType('bulk_promote')}
+              className="h-10 rounded-xl bg-superior-gold text-slate-900 hover:bg-superior-gold/90 font-black text-[10px] uppercase tracking-widest px-4 shadow-md gap-1.5"
+            >
+              <GraduationCap size={14} /> Promote to Part-2
+            </Button>
+            <Button 
+              onClick={() => setDialogType('migrate_section')}
+              className="h-10 rounded-xl bg-white/20 text-white hover:bg-white/30 border border-white/20 font-black text-[10px] uppercase tracking-widest px-4 gap-1.5"
+            >
+              <School size={14} /> Migrate Section
+            </Button>
             <Button 
               variant="outline" 
               onClick={() => setSelectedStudents([])}
-              className="h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 font-black text-[10px] uppercase tracking-widest px-6"
+              className="h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 font-black text-[10px] uppercase tracking-widest px-4"
             >
               Cancel
             </Button>
             <Button 
               onClick={handleBulkDelete}
               variant="destructive" 
-              className="h-10 rounded-xl bg-white text-rose-600 hover:bg-rose-50 border-none font-black text-[10px] uppercase tracking-widest px-6 shadow-lg shadow-black/20"
+              className="h-10 rounded-xl bg-white text-rose-600 hover:bg-rose-50 border-none font-black text-[10px] uppercase tracking-widest px-4 shadow-lg shadow-black/20"
             >
-              <Trash2 size={14} className="mr-2" /> Delete
+              <Trash2 size={14} className="mr-1.5" /> Delete
             </Button>
           </div>
         </motion.div>
@@ -630,10 +656,19 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                         className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
                         onClick={() => {
                           setSelectedStudent(student);
+                          setDialogType('id_card');
+                        }}
+                      >
+                        <CreditCard size={16} className="text-emerald-500" /> Official ID Card
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
+                        onClick={() => {
+                          setSelectedStudent(student);
                           setDialogType('receipt');
                         }}
                       >
-                        <CreditCard size={16} className="text-superior-teal" /> Download Receipt
+                        <Download size={16} className="text-superior-teal" /> Download Receipt
                       </DropdownMenuItem>
                       <DropdownMenuItem 
                         className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
@@ -830,8 +865,9 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                       </TableCell>
                       <TableCell className="text-right">
                          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                           <Button onClick={() => { setSelectedStudent(student); setDialogType('receipt'); }} variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-emerald-500"><CreditCard className="h-4 w-4" /></Button>
-                           <Button onClick={() => { setSelectedStudent(student); setDialogType('edit'); }} variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-superior-teal"><Edit className="h-4 w-4" /></Button>
+                           <Button onClick={() => { setSelectedStudent(student); setDialogType('id_card'); }} variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-emerald-600" title="Print Student ID Card"><CreditCard className="h-4 w-4" /></Button>
+                           <Button onClick={() => { setSelectedStudent(student); setDialogType('receipt'); }} variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-emerald-500" title="Download Receipt"><Download className="h-4 w-4" /></Button>
+                           <Button onClick={() => { setSelectedStudent(student); setDialogType('edit'); }} variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-superior-teal" title="Edit Student"><Edit className="h-4 w-4" /></Button>
                          </div>
                       </TableCell>
                   </TableRow>
@@ -945,6 +981,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
               initialTab={dialogType === 'profile_academic' ? 'academic' : dialogType === 'profile_fees' ? 'fees' : 'overview'}
               onEdit={() => setDialogType('edit')}
               onDownloadReceipt={() => setDialogType('receipt')}
+              onPrintIDCard={() => setDialogType('id_card')}
             />
           )}
         </DialogContent>
@@ -966,11 +1003,107 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           {selectedStudent && <FeeReceipt student={selectedStudent} settings={data.settings} />}
         </DialogContent>
       </Dialog>
+
+      {/* Official Student ID Card Modal */}
+      <StudentIDCardModal 
+        student={selectedStudent} 
+        settings={data.settings} 
+        open={dialogType === 'id_card'} 
+        onOpenChange={(open) => !open && setDialogType(null)} 
+      />
+
+      {/* Bulk Promotion to Part-2 Dialog */}
+      <Dialog open={dialogType === 'bulk_promote'} onOpenChange={(open) => !open && setDialogType(null)}>
+        <DialogContent className="rounded-3xl max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-serif text-superior-teal flex items-center gap-2">
+              <GraduationCap className="text-superior-gold" /> Bulk Promote to Part-2
+            </DialogTitle>
+            <DialogDescription className="text-slate-500">
+              Promote <span className="font-bold text-slate-800">{selectedStudents.length}</span> selected student(s) to 2nd Year (Part-2).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 text-xs text-emerald-800 font-medium">
+              This action updates their academic stage to <strong>Part-2 (2nd Year)</strong> across both Students and Admissions registers in Supabase.
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-black uppercase tracking-wider text-slate-500">
+                Target Session (Academic Rollover)
+              </Label>
+              <Input 
+                value={targetPromoteSession} 
+                onChange={(e) => setTargetPromoteSession(e.target.value)} 
+                placeholder="e.g. 2026-28" 
+                className="h-12 rounded-xl border-slate-200 font-bold"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setDialogType(null)} className="rounded-xl h-11">
+              Cancel
+            </Button>
+            <Button 
+              onClick={async () => {
+                await data.bulkPromoteToPart2(selectedStudents, targetPromoteSession);
+                setSelectedStudents([]);
+                setDialogType(null);
+              }} 
+              className="bg-superior-teal text-white hover:bg-superior-teal/90 rounded-xl h-11 px-6 font-bold"
+            >
+              Confirm Promotion
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Section Migration Dialog */}
+      <Dialog open={dialogType === 'migrate_section'} onOpenChange={(open) => !open && setDialogType(null)}>
+        <DialogContent className="rounded-3xl max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-serif text-superior-teal flex items-center gap-2">
+              <School className="text-superior-teal" /> Section Migration Tool
+            </DialogTitle>
+            <DialogDescription className="text-slate-500">
+              Move <span className="font-bold text-slate-800">{selectedStudents.length}</span> student(s) to a different classroom section.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-xs font-black uppercase tracking-wider text-slate-500">
+                Destination Section Name
+              </Label>
+              <Input 
+                placeholder="e.g. PMC1B, Med-1, Pre-Eng B" 
+                value={targetMigrateSection} 
+                onChange={(e) => setTargetMigrateSection(e.target.value.toUpperCase())}
+                className="h-12 rounded-xl font-bold uppercase"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setDialogType(null)} className="rounded-xl h-11">
+              Cancel
+            </Button>
+            <Button 
+              disabled={!targetMigrateSection.trim()}
+              onClick={async () => {
+                await data.migrateSection(selectedStudents, targetMigrateSection.trim());
+                setSelectedStudents([]);
+                setDialogType(null);
+              }} 
+              className="bg-superior-teal text-white hover:bg-superior-teal/90 rounded-xl h-11 px-6 font-bold"
+            >
+              Move Students
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function StudentProfile({ student, data, initialTab = 'overview', onEdit, onDownloadReceipt }: { student: Student, data: any, initialTab?: string, onEdit?: () => void, onDownloadReceipt?: () => void }) {
+function StudentProfile({ student, data, initialTab = 'overview', onEdit, onDownloadReceipt, onPrintIDCard }: { student: Student, data: any, initialTab?: string, onEdit?: () => void, onDownloadReceipt?: () => void, onPrintIDCard?: () => void }) {
   const [activeTab, setActiveTab] = useState(initialTab);
   const totalAttendance = student.attendance.present + student.attendance.absent;
   const attendanceRatio = totalAttendance > 0 ? student.attendance.present / totalAttendance : 0;
@@ -1083,11 +1216,19 @@ function StudentProfile({ student, data, initialTab = 'overview', onEdit, onDown
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3">
+            {onPrintIDCard && (
+              <Button 
+                className="bg-emerald-600 text-white hover:bg-emerald-700 font-bold rounded-xl h-12 shadow-md gap-2"
+                onClick={onPrintIDCard}
+              >
+                <CreditCard size={18} /> Official ID Card
+              </Button>
+            )}
             <Button 
               className="bg-white text-slate-800 hover:bg-slate-100 font-bold rounded-xl h-12"
               onClick={onDownloadReceipt}
             >
-              <CreditCard className="mr-2" size={18} /> Download Receipt
+              <Download className="mr-2" size={18} /> Download Receipt
             </Button>
             <Button 
               className="bg-superior-gold text-white hover:bg-superior-gold/90 font-bold rounded-xl h-12"
@@ -1397,7 +1538,16 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
   const [formData, setFormData] = useState({
     fullName: student.fullName || '',
     fatherName: student.fatherName || '',
+    collegeNo: student.collegeNo || '',
+    bayFormNo: student.bayFormNo || '',
+    dob: student.dob || '',
+    previousClass: student.previousClass || '10th',
+    boardRollNo: student.boardRollNo || '',
+    previousMarks: student.previousMarks !== undefined ? String(student.previousMarks) : '',
     contact: student.contact || '',
+    fatherContact: student.fatherContact || '',
+    email: student.email || '',
+    bloodGroup: student.bloodGroup || '',
     address: student.address || '',
     admissionFee: student.admissionFee || 0,
     miscFunds: student.miscFunds || 0,
@@ -1472,6 +1622,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
     
     data.updateStudent(student.id, {
       ...formData,
+      previousMarks: formData.previousMarks ? Number(formData.previousMarks) : undefined,
       totalPackage: totalPkg,
       monthlyFee: instAmount,
       totalInstallments: instCount,
@@ -1567,12 +1718,66 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
             <Input value={formData.fatherName || ""} onChange={e => setFormData({...formData, fatherName: e.target.value})} />
           </div>
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 col-span-2 space-y-4">
-            <h4 className="text-xs font-black text-superior-teal uppercase tracking-widest">Academic & Session Details</h4>
-            <div className="grid grid-cols-2 gap-4">
+            <h4 className="text-xs font-black text-superior-teal uppercase tracking-widest">Academic & Identity Details</h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>College Roll #</Label>
+                <div className="flex gap-2">
+                  <Input 
+                    value={formData.collegeNo || ""} 
+                    onChange={e => setFormData({...formData, collegeNo: e.target.value})} 
+                    placeholder="Assign Roll #"
+                    className="font-bold bg-white"
+                  />
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => {
+                      const allRolls: number[] = [];
+                      (data.students || []).forEach((s: any) => {
+                        const num = parseInt(String(s.collegeNo || '').replace(/\D/g, ''), 10);
+                        if (!isNaN(num) && num > 0) allRolls.push(num);
+                      });
+                      const next = allRolls.length > 0 ? Math.max(...allRolls) + 1 : 1001;
+                      setFormData(prev => ({ ...prev, collegeNo: String(next) }));
+                      toast.success(`Suggested Roll #: ${next}`);
+                    }}
+                    className="h-10 px-2.5 text-xs text-superior-teal font-bold shrink-0"
+                  >
+                    Auto
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>B-Form / CNIC</Label>
+                <Input value={formData.bayFormNo || ""} onChange={e => setFormData({...formData, bayFormNo: e.target.value})} placeholder="36103-..." className="bg-white" />
+              </div>
+              <div className="space-y-2">
+                <Label>Date of Birth</Label>
+                <Input type="date" value={formData.dob || ""} onChange={e => setFormData({...formData, dob: e.target.value})} className="bg-white" />
+              </div>
+              <div className="space-y-2">
+                <Label>Previous Class</Label>
+                <Select value={formData.previousClass || "10th"} onValueChange={v => setFormData({...formData, previousClass: v as any})}>
+                  <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="9th">9th Class</SelectItem>
+                    <SelectItem value="10th">10th Class (Matric)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>SSC / Matric Marks</Label>
+                <Input type="number" value={formData.previousMarks || ""} onChange={e => setFormData({...formData, previousMarks: e.target.value})} placeholder="Obtained Marks" className="bg-white" />
+              </div>
+              <div className="space-y-2">
+                <Label>Board Roll #</Label>
+                <Input value={formData.boardRollNo || ""} onChange={e => setFormData({...formData, boardRollNo: e.target.value})} placeholder="Matric Roll #" className="bg-white" />
+              </div>
               <div className="space-y-2">
                 <Label>Academic Stage</Label>
                 <Select value={formData.academicPart || "Part-1"} onValueChange={v => setFormData({...formData, academicPart: v as any})}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Part-1">Inter Part-1</SelectItem>
                     <SelectItem value="Part-2">Inter Part-2</SelectItem>
@@ -1582,7 +1787,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
               <div className="space-y-2">
                 <Label>Session (Academic Period)</Label>
                 <Select value={formData.session || ""} onValueChange={v => setFormData({...formData, session: v})}>
-                  <SelectTrigger><SelectValue placeholder="Select Session" /></SelectTrigger>
+                  <SelectTrigger className="bg-white"><SelectValue placeholder="Select Session" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="2023-2025">2023-2025</SelectItem>
                     <SelectItem value="2024-2026">2024-2026</SelectItem>
@@ -1593,12 +1798,8 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Session Start</Label>
-                <Input type="date" value={formData.sessionStartDate || ""} onChange={e => setFormData({...formData, sessionStartDate: e.target.value})} />
-              </div>
-              <div className="space-y-2">
-                <Label>Session End</Label>
-                <Input type="date" value={formData.sessionEndDate || ""} onChange={e => setFormData({...formData, sessionEndDate: e.target.value})} />
+                <Label>Blood Group</Label>
+                <Input value={formData.bloodGroup || ""} onChange={e => setFormData({...formData, bloodGroup: e.target.value})} placeholder="e.g. O+, B+" className="bg-white uppercase" />
               </div>
             </div>
           </div>

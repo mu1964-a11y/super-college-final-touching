@@ -15,6 +15,7 @@ export function useLeadsOperations(ctx: any) {
         student_name: lead.studentName,
         father_name: lead.fatherName,
         package: lead.finalizedFee,
+        finalized_fee: lead.finalizedFee,
         finalized_by: lead.finalizedBy,
         cnic: lead.cnic,
         previous_school: lead.previousSchool,
@@ -25,7 +26,9 @@ export function useLeadsOperations(ctx: any) {
         current_class: lead.currentClass,
         subjects: lead.subjects || [],
         session: (lead as any).session,
-        is_converted: false
+        is_converted: false,
+        extra_info1: lead.pipelineStage || 'new',
+        extra_info2: lead.followUpDate || ''
       }).select().single();
       
       if (error) throw error;
@@ -53,10 +56,11 @@ export function useLeadsOperations(ctx: any) {
     setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
 
     try {
-      const { error } = await supabase.from('leads').update({
+      const updatePayload: any = {
         student_name: updates.studentName,
         father_name: updates.fatherName,
         package: updates.finalizedFee,
+        finalized_fee: updates.finalizedFee,
         finalized_by: updates.finalizedBy,
         cnic: updates.cnic,
         previous_school: updates.previousSchool,
@@ -67,7 +71,15 @@ export function useLeadsOperations(ctx: any) {
         current_class: updates.currentClass,
         subjects: updates.subjects,
         is_converted: updates.isConverted
-      }).eq('id', id);
+      };
+      if (updates.pipelineStage !== undefined) {
+        updatePayload.extra_info1 = updates.pipelineStage;
+      }
+      if (updates.followUpDate !== undefined) {
+        updatePayload.extra_info2 = updates.followUpDate;
+      }
+
+      const { error } = await supabase.from('leads').update(updatePayload).eq('id', id);
       if (error) throw error;
       const oldLead = leads.find((l: any) => l.id === id);
       const changes = diffObjects(oldLead, updates, LEAD_FIELD_LABELS);
@@ -198,24 +210,42 @@ export function useLeadsOperations(ctx: any) {
           if (targetProgram === 'dit') expectedGroup = 'DIT';
           else if (targetProgram === 'ukl3') expectedGroup = 'UK Level 3';
           else if (targetProgram === 'bs') expectedGroup = 'BS Program';
+          else if (targetProgram === 'fsc') expectedGroup = 'FSC Pre-Medical';
+
+          const marksNum = l.grade ? (parseInt(String(l.grade).replace(/\D/g, '')) || 0) : 0;
+          const fullAddress = [l.areaVillage, l.city].filter(Boolean).join(', ');
+          const packageFee = Number(l.finalizedFee) || 0;
 
           return {
             id: `temp-adm-${l.id}`,
             fullName: l.studentName,
             fatherName: l.fatherName,
             contactNumber: l.fatherPhone,
+            fatherContact: l.fatherPhone,
             previousInstitute: l.previousSchool,
+            previousClass: l.currentClass || '10th',
+            previousMarks: marksNum,
+            bayFormNo: l.cnic || '',
+            address: fullAddress,
+            totalPackage: packageFee,
+            totalFeeFinalized: packageFee,
+            admissionFee: 0,
+            feeReceived: 0,
+            reference: l.finalizedBy || '',
             group: expectedGroup,
             paymentPlan: 'Monthly',
             isAdmitted: false,
             studentId: generateStudentId(expectedGroup),
             session: l.session || settings?.academicSession || '2026-28',
-            dateApplied: new Date().toISOString()
+            dateApplied: new Date().toISOString(),
+            date: new Date().toISOString().split('T')[0],
+            status: 'Prospective',
+            subjects: l.subjects || []
           } as unknown as Admission;
         });
 
         // Optimistic update
-        setLeads(prev => prev.map(l => ids.includes(l.id) ? { ...l, isConverted: true } : l));
+        setLeads(prev => prev.map(l => ids.includes(l.id) ? { ...l, isConverted: true, pipelineStage: 'converted' } : l));
         setAdmissions(prev => [...newAdmissionsOptimistic, ...prev]);
 
         const admissionsData = leadsToConvert.map(l => {
@@ -223,17 +253,35 @@ export function useLeadsOperations(ctx: any) {
           if (targetProgram === 'dit') expectedGroup = 'DIT';
           else if (targetProgram === 'ukl3') expectedGroup = 'UK Level 3';
           else if (targetProgram === 'bs') expectedGroup = 'BS Program';
+          else if (targetProgram === 'fsc') expectedGroup = 'FSC Pre-Medical';
+
+          const marksNum = l.grade ? (parseInt(String(l.grade).replace(/\D/g, '')) || 0) : 0;
+          const fullAddress = [l.areaVillage, l.city].filter(Boolean).join(', ');
+          const packageFee = Number(l.finalizedFee) || 0;
 
           return {
             full_name: l.studentName,
             father_name: l.fatherName,
             contact_number: l.fatherPhone,
+            father_contact: l.fatherPhone,
             previous_institute: l.previousSchool,
+            previous_class: l.currentClass || '10th',
+            previous_marks: marksNum,
+            bay_form_no: l.cnic || null,
+            address: fullAddress || null,
+            total_package: packageFee,
+            total_fee_finalized: packageFee,
+            admission_fee: 0,
+            fee_received: 0,
+            reference: l.finalizedBy || null,
             group: expectedGroup,
             payment_plan: 'Monthly',
             is_admitted: false,
             student_id: generateStudentId(expectedGroup),
-            session: l.session || settings?.academicSession || '2026-28'
+            session: l.session || settings?.academicSession || '2026-28',
+            status: 'Prospective',
+            subjects: l.subjects || [],
+            date: new Date().toISOString().split('T')[0]
           };
         });
 
@@ -247,12 +295,12 @@ export function useLeadsOperations(ctx: any) {
 
         for (let i = 0; i < ids.length; i += batchSize) {
           const chunk = ids.slice(i, i + batchSize);
-          const { error: leadUpdateError } = await supabase.from('leads').update({ is_converted: true }).in('id', chunk);
+          const { error: leadUpdateError } = await supabase.from('leads').update({ is_converted: true, extra_info1: 'converted' }).in('id', chunk);
           if (leadUpdateError) throw leadUpdateError;
         }
 
-        logActivity("Bulk Conversion", `Converted ${ids.length} leads to applicants`, 'success');
-        toast.success(`Successfully converted ${ids.length} leads!`, { id: toastId });
+        logActivity("Bulk Conversion", `Converted ${ids.length} leads to applicants with preserved package & identity records`, 'success');
+        toast.success(`Successfully converted ${ids.length} leads! All package fees preserved.`, { id: toastId });
         fetchData(true); // Fire and forget background refresh
       } catch (e: any) {
         console.error("Bulk Conversion Error:", e);

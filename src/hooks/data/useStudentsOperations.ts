@@ -51,6 +51,12 @@ export function useStudentsOperations(ctx: any) {
         const { error } = await supabase.from('students').update({
           full_name: updates.fullName,
           father_name: updates.fatherName,
+          college_no: updates.collegeNo,
+          bay_form_no: updates.bayFormNo,
+          dob: updates.dob || null,
+          previous_class: updates.previousClass,
+          board_roll_no: updates.boardRollNo,
+          previous_marks: updates.previousMarks !== undefined ? Number(updates.previousMarks) : undefined,
           category: updates.category,
           group: updates.group,
           section: updates.section,
@@ -250,5 +256,68 @@ export function useStudentsOperations(ctx: any) {
         return false;
       }
     };
-  return { addStudent, updateStudent, deleteStudent, bulkDeleteStudents, promoteSemester, saveStudentAttendanceLogs };
+
+    const bulkPromoteToPart2 = async (ids: string[], targetSession?: string) => {
+      if (!ids.length) return;
+      const toastId = toast.loading(`Promoting ${ids.length} students to 2nd Year (Part-2)...`);
+      try {
+        const updatePayload: any = { academic_part: 'Part-2' };
+        if (targetSession) {
+          updatePayload.session = targetSession;
+        }
+
+        const { error: studentErr } = await supabase.from('students').update(updatePayload).in('id', ids);
+        if (studentErr) throw studentErr;
+
+        const linkedAdmissionIds = students
+          .filter((s: any) => ids.includes(s.id) && s.admissionId)
+          .map((s: any) => s.admissionId);
+
+        if (linkedAdmissionIds.length > 0) {
+          await supabase.from('admissions').update(updatePayload).in('id', linkedAdmissionIds);
+        }
+
+        fetchData(true);
+        logActivity("Bulk Promotion", `Promoted ${ids.length} student(s) to Part-2 (${targetSession || 'Active Session'})`, 'success');
+        toast.success(`Successfully promoted ${ids.length} student(s) to Part-2!`, { id: toastId });
+      } catch (e: any) {
+        console.error("Bulk Promote Error:", e);
+        toast.error(`Promotion failed: ${e.message}`, { id: toastId });
+      }
+    };
+
+    const migrateSection = async (ids: string[], newSection: string) => {
+      if (!ids.length || !newSection) return;
+      const toastId = toast.loading(`Migrating ${ids.length} student(s) to Section ${newSection}...`);
+      try {
+        const { error: studentErr } = await supabase.from('students').update({ section: newSection }).in('id', ids);
+        if (studentErr) throw studentErr;
+
+        const linkedAdmissionIds = students
+          .filter((s: any) => ids.includes(s.id) && s.admissionId)
+          .map((s: any) => s.admissionId);
+
+        if (linkedAdmissionIds.length > 0) {
+          await supabase.from('admissions').update({ section: newSection }).in('id', linkedAdmissionIds);
+        }
+
+        fetchData(true);
+        logActivity("Section Migration", `Migrated ${ids.length} student(s) to Section ${newSection}`, 'warning');
+        toast.success(`Moved ${ids.length} student(s) to Section ${newSection}!`, { id: toastId });
+      } catch (e: any) {
+        console.error("Migrate Section Error:", e);
+        toast.error(`Migration failed: ${e.message}`, { id: toastId });
+      }
+    };
+
+  return { 
+    addStudent, 
+    updateStudent, 
+    deleteStudent, 
+    bulkDeleteStudents, 
+    promoteSemester, 
+    saveStudentAttendanceLogs,
+    bulkPromoteToPart2,
+    migrateSection 
+  };
 }

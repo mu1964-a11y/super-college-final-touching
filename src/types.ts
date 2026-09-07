@@ -49,6 +49,9 @@ export interface Lead {
   dateAdded: string;
   isConverted?: boolean;
   session?: string;
+  pipelineStage?: 'new' | 'contacted' | 'visiting' | 'form_issued' | 'converted';
+  followUpDate?: string;
+  notes?: string;
 }
 
 export interface Admission {
@@ -89,6 +92,7 @@ export interface Admission {
   fatherContact?: string;
   secondaryContact?: string;
   reference: string;
+  concessionReason?: string;
   gender: Gender;
   photo?: string;
   status: AdmissionStatus;
@@ -118,6 +122,9 @@ export interface Student {
   boardRollNo?: string;
   previousMarks?: number;
   contact: string;
+  fatherContact?: string;
+  secondaryContact?: string;
+  concessionReason?: string;
   email?: string;
   bloodGroup?: string;
   address: string;

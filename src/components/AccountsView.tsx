@@ -21,8 +21,14 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
-  Edit
+  Edit,
+  Building2,
+  Printer,
+  MessageSquare,
+  Coins,
+  ShieldCheck
 } from 'lucide-react';
+import BankChallanModal from './BankChallanModal';
 import { motion } from 'motion/react';
 import { 
   Table, 
@@ -142,6 +148,8 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
   const [isDeletingExpense, setIsDeletingExpense] = useState(false);
   const [incomeFilters, setIncomeFilters] = useState({ startDate: '', endDate: '', minAmount: '', maxAmount: '' });
   const [expenseFilters, setExpenseFilters] = useState({ startDate: '', endDate: '', minAmount: '', maxAmount: '' });
+  const [isChallanModalOpen, setIsChallanModalOpen] = useState(false);
+  const [challanStudents, setChallanStudents] = useState<any[] | null>(null);
 
   const selectedStudent = data.students.find((s: Student) => s.id === selectedStudentId);
 
@@ -556,6 +564,13 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
           >
             <Receipt size={15} className="mr-2 inline-block" />
             Fee Collections
+          </TabsTrigger>
+          <TabsTrigger 
+            value="daily-closing" 
+            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+          >
+            <Clock size={15} className="mr-2 inline-block text-emerald-600" />
+            Daily Cash Closing (Roznamcha)
           </TabsTrigger>
         </TabsList>
 
@@ -1163,7 +1178,720 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
             </Card>
           </div>
         </TabsContent>
+
+        {/* Daily Cash Closing (Roznamcha / Day-Book) Tab */}
+        <TabsContent value="daily-closing" className="space-y-6">
+          <DailyCashClosingTab data={data} activeIncomes={activeIncomes} />
+        </TabsContent>
       </Tabs>
+
+      {/* 3-Copy Bank Challan Modal */}
+      {challanStudents && (
+        <BankChallanModal
+          isOpen={isChallanModalOpen}
+          onClose={() => {
+            setIsChallanModalOpen(false);
+            setChallanStudents(null);
+          }}
+          students={challanStudents}
+          settings={data.settings}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: Daily Cash Closing Dashboard & Roznamcha (Day-Book) Component
+// ---------------------------------------------------------------------------
+function DailyCashClosingTab({ data, activeIncomes }: { data: any; activeIncomes: any[] }) {
+  const [closingDate, setClosingDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [cashNotes, setCashNotes] = useState({
+    n5000: "",
+    n1000: "",
+    n500: "",
+    n100: "",
+    n50: "",
+    n20: "",
+    n10: "",
+    coins: "",
+  });
+  const [closingRemarks, setClosingRemarks] = useState("");
+  const [isSendingDailyBriefing, setIsSendingDailyBriefing] = useState(false);
+  const [journalTab, setJournalTab] = useState<"inflow" | "outflow">("inflow");
+
+  // Filter incomes for the selected date
+  const todayIncomes = React.useMemo(() => {
+    return (activeIncomes || []).filter((inc: any) => {
+      const d = String(inc.date || "").split("T")[0];
+      return d === closingDate;
+    });
+  }, [activeIncomes, closingDate]);
+
+  // Filter expenses for the selected date
+  const todayExpenses = React.useMemo(() => {
+    return (data.expenses || []).filter((exp: any) => {
+      const d = String(exp.date || "").split("T")[0];
+      return d === closingDate;
+    });
+  }, [data.expenses, closingDate]);
+
+  // Breakdown of Incomes: Cash vs Online/Bank
+  const dailyInflowCash = React.useMemo(() => {
+    return todayIncomes
+      .filter((inc: any) => {
+        const m = (inc.paymentMethod || inc.type || "").toLowerCase();
+        return !m.includes("bank") && !m.includes("online") && !m.includes("cheque");
+      })
+      .reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0);
+  }, [todayIncomes]);
+
+  const dailyInflowBank = React.useMemo(() => {
+    return todayIncomes
+      .filter((inc: any) => {
+        const m = (inc.paymentMethod || inc.type || "").toLowerCase();
+        return m.includes("bank") || m.includes("online") || m.includes("cheque");
+      })
+      .reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0);
+  }, [todayIncomes]);
+
+  const totalInflowAll = dailyInflowCash + dailyInflowBank;
+
+  // Breakdown of Expenses: Cash outflow
+  const dailyOutflowCash = React.useMemo(() => {
+    return todayExpenses.reduce((sum: number, exp: any) => sum + (Number(exp.amount) || 0), 0);
+  }, [todayExpenses]);
+
+  // Net Cash in Safe according to system transactions
+  const dailyNetCash = dailyInflowCash - dailyOutflowCash;
+
+  // Physical Currency Calculation
+  const physicalCashTotal = React.useMemo(() => {
+    return (
+      (Number(cashNotes.n5000) || 0) * 5000 +
+      (Number(cashNotes.n1000) || 0) * 1000 +
+      (Number(cashNotes.n500) || 0) * 500 +
+      (Number(cashNotes.n100) || 0) * 100 +
+      (Number(cashNotes.n50) || 0) * 50 +
+      (Number(cashNotes.n20) || 0) * 20 +
+      (Number(cashNotes.n10) || 0) * 10 +
+      (Number(cashNotes.coins) || 0)
+    );
+  }, [cashNotes]);
+
+  const isCountEntered = physicalCashTotal > 0 || Object.values(cashNotes).some((v) => Number(v) > 0);
+  const closingDiscrepancy = isCountEntered ? physicalCashTotal - dailyNetCash : 0;
+
+  // Quick Date Setters
+  const setQuickDate = (daysAgo: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    setClosingDate(d.toISOString().split("T")[0]);
+  };
+
+  // 1-Click WhatsApp Daily Briefing Dispatcher
+  const handleSendDailyWhatsAppBriefing = async () => {
+    const rawPhone = data.settings?.principalPhone || data.settings?.adminPhone || data.settings?.phone || "03014455891";
+    const cleanPhone = rawPhone.replace(/\D/g, "");
+
+    const varianceText = !isCountEntered 
+      ? "Physical Safe Count Pending ⏳" 
+      : closingDiscrepancy === 0 
+        ? "BALANCED (100% Reconciled) ✅" 
+        : closingDiscrepancy > 0 
+          ? `CASH SURPLUS (+Rs. ${closingDiscrepancy.toLocaleString()})` 
+          : `CASH SHORTAGE (-Rs. ${Math.abs(closingDiscrepancy).toLocaleString()}) ⚠️`;
+
+    const briefingMsg = 
+`🎓 *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📊 *Daily Financial Closing Briefing (Roznamcha)*
+📅 *Date:* ${closingDate}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+💰 *Total Cash Collected (Inflow):* Rs. ${dailyInflowCash.toLocaleString()}
+💳 *Online / Bank Transfers:* Rs. ${dailyInflowBank.toLocaleString()}
+📉 *Daily Cash Expenses (Outflow):* Rs. ${dailyOutflowCash.toLocaleString()}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+💵 *System Net Cash In Safe:* Rs. ${dailyNetCash.toLocaleString()}
+🪙 *Physical Cash Counted:* Rs. ${physicalCashTotal.toLocaleString()}
+⚖️ *Reconciliation Status:* ${varianceText}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 *Daily Activity:* ${todayIncomes.length} Inflows Processed | ${todayExpenses.length} Expense Vouchers
+${closingRemarks ? `📌 *Closing Notes:* ${closingRemarks}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n` : ""}
+Accounts Department • Superior College Jahanian`;
+
+    try {
+      setIsSendingDailyBriefing(true);
+      toast.loading(`Sending Daily Briefing to +${cleanPhone}...`, { id: "brief-wa" });
+      const res = await fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: cleanPhone, message: briefingMsg }),
+      });
+
+      if (res.ok) {
+        toast.success(`Daily Briefing dispatched to +${cleanPhone}!`, { id: "brief-wa" });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.info(err.error || "Gateway offline. Opening WhatsApp Web...", { id: "brief-wa" });
+        window.open(`https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(briefingMsg)}`, "_blank");
+      }
+    } catch {
+      window.open(`https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(briefingMsg)}`, "_blank");
+      toast.dismiss("brief-wa");
+    } finally {
+      setIsSendingDailyBriefing(false);
+    }
+  };
+
+  // Export Printable Roznamcha PDF
+  const exportRoznamchaPDF = () => {
+    try {
+      const doc = new jsPDF("p", "pt", "a4");
+
+      // Header Banner
+      doc.setFillColor(11, 77, 69);
+      doc.rect(0, 0, doc.internal.pageSize.width, 70, "F");
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("SUPERIOR GROUP OF COLLEGES JAHANIAN", 40, 32);
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`DAILY CASH CLOSING REGISTER (ROZNAMCHA) • DATE: ${closingDate}`, 40, 52);
+
+      // Summary Table
+      autoTable(doc, {
+        startY: 90,
+        theme: "grid",
+        head: [["Closing Metric Head", "Amount (PKR)", "Remarks / Method"]],
+        body: [
+          ["Cash Collections (Fees & Incomes)", `Rs. ${dailyInflowCash.toLocaleString()}`, `${todayIncomes.length} receipt transactions`],
+          ["Bank / Online Direct Collections", `Rs. ${dailyInflowBank.toLocaleString()}`, "Direct bank transfer / cheque"],
+          ["Gross Daily Inflow", `Rs. ${totalInflowAll.toLocaleString()}`, "Total revenue processed today"],
+          ["Petty Cash & Operational Expenses", `Rs. ${dailyOutflowCash.toLocaleString()}`, `${todayExpenses.length} expense vouchers`],
+          ["System Net Cash In Safe", `Rs. ${dailyNetCash.toLocaleString()}`, "Expected cash in safe"],
+          ["Physical Cash Counted (Denominations)", `Rs. ${physicalCashTotal.toLocaleString()}`, isCountEntered ? (closingDiscrepancy === 0 ? "100% Balanced" : closingDiscrepancy > 0 ? "Surplus" : "Shortage") : "Count pending"],
+          ["Audit Discrepancy / Variance", `Rs. ${closingDiscrepancy.toLocaleString()}`, closingDiscrepancy === 0 ? "RECONCILED" : "DISCREPANCY DETECTED"],
+        ],
+        headStyles: { fillColor: [11, 77, 69], textColor: 255, fontStyle: "bold" },
+        styles: { fontSize: 9, cellPadding: 5 },
+      });
+
+      let nextY = (doc as any).lastAutoTable.finalY + 25;
+
+      // Inflow Details Table
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 41, 59);
+      doc.text("1. Daily Cash Inflow Register", 40, nextY);
+
+      autoTable(doc, {
+        startY: nextY + 8,
+        theme: "striped",
+        head: [["Student / Source", "Roll / ID", "Method", "Category", "Amount (PKR)"]],
+        body: todayIncomes.length > 0
+          ? todayIncomes.map((inc: any) => [
+              inc.studentName || "Direct Income",
+              inc.studentId || "-",
+              inc.paymentMethod || "Cash",
+              inc.category || "Fee Payment",
+              `Rs. ${(Number(inc.amount) || 0).toLocaleString()}`,
+            ])
+          : [["No cash inflows recorded on this date", "-", "-", "-", "Rs. 0"]],
+        headStyles: { fillColor: [16, 185, 129], textColor: 255 },
+        styles: { fontSize: 8, cellPadding: 4 },
+      });
+
+      nextY = (doc as any).lastAutoTable.finalY + 25;
+
+      // Page break guard
+      if (nextY > 650) {
+        doc.addPage();
+        nextY = 40;
+      }
+
+      // Outflow Details Table
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 41, 59);
+      doc.text("2. Daily Cash Outflow (Expense Vouchers)", 40, nextY);
+
+      autoTable(doc, {
+        startY: nextY + 8,
+        theme: "striped",
+        head: [["Voucher #", "Category", "Paid To", "Description", "Amount (PKR)"]],
+        body: todayExpenses.length > 0
+          ? todayExpenses.map((exp: any) => {
+              const d = parseExpenseDetails(exp);
+              return [
+                d.voucherNo || "V-EXP",
+                exp.category || "Petty Cash",
+                d.paidTo || "-",
+                d.cleanDescription || exp.description || "-",
+                `Rs. ${(Number(exp.amount) || 0).toLocaleString()}`,
+              ];
+            })
+          : [["-", "No expenses recorded on this date", "-", "-", "Rs. 0"]],
+        headStyles: { fillColor: [225, 29, 72], textColor: 255 },
+        styles: { fontSize: 8, cellPadding: 4 },
+      });
+
+      nextY = (doc as any).lastAutoTable.finalY + 45;
+      if (nextY > 730) {
+        doc.addPage();
+        nextY = 60;
+      }
+
+      // Signatures
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(100, 116, 139);
+      doc.text("_________________________", 60, nextY);
+      doc.text("Cashier / Assistant Accountant", 60, nextY + 14);
+
+      doc.text("_________________________", 250, nextY);
+      doc.text("Chief Accounts Officer", 250, nextY + 14);
+
+      doc.text("_________________________", 430, nextY);
+      doc.text("Principal / Campus Director", 430, nextY + 14);
+
+      doc.save(`Daily_Cash_Closing_Roznamcha_${closingDate}.pdf`);
+      toast.success(`Roznamcha PDF exported for ${closingDate}!`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to export Roznamcha PDF.");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Top Filter & Action Bar */}
+      <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Label className="text-xs font-black text-slate-700 uppercase tracking-wider">
+              Closing Date:
+            </Label>
+            <Input
+              type="date"
+              value={closingDate}
+              onChange={(e) => setClosingDate(e.target.value)}
+              className="h-9 w-40 text-xs font-bold rounded-xl border-slate-200 bg-slate-50"
+            />
+          </div>
+          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+            <button
+              onClick={() => setQuickDate(0)}
+              className={`px-3 py-1 text-[11px] font-black rounded-lg transition-all ${
+                closingDate === new Date().toISOString().split("T")[0]
+                  ? "bg-white text-superior-teal shadow-xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              Today
+            </button>
+            <button
+              onClick={() => setQuickDate(1)}
+              className="px-3 py-1 text-[11px] font-black rounded-lg text-slate-500 hover:text-slate-800 transition-all"
+            >
+              Yesterday
+            </button>
+          </div>
+
+          <Badge
+            className={`px-3 py-1 font-bold text-xs border ${
+              !isCountEntered
+                ? "bg-amber-50 text-amber-700 border-amber-200"
+                : closingDiscrepancy === 0
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : "bg-rose-50 text-rose-700 border-rose-200"
+            }`}
+          >
+            {!isCountEntered
+              ? "⏳ Physical Count Pending"
+              : closingDiscrepancy === 0
+              ? "✅ Safe Balanced & Reconciled"
+              : `⚠️ Discrepancy: Rs. ${closingDiscrepancy.toLocaleString()}`}
+          </Badge>
+        </div>
+
+        <div className="flex items-center gap-2.5 w-full md:w-auto">
+          <Button
+            onClick={exportRoznamchaPDF}
+            variant="outline"
+            className="h-9 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs flex items-center gap-2"
+          >
+            <Printer size={15} />
+            Export Roznamcha PDF
+          </Button>
+          <Button
+            onClick={handleSendDailyWhatsAppBriefing}
+            disabled={isSendingDailyBriefing}
+            className="h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-2 shadow-sm shadow-emerald-200"
+          >
+            <MessageSquare size={15} />
+            {isSendingDailyBriefing ? "Sending..." : "WhatsApp Daily Briefing"}
+          </Button>
+        </div>
+      </div>
+
+      {/* 4 Financial Status Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Cash Inflow */}
+        <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+              Cash Inflow Today
+            </p>
+            <h3 className="text-2xl font-black text-emerald-600">
+              Rs. {dailyInflowCash.toLocaleString()}
+            </h3>
+            <p className="text-[10px] text-slate-500 font-semibold mt-1">
+              + Rs. {dailyInflowBank.toLocaleString()} online/bank
+            </p>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+            <TrendingUp size={22} />
+          </div>
+        </div>
+
+        {/* Total Cash Outflow */}
+        <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+              Cash Outflow (Expenses)
+            </p>
+            <h3 className="text-2xl font-black text-rose-600">
+              Rs. {dailyOutflowCash.toLocaleString()}
+            </h3>
+            <p className="text-[10px] text-slate-500 font-semibold mt-1">
+              {todayExpenses.length} vouchers recorded
+            </p>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+            <TrendingDown size={22} />
+          </div>
+        </div>
+
+        {/* System Net Cash in Safe */}
+        <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+              System Net Cash in Safe
+            </p>
+            <h3 className="text-2xl font-black text-slate-800">
+              Rs. {dailyNetCash.toLocaleString()}
+            </h3>
+            <p className="text-[10px] text-slate-400 font-semibold mt-1">
+              Inflow - Outflow cash ledger
+            </p>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+            <Wallet size={22} />
+          </div>
+        </div>
+
+        {/* Physical Cash Counted */}
+        <div className={`p-5 rounded-[2rem] border shadow-sm flex items-center justify-between transition-colors ${
+          !isCountEntered
+            ? "bg-amber-50/50 border-amber-100"
+            : closingDiscrepancy === 0
+            ? "bg-emerald-50/50 border-emerald-100"
+            : "bg-rose-50/50 border-rose-100"
+        }`}>
+          <div>
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+              Physical Cash Counted
+            </p>
+            <h3 className="text-2xl font-black text-slate-900">
+              Rs. {physicalCashTotal.toLocaleString()}
+            </h3>
+            <p className={`text-[10px] font-black mt-1 ${
+              !isCountEntered ? "text-amber-700" : closingDiscrepancy === 0 ? "text-emerald-700" : "text-rose-700"
+            }`}>
+              {!isCountEntered
+                ? "Enter notes breakdown below"
+                : closingDiscrepancy === 0
+                ? "100% Balanced with System"
+                : closingDiscrepancy > 0
+                ? `+Rs. ${closingDiscrepancy.toLocaleString()} (Surplus)`
+                : `-Rs. ${Math.abs(closingDiscrepancy).toLocaleString()} (Shortage)`}
+            </p>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-white shadow-xs text-slate-700 flex items-center justify-center shrink-0">
+            <Coins size={22} />
+          </div>
+        </div>
+      </div>
+
+      {/* Two Column Layout: Journal Register on Left, Denomination Calculator on Right */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column (7 cols): Roznamcha Activity Register */}
+        <div className="lg:col-span-7 bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="font-black text-slate-800 text-base uppercase tracking-tight">
+                Roznamcha Day-Book Journal
+              </h3>
+              <p className="text-xs text-slate-400 font-semibold">
+                Chronological list of all transactions for {closingDate}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+              <button
+                onClick={() => setJournalTab("inflow")}
+                className={`px-3 py-1.5 text-xs font-black rounded-lg transition-all ${
+                  journalTab === "inflow"
+                    ? "bg-white text-emerald-700 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                Inflows ({todayIncomes.length})
+              </button>
+              <button
+                onClick={() => setJournalTab("outflow")}
+                className={`px-3 py-1.5 text-xs font-black rounded-lg transition-all ${
+                  journalTab === "outflow"
+                    ? "bg-white text-rose-700 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                Expenses ({todayExpenses.length})
+              </button>
+            </div>
+          </div>
+
+          {journalTab === "inflow" ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-slate-100 hover:bg-transparent">
+                    <TableHead className="font-black text-slate-400 uppercase text-[10px]">Student / Source</TableHead>
+                    <TableHead className="font-black text-slate-400 uppercase text-[10px]">Roll No</TableHead>
+                    <TableHead className="font-black text-slate-400 uppercase text-[10px]">Method</TableHead>
+                    <TableHead className="font-black text-slate-400 uppercase text-[10px] text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {todayIncomes.length > 0 ? (
+                    todayIncomes.map((inc: any, i: number) => (
+                      <TableRow key={inc.id || i} className="hover:bg-slate-50/50">
+                        <TableCell className="font-bold text-slate-800 text-xs">
+                          {inc.studentName || inc.title || "Fee Payment"}
+                        </TableCell>
+                        <TableCell className="font-mono text-slate-500 text-xs">
+                          {inc.studentId || "-"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className="bg-emerald-50 text-emerald-700 border-0 font-bold text-[10px]">
+                            {inc.paymentMethod || "Cash"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-black text-emerald-600 text-xs text-right">
+                          Rs. {(Number(inc.amount) || 0).toLocaleString()}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-12 text-slate-400 text-xs font-medium">
+                        No revenue or fees recorded on this date.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-slate-100 hover:bg-transparent">
+                    <TableHead className="font-black text-slate-400 uppercase text-[10px]">Voucher / Head</TableHead>
+                    <TableHead className="font-black text-slate-400 uppercase text-[10px]">Paid To</TableHead>
+                    <TableHead className="font-black text-slate-400 uppercase text-[10px]">Description</TableHead>
+                    <TableHead className="font-black text-slate-400 uppercase text-[10px] text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {todayExpenses.length > 0 ? (
+                    todayExpenses.map((exp: any, i: number) => {
+                      const d = parseExpenseDetails(exp);
+                      return (
+                        <TableRow key={exp.id || i} className="hover:bg-slate-50/50">
+                          <TableCell className="font-bold text-slate-800 text-xs">
+                            <span className="font-mono text-[10px] text-slate-400 mr-1.5">{d.voucherNo || "V-EXP"}</span>
+                            {exp.category}
+                          </TableCell>
+                          <TableCell className="text-slate-600 text-xs">
+                            {d.paidTo || "-"}
+                          </TableCell>
+                          <TableCell className="text-slate-500 text-xs truncate max-w-[150px]">
+                            {d.cleanDescription || exp.description || "-"}
+                          </TableCell>
+                          <TableCell className="font-black text-rose-600 text-xs text-right">
+                            Rs. {(Number(exp.amount) || 0).toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-12 text-slate-400 text-xs font-medium">
+                        No expenses recorded on this date.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+
+        {/* Right Column (5 cols): Safe Physical Currency Denomination Counter */}
+        <div className="lg:col-span-5 bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="font-black text-slate-800 text-base uppercase tracking-tight flex items-center gap-2">
+                <Coins className="text-amber-500" size={18} />
+                Physical Safe Cash Counter
+              </h3>
+              <p className="text-xs text-slate-400 font-semibold">
+                Count notes in safe to verify against system balance
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setCashNotes({
+                  n5000: "",
+                  n1000: "",
+                  n500: "",
+                  n100: "",
+                  n50: "",
+                  n20: "",
+                  n10: "",
+                  coins: "",
+                })
+              }
+              className="text-xs text-slate-400 hover:text-slate-600"
+            >
+              Clear
+            </Button>
+          </div>
+
+          {/* Denomination Notes Table */}
+          <div className="space-y-2 text-xs">
+            {[
+              { label: "Rs. 5,000 Notes", key: "n5000", val: 5000 },
+              { label: "Rs. 1,000 Notes", key: "n1000", val: 1000 },
+              { label: "Rs. 500 Notes", key: "n500", val: 500 },
+              { label: "Rs. 100 Notes", key: "n100", val: 100 },
+              { label: "Rs. 50 Notes", key: "n50", val: 50 },
+              { label: "Rs. 20 Notes", key: "n20", val: 20 },
+              { label: "Rs. 10 Notes", key: "n10", val: 10 },
+            ].map((d) => {
+              const count = Number(cashNotes[d.key as keyof typeof cashNotes]) || 0;
+              const subtotal = count * d.val;
+              return (
+                <div
+                  key={d.key}
+                  className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100"
+                >
+                  <span className="font-black text-slate-700 w-28">{d.label}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400 font-bold">×</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={cashNotes[d.key as keyof typeof cashNotes]}
+                      onChange={(e) =>
+                        setCashNotes({
+                          ...cashNotes,
+                          [d.key]: e.target.value,
+                        })
+                      }
+                      placeholder="0"
+                      className="h-7 w-16 text-center font-bold text-xs bg-white rounded-lg border-slate-200"
+                    />
+                  </div>
+                  <span className="font-mono font-black text-slate-800 w-24 text-right">
+                    = Rs. {subtotal.toLocaleString()}
+                  </span>
+                </div>
+              );
+            })}
+
+            {/* Coins / Small change */}
+            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
+              <span className="font-black text-slate-700 w-28">Coins / Change</span>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400 font-bold">Rs.</span>
+                <Input
+                  type="number"
+                  min="0"
+                  value={cashNotes.coins}
+                  onChange={(e) => setCashNotes({ ...cashNotes, coins: e.target.value })}
+                  placeholder="0"
+                  className="h-7 w-20 text-center font-bold text-xs bg-white rounded-lg border-slate-200"
+                />
+              </div>
+              <span className="font-mono font-black text-slate-800 w-24 text-right">
+                = Rs. {(Number(cashNotes.coins) || 0).toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          {/* Physical Total & Difference Box */}
+          <div className="pt-3 border-t border-slate-200 space-y-2">
+            <div className="flex justify-between items-center text-sm font-black">
+              <span className="text-slate-700">Total Cash Counted:</span>
+              <span className="text-emerald-700 font-mono text-base">
+                Rs. {physicalCashTotal.toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between items-center text-xs font-bold text-slate-500">
+              <span>System Safe Net Balance:</span>
+              <span className="font-mono">Rs. {dailyNetCash.toLocaleString()}</span>
+            </div>
+            <div
+              className={`p-3 rounded-xl border text-xs font-black flex items-center justify-between ${
+                !isCountEntered
+                  ? "bg-slate-50 text-slate-500 border-slate-200"
+                  : closingDiscrepancy === 0
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : "bg-rose-50 text-rose-700 border-rose-200"
+              }`}
+            >
+              <span>Audit Discrepancy:</span>
+              <span className="font-mono text-sm">
+                {!isCountEntered
+                  ? "0 (Not Counted)"
+                  : closingDiscrepancy === 0
+                  ? "Rs. 0 (PERFECTLY BALANCED)"
+                  : `Rs. ${closingDiscrepancy.toLocaleString()}`}
+              </span>
+            </div>
+          </div>
+
+          {/* Closing Notes */}
+          <div className="space-y-1.5 pt-2">
+            <Label className="text-xs font-black text-slate-600 uppercase tracking-wider">
+              Closing Handover Notes:
+            </Label>
+            <Input
+              value={closingRemarks}
+              onChange={(e) => setClosingRemarks(e.target.value)}
+              placeholder="e.g. Safe locked and verified with Cashier"
+              className="text-xs rounded-xl border-slate-200"
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

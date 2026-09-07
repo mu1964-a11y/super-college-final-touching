@@ -16,7 +16,8 @@ import {
   Award,
   AlertCircle,
   Printer,
-  History
+  History,
+  MessageSquare
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { 
@@ -417,6 +418,80 @@ export default function AcademicView({ data }: { data: any }) {
     toast.success("PDF exported successfully");
   };
 
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
+
+  const sendResultViaWhatsApp = async () => {
+    if (!selectedStudent) return;
+    const records = currentMonthRecords;
+    if (records.length === 0) {
+      toast.error("No exam records found for " + selectedMonth + " to send.");
+      return;
+    }
+
+    const rawPhone = selectedStudent.contact || selectedStudent.fatherContact || selectedStudent.phone || selectedStudent.mobile;
+    if (!rawPhone) {
+      toast.error(`No contact phone number available for ${selectedStudent.fullName}.`);
+      return;
+    }
+
+    const cleanPhone = rawPhone.replace(/\D/g, "");
+    const percentNum = totalMax > 0 ? ((totalObtained / totalMax) * 100).toFixed(1) : "0";
+    const statusText = Number(percentNum) >= 50 ? "PASSED (Kamyab) ✅" : "NEEDS IMPROVEMENT (Mazeed Mehnat) ⚠️";
+
+    const marksTableText = records.map((r: any) => {
+      const p = Number(r.totalMarks) > 0 ? ((Number(r.obtainedMarks) / Number(r.totalMarks)) * 100).toFixed(0) : "0";
+      return `• *${r.subject}* (${r.testType}): ${r.obtainedMarks} / ${r.totalMarks} (${p}%)`;
+    }).join("\n");
+
+    const message = 
+`🎓 *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📊 *Official Academic Examination Result Card*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mohtaram Walid/Guardian (${selectedStudent.fatherName || 'Sahib'}),
+
+Aapke bache *${selectedStudent.fullName}* ka official imtehani result darj zail hai:
+
+👤 *Student Name:* ${selectedStudent.fullName}
+🆔 *Roll Number:* ${selectedStudent.id || selectedStudent.collegeNo || 'N/A'}
+🏫 *Class & Section:* ${selectedStudent.group} (Sec: ${selectedStudent.section})
+📅 *Exam Month:* ${getMonthName(selectedMonth)}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 *Subject-wise Marks:*
+${marksTableText}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 *Total Marks:* ${totalObtained} / ${totalMax} (${percentNum}%)
+🏆 *Result Status:* ${statusText}
+
+Hamara maqsad aapke bache ka roshan mustaqbil aur behtareen taleem hai. Kisi bhi rehnumai ya mushawarat ke liye college office rabta karein.
+
+📍 Khanewal Road, Jahanian
+📞 College Helpdesk: 0301-4455891
+━━━━━━━━━━━━━━━━━━━━━━━━━`;
+
+    try {
+      setIsSendingWhatsApp(true);
+      toast.loading(`Sending result card to +${cleanPhone}...`, { id: "res-wa" });
+      const res = await fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: cleanPhone, message }),
+      });
+
+      if (res.ok) {
+        toast.success(`Result card successfully sent to +${cleanPhone}!`, { id: "res-wa" });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.info(err.error || "Gateway offline. Opening WhatsApp Web...", { id: "res-wa" });
+        window.open(`https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`, "_blank");
+      }
+    } catch {
+      window.open(`https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`, "_blank");
+      toast.dismiss("res-wa");
+    } finally {
+      setIsSendingWhatsApp(false);
+    }
+  };
+
   const exportHistoryExcel = () => {
     if(studentRecords.length === 0) return toast.error("No history to export.");
     const ws = XLSX.utils.json_to_sheet(studentRecords.map((r: any) => ({
@@ -550,9 +625,17 @@ export default function AcademicView({ data }: { data: any }) {
                   <div className="text-xs font-medium text-gray-500">Tests taken</div>
                 </div>
                 
-                <div className="pl-4">
-                  <Button onClick={exportPDF} variant="outline" className="text-emerald-800 border bg-emerald-50 hover:bg-emerald-100 border-emerald-200 shadow-none">
-                    <FileText className="w-4 h-4 mr-2" /> Result card PDF
+                <div className="pl-4 flex items-center gap-2">
+                  <Button onClick={exportPDF} variant="outline" className="text-emerald-800 border bg-emerald-50 hover:bg-emerald-100 border-emerald-200 shadow-none font-bold text-xs">
+                    <FileText className="w-4 h-4 mr-1.5" /> Result card PDF
+                  </Button>
+                  <Button 
+                    onClick={sendResultViaWhatsApp} 
+                    disabled={isSendingWhatsApp}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm font-bold text-xs flex items-center gap-1.5"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    {isSendingWhatsApp ? "Sending..." : "Send via WhatsApp"}
                   </Button>
                 </div>
               </div>
@@ -726,7 +809,19 @@ export default function AcademicView({ data }: { data: any }) {
 
                   <div className="flex justify-between items-center bg-gray-50 p-4 border-t border-gray-100">
                      <span className="text-sm text-gray-600">{currentMonthRecords.length} records matched</span>
-                     <Button onClick={exportPDF} className="bg-emerald-600 hover:bg-emerald-700 shadow-sm"><Download className="w-4 h-4 mr-2" /> Download PDF</Button>
+                     <div className="flex items-center gap-2">
+                       <Button onClick={exportPDF} variant="outline" className="border-emerald-200 text-emerald-800 shadow-sm font-bold text-xs">
+                         <Download className="w-4 h-4 mr-1.5" /> Download PDF
+                       </Button>
+                       <Button 
+                         onClick={sendResultViaWhatsApp} 
+                         disabled={isSendingWhatsApp} 
+                         className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm font-bold text-xs flex items-center gap-1.5"
+                       >
+                         <MessageSquare className="w-4 h-4" />
+                         {isSendingWhatsApp ? "Sending..." : "Send Result via WhatsApp"}
+                       </Button>
+                     </div>
                   </div>
                 </Card>
 

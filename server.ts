@@ -640,6 +640,58 @@ College Metrics Data:
     }
   });
 
+  // 3b. Bot Settings & Status
+  app.get("/api/whatsapp/bot-settings", (req, res) => {
+    try {
+      res.json(whatsappBridge.getBotStats());
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/whatsapp/bot-settings", (req, res) => {
+    try {
+      const { enabled } = req.body;
+      whatsappBridge.setBotEnabled(Boolean(enabled));
+      res.json(whatsappBridge.getBotStats());
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 3c. Test Bot Query (For simulation in UI)
+  app.post("/api/whatsapp/bot-test", async (req, res) => {
+    try {
+      const { query, phone = "923014455891" } = req.body;
+      const testJid = `${phone.replace(/\D/g, "")}@s.whatsapp.net`;
+      const reply = await whatsappBridge.handleIncomingBotQuery(testJid, query || "menu");
+      res.json({ success: true, reply });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 3d. Get WhatsApp Chat Conversation History Logs
+  app.get("/api/whatsapp/chat-logs", (req, res) => {
+    try {
+      const { phone } = req.query;
+      const logs = whatsappBridge.getChatLogs(phone as string | undefined);
+      res.json({ success: true, logs });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 3e. Clear WhatsApp Chat Conversation History Logs
+  app.delete("/api/whatsapp/chat-logs", (req, res) => {
+    try {
+      const result = whatsappBridge.clearChatLogs();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // 4. Send Single Direct WhatsApp Message
   app.post("/api/whatsapp/send", async (req, res) => {
     try {
@@ -865,7 +917,16 @@ Return strictly the raw JSON without markdown code fences.`;
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        watch: {
+          ignored: [
+            "**/.whatsapp_auth/**",
+            "**/.whatsapp_chat_logs.json",
+            "**/*.log",
+          ],
+        },
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);

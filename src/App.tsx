@@ -58,6 +58,9 @@ import AttendanceView from "./components/AttendanceView";
 import SettingsView from "./components/SettingsView";
 import AcademicView from "./components/AcademicView";
 import WhatsAppCenterView from "./components/WhatsAppCenterView";
+import GlobalCommandPalette from "./components/GlobalCommandPalette";
+import StudentDossier360 from "./components/StudentDossier360";
+import { Search } from "lucide-react";
 
 import { Settings as SettingsIcon } from "lucide-react";
 import AccessControlDialog from "./components/AccessControl";
@@ -233,10 +236,11 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [loadingCountdown, setLoadingCountdown] = useState(5);
   const [isBrandingLoaded, setIsBrandingLoaded] = useState(false);
-  const [showLoginForm, setShowLoginForm] = useState(false);
-  const [email, setEmail] = useState("");
+  const [showLoginForm, setShowLoginForm] = useState(true);
+  const [email, setEmail] = useState(() => safeLocalStorage.getItem('scj_remembered_email') || "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => !!safeLocalStorage.getItem('scj_remembered_email'));
   const [loginError, setLoginError] = useState("");
   const [brandingSettings, setBrandingSettings] = useState<{
     name: string;
@@ -250,15 +254,22 @@ export default function App() {
     };
   });
 
-  // Countdown timer for app loading screen
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [dossierStudent, setDossierStudent] = useState<any | null>(null);
+
+  // Global Ctrl+K / Cmd+K keyboard shortcut listener for Spotlight Search
   React.useEffect(() => {
-    if (user && loadingCountdown > 0) {
-      const timer = setTimeout(() => {
-        setLoadingCountdown((prev) => prev - 1);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [user, loadingCountdown]);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+
 
   // Dark mode init
   React.useEffect(() => {
@@ -417,15 +428,12 @@ export default function App() {
   }, []);
 
   React.useEffect(() => {
-    if (!user && !authLoading && isBrandingLoaded) {
-      const timer = setTimeout(() => {
-        setShowLoginForm(true);
-      }, 2500);
-      return () => clearTimeout(timer);
-    } else if (user) {
+    if (!user) {
+      setShowLoginForm(true);
+    } else {
       setShowLoginForm(false);
     }
-  }, [user, authLoading, isBrandingLoaded]);
+  }, [user]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -469,6 +477,13 @@ export default function App() {
         setLoginError(`❌ Authentication Failed:\n${error.message}`);
       }
       setAuthLoading(false);
+    } else {
+      if (rememberMe) {
+        safeLocalStorage.setItem('scj_remembered_email', loginEmail);
+      } else {
+        safeLocalStorage.removeItem('scj_remembered_email');
+      }
+      setAuthLoading(false);
     }
   };
 
@@ -502,6 +517,17 @@ export default function App() {
   const [selectedSession, setSelectedSession] = useState("all");
 
   const data = useSupabaseData(user);
+
+  // Snappy transition countdown timer for app loading screen
+  React.useEffect(() => {
+    if (user && loadingCountdown > 0) {
+      const delay = !data.loading ? 250 : 800;
+      const timer = setTimeout(() => {
+        setLoadingCountdown((prev) => (!data.loading ? 0 : Math.max(0, prev - 1)));
+      }, delay);
+      return () => clearTimeout(timer);
+    }
+  }, [user, loadingCountdown, data?.loading]);
 
   // Sync branding once authenticated data is available
   React.useEffect(() => {
@@ -942,14 +968,31 @@ export default function App() {
             </div>
           )}
 
-        <div className="relative z-10 text-center space-y-3">
-          <h2 className="text-xl md:text-2xl font-black text-white tracking-[0.2em] uppercase">
-            {brandingSettings.name}
+        <div className="relative z-10 text-center space-y-3 px-4">
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <div className="h-px w-8 bg-superior-gold/40" />
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-superior-gold">
+              Superior Group of Colleges
+            </span>
+            <div className="h-px w-8 bg-superior-gold/40" />
+          </div>
+
+          <h2 className="text-xl md:text-3xl font-black text-white tracking-[0.15em] uppercase drop-shadow-md">
+            {brandingSettings.name || "Superior College Jahanian"}
           </h2>
           
-            <p className="text-superior-gold font-medium text-xs md:text-sm tracking-widest uppercase animate-pulse mt-4">
-              Connecting to secure environment...
-            </p>
+          {/* Animated Gold Progress Line */}
+          <div className="w-48 h-1 bg-white/10 rounded-full mx-auto overflow-hidden mt-3 relative">
+            <motion.div
+              animate={{ x: ["-100%", "100%"] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+              className="w-1/2 h-full bg-gradient-to-r from-transparent via-superior-gold to-transparent"
+            />
+          </div>
+
+          <p className="text-white/60 font-semibold text-xs tracking-widest uppercase mt-3">
+            {authLoading ? "Verifying Credentials & Workspace..." : "Connecting to Secure Academic Environment..."}
+          </p>
         </div>
         </div>
       </div>
@@ -1235,11 +1278,12 @@ export default function App() {
 
                   {/* Remember me and Forgot Password */}
                   <div className="flex items-center justify-between px-1 text-xs">
-                    <label className="flex items-center gap-2 text-white/50 font-medium cursor-pointer">
+                    <label className="flex items-center gap-2 text-white/70 font-medium cursor-pointer select-none">
                       <input
                         type="checkbox"
-                        defaultChecked
-                        className="rounded border-white/10 bg-black/20 focus:ring-0 checked:bg-superior-gold checked:border-superior-gold h-4 w-4 shrink-0"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="rounded border-white/20 bg-black/40 focus:ring-0 checked:bg-superior-gold checked:border-superior-gold h-4 w-4 shrink-0 transition-colors"
                       />
                       <span>Remember me</span>
                     </label>
@@ -1255,10 +1299,24 @@ export default function App() {
                   {/* SIGN IN Button with Gradient */}
                   <Button
                     type="submit"
-                    className="w-full bg-gradient-to-r from-superior-gold to-[#b7953d] hover:brightness-110 text-slate-950 mt-4 h-13 rounded-xl text-xs font-black uppercase tracking-[0.2em] shadow-[0_8px_20px_rgba(201,168,76,0.2)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer border-none"
+                    disabled={authLoading}
+                    className="w-full bg-gradient-to-r from-superior-gold to-[#b7953d] hover:brightness-110 text-slate-950 mt-4 h-13 rounded-xl text-xs font-black uppercase tracking-[0.2em] shadow-[0_8px_20px_rgba(201,168,76,0.2)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer border-none disabled:opacity-80"
                   >
-                    SIGN IN
-                    <LogIn size={14} className="stroke-[3]" />
+                    {authLoading ? (
+                      <>
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          className="w-4 h-4 rounded-full border-2 border-slate-950 border-t-transparent shrink-0"
+                        />
+                        <span>VERIFYING...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>SIGN IN</span>
+                        <LogIn size={14} className="stroke-[3]" />
+                      </>
+                    )}
                   </Button>
 
                   {/* Divider line OR */}
@@ -1897,7 +1955,62 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            {/* Spotlight Command Palette Trigger */}
+            <button
+              onClick={() => setIsCommandPaletteOpen(true)}
+              className="hidden sm:flex items-center gap-3 px-3.5 py-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-teal-500/40 text-slate-500 dark:text-slate-400 transition-all duration-200 shadow-xs group"
+              title="Global Spotlight Search (Ctrl + K)"
+            >
+              <Search size={15} className="text-slate-400 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors" />
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Search students, modules...</span>
+              <kbd className="inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-white dark:bg-slate-900 text-slate-500 rounded-md border border-slate-200 dark:border-slate-700 shadow-2xs">
+                Ctrl K
+              </kbd>
+            </button>
+
+            {/* Mobile Search Icon Button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsCommandPaletteOpen(true)}
+              className="sm:hidden text-slate-500 hover:text-teal-600 rounded-xl h-10 w-10"
+              title="Search (Ctrl + K)"
+            >
+              <Search size={18} />
+            </Button>
+
+            {/* Executive User Role Badge */}
+            <div className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
+              <div className="relative">
+                <div className={cn(
+                  "w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black shadow-inner",
+                  isSuperAdmin 
+                    ? "bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 font-black shadow-amber-500/20" 
+                    : isAdmin 
+                    ? "bg-gradient-to-br from-teal-500 to-emerald-700 text-white font-black shadow-teal-500/20"
+                    : "bg-gradient-to-br from-slate-600 to-slate-800 text-white"
+                )}>
+                  {userPermission?.displayName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'A'}
+                </div>
+                <div className={cn(
+                  "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-800",
+                  isSuperAdmin ? "bg-amber-400" : isAdmin ? "bg-teal-500" : "bg-emerald-500"
+                )} />
+              </div>
+              <div className="flex flex-col text-left leading-none">
+                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate max-w-[120px]">
+                  {userPermission?.displayName || user?.email?.split('@')[0] || 'Administrator'}
+                </span>
+                <span className={cn(
+                  "text-[9px] font-black uppercase tracking-wider mt-0.5",
+                  isSuperAdmin ? "text-amber-600 dark:text-amber-400" : isAdmin ? "text-teal-600 dark:text-teal-400" : "text-slate-400"
+                )}>
+                  {isSuperAdmin ? "Super Admin" : isAdmin ? "Administrator" : "Sub-Admin"}
+                </span>
+              </div>
+            </div>
+
             <Button
               onClick={handleLogout}
               variant="outline"
@@ -1909,7 +2022,7 @@ export default function App() {
               </span>
             </Button>
 
-            <div className="h-8 w-[1px] bg-slate-100 dark:bg-slate-800 mx-2" />
+            <div className="h-8 w-[1px] bg-slate-100 dark:bg-slate-800 mx-1" />
 
             <div className="flex items-center gap-3">
               {isSuperAdmin && (
@@ -2124,6 +2237,28 @@ export default function App() {
         permissions={data.permissions}
         onUpdate={data.updatePermission}
         onDelete={data.deletePermission}
+      />
+
+      {/* Global Spotlight Search (Ctrl + K) */}
+      <GlobalCommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        data={filteredData}
+        onSelectStudent={(student) => {
+          setDossierStudent(student);
+        }}
+        onNavigate={(page, filter) => handleNavClick(page as Page, filter)}
+      />
+
+      {/* Universal Student 360° Dossier View */}
+      <StudentDossier360
+        student={dossierStudent}
+        isOpen={Boolean(dossierStudent)}
+        onClose={() => setDossierStudent(null)}
+        data={filteredData}
+        onOpenWhatsApp={(phone) => {
+          handleNavClick("whatsapp-center");
+        }}
       />
 
       <Toaster position="top-right" richColors />

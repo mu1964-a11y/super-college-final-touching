@@ -35,6 +35,9 @@ import {
   Mail,
   Droplet,
   MapPin,
+  MessageSquare,
+  Sparkles,
+  Share2,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
@@ -423,6 +426,56 @@ export default function AdmissionsView({
           </Badge>
         );
     }
+  };
+
+  const sendWhatsAppConfirmationNotice = (admission: Admission) => {
+    const rawPhone = admission.fatherContact || admission.contactNumber || '';
+    const cleanPhone = rawPhone.replace(/\D/g, '');
+    if (!cleanPhone) {
+      toast.error("No valid phone number found for this applicant!");
+      return;
+    }
+
+    let formattedPhone = cleanPhone;
+    if (formattedPhone.startsWith('03') && formattedPhone.length === 11) {
+      formattedPhone = '92' + formattedPhone.slice(1);
+    } else if (formattedPhone.startsWith('3') && formattedPhone.length === 10) {
+      formattedPhone = '92' + formattedPhone;
+    }
+
+    const collegeName = data?.settings?.collegeName || "Superior Group of Colleges";
+    const campusName = data?.settings?.campusName || "Jahanian Campus";
+    const session = admission.session || data?.settings?.academicSession || "2026-28";
+    const totalPkg = Number(admission.totalPackage || 0).toLocaleString();
+    const paid = Number(admission.feeReceived || 0).toLocaleString();
+    const balance = Math.max(0, Number(admission.totalPackage || 0) - Number(admission.feeReceived || 0)).toLocaleString();
+
+    const message = 
+`*${collegeName.toUpperCase()} (${campusName.toUpperCase()})* 🎓
+*OFFICIAL ADMISSION CONFIRMATION NOTICE*
+
+Dear Guardian,
+Admission for *${admission.fullName.toUpperCase()}* has been confirmed!
+
+📋 *Enrollment Details:*
+• *Roll Number:* ${admission.collegeNo || admission.studentId || 'To be allotted on orientation'}
+• *Class / Group:* ${admission.group || admission.category || 'Intermediate'}
+• *Section:* Section ${admission.section || 'A'}
+• *Session:* ${session}
+${admission.concessionReason ? `• *Scholarship Category:* ${admission.concessionReason}\n` : ''}
+💰 *Fee Structure:*
+• *Total Package:* Rs. ${totalPkg}
+• *Fee Paid:* Rs. ${paid}
+• *Remaining Balance:* Rs. ${balance}
+
+📍 *Campus Address:* ${data?.settings?.address || 'Superior College, Multan Road, Jahanian'}
+📞 *Helpline / Query:* ${data?.settings?.contactNumber || 'Campus Office'}
+
+_Welcome to the Superior Family!_`;
+
+    const encoded = encodeURIComponent(message);
+    window.open(`https://wa.me/${formattedPhone}?text=${encoded}`, '_blank');
+    toast.success("WhatsApp Admission Notice opened!");
   };
 
   const handleConfirm = (id: string) => {
@@ -1597,6 +1650,12 @@ export default function AdmissionsView({
                             >
                               <Receipt size={16} /> Fee Receipt (Bakaya)
                             </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-emerald-600 hover:bg-emerald-50"
+                              onClick={() => sendWhatsAppConfirmationNotice(admission)}
+                            >
+                              <MessageSquare size={16} className="text-emerald-500" /> WhatsApp Notice
+                            </DropdownMenuItem>
                             <Separator className="my-2 bg-slate-100" />
                             <DropdownMenuItem
                               className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-rose-600 hover:bg-rose-50"
@@ -1764,6 +1823,7 @@ export default function AdmissionsView({
               data={data}
               onEdit={() => setDialogType("edit")}
               onDownloadReceipt={() => setDialogType("receipt")}
+              onWhatsAppNotice={() => sendWhatsAppConfirmationNotice(activeAdmission)}
             />
           )}
         </DialogContent>
@@ -2440,13 +2500,36 @@ function EditAdmissionDialog({
                 <Label className="text-xs font-black text-slate-500 uppercase">
                   College Roll #
                 </Label>
-                <Input
-                  className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl"
-                  value={formData.collegeNo || ""}
-                  onChange={(e) =>
-                    setFormData(prev => ({ ...prev, collegeNo: e.target.value }))
-                  }
-                />
+                <div className="flex gap-2">
+                  <Input
+                    className="h-12 border-slate-200 focus:border-superior-teal/30 rounded-xl font-bold"
+                    value={formData.collegeNo || ""}
+                    onChange={(e) =>
+                      setFormData(prev => ({ ...prev, collegeNo: e.target.value }))
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      const allRolls: number[] = [];
+                      (data.students || []).forEach((s: any) => {
+                        const num = parseInt(String(s.collegeNo || "").replace(/\D/g, ""), 10);
+                        if (!isNaN(num) && num > 0) allRolls.push(num);
+                      });
+                      (data.admissions || []).forEach((a: any) => {
+                        const num = parseInt(String(a.collegeNo || "").replace(/\D/g, ""), 10);
+                        if (!isNaN(num) && num > 0) allRolls.push(num);
+                      });
+                      const next = allRolls.length > 0 ? Math.max(...allRolls) + 1 : 1001;
+                      setFormData(prev => ({ ...prev, collegeNo: String(next) }));
+                      toast.success(`Suggested Roll #: ${next}`);
+                    }}
+                    className="h-12 px-3 rounded-xl border-superior-teal/30 text-superior-teal hover:bg-superior-teal/10 shrink-0 font-bold text-xs gap-1.5"
+                  >
+                    <Sparkles size={14} className="text-superior-gold" /> Auto
+                  </Button>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label className="text-xs font-black text-slate-500 uppercase">
@@ -2874,11 +2957,13 @@ function AdmissionProfile({
   data,
   onEdit,
   onDownloadReceipt,
+  onWhatsAppNotice,
 }: {
   admission: Admission;
   data: any;
   onEdit?: () => void;
   onDownloadReceipt?: () => void;
+  onWhatsAppNotice?: () => void;
 }) {
   return (
     <div className="w-full bg-slate-50/30 rounded-[3rem] overflow-hidden border border-slate-100 shadow-xl shadow-slate-200/50">
@@ -2919,8 +3004,15 @@ function AdmissionProfile({
           </div>
 
           <div className="text-center md:text-left flex-1 space-y-6">
-            <div className="inline-flex items-center gap-2.5 bg-white/10 text-superior-gold border border-white/10 px-5 py-2 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-inner">
-              <Shield size={16} /> Verified Academic record
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2.5">
+              <div className="inline-flex items-center gap-2 bg-white/10 text-superior-gold border border-white/10 px-4 py-1.5 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-inner">
+                <Shield size={14} /> Verified Student
+              </div>
+              {admission.concessionReason && (
+                <Badge className="bg-amber-400 text-slate-900 border-none px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider">
+                  ★ {admission.concessionReason}
+                </Badge>
+              )}
             </div>
             <h2 className="text-4xl md:text-7xl font-black tracking-tight uppercase leading-[0.9]">
               {admission.fullName}
@@ -2946,6 +3038,35 @@ function AdmissionProfile({
               >
                 {admission.status}
               </Badge>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 pt-2">
+              {onEdit && (
+                <Button
+                  onClick={onEdit}
+                  variant="outline"
+                  className="rounded-xl border-white/20 text-slate-800 bg-white hover:bg-slate-100 font-black text-xs gap-2"
+                >
+                  <Edit size={14} /> Edit Record
+                </Button>
+              )}
+              {onDownloadReceipt && (
+                <Button
+                  onClick={onDownloadReceipt}
+                  variant="outline"
+                  className="rounded-xl border-white/20 text-slate-800 bg-white hover:bg-slate-100 font-black text-xs gap-2"
+                >
+                  <Receipt size={14} /> Fee Receipt
+                </Button>
+              )}
+              {onWhatsAppNotice && (
+                <Button
+                  onClick={onWhatsAppNotice}
+                  className="rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs gap-2 shadow-lg shadow-emerald-900/30"
+                >
+                  <MessageSquare size={14} /> Send WhatsApp Notice
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -3352,6 +3473,7 @@ function AdmissionForm({
     academicPart: admission?.academicPart || "Part-1",
     programType: admission?.programType || "Yearly",
     currentSemester: admission?.currentSemester || 0,
+    concessionReason: admission?.concessionReason || "",
   });
 
   // Sync form data when admission changes to prevent data leak
@@ -3401,9 +3523,41 @@ function AdmissionForm({
         academicPart: admission.academicPart || "Part-1",
         programType: admission.programType || "Yearly",
         currentSemester: admission.currentSemester || 0,
+        concessionReason: admission.concessionReason || "",
       });
     }
   }, [admission, admission?.id]);
+
+  const handleAutoSuggestRollNo = () => {
+    const targetSection = (formData.section || "").trim().toLowerCase();
+    const targetGroup = (formData.group || "").trim().toLowerCase();
+
+    const allRolls: number[] = [];
+
+    (data.students || []).forEach((s: any) => {
+      const matchSec = targetSection && (s.section || "").toLowerCase() === targetSection;
+      const matchGrp = targetGroup && (s.group || "").toLowerCase() === targetGroup;
+      if (matchSec || matchGrp || !targetSection) {
+        const num = parseInt(String(s.collegeNo || "").replace(/\D/g, ""), 10);
+        if (!isNaN(num) && num > 0) allRolls.push(num);
+      }
+    });
+
+    (data.admissions || []).forEach((a: any) => {
+      const matchSec = targetSection && (a.section || "").toLowerCase() === targetSection;
+      const matchGrp = targetGroup && (a.group || "").toLowerCase() === targetGroup;
+      if (matchSec || matchGrp || !targetSection) {
+        const num = parseInt(String(a.collegeNo || "").replace(/\D/g, ""), 10);
+        if (!isNaN(num) && num > 0) allRolls.push(num);
+      }
+    });
+
+    const nextRoll = allRolls.length > 0 ? Math.max(...allRolls) + 1 : 1001;
+    setFormData((prev) => ({ ...prev, collegeNo: String(nextRoll) }));
+    toast.success(`Suggested Roll #: ${nextRoll}`, {
+      description: `Next sequential roll number for ${formData.section || formData.group || "Intermediate"}`
+    });
+  };
 
   // Auto-calculate Total Package
   React.useEffect(() => {
@@ -3596,12 +3750,23 @@ function AdmissionForm({
         imgProps.onload = resolve;
       });
 
-      const pdfWidth = 210;
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 6;
+      const maxW = pageWidth - (margin * 2);
+      const maxH = pageHeight - (margin * 2);
 
-      const pdf = new jsPDF("p", "mm", [pdfWidth, Math.max(297, pdfHeight)]);
+      const ratioW = maxW / imgProps.width;
+      const ratioH = maxH / imgProps.height;
+      const scale = Math.min(ratioW, ratioH);
 
-      pdf.addImage(dataUrl, "PNG", 0, 0, pdfWidth, pdfHeight);
+      const finalW = imgProps.width * scale;
+      const finalH = imgProps.height * scale;
+      const x = (pageWidth - finalW) / 2;
+      const y = (pageHeight - finalH) / 2;
+
+      pdf.addImage(dataUrl, "PNG", x, y, finalW, finalH);
       pdf.save(`Admission-Form-${formData.fullName || "Student"}.pdf`);
       toast.dismiss(toastId);
       toast.success("Admission Form downloaded successfully!");
@@ -3701,6 +3866,7 @@ function AdmissionForm({
       email: formData.email,
       bloodGroup: formData.bloodGroup,
       reference: formData.reference,
+      concessionReason: formData.concessionReason || undefined,
       gender: formData.gender,
       photo: formData.photo || "",
       status: formData.status || status,
@@ -3777,12 +3943,23 @@ function AdmissionForm({
         imgProps.onload = resolve;
       });
 
-      const pdfWidth = 210;
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 6;
+      const maxW = pageWidth - (margin * 2);
+      const maxH = pageHeight - (margin * 2);
 
-      const pdf = new jsPDF("p", "mm", [pdfWidth, Math.max(297, pdfHeight)]);
+      const ratioW = maxW / imgProps.width;
+      const ratioH = maxH / imgProps.height;
+      const scale = Math.min(ratioW, ratioH);
 
-      pdf.addImage(dataUrl, "PNG", 0, 0, pdfWidth, pdfHeight);
+      const finalW = imgProps.width * scale;
+      const finalH = imgProps.height * scale;
+      const x = (pageWidth - finalW) / 2;
+      const y = (pageHeight - finalH) / 2;
+
+      pdf.addImage(dataUrl, "PNG", x, y, finalW, finalH);
       pdf.save(`Admission-Form-${formData.fullName || "Student"}.pdf`);
       toast.dismiss(toastId);
       toast.success("Admission Form downloaded as PDF!");
@@ -4382,14 +4559,25 @@ function AdmissionForm({
                         </Select>
                       </FormFieldWrapper>
                       <FormFieldWrapper label="College Roll #">
-                        <Input
-                          placeholder="Assign Roll #"
-                          className="h-12 rounded-xl border-slate-200 bg-white"
-                          value={formData.collegeNo || ""}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, collegeNo: e.target.value, }))
-                          }
-                        />
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Assign Roll #"
+                            className="h-12 rounded-xl border-slate-200 bg-white"
+                            value={formData.collegeNo || ""}
+                            onChange={(e) =>
+                              setFormData(prev => ({ ...prev, collegeNo: e.target.value, }))
+                            }
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleAutoSuggestRollNo}
+                            className="h-12 px-3 rounded-xl border-superior-teal/30 text-superior-teal hover:bg-superior-teal/10 shrink-0 font-bold text-xs gap-1.5"
+                            title="Auto-calculate next available Roll Number"
+                          >
+                            <Sparkles size={14} className="text-superior-gold" /> Auto Next
+                          </Button>
+                        </div>
                       </FormFieldWrapper>
                       <FormFieldWrapper label="Assigned Section" required>
                         <Select
@@ -4625,6 +4813,26 @@ function AdmissionForm({
                               }
                             />
                           </div>
+                        </FormFieldWrapper>
+                        <FormFieldWrapper label="Scholarship / Concession Category">
+                          <Select
+                            value={formData.concessionReason || "None"}
+                            onValueChange={(v) =>
+                              setFormData(prev => ({ ...prev, concessionReason: v === "None" ? "" : v }))
+                            }
+                          >
+                            <SelectTrigger className="h-14 rounded-2xl border-slate-200 bg-white font-bold text-sm">
+                              <SelectValue placeholder="No Concession (Standard Fee)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="None">Standard Package (No Discount)</SelectItem>
+                              <SelectItem value="Kinship">Kinship (Sibling Discount)</SelectItem>
+                              <SelectItem value="Merit / High Marks">Merit / 1000+ Marks Scholarship</SelectItem>
+                              <SelectItem value="Teacher Child">Teacher Child Concession</SelectItem>
+                              <SelectItem value="Need-based / Orphan">Need-based / Orphan Scholarship</SelectItem>
+                              <SelectItem value="Management Discretion">Management Discretion / Special</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </FormFieldWrapper>
                       </div>
 

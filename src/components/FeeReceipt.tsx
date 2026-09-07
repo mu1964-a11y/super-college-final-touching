@@ -81,10 +81,26 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
       await new Promise((resolve) => { imgProps.onload = resolve; });
       
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
-      pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      const pageWidth = pdf.internal.pageSize.getWidth(); // 210mm
+      const pageHeight = pdf.internal.pageSize.getHeight(); // 297mm
+
+      // Safe 8mm margin around document
+      const margin = 8;
+      const maxW = pageWidth - (margin * 2); // 194mm
+      const maxH = pageHeight - (margin * 2); // 281mm
+
+      // Uniform aspect-ratio fit to prevent cutoffs
+      const ratioW = maxW / imgProps.width;
+      const ratioH = maxH / imgProps.height;
+      const scale = Math.min(ratioW, ratioH);
+
+      const finalW = imgProps.width * scale;
+      const finalH = imgProps.height * scale;
+
+      const x = (pageWidth - finalW) / 2;
+      const y = finalH < maxH * 0.65 ? 12 : (pageHeight - finalH) / 2;
+
+      pdf.addImage(dataUrl, 'PNG', x, y, finalW, finalH);
       pdf.save(`Fee-Receipt-${student.fullName?.replace(/\s+/g, '_') || 'Student'}.pdf`);
       toast.dismiss(toastId);
       toast.success("Fee Receipt downloaded!");

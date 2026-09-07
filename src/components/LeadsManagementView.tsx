@@ -18,7 +18,9 @@ import {
   Edit,
   Trash2,
   FileText,
-  FileSpreadsheet
+  FileSpreadsheet,
+  MessageSquare,
+  Phone
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
@@ -97,6 +99,47 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
       .slice(0, 5);
   }, [leads]);
 
+  const pipelineCounts = useMemo(() => {
+    const counts = { new: 0, contacted: 0, visiting: 0, form_issued: 0, converted: 0 };
+    leads.forEach(l => {
+      if (l.isConverted) {
+        counts.converted++;
+      } else {
+        const stage = (l.pipelineStage || 'new') as keyof typeof counts;
+        if (counts[stage] !== undefined) {
+          counts[stage]++;
+        } else {
+          counts.new++;
+        }
+      }
+    });
+    return counts;
+  }, [leads]);
+
+  const sendWhatsAppGreeting = (lead: Lead) => {
+    let rawPhone = (lead.fatherPhone || '').trim();
+    if (!rawPhone) {
+      toast.error("No phone number registered for this lead.");
+      return;
+    }
+    let cleanPhone = rawPhone.replace(/\D/g, '');
+    if (cleanPhone.startsWith('0')) {
+      cleanPhone = '92' + cleanPhone.slice(1);
+    } else if (!cleanPhone.startsWith('92') && cleanPhone.length === 10) {
+      cleanPhone = '92' + cleanPhone;
+    }
+
+    const studentName = lead.studentName || 'Student';
+    const fatherName = lead.fatherName ? `Mr. ${lead.fatherName}` : 'Respected Parent';
+    const currentClass = lead.currentClass || 'College Admission';
+
+    const message = `Assalam-o-Alaikum ${fatherName} sb!\n\nThis message is from *Superior Group of Colleges Jahanian* regarding *${studentName}*'s inquiry for *${currentClass}*.\n\nWe would be honored to assist you with course details, fee concessions, and our digital prospectus.\n\nKindly reply to this message or visit our admission office anytime.\n\n*Superior College Jahanian*\nMain By-Pass Road, Jahanian\nHelpline: 0300-1234567`;
+
+    const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+    toast.success(`Opening WhatsApp for ${studentName}'s parent...`);
+  };
+
   const filteredLeads = useMemo(() => {
     const searchLower = deferredSearchTerm.toLowerCase();
     return leads.filter(lead => {
@@ -128,8 +171,10 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
       const matchesSchool = schoolFilter === 'all' || leadSchool === schoolFilter;
       const matchesArea = areaFilter === 'all' || leadArea === areaFilter;
       const matchesClass = classFilter === 'all' || leadClass === classFilter;
+      
+      const leadStage = lead.isConverted ? 'converted' : (lead.pipelineStage || 'new');
       const matchesConverted = convertedFilter === 'all' || 
-                              (convertedFilter === 'converted' && lead.isConverted) || 
+                              leadStage === convertedFilter ||
                               (convertedFilter === 'pending' && !lead.isConverted);
                               
       return matchesSearch && matchesSchool && matchesArea && matchesClass && matchesConverted;
@@ -375,48 +420,64 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
         </div>
       </div>
 
-      {/* Horizontal Insights */}
-      <div className="w-full bg-[#053b32] px-6 py-5 rounded-[2rem] shadow-xl text-white relative overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-6 transition-all duration-500">
+      {/* Horizontal Insights & Pipeline Funnel */}
+      <div className="w-full bg-[#053b32] px-6 py-5 rounded-[2rem] shadow-xl text-white relative overflow-hidden flex flex-col xl:flex-row items-center justify-between gap-6 transition-all duration-500">
           <div className="absolute top-0 right-0 w-64 h-64 bg-superior-gold/5 blur-3xl -translate-y-1/2 translate-x-1/2 rounded-full pointer-events-none" />
           
-          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 md:gap-12 flex-1 relative z-10 w-full">
-            <div className="flex items-center gap-4">
-               <div className="w-12 h-12 rounded-[1rem] bg-emerald-500/10 flex items-center justify-center shrink-0 border border-emerald-500/20">
-                  <BarChart3 className="text-emerald-400" size={24} />
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 md:gap-8 flex-1 relative z-10 w-full">
+            <div className="flex items-center gap-3">
+               <div className="w-11 h-11 rounded-[1rem] bg-emerald-500/10 flex items-center justify-center shrink-0 border border-emerald-500/20">
+                  <BarChart3 className="text-emerald-400" size={22} />
                </div>
                <div>
-                 <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest leading-none mb-2">Total Leads</p>
-                 <p className="text-3xl font-black text-white leading-none">{filteredLeads.length}</p>
+                 <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest leading-none mb-1.5">Total Leads</p>
+                 <p className="text-2xl font-black text-white leading-none">{filteredLeads.length}</p>
                </div>
             </div>
 
-            <div className="hidden sm:block h-12 w-px bg-white/10"></div>
+            <div className="hidden sm:block h-10 w-px bg-white/10"></div>
 
-            <div className="flex items-center gap-4">
-               <div className="w-12 h-12 rounded-[1rem] bg-orange-500/10 flex items-center justify-center shrink-0 border border-orange-500/20">
-                  <School className="text-orange-400" size={24} />
-               </div>
-               <div>
-                 <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest leading-none mb-2">Schools</p>
-                 <p className="text-3xl font-black text-white leading-none">{uniqueSchoolsInSearchCount}</p>
-               </div>
+            {/* Pipeline Funnel Quick Filter Badges */}
+            <div className="flex items-center flex-wrap gap-2">
+              {[
+                { id: 'all', label: 'All', count: leads.length, color: 'bg-white/10 text-white hover:bg-white/20' },
+                { id: 'new', label: 'New', count: pipelineCounts.new, color: 'bg-blue-500/20 text-blue-200 border-blue-400/30 hover:bg-blue-500/30' },
+                { id: 'contacted', label: 'Contacted', count: pipelineCounts.contacted, color: 'bg-amber-500/20 text-amber-200 border-amber-400/30 hover:bg-amber-500/30' },
+                { id: 'visiting', label: 'Visiting', count: pipelineCounts.visiting, color: 'bg-purple-500/20 text-purple-200 border-purple-400/30 hover:bg-purple-500/30' },
+                { id: 'form_issued', label: 'Form Issued', count: pipelineCounts.form_issued, color: 'bg-indigo-500/20 text-indigo-200 border-indigo-400/30 hover:bg-indigo-500/30' },
+                { id: 'converted', label: 'Admitted', count: pipelineCounts.converted, color: 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30 hover:bg-emerald-500/30' }
+              ].map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setConvertedFilter(f.id)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer",
+                    convertedFilter === f.id
+                      ? "bg-superior-gold text-slate-950 border-superior-gold shadow-md scale-105"
+                      : f.color
+                  )}
+                >
+                  <span>{f.label}</span>
+                  <span className={cn(
+                    "px-1.5 py-0.2 rounded-full text-[10px] font-black",
+                    convertedFilter === f.id ? "bg-slate-950/20 text-slate-950" : "bg-black/20"
+                  )}>
+                    {f.count}
+                  </span>
+                </button>
+              ))}
             </div>
 
-            <div className="hidden md:block h-12 w-px bg-white/10"></div>
+            <div className="hidden xl:block h-10 w-px bg-white/10"></div>
 
             <div className="hidden lg:flex flex-col justify-center flex-1">
-               <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest leading-none mb-3">Top Schools</p>
-               <div className="flex flex-wrap gap-2 overflow-hidden max-h-[80px]">
-                 {leadsBySchool.slice(0, 6).map(([school]) => (
-                   <Badge key={school} variant="outline" className="text-[10px] bg-white/5 text-white/90 border-white/20 hover:bg-white/10 px-3 py-1 whitespace-normal text-left h-auto leading-tight shadow-sm rounded-full border">
+               <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest leading-none mb-2">Top Feeder Schools</p>
+               <div className="flex flex-wrap gap-1.5 overflow-hidden max-h-[70px]">
+                 {leadsBySchool.slice(0, 4).map(([school]) => (
+                   <Badge key={school} variant="outline" className="text-[10px] bg-white/5 text-white/90 border-white/20 px-2.5 py-0.5 whitespace-normal text-left h-auto rounded-full border">
                      {school}
                    </Badge>
                  ))}
-                 {leadsBySchool.length > 6 && (
-                   <Badge variant="outline" className="text-[11px] bg-white/10 text-white font-bold border-transparent px-3 py-1 rounded-full">
-                     +{leadsBySchool.length - 6}
-                   </Badge>
-                 )}
                </div>
             </div>
           </div>
@@ -508,15 +569,19 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Conversion Status</Label>
+            <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Pipeline Stage</Label>
             <Select value={convertedFilter} onValueChange={setConvertedFilter}>
               <SelectTrigger className="h-11 rounded-md bg-white border-slate-200 focus:bg-white focus:border-superior-teal/40 focus:ring-4 focus:ring-superior-teal/5 transition-all font-semibold text-slate-700 shadow-sm w-full">
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder="All Stages" />
               </SelectTrigger>
               <SelectContent className="rounded-md border-slate-200 shadow-xl">
-                <SelectItem value="all" className="font-bold text-slate-700">All Records</SelectItem>
-                <SelectItem value="converted" className="font-bold text-emerald-600">Converted (Admission Taken)</SelectItem>
-                <SelectItem value="pending" className="font-bold text-amber-600">Pending Leads</SelectItem>
+                <SelectItem value="all" className="font-bold text-slate-700">All Pipeline Stages</SelectItem>
+                <SelectItem value="new" className="font-bold text-blue-600">New Raw Leads ({pipelineCounts.new})</SelectItem>
+                <SelectItem value="contacted" className="font-bold text-amber-600">Contacted ({pipelineCounts.contacted})</SelectItem>
+                <SelectItem value="visiting" className="font-bold text-purple-600">Campus Visit ({pipelineCounts.visiting})</SelectItem>
+                <SelectItem value="form_issued" className="font-bold text-indigo-600">Form Issued ({pipelineCounts.form_issued})</SelectItem>
+                <SelectItem value="converted" className="font-bold text-emerald-600">Converted / Admitted ({pipelineCounts.converted})</SelectItem>
+                <SelectItem value="pending" className="font-bold text-slate-600">All Unconverted</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -735,39 +800,76 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
                       <TableCell>
                         <Badge variant="outline" className="bg-slate-50 text-slate-400 border-slate-100 font-bold px-2 py-0.5 rounded-lg">{lead.grade}</Badge>
                       </TableCell>
-                      <TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
                         {lead.isConverted ? (
-                          <Badge variant="outline" className="bg-emerald-50/50 text-emerald-600 border-emerald-100 font-bold px-2 py-0.5 rounded-lg">Admitted</Badge>
+                          <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 w-fit">
+                            <CheckCircle2 size={12} className="text-emerald-500" />
+                            <span>Admitted</span>
+                          </Badge>
                         ) : (
-                          <Badge variant="outline" className="bg-slate-50 text-slate-400 border-slate-100 font-bold px-2 py-0.5 rounded-lg">Raw Lead</Badge>
+                          <Select
+                            value={lead.pipelineStage || 'new'}
+                            onValueChange={(val: any) => {
+                              data.updateLead(lead.id, { pipelineStage: val });
+                              toast.success(`Pipeline stage set to ${val.replace('_', ' ').toUpperCase()}`);
+                            }}
+                          >
+                            <SelectTrigger className={cn(
+                              "h-7 text-[10px] font-black uppercase tracking-wider rounded-lg px-2 py-0 shadow-none border transition-colors w-fit gap-1",
+                              lead.pipelineStage === 'contacted' ? "bg-amber-50 text-amber-700 border-amber-200" :
+                              lead.pipelineStage === 'visiting' ? "bg-purple-50 text-purple-700 border-purple-200" :
+                              lead.pipelineStage === 'form_issued' ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
+                              "bg-blue-50 text-blue-700 border-blue-200"
+                            )}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl border-slate-100 shadow-xl">
+                              <SelectItem value="new" className="text-blue-700 font-bold text-xs">New Lead</SelectItem>
+                              <SelectItem value="contacted" className="text-amber-700 font-bold text-xs">Contacted</SelectItem>
+                              <SelectItem value="visiting" className="text-purple-700 font-bold text-xs">Campus Visit</SelectItem>
+                              <SelectItem value="form_issued" className="text-indigo-700 font-bold text-xs">Form Issued</SelectItem>
+                            </SelectContent>
+                          </Select>
                         )}
                       </TableCell>
-                      <TableCell className="text-right pr-6">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger className="h-8 w-8 p-0 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 outline-hidden transition-all">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-[200px] rounded-2xl shadow-xl border-slate-100 p-2">
-                            <DropdownMenuItem className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" onClick={() => { setSelectedLead(lead); setDialogType('edit'); }}>
-                              <Edit size={16} className="text-superior-teal" /> Edit Details
-                            </DropdownMenuItem>
-                            {!lead.isConverted && (
-                              <DropdownMenuItem className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-emerald-600" onClick={() => { setSelectedLeads([lead.id]); setDialogType('convert'); }}>
-                                <UserPlus size={16} /> Convert to Admission
+                      <TableCell className="text-right pr-6" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => sendWhatsAppGreeting(lead)}
+                            className="h-8 w-8 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+                            title="1-Click WhatsApp Welcome & Prospectus"
+                          >
+                            <MessageSquare size={16} />
+                          </Button>
+
+                          <DropdownMenu>
+                            <DropdownMenuTrigger className="h-8 w-8 p-0 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 outline-hidden transition-all">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-[220px] rounded-2xl shadow-xl border-slate-100 p-2">
+                              <DropdownMenuItem className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-emerald-600 hover:bg-emerald-50" onClick={() => sendWhatsAppGreeting(lead)}>
+                                <MessageSquare size={16} /> WhatsApp Greeting
                               </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-400 opacity-50">
-                              <FileText size={16} /> View Lead Sheet
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-400 opacity-50">
-                              <Info size={16} /> Add Private Note
-                            </DropdownMenuItem>
-                            <Separator className="my-1" />
-                            <DropdownMenuItem className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-red-600 hover:bg-red-50" onClick={() => { setSelectedLead(lead); setDialogType('delete'); }}>
-                              <Trash2 size={16} /> Delete Record
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              <DropdownMenuItem className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" onClick={() => { setSelectedLead(lead); setDialogType('edit'); }}>
+                                <Edit size={16} className="text-superior-teal" /> Edit Details
+                              </DropdownMenuItem>
+                              {!lead.isConverted && (
+                                <DropdownMenuItem className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-emerald-600" onClick={() => { setSelectedLeads([lead.id]); setDialogType('convert'); }}>
+                                  <UserPlus size={16} /> Convert to Admission
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-400 opacity-50">
+                                <FileText size={16} /> View Lead Sheet
+                              </DropdownMenuItem>
+                              <Separator className="my-1" />
+                              <DropdownMenuItem className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-red-600 hover:bg-red-50" onClick={() => { setSelectedLead(lead); setDialogType('delete'); }}>
+                                <Trash2 size={16} /> Delete Record
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </TableCell>
                     </TableRow>
                     );
@@ -885,45 +987,72 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
       </Dialog>
 
       <Dialog open={dialogType === 'convert'} onOpenChange={(open) => !open && setDialogType(null)}>
-        <DialogContent className="rounded-3xl">
+        <DialogContent className="rounded-3xl max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-serif text-superior-teal">Confirm Conversion</DialogTitle>
+            <DialogTitle className="text-2xl font-serif text-superior-teal flex items-center gap-2">
+              <UserPlus className="text-emerald-500" size={24} />
+              Confirm Conversion to Admission
+            </DialogTitle>
             <DialogDescription className="text-slate-500">
-              You are about to move {selectedLeads.length} records from Raw Leads to the Admissions module. This action will create applicant profiles for all selected students.
+              You are about to transfer <span className="font-bold text-slate-800">{selectedLeads.length}</span> lead record{selectedLeads.length > 1 ? 's' : ''} into the Admissions portal.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
             <div className="space-y-2">
-              <Label className="text-sm font-bold text-slate-700">Select Target Program</Label>
+              <Label className="text-sm font-bold text-slate-700">Select Target Academic Program</Label>
               <Select value={convertTargetProgram} onValueChange={setConvertTargetProgram}>
-                <SelectTrigger>
+                <SelectTrigger className="h-12 rounded-xl">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fsc">FSC / General Science</SelectItem>
+                <SelectContent className="rounded-xl">
+                  <SelectItem value="fsc">FSC Pre-Medical / Pre-Engineering</SelectItem>
+                  <SelectItem value="ics">ICS / Computer Science</SelectItem>
+                  <SelectItem value="icom">I.Com / Commerce</SelectItem>
                   <SelectItem value="ukl3">UK Level 3</SelectItem>
-                  <SelectItem value="dit">DIT</SelectItem>
-                  <SelectItem value="bs">BS Program</SelectItem>
+                  <SelectItem value="dit">DIT (Diploma in IT)</SelectItem>
+                  <SelectItem value="bs">BS 4-Year Degree</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-              <p className="text-sm font-bold text-slate-700">Conversion Summary:</p>
-              <ul className="text-xs text-slate-600 space-y-1">
-                <li>• Source: Raw Marketing Data</li>
-                <li>• Destination: {convertTargetProgram.toUpperCase()} Admissions</li>
-                <li>• Status: Pending Review</li>
+
+            {/* Preserved Package & Identity Preview */}
+            <div className="p-4 bg-emerald-50/70 rounded-2xl border border-emerald-200/60 space-y-2.5">
+              <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs uppercase tracking-wider">
+                <CheckCircle2 size={16} className="text-emerald-600" />
+                <span>Zero Data Loss Transfer Guarantee</span>
+              </div>
+              
+              {selectedLeads.length === 1 && (() => {
+                const singleLead = leads.find(l => l.id === selectedLeads[0]);
+                if (!singleLead) return null;
+                return (
+                  <div className="bg-white/80 p-3 rounded-xl border border-emerald-100 text-xs space-y-1 text-slate-700">
+                    <p><span className="font-bold">Student:</span> {singleLead.studentName} s/o {singleLead.fatherName || 'N/A'}</p>
+                    <p><span className="font-bold">Finalized Package:</span> <span className="text-emerald-700 font-black text-sm">Rs. {(singleLead.finalizedFee || 0).toLocaleString()}</span></p>
+                    <p><span className="font-bold">Contact:</span> {singleLead.fatherPhone} | <span className="font-bold">CNIC:</span> {singleLead.cnic || 'N/A'}</p>
+                    <p><span className="font-bold">School:</span> {singleLead.previousSchool || 'N/A'}</p>
+                  </div>
+                );
+              })()}
+
+              <ul className="text-xs text-slate-600 space-y-1 pl-4 list-disc">
+                <li><span className="font-bold text-slate-800">Agreed Package Fee</span> is preserved into applicant's fee ledger.</li>
+                <li><span className="font-bold text-slate-800">CNIC / B-Form, Address & School</span> are retained in full.</li>
+                <li><span className="font-bold text-slate-800">Target Group</span> will be automatically configured to {convertTargetProgram.toUpperCase()}.</li>
               </ul>
             </div>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="ghost" onClick={() => setDialogType(null)}>Cancel</Button>
-            <Button className="bg-superior-teal text-white" onClick={async () => {
+            <Button variant="ghost" onClick={() => setDialogType(null)} className="rounded-xl h-11 px-5">Cancel</Button>
+            <Button className="bg-superior-teal text-white hover:bg-superior-teal/90 rounded-xl h-11 px-6 font-bold" onClick={async () => {
               const idsToConvert = [...selectedLeads];
               setDialogType(null);
               setSelectedLeads([]);
               data.convertLeadsToApplicants(idsToConvert, convertTargetProgram);
-            }}>Proceed with Conversion</Button>
+            }}>
+              <UserPlus size={16} className="mr-2" />
+              Complete Conversion
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -946,7 +1075,9 @@ function AddLeadDialog({ onAdd }: { onAdd: (lead: Lead) => void }) {
     grade: '',
     currentClass: '',
     subjects: [] as string[],
-    cnic: ''
+    cnic: '',
+    pipelineStage: 'new' as const,
+    followUpDate: ''
   });
 
   const [subjectInput, setSubjectInput] = useState('');
@@ -1011,13 +1142,32 @@ function AddLeadDialog({ onAdd }: { onAdd: (lead: Lead) => void }) {
             <Input required value={formData.fatherPhone} onChange={e => setFormData({...formData, fatherPhone: e.target.value})} />
           </div>
           <div className="space-y-2">
-            <Label>CNIC (Optional)</Label>
-            <Input value={formData.cnic} onChange={e => setFormData({...formData, cnic: e.target.value})} />
+            <Label>Pipeline Stage</Label>
+            <Select 
+              value={formData.pipelineStage || 'new'} 
+              onValueChange={val => setFormData({...formData, pipelineStage: val as any})}
+            >
+              <SelectTrigger className="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="new">New Lead</SelectItem>
+                <SelectItem value="contacted">Contacted</SelectItem>
+                <SelectItem value="visiting">Campus Visit</SelectItem>
+                <SelectItem value="form_issued">Form Issued</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
-        <div className="space-y-2">
-          <Label>Previous School</Label>
-          <Input value={formData.previousSchool} onChange={e => setFormData({...formData, previousSchool: e.target.value})} />
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Previous School</Label>
+            <Input value={formData.previousSchool} onChange={e => setFormData({...formData, previousSchool: e.target.value})} />
+          </div>
+          <div className="space-y-2">
+            <Label>CNIC (Optional)</Label>
+            <Input value={formData.cnic} onChange={e => setFormData({...formData, cnic: e.target.value})} placeholder="B-Form / CNIC" />
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
@@ -1082,7 +1232,9 @@ function EditLeadDialog({ lead, onUpdate }: { lead: Lead, onUpdate: (updates: Pa
     grade: lead.grade || '',
     currentClass: lead.currentClass || '',
     subjects: lead.subjects || [],
-    cnic: lead.cnic || ''
+    cnic: lead.cnic || '',
+    pipelineStage: lead.pipelineStage || (lead.isConverted ? 'converted' : 'new'),
+    followUpDate: lead.followUpDate || ''
   });
 
   // Sync state with lead prop if it changes
@@ -1100,7 +1252,9 @@ function EditLeadDialog({ lead, onUpdate }: { lead: Lead, onUpdate: (updates: Pa
       grade: lead.grade || '',
       currentClass: lead.currentClass || '',
       subjects: lead.subjects || [],
-      cnic: lead.cnic || ''
+      cnic: lead.cnic || '',
+      pipelineStage: lead.pipelineStage || (lead.isConverted ? 'converted' : 'new'),
+      followUpDate: lead.followUpDate || ''
     });
   }, [lead]);
 
@@ -1154,13 +1308,33 @@ function EditLeadDialog({ lead, onUpdate }: { lead: Lead, onUpdate: (updates: Pa
             <Input value={formData.fatherPhone} onChange={e => setFormData({...formData, fatherPhone: e.target.value})} />
           </div>
           <div className="space-y-2">
+            <Label>Pipeline Stage</Label>
+            <Select 
+              value={formData.pipelineStage || 'new'} 
+              onValueChange={val => setFormData({...formData, pipelineStage: val as any})}
+            >
+              <SelectTrigger className="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="new">New Lead</SelectItem>
+                <SelectItem value="contacted">Contacted</SelectItem>
+                <SelectItem value="visiting">Campus Visit</SelectItem>
+                <SelectItem value="form_issued">Form Issued</SelectItem>
+                <SelectItem value="converted">Admitted</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Previous School</Label>
+            <Input value={formData.previousSchool} onChange={e => setFormData({...formData, previousSchool: e.target.value})} />
+          </div>
+          <div className="space-y-2">
             <Label>CNIC</Label>
             <Input value={formData.cnic} onChange={e => setFormData({...formData, cnic: e.target.value})} />
           </div>
-        </div>
-        <div className="space-y-2">
-          <Label>Previous School</Label>
-          <Input value={formData.previousSchool} onChange={e => setFormData({...formData, previousSchool: e.target.value})} />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">

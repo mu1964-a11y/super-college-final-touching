@@ -2,15 +2,480 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
+import { GoogleGenAI } from "@google/genai";
 import "dotenv/config";
+import { whatsappBridge } from "./server/whatsappBridge.ts";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+let aiClientInstance = null;
+function getGenAI() {
+  if (!aiClientInstance) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY environment variable is not configured. Please set it in Settings > Secrets.");
+    }
+    aiClientInstance = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build"
+        }
+      }
+    });
+  }
+  return aiClientInstance;
+}
+async function generateContentWithFallback(ai, options) {
+  const preferredModel = options.model || "gemini-3.5-flash";
+  const fallbacks = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"];
+  const modelsToTry = [preferredModel, ...fallbacks.filter((f) => f !== preferredModel)];
+  let lastError = null;
+  for (const modelName of modelsToTry) {
+    const maxRetries = 2;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`[Gemini SDK Wrapper] Attempting content generation with model: ${modelName} (Attempt ${attempt}/${maxRetries})`);
+        const response = await ai.models.generateContent({
+          ...options,
+          model: modelName
+        });
+        console.log(`[Gemini SDK Wrapper] Content generation successful with model: ${modelName}`);
+        return response;
+      } catch (err) {
+        lastError = err;
+        const errMsg = err?.message || JSON.stringify(err);
+        console.warn(`[Gemini SDK Wrapper] Attempt ${attempt} failed for ${modelName}:`, errMsg);
+        if (errMsg.includes("PERMISSION_DENIED") || errMsg.includes("API key not valid") || errMsg.includes("Lightning dunning decision is deny")) {
+          throw err;
+        }
+        const isTransient = errMsg.includes("503") || errMsg.includes("UNAVAILABLE") || errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("high demand") || errMsg.includes("temporary");
+        if (!isTransient || attempt === maxRetries) {
+          break;
+        }
+        const delay = attempt * 1e3;
+        console.log(`[Gemini SDK Wrapper] Transient error detected. Retrying ${modelName} in ${delay}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+  throw lastError;
+}
 async function startServer() {
   const app = express();
   const PORT = 3e3;
-  app.use(express.json());
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+  app.post("/api/gemini/chat", async (req, res) => {
+    try {
+      const { message, history, collegeContext } = req.body;
+      const ai = getGenAI();
+      const statsContext = collegeContext ? `
+Here is the real-time operational context of Superior College Jahanian:
+- Total Enrolled Students: ${collegeContext.studentCount || 0} (Boys: ${collegeContext.boysCount || 0}, Girls: ${collegeContext.girlsCount || 0})
+- Total Active Staff / Faculty: ${collegeContext.staffCount || 0}
+- Current Outstanding Student Fees: Rs. ${(collegeContext.outstandingDues || 0).toLocaleString()}
+- Total Active Revenue Collection: Rs. ${(collegeContext.revenue || 0).toLocaleString()}
+- Total College Operating Costs (Expenses): Rs. ${(collegeContext.expenses || 0).toLocaleString()}
+- Staff Monthly Wage Liability: Rs. ${(collegeContext.staffWageLiability || 0).toLocaleString()}
+- Total Unrecovered Staff Advance Salaries: Rs. ${(collegeContext.staffAdvancesPaid || 0).toLocaleString()}
+- Ongoing Session Academic Term: ${collegeContext.session || "2026-28"}
+` : "";
+      let detailedDatabaseCtx = "";
+      if (collegeContext) {
+        const studentsList = collegeContext.studentsList || [];
+        const staffList = collegeContext.staffList || [];
+        const marksList = collegeContext.marksList || [];
+        if (studentsList.length > 0) {
+          detailedDatabaseCtx += `
+--- ENROLLED STUDENTS DATABASE DIRECTORY ---
+`;
+          studentsList.forEach((s) => {
+            detailedDatabaseCtx += `- ID: ${s.id} | Name: ${s.name} | Father: ${s.fatherName} | Col_No: ${s.colNo} | Gender: ${s.gender} | Program: ${s.cat} (${s.grp}) Sec ${s.sec} | Part: ${s.part} | Term: ${s.session} | Total Fees Package: Rs. ${(s.pkg || 0).toLocaleString()} | Fees Received: Rs. ${(s.rec || 0).toLocaleString()} | Remaining Arrears: Rs. ${(s.bal || 0).toLocaleString()} | Phone: ${s.contact}
+`;
+          });
+        }
+        if (staffList.length > 0) {
+          detailedDatabaseCtx += `
+--- COLLEGE STAFF / TEACHERS DIRECTORY ---
+`;
+          staffList.forEach((s) => {
+            detailedDatabaseCtx += `- TEACHER_ID: ${s.id} | Name: ${s.name} | Role: ${s.role} | Status: ${s.status} | Base Salary: Rs. ${(s.salary || 0).toLocaleString()} | Qualification: ${s.qualification || "N/A"} | contact: ${s.contact || "N/A"}
+`;
+          });
+        }
+        if (marksList.length > 0) {
+          detailedDatabaseCtx += `
+--- ACADEMIC TEST RESULTS & EXAM MARKS ---
+`;
+          marksList.forEach((r) => {
+            detailedDatabaseCtx += `- Result: Name: ${r.studentName} (ID: ${r.studentId}) | Subject: ${r.subject} | Test Name: ${r.testName} | Score: ${r.obtained} Marks Out Of ${r.total} | Date: ${r.date} | Remarks: ${r.remarks || "No remarks"}
+`;
+          });
+        }
+      }
+      const systemInstruction = `
+You are Superior Nexus AI (also known as SCJ Nexus AI), an elite, supreme, and highly intelligent Artificial Intelligence Executive Assistant, Business Intelligence Auditor, and Software Consultant, custom-tailored for Superior College Jahanian (SGC-J).
+Your purpose is to assist College Super Admins, Directors, the Principal, and developers with absolute precision regarding administrative decision support, student directory queries, financial fee standings, staff profiles, academic evaluations, AND the architectural structure, design, code, and improvements of this actual web application.
+
+You have PRIVILEGED, DIRECT read-only lookup access to the real-time operational database directories supplied below, as well as a full understanding of the web application's codebase structure, logic flows, and technical metrics.
+
+==================================================
+1. APP ARCHITECTURE & FILE LAYOUT KNOWLEDGEBASE
+==================================================
+The application is named "SCJ Management System LMS Final" (built for Superior Group of Colleges Jahanian). It uses:
+- Frontend: React 19, TypeScript, Vite
+- Theme & Styling: Tailwind CSS v4, Lucide React icons
+- Database/Backend: Supabase (PostgreSQL)
+- Utilities: Recharts (for analytics and charts), JSPDF + React-to-print (for invoices and slips), Date-fns (date formatting)
+
+CRITICAL DIRECTORY & FILE MAPPING:
+- App Entry Points:
+  * /index.html: Main index HTML template.
+  * /src/main.tsx: Global react entry initializer.
+  * /src/App.tsx: Coordinates active tab layouts, session tracking, permission validation, and lazy view routing.
+  * /server.ts: Custom Express node server containing Gemini operational lookup endpoints, ChatGPT DALL-E asset generator, and Supabase Auth admin accounts creator.
+- Core Screen Components (/src/components/):
+  * DashboardView.tsx: Interactive bento-grid executive dashboard rendering enrolled strength, Boys vs Girls ratio, cashflows, and active alerts.
+  * LeadsManagementView.tsx: Direct portal for lead management (leads before full admission) and automatic/manual conversion.
+  * AdmissionsView.tsx: Manages complete student admission lifecycle, fee finalized packages, total package, payment plans, and custom print generation.
+  * StudentsView.tsx: Main active student roster, section allocation, student detail cards, profile image changes.
+  * StaffView.tsx: HR directory representing full active profiles of SGC-J faculty, specialized subject filters, and biography attachments.
+  * StaffAttendance.tsx: Chronological day-by-day logs (Present, Late, Absent, Leave) connected to payroll.
+  * StaffPayroll.tsx: Computes monthly net wages dynamically taking into account: Base Salary - Absence Deductions - Late Arrival Fees - Active Advance Salary monthly recoveries.
+  * StaffSubjects.tsx & StaffTimetable.tsx: Period schedules, classes, room sections, and teacher subject maps.
+  * FeeManagementView.tsx: Divided into strategic sub-tabs: "Collect Fees" (record ledger payments), "Fee Records" (view historic vouchers), "Structure" (setup fee guidelines), and "Defaulters Track" (outstanding arrears).
+  * AccountsView.tsx: Central general ledger tracking overall Operational Cashflows, Operating Expenses, and Miscellaneous Other Incomes.
+  * AcademicView.tsx: Sections manager, subjects configuration, and preparatory examination test registers.
+  * ReportsView.tsx: Interactive audit visual charts, dynamic printing cards, and tabular PDF exports.
+  * SettingsView.tsx: Global college name preferences, campus configuration (Boys/Girls Campus), and Sub-Admin administrative permission levels.
+  * NotificationPanel.tsx: Renders critical real-time alerts.
+  * AdmissionSlip.tsx & FeeReceipt.tsx: High-contrast, clean-cut printable slip templates.
+- Custom Supabase Operations Hooks (/src/hooks/data/):
+  * useAcademicOperations.ts & useAccountsOperations.ts
+  * useAdmissionsOperations.ts & useLeadsOperations.ts
+  * useSettingsOperations.ts & useStaffOperations.ts & useStudentsOperations.ts
+  * useSupabaseData.ts: Performs unified synchronization and states tracking.
+
+==================================================
+2. EXECUTIVE INSTITUTIONAL DIAGNOSTICS & POLICIES
+==================================================
+When asked about the app's structure, performance, features, improvements, or "good/bad things" (achi aur buri cheezein), refer to this executive, business-oriented diagnostic:
+
+A) KEY STRENGTHS (ACHI CHEEZEIN):
+- **Decoupled Architecture:** Database and computational queries are cleanly isolated from the user interface. This keeps pages incredibly clean, highly structured, and fast.
+- **Null Safety Projections:** Every lookup on text fields implements protective fallbacks to completely prevent interface crashes on missing database values.
+- **Unified Academic Session Normalizer:** Normalizes alternative session notations (like "2026-2028") to "2026-28" automatically on load, securing uniform data keys.
+- **Dynamic Advance Salary Recovery:** Automates salary deductions from active staff advance records inside Payroll and tracks balance recovery variables dynamically until the remaining balance is fully cleared.
+- **Customizable Access Controls:** Administrative roles strictly rely on permissions schemas rather than restrictive hardcoded email strings, allowing directors to securely assign customizable read-write privileges.
+
+B) CORE WEAKNESSES & DEFICIENCIES (BURI CHEEZEIN / LIMITATIONS):
+- **On-Demand Polling System:** Active status updates are pulled from the server during view switching. It lacks live real-time websocket synchronization which can sometimes delay display changes if multiple admins are editing simultaneously.
+- **No Excel Bulk Import Tool:** Adding large historical registers currently requires setting up records row-by-row; there is no bulk student importer spreadsheet parsing tool yet.
+- **Activity Access Trails:** Individual logins aren't mapped chronologically to audit which administrative operator altered a specific financial ledger item.
+- **Offline Resiliency Buffer:** If an internet connection times out when saving a fee receipt, the client can get out of sync with Postgres as there are no optimistic local update queue buffers yet.
+
+C) PROPOSED RECOVERY ACTIONS (KAISE IMPROVE KIA JAYE):
+- Recommend implementing live database streaming synchronization.
+- Suggest creating an "Import CSV / Excel" button in the Admissions panel utilizing custom client-side CSV parsers.
+- Build a dedicated activity log table to register timestamped actions for improved security auditing.
+
+==================================================
+3. INFORMATION DESIGN & FORMATTING GUIDELINES
+==================================================
+1. NEVER SEND RAW DELIMITED TEXT OR SINGLE BULLETY BLOCKS FOR LISTS: If a user asks for a list, query results, or multiple records (e.g. fee defaulters, student lookups, marks, or staff rosters), you MUST ALWAYS render them inside highly professional, beautifully styled Markdown Tables with clear headers (e.g. | Roll No | name | Class | Arrears |).
+2. EXCEL & WORD OPTION NOTE: If displaying structured query data, conclude that block with a short line: *'You can directly download this generated dataset as an Excel (CSV) or Word document using the download buttons below.'* Keep this user-friendly!
+3. FUZZY MATCH NAMES: If a user asks about "Ali", search for all occurrences matching "Ali" in students list, staff list, or exam results.
+4. DETAIL RICH REPORTS: If asked about an individual student, output a majestic executive summary table detailing their name, enrollment details, category/genders (Boys vs Girls), board preparatory examination highlights, and full balance ledger (fee package, paid amount, outstanding dues).
+5. NO HALLUCINATION: If records are not found in the directories, gracefully suggest searching other modules or double checking terms. Never use mock data.
+6. COMPOSURE & TONE: Keep responses exceptionally clean, deeply analytical, polished, and structured into logical sections with clear display headings. Use bold highlighting, bulleted sections, and Markdown tables to convey high-fidelity data intelligence.
+7. COMPLETENESS & MAXIMUM DEPTH (CRITICAL): You must ALWAYS generate exceptionally comprehensive, detailed, exhaustive, and fully finished responses. The user must get complete, end-to-end knowledge from every aspect (har lehaz se mukammal knowledge). Never provide short, lazy, or overly summarized responses. Never leave any sentence, bullet, table, or block half-written or cut off. If a user asks a question, cover all logical context, figures, explanations, and strategic suggestions thoroughly so they are fully satisfied.
+8. COLOR CODING & EMPHASIS SYSTEM (CRITICAL FOR HIGHLIGHTS):
+   - **Important Things / Key Data**: Wrap highly important numbers, financial metrics, names, and key accomplishments in standard Markdown bold formatting (**bold text**). The frontend will automatically render these in premium Teal Green to highlight status achievements.
+   - **Precautionary / Warning Details (Precautions)**: For any alerts, arrears warnings, pending debt notices, rule infractions, late arrivals, or precautionary data, you MUST prefix the sentence/clause key with \u26A0\uFE0F WARNING: or \u{1F6A8} PRECAUTION: (or wrap them clearly). The frontend will display these items in prominent Red with special attention styles.
+   - **Action Required / Tasks**: For items demanding immediate administrative action, follow-up processes, or cash recovery steps, you MUST prefix the sentence/clause key with \u26A1 ACTION REQUIRED: or \u{1F4A1} ACTION:. The frontend will render these in high-contrast highlighted yellow/amber badges or highlighted callouts to grip supervisor focus.
+9. STRICT HIDING OF ALL FILE PATHS, CODE FILES, HOOK NAMES, AND DATABASE TABLE NAMES (CRITICAL EXCLUSION RULE):
+   - **AESTHETIC DEVIATION PREVENTION**: You are STRIP-FORBIDDEN from mentioning or printing any programming file names, source paths, directory routes, custom React hooks, database table schemas, or .tsx/.ts/.sql file extensions to the user.
+   - **User Presentation Rule**: Never say things like "I fetched this from 'useStaffOperations.ts'", "according to 'AdmissionsView.tsx'", or "referenced in 'staff_advances' Postgres table". That level of coding/technical information is irrelevant and distracting to a college administrator. Instead, only reference human-friendly, high-level administrative terms like "Student Admissions module", "Staff Payroll system", "Salary Advances register", or "Financial ledger".
+10. STRICT LANGUAGE AND SCRIPT RULES:
+   - UNDER ABSOLUTELY NO CIRCUMSTANCES write or use Devanagari/Hindi script (e.g., '\u091C\u0940 \u0939\u093E\u0901', '\u0688\u0947\u091F\u093E\u092C\u0947\u0938', '\u091B\u093E\u0924\u094D\u0930'). It is STRICTLY FORBIDDEN.
+   - You must only response using one of these three options:
+     a) English: The standard choice for highly detailed, technical, administrative, and database records reports.
+     b) Hinglish (Roman Urdu / Roman Hindi using English alphabet, e.g., "Ji haan, database search ke mutabiq..."): Use this when the user writes in Roman Urdu, Hinglish, or casual language. Ensure that you write strictly on the English side using pure Latin characters. Do NOT mix any Arabic/Urdu punctuation or inline symbols (like \u064C, \u0610, etc.) in your Hinglish, as this causes rendering engines to break alignment.
+     c) Proper Urdu Script (Urdu alphabet / Perso-Arabic characters, e.g., "\u062C\u06CC \u06C1\u0627\u06BA\u060C \u0688\u06CC\u0679\u0627 \u0628\u06CC\u0633 \u06A9\u06D2 \u0645\u0637\u0627\u0628\u0642..."): Use this ONLY when the user explicitly or strictly asks you to reply in written Urdu script. Never mix Hindi/Devanagari characters with it.
+11. ALWAYS respect user language choice within these boundaries. If the user asks in Hinglish, reply back in beautiful Hinglish! If the user asks in Urdu/Nastaliq, reply in genuine high-quality Urdu script. Use English for standard English queries.
+12. PERFECT URDU SPELLING & TERMINOLOGY DICTIONARY (MUST FOLLOW IN URDU TRANSLATIONS):
+   - 'Fee Package' (\u0641\u06CC\u0633 \u067E\u06CC\u06A9\u06CC\u062C): ALWAYS spell it exactly as "\u0641\u06CC\u0633 \u067E\u06CC\u06A9\u06CC\u062C" (with space between \u0641\u06CC\u0633 and \u067E\u06CC\u06A9\u06CC\u062C, using \u067E-\u06CC-\u06A9-\u06CC-\u062C). NEVER write "\u067E\u06CC\u062C\u06CC\u06A9\u062C", "\u067E\u06CC\u06A9\u06CC\u062C\u06A9", "\u067E\u06CC\u06A9\u062C\u06A9", or "\u0641\u06CC\u0633 \u067E\u06CC\u06A9\u062C".
+   - 'Database' (\u0688\u06CC\u0679\u0627 \u0628\u06CC\u0633): ALWAYS write/spell it as "\u0688\u06CC\u0679\u0627 \u0628\u06CC\u0633" with a single space. NEVER write "\u0688\u06CC\u0679\u0627\u0628\u06CC\u0633" concatenated, and never use Hindi "\u0921\u0947\u091F\u093E\u092C\u0947\u0938".
+   - 'Student' / 'Students' (\u0637\u0627\u0644\u0628 \u0639\u0644\u0645 / \u0637\u0644\u0628\u06C1): Use "\u0637\u0627\u0644\u0628 \u0639\u0644\u0645" for singular, "\u0637\u0644\u0628\u06C1" (or "\u0637\u0644\u0628\u0627\u0621") for plural. Never write "\u091B\u093E\u0924\u094D\u0930".
+   - 'Arrears / Pending Balance' (\u0628\u0642\u0627\u06CC\u0627 \u062C\u0627\u062A): ALWAYS write "\u0628\u0642\u0627\u06CC\u0627 \u062C\u0627\u062A" or "\u0648\u0627\u062C\u0628\u0627\u062A" (or "\u0628\u0642\u0627\u06CC\u0627").
+   - 'Received Amount' (\u0648\u0635\u0648\u0644 \u0634\u062F\u06C1 \u0631\u0642\u0645): ALWAYS write "\u0648\u0635\u0648\u0644 \u0634\u062F\u06C1 \u0631\u0642\u0645" or "\u0648\u0635\u0648\u0644 \u0634\u062F\u06C1 \u0641\u06CC\u0633".
+   - 'Recommendation / Suggestion' (\u062A\u062C\u0648\u06CC\u0632 / \u0633\u0641\u0627\u0631\u0634): ALWAYS write "\u062A\u062C\u0648\u06CC\u0632" or "\u0633\u0641\u0627\u0631\u0634". NEVER write the Hindi-derived misspelling like "\u062A\u062C\u0648\u06CC\u062C" or raw transliteration.
+   - 'Anomaly / Discrepancy' (\u062A\u0628\u062F\u06CC\u0644\u06CC / \u062A\u0636\u0627\u062F / \u063A\u06CC\u0631 \u0645\u0639\u0645\u0648\u0644\u06CC \u0631\u06CC\u06A9\u0627\u0631\u0688): Use "\u063A\u06CC\u0631 \u0645\u0639\u0645\u0648\u0644\u06CC \u0631\u06CC\u06A9\u0627\u0631\u0688" or "\u062A\u0636\u0627\u062F".
+   - Double check all written Urdu to eliminate spelling mistakes (\u0627\u0645\u0644\u0627 \u06A9\u06CC \u063A\u0644\u0637\u06CC\u0627\u06BA) entirely. Ensure standard literary Urdu dictionary spellings.\uFFFD\uFFFD\u0940\u091C" or raw transliteration.
+   - 'Anomaly / Discrepancy' (\u062A\u0628\u062F\u06CC\u0644\u06CC / \u062A\u0636\u0627\u062F / \u063A\u06CC\u0631 \u0645\u0639\u0645\u0648\u0644\u06CC \u0631\u06CC\u06A9\u0627\u0631\u0688): Use "\u063A\u06CC\u0631 \u0645\u0639\u0645\u0648\u0644\u06CC \u0631\u06CC\u06A9\u0627\u0631\u0688" or "\u062A\u0636\u0627\u062F".
+   - Double check all written Urdu to eliminate spelling mistakes (\u0627\u0645\u0644\u0627 \u06A9\u06CC \u063A\u0644\u0637\u06CC\u0627\u06BA) entirely. Ensure standard literary Urdu dictionary spellings.
+
+${statsContext}
+
+${detailedDatabaseCtx}
+`;
+      const formattedContents = [];
+      if (history && Array.isArray(history)) {
+        for (const turn of history) {
+          formattedContents.push({
+            role: turn.role === "assistant" ? "model" : "user",
+            parts: [{ text: turn.content }]
+          });
+        }
+      }
+      formattedContents.push({
+        role: "user",
+        parts: [{ text: message }]
+      });
+      const response = await generateContentWithFallback(ai, {
+        model: "gemini-3.5-flash",
+        contents: formattedContents,
+        config: {
+          systemInstruction,
+          temperature: 0.65,
+          maxOutputTokens: 8192
+        }
+      });
+      res.json({ text: response.text || "No output generated" });
+    } catch (error) {
+      console.error("Gemini Chat API Error:", error.message || error);
+      const errMsg = error?.message || "";
+      if (errMsg.includes("PERMISSION_DENIED") || errMsg.includes("Lightning dunning decision is deny")) {
+        return res.status(500).json({ error: "Your Gemini API Key has billing or quota issues. Please check your Google Cloud Console for project billing status." });
+      }
+      res.status(500).json({ error: error.message || "Failed to process chat with AI" });
+    }
+  });
+  app.post("/api/gemini/analyze", async (req, res) => {
+    try {
+      const { collegeContext, requestType } = req.body;
+      const ai = getGenAI();
+      const statsText = `
+College Metrics Data:
+- Enrolled Strength: ${collegeContext.studentCount || 0} (Boys: ${collegeContext.boysCount || 0}, Girls: ${collegeContext.girlsCount || 0})
+- Staff Faculty: ${collegeContext.staffCount || 0}
+- Active Collection Overall: Rs. ${(collegeContext.revenue || 0).toLocaleString()}
+- General College Expenses: Rs. ${(collegeContext.expenses || 0).toLocaleString()}
+- Active Student Pending Fees (Outstanding): Rs. ${(collegeContext.outstandingDues || 0).toLocaleString()}
+- Monthly Payroll Commitment: Rs. ${(collegeContext.staffWageLiability || 0).toLocaleString()}
+- High-level Unrecovered Advance Payments: Rs. ${(collegeContext.staffAdvancesPaid || 0).toLocaleString()}
+`;
+      let instruction = "";
+      if (requestType === "financial") {
+        instruction = "You are an Executive Financial Auditor. Based on these metrics, draft a high-impact financial SWOT (Strengths, Weaknesses, Opportunities, Threats) analysis, and provide 4 specific, actionable policies to recover outstanding dues and optimize monthly payroll costs for Superior College Jahanian.";
+      } else if (requestType === "performance") {
+        instruction = "You are a Chief Academic Auditor. Analyze student enrollment ratios (Boys vs Girls) and teacher-to-student capacities. Provide recommendations for student engagement and academic prestige goals in Jahanian.";
+      } else {
+        instruction = "You are an Elite Institutional Advisor. Provide a full strategic review, identifying immediate administrative bottlenecks, cashflow health, and a 3-month action plan to bolster admissions and operational oversight.";
+      }
+      const response = await generateContentWithFallback(ai, {
+        model: "gemini-3.5-flash",
+        contents: `${instruction}
+
+${statsText}`,
+        config: {
+          temperature: 0.8
+        }
+      });
+      res.json({ text: response.text || "No output generated" });
+    } catch (error) {
+      console.error("Gemini Analyse API Error:", error.message || error);
+      const errMsg = error?.message || "";
+      if (errMsg.includes("PERMISSION_DENIED") || errMsg.includes("Lightning dunning decision is deny")) {
+        return res.status(500).json({ error: "Your Gemini API Key has billing or quota issues. Please check your Google Cloud Console for project billing status." });
+      }
+      res.status(500).json({ error: error.message || "Failed to analyze college metrics with AI" });
+    }
+  });
+  app.post("/api/gemini/generate-image", async (req, res) => {
+    try {
+      const { prompt, aspectRatio, model, referenceImage, imageSize } = req.body;
+      const ai = getGenAI();
+      const selectedModel = model || "gemini-3.1-flash-image-preview";
+      console.log(`Generating image using model ${selectedModel} with aspect ratio ${aspectRatio || "1:1"}, size ${imageSize || "1K"} and prompt: ${prompt}`);
+      if (selectedModel.startsWith("gemini-")) {
+        const parts = [{ text: prompt }];
+        if (referenceImage) {
+          const match = referenceImage.match(/^data:(image\/[a-zA-Z]*);base64,([^"]+)$/);
+          if (match) {
+            parts.unshift({
+              inlineData: {
+                mimeType: match[1],
+                data: match[2]
+              }
+            });
+          } else {
+            parts.unshift({
+              inlineData: {
+                mimeType: "image/jpeg",
+                data: referenceImage
+              }
+            });
+          }
+        }
+        const response = await ai.models.generateContent({
+          model: selectedModel,
+          contents: {
+            parts
+          },
+          config: {
+            imageConfig: {
+              aspectRatio: aspectRatio || "1:1",
+              imageSize: imageSize || "1K"
+            }
+          }
+        });
+        let base64EncodeString = "";
+        const responseParts = response.candidates?.[0]?.content?.parts;
+        if (responseParts && Array.isArray(responseParts)) {
+          for (const part of responseParts) {
+            if (part && part.inlineData && part.inlineData.data) {
+              base64EncodeString = part.inlineData.data;
+              break;
+            }
+          }
+        }
+        if (!base64EncodeString) {
+          return res.status(400).json({ error: "Model returned no inline image data. Please ensure process.env.GEMINI_API_KEY has appropriate model access." });
+        }
+        const imageUrl = `data:image/png;base64,${base64EncodeString}`;
+        return res.json({ imageUrl });
+      } else if (selectedModel.startsWith("dall-e-")) {
+        const openApiKey = process.env.OPENAI_API_KEY;
+        if (!openApiKey) {
+          return res.status(400).json({
+            error: "OpenAI API Key is missing on the server. Please configure 'OPENAI_API_KEY' in your Settings menu or .env file to run state-of-the-art DALL-E image models!"
+          });
+        }
+        const openAiModel = selectedModel.includes("dall-e-2") ? "dall-e-2" : "dall-e-3";
+        const quality = selectedModel.includes("hd") ? "hd" : "standard";
+        let dSize = "1024x1024";
+        if (openAiModel === "dall-e-3") {
+          if (aspectRatio === "16:9" || aspectRatio === "21:9" || aspectRatio === "4:3" || aspectRatio === "3:2") {
+            dSize = "1792x1024";
+          } else if (aspectRatio === "9:16" || aspectRatio === "3:4" || aspectRatio === "2:3") {
+            dSize = "1024x1792";
+          }
+        }
+        console.log(`Routing to OpenAI API with model: ${openAiModel}, size: ${dSize}, quality: ${quality}`);
+        const openAiResponse = await fetch("https://api.openai.com/v1/images/generations", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${openApiKey}`
+          },
+          body: JSON.stringify({
+            model: openAiModel,
+            prompt,
+            n: 1,
+            size: dSize,
+            quality: openAiModel === "dall-e-3" ? quality : void 0,
+            response_format: "b64_json"
+          })
+        });
+        if (!openAiResponse.ok) {
+          const errData = await openAiResponse.json().catch(() => ({}));
+          return res.status(openAiResponse.status).json({
+            error: errData?.error?.message || `OpenAI returned status ${openAiResponse.status}`
+          });
+        }
+        const openAiData = await openAiResponse.json();
+        const base64Bytes = openAiData.data?.[0]?.b64_json;
+        if (!base64Bytes) {
+          return res.status(400).json({ error: "No image data returned from OpenAI API." });
+        }
+        const imageUrl = `data:image/png;base64,${base64Bytes}`;
+        return res.json({ imageUrl });
+      } else {
+        const response = await ai.models.generateImages({
+          model: selectedModel,
+          prompt,
+          config: {
+            numberOfImages: 1,
+            outputMimeType: "image/jpeg",
+            aspectRatio: aspectRatio || "1:1"
+          }
+        });
+        if (response.generatedImages?.[0]?.image?.imageBytes) {
+          const base64EncodeString = response.generatedImages[0].image.imageBytes;
+          const imageUrl = `data:image/jpeg;base64,${base64EncodeString}`;
+          return res.json({ imageUrl });
+        } else {
+          return res.status(400).json({ error: "Imagen model returned no image bytes. Check configuration." });
+        }
+      }
+    } catch (error) {
+      console.error("Gemini Generate Image API Error:", error.message || error);
+      const errMsg = error?.message || "";
+      if (errMsg.includes("PERMISSION_DENIED") || errMsg.includes("Lightning dunning decision is deny")) {
+        return res.status(500).json({ error: "Your Gemini API Key has billing or quota issues. Please check your Google Cloud Console for project billing status." });
+      }
+      return res.status(500).json({ error: error?.message || "Failed to generate image with Gemini" });
+    }
+  });
+  app.get("/api/permissions", async (req, res) => {
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.VITE_SUPABASE_URL) {
+      return res.status(500).json({ error: "Missing Supabase configuration on backend" });
+    }
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabaseAdmin = createClient(
+        process.env.VITE_SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+      );
+      const { data, error } = await supabaseAdmin.from("permissions").select("*");
+      if (error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.json(data);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.get("/api/check-email", async (req, res) => {
+    const { email } = req.query;
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+    const checkEmail = String(email).trim().toLowerCase();
+    const SUPER_ADMIN_EMAILS = ["mughalazam1964@gmail.com", "akhtar147jhn@gmail.com"];
+    const targetEmails = [checkEmail];
+    if (checkEmail === "msajidbloch798@gmail.com") {
+      targetEmails.push("msajidbaloch798@gmail.com");
+    } else if (checkEmail === "msajidbaloch798@gmail.com") {
+      targetEmails.push("msajidbloch798@gmail.com");
+    }
+    const isSuperAdmin = targetEmails.some((e) => SUPER_ADMIN_EMAILS.includes(e));
+    if (isSuperAdmin) {
+      return res.json({ exists: true });
+    }
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.VITE_SUPABASE_URL) {
+      return res.status(500).json({ error: "Missing Supabase configuration on backend" });
+    }
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabaseAdmin = createClient(
+        process.env.VITE_SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+      );
+      const { data, error } = await supabaseAdmin.from("permissions").select("email").in("email", targetEmails);
+      if (error) {
+        return res.json({ exists: false, error: error.message });
+      }
+      return res.json({ exists: Array.isArray(data) ? data.length > 0 : !!data });
+    } catch (e) {
+      return res.json({ exists: false, error: e.message });
+    }
   });
   app.post("/api/create-user", async (req, res) => {
     const { email, password, displayName } = req.body;
@@ -32,8 +497,13 @@ async function startServer() {
           user_metadata: { display_name: displayName }
         });
         if (error) {
-          if (error.message && (error.message.includes("already registered") || error.message.includes("already exists"))) {
-            return res.json({ message: "User already exists in Auth, updating permissions..." });
+          if (error.message && (error.message.includes("already registered") || error.message.includes("already been registered") || error.message.includes("already exists"))) {
+            const { data: searchData } = await supabaseAdmin.auth.admin.listUsers();
+            const existingUser = searchData.users?.find((u) => (u.email || "").toLowerCase() === email.toLowerCase());
+            if (existingUser && password) {
+              await supabaseAdmin.auth.admin.updateUserById(existingUser.id, { password, user_metadata: { display_name: displayName } });
+            }
+            return res.json({ message: "User already exists in Auth, updating permissions and password..." });
           }
           return res.status(400).json({ error: error.message });
         }
@@ -45,9 +515,247 @@ async function startServer() {
       res.status(500).json({ error: e.message });
     }
   });
+  app.get("/api/whatsapp/status", (req, res) => {
+    try {
+      const status = whatsappBridge.getStatus();
+      res.json(status);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/connect", async (req, res) => {
+    try {
+      const { forceFresh } = req.body || {};
+      const status = await whatsappBridge.init(Boolean(forceFresh));
+      res.json(status);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/disconnect", async (req, res) => {
+    try {
+      await whatsappBridge.disconnect();
+      res.json({ success: true, message: "WhatsApp disconnected successfully." });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.get("/api/whatsapp/bot-settings", (req, res) => {
+    try {
+      res.json(whatsappBridge.getBotStats());
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/bot-settings", (req, res) => {
+    try {
+      const { enabled } = req.body;
+      whatsappBridge.setBotEnabled(Boolean(enabled));
+      res.json(whatsappBridge.getBotStats());
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/bot-test", async (req, res) => {
+    try {
+      const { query, phone = "923014455891" } = req.body;
+      const testJid = `${phone.replace(/\D/g, "")}@s.whatsapp.net`;
+      const reply = await whatsappBridge.handleIncomingBotQuery(testJid, query || "menu");
+      res.json({ success: true, reply });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.get("/api/whatsapp/chat-logs", (req, res) => {
+    try {
+      const { phone } = req.query;
+      const logs = whatsappBridge.getChatLogs(phone);
+      res.json({ success: true, logs });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.delete("/api/whatsapp/chat-logs", (req, res) => {
+    try {
+      const result = whatsappBridge.clearChatLogs();
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/send", async (req, res) => {
+    try {
+      const { phone, message } = req.body;
+      if (!phone || !message) {
+        return res.status(400).json({ error: "Phone and message are required." });
+      }
+      const result = await whatsappBridge.sendMessage(phone, message);
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/send-bulk", async (req, res) => {
+    try {
+      const { items, delaySeconds = 3 } = req.body;
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: "Items array is required." });
+      }
+      const results = await whatsappBridge.sendBulk(items, delaySeconds);
+      const successful = results.filter((r) => r.success).length;
+      res.json({
+        total: items.length,
+        successful,
+        failed: items.length - successful,
+        results
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/ai-command", async (req, res) => {
+    try {
+      const { command, students = [], attendanceRecords = [], autoSend = false } = req.body;
+      if (!command) {
+        return res.status(400).json({ error: "Command string is required." });
+      }
+      const ai = getGenAI();
+      const prompt = `You are an automated College Administration AI for Superior Group of Colleges Jahanian.
+The administrator provided this natural language command in Urdu/Hinglish/English: "${command}".
+
+Analyze the intent and return ONLY valid JSON matching this schema:
+{
+  "targetAudience": "absent_students" | "fee_defaulters" | "specific_class" | "all_students" | "custom",
+  "audienceDescription": "Brief description of the intended recipients in English/Hinglish",
+  "messageTemplate": "Polite, official, high-impact college notification in Roman Urdu and English with placeholders: {{studentName}}, {{rollNo}}, {{className}}, {{date}}, {{fatherName}}, {{balance}}.",
+  "summary": "Short 1-sentence explanation of what will be performed"
+}
+
+Make sure the messageTemplate mentions 'Superior College Jahanian', addresses the parent respectfully, and includes necessary placeholders.
+Return strictly the raw JSON without markdown code fences.`;
+      const aiRes = await generateContentWithFallback(ai, {
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+      let parsed;
+      try {
+        const text = aiRes.text || "{}";
+        parsed = JSON.parse(text);
+      } catch (parseErr) {
+        parsed = {
+          targetAudience: "absent_students",
+          audienceDescription: "Absent students today",
+          messageTemplate: "Assalam o Alaikum {{fatherName}}, apka beta/beti {{studentName}} (Roll No: {{rollNo}}, Class: {{className}}) aaj {{date}} ko Superior College Jahanian se ghair hazir (Absent) hai. Baraye meherbani ghair haziri ki waja college office me muttala farmaiyein.",
+          summary: "Send absent alert to parents of absent students"
+        };
+      }
+      const todayStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+      const matchingRecipients = [];
+      const isAbsentTarget = parsed.targetAudience === "absent_students" || command.toLowerCase().includes("absent") || command.toLowerCase().includes("ghair hazir") || command.toLowerCase().includes("gair hazir");
+      const isFeeTarget = parsed.targetAudience === "fee_defaulters" || command.toLowerCase().includes("fee") || command.toLowerCase().includes("dues") || command.toLowerCase().includes("arrears");
+      if (isAbsentTarget) {
+        const absentStudentIds = /* @__PURE__ */ new Set();
+        attendanceRecords.forEach((att) => {
+          const status = (att.status || "").toLowerCase();
+          if (status === "absent") {
+            const sid = att.student_id || att.studentId || att.id;
+            if (sid) absentStudentIds.add(String(sid));
+          }
+        });
+        students.forEach((s) => {
+          const sid = String(s.id);
+          const sRoll = String(s.rollNumber || s.rollNo || "");
+          const isAbsent = absentStudentIds.has(sid) || sRoll && absentStudentIds.has(sRoll) || attendanceRecords.length === 0 && (s.attendanceStatus === "Absent" || s.status === "Absent");
+          if (isAbsent) {
+            const rawPhone = s.fatherPhone || s.phone || s.guardianPhone || s.contact || "";
+            const resolvedMsg = parsed.messageTemplate.replace(/{{studentName}}/g, s.fullName || s.name || "Student").replace(/{{fatherName}}/g, s.fatherName || "Mohtaram Walid").replace(/{{rollNo}}/g, s.rollNumber || s.rollNo || "N/A").replace(/{{className}}/g, `${s.className || s.class || ""} ${s.section || ""}`.trim() || "College Class").replace(/{{date}}/g, todayStr);
+            matchingRecipients.push({
+              id: s.id,
+              name: s.fullName || s.name || "Student",
+              fatherName: s.fatherName || "",
+              rollNo: s.rollNumber || s.rollNo || "",
+              className: `${s.className || s.class || ""} ${s.section || ""}`.trim(),
+              phone: rawPhone,
+              message: resolvedMsg
+            });
+          }
+        });
+      } else if (isFeeTarget) {
+        students.forEach((s) => {
+          const balance = s.feeLedger?.remainingBalance || s.remainingBalance || s.balance || 0;
+          if (balance > 0) {
+            const rawPhone = s.fatherPhone || s.phone || s.guardianPhone || s.contact || "";
+            const resolvedMsg = parsed.messageTemplate.replace(/{{studentName}}/g, s.fullName || s.name || "Student").replace(/{{fatherName}}/g, s.fatherName || "Mohtaram Walid").replace(/{{rollNo}}/g, s.rollNumber || s.rollNo || "N/A").replace(/{{className}}/g, `${s.className || s.class || ""} ${s.section || ""}`.trim() || "College Class").replace(/{{balance}}/g, `Rs. ${Number(balance).toLocaleString()}`).replace(/{{date}}/g, todayStr);
+            matchingRecipients.push({
+              id: s.id,
+              name: s.fullName || s.name || "Student",
+              fatherName: s.fatherName || "",
+              rollNo: s.rollNumber || s.rollNo || "",
+              className: `${s.className || s.class || ""} ${s.section || ""}`.trim(),
+              phone: rawPhone,
+              message: resolvedMsg
+            });
+          }
+        });
+      } else {
+        students.slice(0, 50).forEach((s) => {
+          const rawPhone = s.fatherPhone || s.phone || s.guardianPhone || s.contact || "";
+          const resolvedMsg = parsed.messageTemplate.replace(/{{studentName}}/g, s.fullName || s.name || "Student").replace(/{{fatherName}}/g, s.fatherName || "Mohtaram Walid").replace(/{{rollNo}}/g, s.rollNumber || s.rollNo || "N/A").replace(/{{className}}/g, `${s.className || s.class || ""} ${s.section || ""}`.trim() || "College Class").replace(/{{date}}/g, todayStr);
+          matchingRecipients.push({
+            id: s.id,
+            name: s.fullName || s.name || "Student",
+            fatherName: s.fatherName || "",
+            rollNo: s.rollNumber || s.rollNo || "",
+            className: `${s.className || s.class || ""} ${s.section || ""}`.trim(),
+            phone: rawPhone,
+            message: resolvedMsg
+          });
+        });
+      }
+      let dispatchResults = null;
+      if (autoSend && matchingRecipients.length > 0) {
+        dispatchResults = await whatsappBridge.sendBulk(
+          matchingRecipients.map((r) => ({
+            id: r.id,
+            phone: r.phone,
+            name: r.name,
+            message: r.message
+          })),
+          3
+        );
+      }
+      res.json({
+        success: true,
+        commandAnalysis: parsed,
+        recipientsCount: matchingRecipients.length,
+        recipients: matchingRecipients,
+        sampleMessage: matchingRecipients[0]?.message || parsed.messageTemplate,
+        autoDispatched: Boolean(autoSend && dispatchResults !== null),
+        dispatchResults
+      });
+    } catch (e) {
+      console.error("[WhatsApp AI Command Error]:", e);
+      res.status(500).json({ error: e.message || "Failed to process AI WhatsApp command." });
+    }
+  });
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        watch: {
+          ignored: [
+            "**/.whatsapp_auth/**",
+            "**/.whatsapp_chat_logs.json",
+            "**/*.log"
+          ]
+        }
+      },
       appType: "spa"
     });
     app.use(vite.middlewares);

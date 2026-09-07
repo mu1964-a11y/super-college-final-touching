@@ -16,8 +16,13 @@ import {
   GraduationCap,
   Globe,
   Building,
+  Building2,
+  Eye,
+  MessageSquare,
 } from "lucide-react";
 import { motion } from "motion/react";
+import StudentDossier360 from "./StudentDossier360";
+import BankChallanModal from "./BankChallanModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -101,6 +106,60 @@ export default function FeeManagementView({
   const [collectedByName, setCollectedByName] = React.useState<string>("");
   const [newFeePackage, setNewFeePackage] = React.useState<string>("");
   const [activeRowStudent, setActiveRowStudent] = React.useState<any>(null);
+  const [dossierStudent, setDossierStudent] = React.useState<any | null>(null);
+  const [sendingNoticeId, setSendingNoticeId] = React.useState<string | null>(null);
+  const [challanStudents, setChallanStudents] = React.useState<any[] | null>(null);
+  const [isChallanModalOpen, setIsChallanModalOpen] = React.useState(false);
+
+  const handleQuickWhatsAppNotice = async (student: any, balance: number) => {
+    const rawPhone = student.contact || student.fatherContact || student.phone || student.mobile;
+    if (!rawPhone) {
+      toast.error(`No contact number registered for ${student.fullName || 'this student'}.`);
+      return;
+    }
+
+    const cleanPhone = rawPhone.replace(/\D/g, "");
+    const msg = 
+`🎓 *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📢 *Official Fee Reminder Notice*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mohtaram Walid/Guardian (${student.fatherName || 'Sahib'}),
+
+Aapke farzand/dukhtar *${student.fullName}* (Roll No: ${student.id || student.collegeNo || 'N/A'}, Class: ${student.group || student.category || 'Intermediate'}) ki fee baqaya hai:
+
+💵 *Total Fee Package:* Rs. ${Number(student.totalPackage || 0).toLocaleString()}
+✅ *Fee Deposited:* Rs. ${Number(student.feeReceived || 0).toLocaleString()}
+⚠️ *Outstanding Balance (Wajib-ul-Ada):* Rs. ${Number(balance).toLocaleString()}
+
+Baraye meherbani aakhri tareekh se qabal accounts office mein fee jama karwa kar official computerised receipt hasil karein.
+
+📍 Khanewal Road, Jahanian
+📞 Accounts Helpline: 0301-4455891
+━━━━━━━━━━━━━━━━━━━━━━━━━`;
+
+    try {
+      setSendingNoticeId(student.id);
+      toast.loading(`Sending fee reminder to +${cleanPhone}...`, { id: "fee-wa" });
+      const res = await fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: cleanPhone, message: msg }),
+      });
+
+      if (res.ok) {
+        toast.success(`Fee notice sent via WhatsApp to +${cleanPhone}!`, { id: "fee-wa" });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.info(err.error || "Gateway offline. Opening WhatsApp Web...", { id: "fee-wa" });
+        window.open(`https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`, "_blank");
+      }
+    } catch {
+      window.open(`https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`, "_blank");
+      toast.dismiss("fee-wa");
+    } finally {
+      setSendingNoticeId(null);
+    }
+  };
 
   const parentRef = React.useRef<HTMLDivElement>(null);
 
@@ -1040,18 +1099,17 @@ export default function FeeManagementView({
       const balance = (s.totalPackage || 0) - (s.feeReceived || 0);
       const received = s.feeReceived || 0;
 
-      let effectiveStatus = statusFilter;
-      if (activeTab === "defaulters") effectiveStatus = "not-paid";
-
-      // User Request Filters:
-      // - Paid (Full payment)
-      // - Pending Installments (Some paid, more to go)
-      // - Not Paid at all (received = 0)
-      const matchesStatus =
-        effectiveStatus === "all" ||
-        (effectiveStatus === "paid" && balance <= 0 && received > 0) ||
-        (effectiveStatus === "pending" && balance > 0 && received > 0) ||
-        (effectiveStatus === "not-paid" && received <= 0);
+      let matchesStatus = true;
+      if (activeTab === "defaulters") {
+        // In defaulters tab, show any student with remaining unpaid balance
+        matchesStatus = balance > 0;
+      } else {
+        matchesStatus =
+          statusFilter === "all" ||
+          (statusFilter === "paid" && balance <= 0 && received > 0) ||
+          (statusFilter === "pending" && balance > 0 && received > 0) ||
+          (statusFilter === "not-paid" && received <= 0);
+      }
 
       const pFilter = groupFilter.toLowerCase();
       let matchesGroup = true;
@@ -1396,6 +1454,23 @@ export default function FeeManagementView({
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
+
+                <Button
+                  onClick={() => {
+                    const toPrint = filteredStudents.slice(0, 50);
+                    if (toPrint.length === 0) {
+                      toast.error("No students found to generate challans.");
+                      return;
+                    }
+                    setChallanStudents(toPrint);
+                    setIsChallanModalOpen(true);
+                  }}
+                  variant="outline"
+                  className="h-10 px-3.5 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                >
+                  <Building2 size={15} className="text-emerald-600" />
+                  <span>Batch Challans</span>
+                </Button>
               </div>
             </div>
           </CardHeader>
@@ -1528,6 +1603,21 @@ export default function FeeManagementView({
                             </TableCell>
                             <TableCell className="text-right pr-8">
                               <div className="flex items-center justify-end gap-2">
+                                {balance > 0 && (
+                                  <Button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleQuickWhatsAppNotice(student, balance);
+                                    }}
+                                    disabled={sendingNoticeId === student.id}
+                                    size="sm"
+                                    title="Send 1-Click WhatsApp Fee Due Reminder"
+                                    className="h-8 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-wider text-[10px] flex items-center gap-1 shadow-sm shadow-emerald-200 transition-all hover:scale-[1.02]"
+                                  >
+                                    <MessageSquare size={13} className="shrink-0" />
+                                    <span className="hidden sm:inline">Notice</span>
+                                  </Button>
+                                )}
                                 <Button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -1550,6 +1640,17 @@ export default function FeeManagementView({
                                     align="end"
                                     className="rounded-2xl border-slate-100 p-2 shadow-2xl w-56"
                                   >
+                                    {balance > 0 && (
+                                      <DropdownMenuItem
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleQuickWhatsAppNotice(student, balance);
+                                        }}
+                                        className="gap-3 p-3 rounded-xl font-black text-xs text-emerald-600 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 uppercase tracking-widest italic"
+                                      >
+                                        <MessageSquare size={14} /> Send WhatsApp Notice
+                                      </DropdownMenuItem>
+                                    )}
                                     <DropdownMenuItem
                                       onClick={(e) => {
                                         e.stopPropagation();
@@ -1589,6 +1690,16 @@ export default function FeeManagementView({
                                     >
                                       <Download size={14} /> Download Fee
                                       Statement
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setChallanStudents([student]);
+                                        setIsChallanModalOpen(true);
+                                      }}
+                                      className="gap-3 p-3 rounded-xl font-black text-xs text-emerald-800 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 uppercase tracking-widest italic"
+                                    >
+                                      <Building2 size={14} /> 3-Copy Bank Challan
                                     </DropdownMenuItem>
                                     {getUnifiedTransactions(student) &&
                                       getUnifiedTransactions(student).length >
@@ -1915,6 +2026,30 @@ export default function FeeManagementView({
           </ScrollArea>
         </DialogContent>
       </Dialog>
+
+      {/* Student 360° Dossier Modal */}
+      <StudentDossier360
+        student={dossierStudent}
+        isOpen={Boolean(dossierStudent)}
+        onClose={() => setDossierStudent(null)}
+        data={data}
+        onOpenWhatsApp={(phone) => {
+          window.open(`https://web.whatsapp.com/send?phone=${phone}`, '_blank');
+        }}
+      />
+
+      {/* 3-Copy Bank Challan Modal */}
+      {challanStudents && (
+        <BankChallanModal
+          isOpen={isChallanModalOpen}
+          onClose={() => {
+            setIsChallanModalOpen(false);
+            setChallanStudents(null);
+          }}
+          students={challanStudents}
+          settings={data?.settings}
+        />
+      )}
     </div>
   );
 }
