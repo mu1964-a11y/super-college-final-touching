@@ -15,8 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import html2canvas from 'html2canvas-pro';
-import { jsPDF } from 'jspdf';
+import { exportElementToPdf, exportElementToImage } from '../utils/documentExporter';
 import QRCode from 'qrcode';
 import { Admission } from '../types';
 
@@ -31,11 +30,11 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
     const qrPayload = `${origin}/?verify=admission&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(admission.collegeNo || '')}`;
 
     QRCode.toDataURL(qrPayload, {
-      width: 140,
+      width: 120,
       margin: 1,
       color: { dark: '#0f172a', light: '#ffffff' }
     }).then(setQrCodeUrl).catch(console.error);
-  }, [admission, settings]);
+  }, [admission]);
 
   const getProgramInfo = () => {
     const group = (admission.group || admission.category || '').toLowerCase();
@@ -77,40 +76,18 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
 
   const downloadSlip = async () => {
     if (!slipRef.current) return;
-    const toastId = toast.loading("Generating High-Fidelity Slip...");
+    const toastId = toast.loading("Generating High-Fidelity Admission Slip PDF...");
     try {
-      const canvas = await html2canvas(slipRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
-      const dataUrl = canvas.toDataURL('image/png', 1.0);
-      
-      const imgProps = new Image();
-      imgProps.src = dataUrl;
-      await new Promise((resolve) => { imgProps.onload = resolve; });
-      
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth(); // 210mm
-      const pageHeight = pdf.internal.pageSize.getHeight(); // 297mm
-
-      // Safe 6mm margin around document
-      const margin = 6;
-      const maxW = pageWidth - (margin * 2); // 198mm
-      const maxH = pageHeight - (margin * 2); // 285mm
-
-      // Proportional aspect-ratio fit to ensure 100% of header, content, QR & signatures fit on page
-      const ratioW = maxW / imgProps.width;
-      const ratioH = maxH / imgProps.height;
-      const scale = Math.min(ratioW, ratioH);
-
-      const finalW = imgProps.width * scale;
-      const finalH = imgProps.height * scale;
-
-      // Perfectly center horizontally & vertically on A4 page
-      const x = (pageWidth - finalW) / 2;
-      const y = (pageHeight - finalH) / 2;
-
-      pdf.addImage(dataUrl, 'PNG', x, y, finalW, finalH);
-      pdf.save(`Admission_Slip_${admission.fullName?.replace(/\s+/g, '_') || 'Student'}.pdf`);
+      await exportElementToPdf(slipRef.current, {
+        filename: `Admission_Slip_${admission.fullName?.replace(/\s+/g, '_') || 'Student'}`,
+        format: 'a4',
+        orientation: 'portrait',
+        pixelRatio: 2.5,
+        backgroundColor: '#ffffff',
+        marginMm: 6,
+      });
       toast.dismiss(toastId);
-      toast.success("Admission Slip downloaded!");
+      toast.success("Admission Slip downloaded successfully!");
     } catch (err) {
       console.error(err);
       toast.dismiss(toastId);
@@ -161,14 +138,24 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
         <div 
           ref={slipRef}
           className="w-[794px] min-h-[1123px] h-fit bg-white px-8 py-7 relative shadow-2xl overflow-hidden print-area flex flex-col justify-between"
-          style={{ fontFamily: "'Inter', sans-serif" }}
+          style={{ width: '794px', minHeight: '1123px', fontFamily: "'Inter', sans-serif" }}
         >
           {/* Header */}
           <div className="flex flex-col items-center mb-0">
             <div className="w-full flex items-center justify-center gap-6 mb-1">
-               <div className="w-18 h-18 rounded-full flex items-center justify-center overflow-hidden border border-slate-200 bg-white shadow-sm shrink-0">
+               <div 
+                 className="w-18 h-18 rounded-full flex items-center justify-center overflow-hidden border border-slate-200 bg-white shadow-sm shrink-0"
+                 style={{ width: '72px', height: '72px', minWidth: '72px', minHeight: '72px' }}
+               >
                 {settings?.logo ? (
-                  <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" />
+                  <img 
+                    src={settings.logo} 
+                    alt="Logo" 
+                    className="w-full h-full object-contain" 
+                    style={{ width: '72px', height: '72px', objectFit: 'contain' }}
+                    width={72}
+                    height={72}
+                  />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-slate-300">
                     <School size={36} />
@@ -341,8 +328,15 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
           <div className="mt-auto pt-3 border-t border-slate-200 flex justify-between items-end">
             <div className="flex items-center gap-3">
               {qrCodeUrl && (
-                <div className="border border-slate-200 p-1 rounded-lg bg-white shadow-xs shrink-0">
-                  <img src={qrCodeUrl} alt="QR Verification" className="w-14 h-14" />
+                <div className="border border-slate-200 p-1 rounded-lg bg-white shadow-xs shrink-0" style={{ width: '60px', height: '60px' }}>
+                  <img 
+                    src={qrCodeUrl} 
+                    alt="QR Verification" 
+                    className="w-14 h-14" 
+                    style={{ width: '52px', height: '52px', objectFit: 'contain' }}
+                    width={52}
+                    height={52}
+                  />
                 </div>
               )}
               <div className="text-[8px] text-slate-500 max-w-[240px] leading-tight font-medium">
@@ -363,9 +357,19 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
           </div>
 
           {/* Watermark */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.08] pointer-events-none w-[400px] h-[400px] flex items-center justify-center rounded-full overflow-hidden">
+          <div 
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center rounded-full overflow-hidden"
+            style={{ width: '360px', height: '360px', opacity: 0.05 }}
+          >
             {settings?.logo ? (
-              <img src={settings.logo} alt="" className="w-full h-full object-cover rounded-full" />
+              <img 
+                src={settings.logo} 
+                alt="" 
+                className="w-full h-full object-contain rounded-full" 
+                style={{ width: '360px', height: '360px', objectFit: 'contain' }}
+                width={360}
+                height={360}
+              />
             ) : (
               <School size={300} stroke="#001a1a" />
             )}

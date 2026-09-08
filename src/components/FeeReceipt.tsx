@@ -21,8 +21,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { getUnifiedTransactions } from '../utils/fee';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas-pro';
+import { exportElementToPdf, exportElementToImage } from '../utils/documentExporter';
 import QRCode from 'qrcode';
 
 export default function FeeReceipt({ student, settings }: { student: any, settings: any }) {
@@ -86,39 +85,18 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
 
   const downloadReceipt = async () => {
     if (!receiptRef.current) return;
-    const toastId = toast.loading("Generating Official Fee Receipt...");
+    const toastId = toast.loading("Generating Official Fee Receipt PDF...");
     try {
-      const canvas = await html2canvas(receiptRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
-      const dataUrl = canvas.toDataURL('image/png', 1.0);
-      
-      const imgProps = new Image();
-      imgProps.src = dataUrl;
-      await new Promise((resolve) => { imgProps.onload = resolve; });
-      
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth(); // 210mm
-      const pageHeight = pdf.internal.pageSize.getHeight(); // 297mm
-
-      // Safe 8mm margin around document
-      const margin = 8;
-      const maxW = pageWidth - (margin * 2); // 194mm
-      const maxH = pageHeight - (margin * 2); // 281mm
-
-      // Uniform aspect-ratio fit to prevent cutoffs
-      const ratioW = maxW / imgProps.width;
-      const ratioH = maxH / imgProps.height;
-      const scale = Math.min(ratioW, ratioH);
-
-      const finalW = imgProps.width * scale;
-      const finalH = imgProps.height * scale;
-
-      const x = (pageWidth - finalW) / 2;
-      const y = finalH < maxH * 0.65 ? 12 : (pageHeight - finalH) / 2;
-
-      pdf.addImage(dataUrl, 'PNG', x, y, finalW, finalH);
-      pdf.save(`Fee-Receipt-${student.fullName?.replace(/\s+/g, '_') || 'Student'}.pdf`);
+      await exportElementToPdf(receiptRef.current, {
+        filename: `Fee-Receipt-${student.fullName?.replace(/\s+/g, '_') || 'Student'}`,
+        format: 'a4',
+        orientation: 'portrait',
+        pixelRatio: 2.5,
+        backgroundColor: '#ffffff',
+        marginMm: 8,
+      });
       toast.dismiss(toastId);
-      toast.success("Fee Receipt downloaded!");
+      toast.success("Fee Receipt downloaded successfully!");
     } catch (err) {
       console.error(err);
       toast.dismiss(toastId);
@@ -178,14 +156,24 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
         <div 
           ref={receiptRef}
           className="w-[794px] min-h-[561px] h-fit bg-white p-6 relative shadow-2xl overflow-hidden print-area flex flex-col"
-          style={{ fontFamily: "'Inter', sans-serif" }}
+          style={{ width: '794px', minHeight: '561px', fontFamily: "'Inter', sans-serif" }}
         >
           {/* Header */}
           <div className="flex flex-col items-center mb-0">
             <div className="w-full flex items-center justify-center gap-4 mb-1">
-               <div className="w-16 h-16 rounded-full flex items-center justify-center overflow-hidden border border-slate-200 bg-white shadow-sm shrink-0">
+               <div 
+                 className="w-16 h-16 rounded-full flex items-center justify-center overflow-hidden border border-slate-200 bg-white shadow-sm shrink-0"
+                 style={{ width: '64px', height: '64px', minWidth: '64px', minHeight: '64px' }}
+               >
                 {settings?.logo ? (
-                  <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" />
+                  <img 
+                    src={settings.logo} 
+                    alt="Logo" 
+                    className="w-full h-full object-contain" 
+                    style={{ width: '64px', height: '64px', objectFit: 'contain' }}
+                    width={64}
+                    height={64}
+                  />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-slate-300">
                     <School size={40} />
@@ -219,9 +207,20 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
           <div className="flex border-b border-slate-200 pb-2 mb-2">
             {/* Student Info */}
             <div className="flex items-center gap-4 w-2/3 border-r border-slate-200 pr-4">
-              <div className="w-16 h-16 rounded-lg flex items-center justify-center overflow-hidden border border-slate-200 shrink-0 shadow-sm">
+              <div 
+                className="w-16 h-16 rounded-lg flex items-center justify-center overflow-hidden border border-slate-200 shrink-0 shadow-sm"
+                style={{ width: '64px', height: '64px', minWidth: '64px', minHeight: '64px' }}
+              >
                 {student.photo ? (
-                  <img src={student.photo} alt={student.fullName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img 
+                    src={student.photo} 
+                    alt={student.fullName} 
+                    className="w-full h-full object-cover" 
+                    referrerPolicy="no-referrer"
+                    style={{ width: '64px', height: '64px', objectFit: 'cover' }}
+                    width={64}
+                    height={64}
+                  />
                 ) : (
                   <div className="text-slate-300 flex flex-col items-center">
                     <User size={24} stroke="#cbd5e1" strokeWidth={2} />
@@ -391,9 +390,16 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
             {/* Official Online Verification QR Code */}
             <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl">
               {qrCodeUrl ? (
-                <img src={qrCodeUrl} alt="Verify QR" className="w-11 h-11 border border-slate-300 rounded p-0.5 bg-white shrink-0" />
+                <img 
+                  src={qrCodeUrl} 
+                  alt="Verify QR" 
+                  className="w-11 h-11 border border-slate-300 rounded p-0.5 bg-white shrink-0" 
+                  style={{ width: '44px', height: '44px', objectFit: 'contain' }}
+                  width={44}
+                  height={44}
+                />
               ) : (
-                <div className="w-11 h-11 bg-slate-200 rounded animate-pulse shrink-0" />
+                <div className="w-11 h-11 bg-slate-200 rounded animate-pulse shrink-0" style={{ width: '44px', height: '44px' }} />
               )}
               <div className="text-left text-[8px] leading-tight">
                 <span className="font-black text-slate-800 uppercase block">Scan to Verify 🛡️</span>
@@ -409,9 +415,19 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
           </div>
 
           {/* Bottom Branding */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.03] pointer-events-none w-[300px] h-[300px] flex items-center justify-center rounded-full overflow-hidden">
+          <div 
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center rounded-full overflow-hidden"
+            style={{ width: '280px', height: '280px', opacity: 0.04 }}
+          >
             {settings?.logo ? (
-              <img src={settings.logo} alt="" className="w-full h-full object-cover rounded-full" />
+              <img 
+                src={settings.logo} 
+                alt="" 
+                className="w-full h-full object-contain rounded-full" 
+                style={{ width: '280px', height: '280px', objectFit: 'contain' }}
+                width={280}
+                height={280}
+              />
             ) : (
               <School size={200} stroke="#001a1a" />
             )}

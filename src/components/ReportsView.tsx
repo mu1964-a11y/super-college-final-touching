@@ -42,7 +42,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import html2canvas from 'html2canvas-pro';
+import { exportElementToPdf, exportElementToImage } from '../utils/documentExporter';
 import { jsPDF } from 'jspdf';
 import { useReactToPrint } from 'react-to-print';
 
@@ -82,15 +82,13 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
       reportRef.current.style.height = 'auto';
       reportRef.current.style.overflow = 'visible';
       
-      const canvas = await html2canvas(reportRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
-      const dataUrl = canvas.toDataURL('image/png', 1.0);
+      await exportElementToImage(
+        reportRef.current,
+        `${selectedReport.title.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.png`,
+        { pixelRatio: 2.0, backgroundColor: '#ffffff' }
+      );
       
       reportRef.current.style.cssText = originalStyle;
-      
-      const link = document.createElement('a');
-      link.download = `${selectedReport.title.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.png`;
-      link.href = dataUrl;
-      link.click();
       toast.success("Report downloaded as Image!");
     } catch (err) {
       console.error('oops, something went wrong!', err);

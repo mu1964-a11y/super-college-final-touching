@@ -18,6 +18,7 @@ import {
 import { Printer, Download, Building2, Calendar, FileText, CheckCircle2, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { calculateStudentFeeBreakdown } from "../lib/feeCalculations";
+import { exportElementToPdf } from "../utils/documentExporter";
 import QRCode from "qrcode";
 
 interface BankChallanModalProps {
@@ -114,6 +115,27 @@ export default function BankChallanModal({
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!printRef.current) return;
+    const toastId = toast.loading("Generating Official Bank Challans PDF...");
+    try {
+      await exportElementToPdf(printRef.current, {
+        filename: `Bank_Challans_${activeBank.id}_${new Date().toISOString().split('T')[0]}`,
+        format: 'a4',
+        orientation: 'landscape',
+        pixelRatio: 2.5,
+        backgroundColor: '#ffffff',
+        marginMm: 6,
+      });
+      toast.dismiss(toastId);
+      toast.success("Bank Challans PDF downloaded successfully!");
+    } catch (err) {
+      console.error(err);
+      toast.dismiss(toastId);
+      toast.error("Failed to generate Challan PDF");
+    }
   };
 
   const getChallanNo = (student: any, idx: number) => {
@@ -217,18 +239,61 @@ export default function BankChallanModal({
             )}
 
             <Button
+              onClick={handleDownloadPDF}
+              variant="outline"
+              className="h-8 px-3 border-slate-300 text-slate-800 bg-white hover:bg-slate-50 font-black text-xs flex items-center gap-1.5 shadow-xs"
+              title="Download Challans as high-resolution PDF file"
+            >
+              <Download size={13} />
+              Download PDF
+            </Button>
+            <Button
               onClick={handlePrint}
               className="h-8 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-2 shadow-sm"
             >
               <Printer size={14} />
-              Print / Save PDF ({visibleStudents.length})
+              Print Challans ({visibleStudents.length})
             </Button>
           </div>
         </div>
 
         {/* Scrollable Printable Challan Canvas */}
         <div className="flex-1 overflow-y-auto p-6 bg-slate-200/70">
-          <div ref={printRef} className="space-y-8 print:space-y-0 print:m-0">
+          {/* Global Print Styles for 3-Copy Bank Challan */}
+          <style dangerouslySetInnerHTML={{ __html: `
+            @media print {
+              body * {
+                visibility: hidden;
+              }
+              #challan-print-canvas, #challan-print-canvas * {
+                visibility: visible;
+              }
+              #challan-print-canvas {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                margin: 0;
+                padding: 0;
+              }
+              .challan-page-card {
+                page-break-after: always;
+                break-after: page;
+                margin-bottom: 0 !important;
+                border: none !important;
+                box-shadow: none !important;
+                padding: 4mm !important;
+                width: 100% !important;
+                max-width: 100% !important;
+              }
+              @page {
+                size: A4 landscape;
+                margin: 6mm;
+              }
+            }
+          `}} />
+
+          <div id="challan-print-canvas" ref={printRef} className="space-y-8 print:space-y-0 print:m-0">
             {visibleStudents.map((student, sIdx) => {
               const breakdown = calculateStudentFeeBreakdown(student, new Date(dueDate));
               const challanNo = getChallanNo(student, sIdx);
@@ -244,32 +309,11 @@ export default function BankChallanModal({
               return (
                 <div
                   key={student.id || sIdx}
-                  className="bg-white rounded-2xl shadow-md border border-slate-300 p-5 mx-auto max-w-[1050px] print:rounded-none print:shadow-none print:border-0 print:p-2 print:page-break-after"
+                  className="challan-page-card bg-white rounded-2xl shadow-md border border-slate-300 p-5 mx-auto max-w-[1050px] print:rounded-none print:shadow-none print:border-0 print:p-2"
+                  style={{ backgroundColor: '#ffffff', maxWidth: '1050px' }}
                 >
-                  {/* Print Styles */}
-                  <style dangerouslySetInnerHTML={{ __html: `
-                    @media print {
-                      body * {
-                        visibility: hidden;
-                      }
-                      .print-challan-container, .print-challan-container * {
-                        visibility: visible;
-                      }
-                      .print-challan-container {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                      }
-                      @page {
-                        size: A4 landscape;
-                        margin: 6mm;
-                      }
-                    }
-                  `}} />
-
                   {/* 3 Columns for 3 Copies */}
-                  <div className="print-challan-container grid grid-cols-3 gap-3 divide-x divide-dashed divide-slate-300">
+                  <div className="print-challan-container grid grid-cols-3 gap-3 divide-x divide-dashed divide-slate-300" style={{ width: '100%' }}>
                     {copies.map((copy, cIdx) => (
                       <div
                         key={cIdx}
@@ -409,9 +453,12 @@ export default function BankChallanModal({
                                   src={qrMap[student.id]}
                                   alt="Verify QR"
                                   className="w-10 h-10 border border-slate-300 rounded bg-white p-0.5 shrink-0"
+                                  style={{ width: '40px', height: '40px', objectFit: 'contain' }}
+                                  width={40}
+                                  height={40}
                                 />
                               ) : (
-                                <div className="w-10 h-10 bg-slate-200 rounded animate-pulse shrink-0" />
+                                <div className="w-10 h-10 bg-slate-200 rounded animate-pulse shrink-0" style={{ width: '40px', height: '40px' }} />
                               )}
                               <div className="text-[7.5px] leading-tight text-slate-600">
                                 <span className="font-black text-slate-900 block uppercase">Scan to Verify 🛡️</span>

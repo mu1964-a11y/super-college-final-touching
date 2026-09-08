@@ -14,8 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import QRCode from 'qrcode';
 import { useReactToPrint } from 'react-to-print';
-import html2canvas from 'html2canvas-pro';
-import { jsPDF } from 'jspdf';
+import { exportElementToPdf, exportElementToImage } from '../utils/documentExporter';
 import { Student } from '../types';
 
 interface StudentIDCardModalProps {
@@ -74,37 +73,40 @@ export default function StudentIDCardModal({
 
   const downloadPDF = async () => {
     if (!printRef.current || !student) return;
-    const toastId = toast.loading("Generating ID Card PDF...");
+    const toastId = toast.loading("Generating High-Fidelity ID Card PDF...");
     try {
-      const canvas = await html2canvas(printRef.current, {
-        scale: 3,
-        useCORS: true,
+      await exportElementToPdf(printRef.current, {
+        filename: `ID_Card_${student.collegeNo || student.id}_${student.fullName?.replace(/\s+/g, '_') || 'Student'}`,
+        format: 'a4',
+        orientation: activeSide === 'both' ? 'landscape' : 'portrait',
+        pixelRatio: 3.0,
         backgroundColor: '#ffffff',
-        logging: false
+        marginMm: 10,
       });
-      const imgData = canvas.toDataURL('image/png', 1.0);
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      
-      // Center card on A4 page with safe bounds
-      const pageWidth = pdf.internal.pageSize.getWidth(); // 210mm
-      const pageHeight = pdf.internal.pageSize.getHeight(); // 297mm
-      const maxW = pageWidth - 24; // 186mm
-      const maxH = pageHeight - 30; // 267mm
-
-      const scale = Math.min(maxW / canvas.width, maxH / canvas.height, 175 / canvas.width);
-      const imgWidth = canvas.width * scale;
-      const imgHeight = canvas.height * scale;
-      const x = (pageWidth - imgWidth) / 2;
-      const y = (pageHeight - imgHeight) / 2;
-
-      pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
-      pdf.save(`ID_Card_${student.collegeNo || student.id}_${student.fullName.replace(/\s+/g, '_')}.pdf`);
       toast.dismiss(toastId);
-      toast.success("Student ID Card PDF downloaded!");
+      toast.success("Student ID Card PDF downloaded successfully!");
     } catch (e) {
       console.error(e);
       toast.dismiss(toastId);
       toast.error("Failed to generate PDF");
+    }
+  };
+
+  const downloadPNG = async () => {
+    if (!printRef.current || !student) return;
+    const toastId = toast.loading("Exporting Card as High-Res Image...");
+    try {
+      await exportElementToImage(
+        printRef.current,
+        `ID_Card_${student.collegeNo || student.id}_${student.fullName?.replace(/\s+/g, '_') || 'Student'}.png`,
+        { pixelRatio: 3.0, backgroundColor: '#ffffff' }
+      );
+      toast.dismiss(toastId);
+      toast.success("Card image downloaded!");
+    } catch (e) {
+      console.error(e);
+      toast.dismiss(toastId);
+      toast.error("Failed to download image");
     }
   };
 
@@ -170,6 +172,14 @@ export default function StudentIDCardModal({
               <Printer size={14} /> Print Card
             </Button>
             <Button
+              onClick={downloadPNG}
+              variant="outline"
+              className="h-9 rounded-xl border-white/20 text-slate-800 bg-white hover:bg-slate-100 font-black text-xs gap-2"
+              title="Download as High-Resolution Image for PVC card printing"
+            >
+              <Download size={14} /> PNG
+            </Button>
+            <Button
               onClick={downloadPDF}
               className="h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs gap-2 shadow-lg shadow-emerald-900/20"
             >
@@ -189,7 +199,7 @@ export default function StudentIDCardModal({
             {(activeSide === 'both' || activeSide === 'front') && (
               <div 
                 className="w-[336px] h-[520px] bg-white rounded-3xl shadow-xl overflow-hidden relative flex flex-col justify-between border border-slate-300 print:shadow-none print:border-slate-400"
-                style={{ fontFamily: "'Inter', sans-serif" }}
+                style={{ width: '336px', height: '520px', minWidth: '336px', minHeight: '520px', fontFamily: "'Inter', sans-serif" }}
               >
                 {/* Top Banner Header */}
                 <div 
@@ -199,9 +209,19 @@ export default function StudentIDCardModal({
                   <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-white/10 rounded-full blur-xl pointer-events-none" />
                   <div className="absolute -left-6 -top-6 w-24 h-24 bg-amber-400/20 rounded-full blur-xl pointer-events-none" />
 
-                  <div className="w-14 h-14 rounded-full bg-white p-1 shadow-md mb-2 flex items-center justify-center border-2 border-amber-400 shrink-0">
+                  <div 
+                    className="w-14 h-14 rounded-full bg-white p-1 shadow-md mb-2 flex items-center justify-center border-2 border-amber-400 shrink-0"
+                    style={{ width: '56px', height: '56px', minWidth: '56px', minHeight: '56px' }}
+                  >
                     {settings?.logo ? (
-                      <img src={settings.logo} alt="Logo" className="w-full h-full object-contain rounded-full" />
+                      <img 
+                        src={settings.logo} 
+                        alt="Logo" 
+                        className="w-full h-full object-contain rounded-full" 
+                        style={{ width: '48px', height: '48px', objectFit: 'contain' }}
+                        width={48}
+                        height={48}
+                      />
                     ) : (
                       <School size={28} className="text-emerald-800" />
                     )}
@@ -219,13 +239,19 @@ export default function StudentIDCardModal({
                 {/* Photo & Identity Core */}
                 <div className="flex-1 flex flex-col items-center justify-center px-4 py-2 text-center">
                   {/* Student Photo */}
-                  <div className="w-24 h-28 rounded-2xl border-2 border-amber-400/80 bg-slate-50 overflow-hidden shadow-md relative mb-3">
+                  <div 
+                    className="w-24 h-28 rounded-2xl border-2 border-amber-400/80 bg-slate-50 overflow-hidden shadow-md relative mb-3 shrink-0"
+                    style={{ width: '96px', height: '112px', minWidth: '96px', minHeight: '112px' }}
+                  >
                     {student.photo ? (
                       <img 
                         src={student.photo} 
                         alt={student.fullName} 
                         className="w-full h-full object-cover" 
                         referrerPolicy="no-referrer"
+                        style={{ width: '96px', height: '112px', objectFit: 'cover' }}
+                        width={96}
+                        height={112}
                       />
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
@@ -293,7 +319,7 @@ export default function StudentIDCardModal({
             {(activeSide === 'both' || activeSide === 'back') && (
               <div 
                 className="w-[336px] h-[520px] bg-white rounded-3xl shadow-xl overflow-hidden relative flex flex-col justify-between border border-slate-300 p-5 print:shadow-none print:border-slate-400"
-                style={{ fontFamily: "'Inter', sans-serif" }}
+                style={{ width: '336px', height: '520px', minWidth: '336px', minHeight: '520px', fontFamily: "'Inter', sans-serif" }}
               >
                 {/* Back Header */}
                 <div>
@@ -361,9 +387,16 @@ export default function StudentIDCardModal({
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {qrDataUrl ? (
-                      <img src={qrDataUrl} alt="QR" className="w-14 h-14 border border-slate-200 rounded-lg p-0.5" />
+                      <img 
+                        src={qrDataUrl} 
+                        alt="QR" 
+                        className="w-14 h-14 border border-slate-200 rounded-lg p-0.5" 
+                        style={{ width: '56px', height: '56px', objectFit: 'contain' }}
+                        width={56}
+                        height={56}
+                      />
                     ) : (
-                      <div className="w-14 h-14 bg-slate-100 rounded-lg" />
+                      <div className="w-14 h-14 bg-slate-100 rounded-lg" style={{ width: '56px', height: '56px' }} />
                     )}
                     <div className="text-[7.5px] text-slate-400 font-bold uppercase tracking-wider">
                       <span>SCAN TO VERIFY</span><br />

@@ -83,8 +83,7 @@ import { SUBJECTS, ACADEMIC_GROUPS, COMPULSORY_SUBJECTS } from "../constants";
 import { Admission, AdmissionStatus, Gender } from "../types";
 import { HighlightText } from "./HighlightText";
 import { toast } from "sonner";
-import html2canvas from "html2canvas-pro";
-import { jsPDF } from "jspdf";
+import { exportElementToPdf } from "../utils/documentExporter";
 import * as XLSX from "xlsx";
 import FeeReceipt from "./FeeReceipt";
 import AdmissionSlip from "./AdmissionSlip";
@@ -3739,41 +3738,22 @@ function AdmissionForm({
   const handlePrint = async () => {
     if (!previewRef.current) return;
 
-    const toastId = toast.loading("Preparing Admission Form PDF...");
+    const toastId = toast.loading("Preparing High-Fidelity Admission Form PDF...");
     try {
-      const canvas = await html2canvas(previewRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
-      const dataUrl = canvas.toDataURL('image/png', 1.0);
-
-      const imgProps = new Image();
-      imgProps.src = dataUrl;
-      await new Promise((resolve) => {
-        imgProps.onload = resolve;
+      await exportElementToPdf(previewRef.current, {
+        filename: `Admission-Form-${formData.fullName?.replace(/\s+/g, '_') || "Student"}`,
+        format: 'a4',
+        orientation: 'portrait',
+        pixelRatio: 2.5,
+        backgroundColor: '#ffffff',
+        marginMm: 6,
       });
-
-      const pdf = new jsPDF("p", "mm", "a4");
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 6;
-      const maxW = pageWidth - (margin * 2);
-      const maxH = pageHeight - (margin * 2);
-
-      const ratioW = maxW / imgProps.width;
-      const ratioH = maxH / imgProps.height;
-      const scale = Math.min(ratioW, ratioH);
-
-      const finalW = imgProps.width * scale;
-      const finalH = imgProps.height * scale;
-      const x = (pageWidth - finalW) / 2;
-      const y = (pageHeight - finalH) / 2;
-
-      pdf.addImage(dataUrl, "PNG", x, y, finalW, finalH);
-      pdf.save(`Admission-Form-${formData.fullName || "Student"}.pdf`);
       toast.dismiss(toastId);
       toast.success("Admission Form downloaded successfully!");
     } catch (err) {
       console.error("PDF generation error:", err);
       toast.dismiss(toastId);
-      toast.error("Failed to generate PDF. Use high-speed internet.");
+      toast.error("Failed to generate PDF");
     }
   };
 
@@ -3932,35 +3912,16 @@ function AdmissionForm({
   const downloadPreview = async () => {
     if (previewRef.current === null) return;
 
-    const toastId = toast.loading("Rendering A4 Admission Form...");
+    const toastId = toast.loading("Rendering High-Fidelity A4 Admission Form...");
     try {
-      const canvas = await html2canvas(previewRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
-      const dataUrl = canvas.toDataURL('image/png', 1.0);
-
-      const imgProps = new Image();
-      imgProps.src = dataUrl;
-      await new Promise((resolve) => {
-        imgProps.onload = resolve;
+      await exportElementToPdf(previewRef.current, {
+        filename: `Admission-Form-${formData.fullName?.replace(/\s+/g, '_') || "Student"}`,
+        format: 'a4',
+        orientation: 'portrait',
+        pixelRatio: 2.5,
+        backgroundColor: '#ffffff',
+        marginMm: 6,
       });
-
-      const pdf = new jsPDF("p", "mm", "a4");
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 6;
-      const maxW = pageWidth - (margin * 2);
-      const maxH = pageHeight - (margin * 2);
-
-      const ratioW = maxW / imgProps.width;
-      const ratioH = maxH / imgProps.height;
-      const scale = Math.min(ratioW, ratioH);
-
-      const finalW = imgProps.width * scale;
-      const finalH = imgProps.height * scale;
-      const x = (pageWidth - finalW) / 2;
-      const y = (pageHeight - finalH) / 2;
-
-      pdf.addImage(dataUrl, "PNG", x, y, finalW, finalH);
-      pdf.save(`Admission-Form-${formData.fullName || "Student"}.pdf`);
       toast.dismiss(toastId);
       toast.success("Admission Form downloaded as PDF!");
     } catch (err) {
