@@ -17,8 +17,12 @@ import {
   AlertCircle,
   Printer,
   History,
-  MessageSquare
+  MessageSquare,
+  Zap,
+  Trophy
 } from 'lucide-react';
+import BatchMarksEntry from './BatchMarksEntry';
+import ClassMeritList from './ClassMeritList';
 import { motion } from 'motion/react';
 import { 
   Table, 
@@ -270,6 +274,7 @@ export const generateProfessionalResultCard = (records: any[], data: any, doc: j
 
 
 export default function AcademicView({ data }: { data: any }) {
+  const [academicMode, setAcademicMode] = useState<'profiles' | 'batch_entry' | 'merit_list'>('profiles');
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedGroup, setSelectedGroup] = useState<string>("all");
   const [selectedSection, setSelectedSection] = useState<string>("all");
@@ -525,8 +530,8 @@ Hamara maqsad aapke bache ka roshan mustaqbil aur behtareen taleem hai. Kisi bhi
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-emerald-900">Academic Records</h2>
-          <p className="text-emerald-700/80">Profile-based system — all marks consolidated per student</p>
+          <h2 className="text-2xl font-bold text-emerald-900">Academic Records & Examination</h2>
+          <p className="text-emerald-700/80">Batch marks entry, class positions 1st/2nd/3rd, and consolidated student profiles</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" className="border-emerald-200 text-emerald-800"><Upload className="w-4 h-4 mr-2" /> Import Excel</Button>
@@ -534,7 +539,75 @@ Hamara maqsad aapke bache ka roshan mustaqbil aur behtareen taleem hai. Kisi bhi
         </div>
       </div>
 
-      <Card className="p-4 bg-white/60 backdrop-blur-md border border-emerald-100 shadow-sm rounded-xl space-y-4">
+      {/* Module Navigation Tabs */}
+      <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100/90 rounded-2xl border border-slate-200/80 max-w-fit shadow-inner">
+        <button
+          type="button"
+          onClick={() => setAcademicMode('profiles')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            academicMode === 'profiles'
+              ? 'bg-white text-emerald-900 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <User size={15} />
+          <span>Student Profiles & Result Cards</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setAcademicMode('batch_entry')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            academicMode === 'batch_entry'
+              ? 'bg-superior-teal text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Zap size={15} />
+          <span>⚡ Batch Marks Entry (Excel Mode)</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setAcademicMode('merit_list')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            academicMode === 'merit_list'
+              ? 'bg-amber-600 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Trophy size={15} />
+          <span>🏆 Class Positions & Merit List</span>
+        </button>
+      </div>
+
+      {/* Mode Views */}
+      {academicMode === 'batch_entry' && (
+        <BatchMarksEntry
+          students={data.students || []}
+          academicRecords={data.academicRecords || []}
+          onSaveBatchMarks={(records) => {
+            if (data.addBulkAcademicRecords) {
+              data.addBulkAcademicRecords(records);
+            } else if (data.addAcademicRecord) {
+              records.forEach(r => data.addAcademicRecord(r));
+            }
+          }}
+          predefinedSections={data.settings?.predefinedSections || []}
+          settings={data.settings}
+        />
+      )}
+
+      {academicMode === 'merit_list' && (
+        <ClassMeritList
+          students={data.students || []}
+          academicRecords={data.academicRecords || []}
+          predefinedSections={data.settings?.predefinedSections || []}
+          settings={data.settings}
+        />
+      )}
+
+      {academicMode === 'profiles' && (
+        <div className="space-y-6">
+          <Card className="p-4 bg-white/60 backdrop-blur-md border border-emerald-100 shadow-sm rounded-xl space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-emerald-600/50" />
@@ -849,6 +922,8 @@ Hamara maqsad aapke bache ka roshan mustaqbil aur behtareen taleem hai. Kisi bhi
             </div>
           </Tabs>
         </motion.div>
+      )}
+        </div>
       )}
 
       {/* Record Marks Modal */}

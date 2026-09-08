@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Calendar, Plus, X, Clock } from 'lucide-react';
+import { Search, Calendar, Plus, X, Clock, AlertCircle, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { safeLocalStorage } from '../utils/safeStorage';
 
@@ -44,6 +44,7 @@ export default function StaffTimetable({ staffList, timetableRecords = [], onAdd
   const [subject, setSubject] = useState<string>("");
   const [classRoom, setClassRoom] = useState<string>("Regular"); // repurposed as Lecture Type (Regular | Extra)
   const [section, setSection] = useState<string>("");
+  const [allowClashOverride, setAllowClashOverride] = useState<boolean>(false);
 
   useEffect(() => {
     if (timetableRecords.length > 0) {
@@ -74,9 +75,73 @@ export default function StaffTimetable({ staffList, timetableRecords = [], onAdd
 
   const staffEntries = entries.filter(e => e.staffId === selectedStaff?.id);
 
+  // Time conversion & overlap helper
+  const timeToMinutes = (t: string): number => {
+    if (!t) return 0;
+    const [h, m] = t.split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+
+  const timesOverlap = (startA: string, endA: string, startB: string, endB: string): boolean => {
+    const sA = timeToMinutes(startA);
+    const eA = timeToMinutes(endA);
+    const sB = timeToMinutes(startB);
+    const eB = timeToMinutes(endB);
+    return sA < eB && eA > sB;
+  };
+
+  // Live Clash Detection Engine
+  const detectedClash = React.useMemo(() => {
+    if (!selectedStaff || !startTime || !endTime) return null;
+
+    // 1. Teacher Clash: Same teacher already has a class in this day/time
+    const teacherConflict = entries.find(e =>
+      e.staffId === selectedStaff.id &&
+      e.day === day &&
+      timesOverlap(startTime, endTime, e.startTime, e.endTime)
+    );
+    if (teacherConflict) {
+      return {
+        type: 'teacher' as const,
+        title: 'Teacher Schedule Conflict!',
+        details: `${selectedStaff.fullName} is already assigned to "${teacherConflict.subject}" (${teacherConflict.section || 'General'}) from ${teacherConflict.startTime} to ${teacherConflict.endTime} on ${day}.`
+      };
+    }
+
+    // 2. Section Clash: Same section already occupied by another class
+    if (section) {
+      const sectionConflict = entries.find(e =>
+        e.day === day &&
+        (e.section || '').trim().toLowerCase() === section.trim().toLowerCase() &&
+        timesOverlap(startTime, endTime, e.startTime, e.endTime) &&
+        e.staffId !== selectedStaff.id
+      );
+      if (sectionConflict) {
+        const assignedTeacher = staffList.find(s => s.id === sectionConflict.staffId)?.fullName || 'Another teacher';
+        return {
+          type: 'section' as const,
+          title: 'Class / Section Occupancy Conflict!',
+          details: `Section "${section}" already has a lecture scheduled with ${assignedTeacher} ("${sectionConflict.subject}") from ${sectionConflict.startTime} to ${sectionConflict.endTime} on ${day}.`
+        };
+      }
+    }
+
+    return null;
+  }, [entries, selectedStaff, day, startTime, endTime, section, staffList]);
+
   const handleAddEntry = () => {
     if (!selectedStaff || !subject || !startTime || !endTime || !section) {
       toast.error('Please fill in required fields (Subject, Section, Start/End Time)');
+      return;
+    }
+
+    if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
+      toast.error('End time must be after start time.');
+      return;
+    }
+
+    if (detectedClash && !allowClashOverride) {
+      toast.error(`${detectedClash.title} Please resolve or enable "Override Clash" to proceed.`);
       return;
     }
 
@@ -95,13 +160,14 @@ export default function StaffTimetable({ staffList, timetableRecords = [], onAdd
       onAddEntry(newEntry);
     } else {
       saveEntries([...entries, newEntry]);
-      toast.success('Timetable entry added locally');
+      toast.success('Timetable entry added successfully');
     }
     
-    // reset form partly
+    // reset form partly & uncheck override
     setSubject("");
     setClassRoom("Regular");
     setSection("");
+    setAllowClashOverride(false);
   };
 
   const handleRemoveEntry = (id: string) => {
@@ -296,8 +362,47 @@ export default function StaffTimetable({ staffList, timetableRecords = [], onAdd
                   </div>
                 </div>
 
-                <Button onClick={handleAddEntry} className="w-full h-12 rounded-xl bg-superior-teal hover:bg-superior-teal/90 text-white font-bold">
-                  <Plus size={18} className="mr-2" /> Add to Timetable
+                {/* Live Timetable Clash Warning Banner */}
+                {detectedClash && (
+                  <div className="mb-6 p-4 rounded-xl border border-rose-200 bg-rose-50/90 text-rose-900 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                      <div className="space-y-1 text-left flex-1">
+                        <p className="font-bold text-sm text-rose-800 flex items-center gap-1.5">
+                          <span>{detectedClash.title}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-200 text-rose-800 uppercase tracking-wider font-extrabold">
+                            {detectedClash.type === 'teacher' ? 'Double-Booking' : 'Section Busy'}
+                          </span>
+                        </p>
+                        <p className="text-xs text-rose-700 leading-relaxed">
+                          {detectedClash.details}
+                        </p>
+                        <label className="flex items-center gap-2 pt-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={allowClashOverride}
+                            onChange={(e) => setAllowClashOverride(e.target.checked)}
+                            className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-rose-300"
+                          />
+                          <span className="text-xs font-bold text-rose-900 hover:text-rose-950">
+                            Allow override (Force assign despite clash)
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <Button 
+                  onClick={handleAddEntry} 
+                  className={`w-full h-12 rounded-xl text-white font-bold transition-all shadow-md ${
+                    detectedClash && !allowClashOverride
+                      ? 'bg-rose-600 hover:bg-rose-700 cursor-not-allowed opacity-90'
+                      : 'bg-superior-teal hover:bg-superior-teal/90'
+                  }`}
+                >
+                  <Plus size={18} className="mr-2" /> 
+                  {detectedClash && !allowClashOverride ? 'Resolve Conflict or Enable Override' : 'Add to Timetable'}
                 </Button>
               </CardContent>
             </Card>

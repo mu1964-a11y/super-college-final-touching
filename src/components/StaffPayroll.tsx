@@ -6,10 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Search, Calculator, Printer, CreditCard, Clock, FileText, ChevronLeft, Plus } from 'lucide-react';
+import { Search, Calculator, Printer, CreditCard, Clock, FileText, ChevronLeft, Plus, Download, Sparkles } from 'lucide-react';
 import { format, subMonths } from 'date-fns';
 import { toast } from 'sonner';
 import { safeLocalStorage } from '../utils/safeStorage';
+import StaffSalarySlipModal from './StaffSalarySlipModal';
 
 interface StaffPayrollProps {
   staffList: Staff[];
@@ -33,6 +34,7 @@ interface AdvanceEntry {
 export default function StaffPayroll({ staffList, advances = [], staffTimetable = [], attendanceRecords = [], onRecordAdvance, onUpdateAdvance }: StaffPayrollProps) {
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSlipModalOpen, setIsSlipModalOpen] = useState(false);
   
   // Payroll Parameters
   const [monthDays, setMonthDays] = useState(30);
@@ -112,6 +114,21 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
   
   const staffAdvances = localAdvances.filter(a => a.staffId === selectedStaff?.id);
   const totalRemainingAdvance = staffAdvances.reduce((sum, a) => sum + a.remainingBalance, 0);
+  const totalInitialAdvance = staffAdvances.reduce((sum, a) => sum + a.amount, 0);
+  const advanceRepaidAmount = Math.max(0, totalInitialAdvance - totalRemainingAdvance);
+  const advanceRepaidPercent = totalInitialAdvance > 0 ? Math.round((advanceRepaidAmount / totalInitialAdvance) * 100) : 0;
+
+  // Auto-suggest recommended monthly installment across active advances
+  const suggestedInstallment = useMemo(() => {
+    const activeAdvances = staffAdvances.filter(a => a.remainingBalance > 0);
+    if (activeAdvances.length === 0) return 0;
+    const calculated = activeAdvances.reduce((sum, a) => {
+      const months = Math.max(1, a.monthsCount || 1);
+      const monthlyQuota = Math.ceil(a.amount / months);
+      return sum + Math.min(monthlyQuota, a.remainingBalance);
+    }, 0);
+    return Math.min(totalRemainingAdvance, calculated);
+  }, [staffAdvances, totalRemainingAdvance]);
 
   const handleAutoCalculate = () => {
     if (!selectedStaff) return;
@@ -257,15 +274,13 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
         });
         saveAdvances(newAdvances);
       }
-      setAdvanceDeduction(0); // Reset after deduction
-      toast.success(`Salary Computed. RS ${advanceDeduction} recovered from advance balance.`);
+      toast.success(`Salary Computed. RS ${advanceDeduction.toLocaleString()} recovered from advance balance.`);
     } else {
       toast.success("Payslip Generated Successfully!");
     }
     
-    setTimeout(() => {
-      window.print();
-    }, 500);
+    // Open Official Payslip Modal with PDF/Image/Print options
+    setIsSlipModalOpen(true);
   };
 
   if (!selectedStaff) {
@@ -475,20 +490,52 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
             </CardHeader>
             <CardContent className="p-6 space-y-4">
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-                <span className="font-semibold text-slate-600 text-sm">Remaining Balance</span>
+                <div>
+                  <span className="font-semibold text-slate-600 text-xs block">Remaining Balance</span>
+                  <span className="text-[10px] text-slate-400">Total Borrowed: RS {totalInitialAdvance.toLocaleString()}</span>
+                </div>
                 <span className="font-bold text-superior-gold text-lg">RS {totalRemainingAdvance.toLocaleString()}</span>
               </div>
+
+              {/* Repayment Progress Tracker */}
+              {totalInitialAdvance > 0 && (
+                <div className="space-y-1.5 p-3 rounded-xl bg-slate-50/70 border border-slate-100">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-600">
+                    <span>Repaid Progress</span>
+                    <span>{advanceRepaidPercent}% ({advanceRepaidAmount.toLocaleString()} / {totalInitialAdvance.toLocaleString()})</span>
+                  </div>
+                  <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                    <div 
+                      className="bg-emerald-500 h-full rounded-full transition-all duration-500" 
+                      style={{ width: `${Math.min(100, Math.max(0, advanceRepaidPercent))}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {totalRemainingAdvance > 0 && (
                 <div className="space-y-2 mt-4 pt-4 border-t border-slate-100">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Deduct From This Month</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Deduct From This Month</label>
+                    {suggestedInstallment > 0 && (
+                      <button 
+                        type="button"
+                        onClick={() => setAdvanceDeduction(suggestedInstallment)}
+                        className="text-[11px] font-bold text-superior-teal hover:underline flex items-center gap-1"
+                      >
+                        <Sparkles size={12} /> Auto: RS {suggestedInstallment.toLocaleString()}
+                      </button>
+                    )}
+                  </div>
                   <Input 
                     type="number"
-                    value={advanceDeduction}
+                    value={advanceDeduction || ''}
                     onChange={(e) => setAdvanceDeduction(Number(e.target.value) || 0)}
                     max={totalRemainingAdvance}
                     className="h-12 bg-white border-slate-200 rounded-xl text-amber-600 font-bold"
+                    placeholder="0"
                   />
-                  <p className="text-[10px] text-slate-400">Max available to deduct: RS {totalRemainingAdvance}</p>
+                  <p className="text-[10px] text-slate-400">Max available to deduct: RS {totalRemainingAdvance.toLocaleString()}</p>
                 </div>
               )}
             </CardContent>
@@ -503,9 +550,16 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
                 <h2 className="text-3xl font-black mb-1">Superior Group of Colleges</h2>
                 <p className="text-slate-300 font-medium print:text-slate-600">Staff Payslip - {format(new Date(selectedMonth + '-01'), 'MMMM yyyy')}</p>
               </div>
-              <div className="text-right flex items-center gap-4 print:hidden">
-                 <Button onClick={handleGeneratePayslip} className="h-12 px-6 rounded-xl bg-white text-slate-800 hover:bg-slate-100 font-bold shadow-lg">
-                  <Printer size={18} className="mr-2" />
+              <div className="text-right flex items-center gap-3 print:hidden">
+                <Button 
+                  onClick={() => setIsSlipModalOpen(true)}
+                  className="h-12 px-5 rounded-xl bg-superior-teal text-white hover:bg-superior-teal/90 font-bold shadow-lg gap-2"
+                >
+                  <Download size={17} />
+                  Official Slip (PDF / Print)
+                </Button>
+                <Button onClick={handleGeneratePayslip} variant="outline" className="h-12 px-5 rounded-xl bg-white text-slate-800 hover:bg-slate-100 font-bold shadow-lg">
+                  <Printer size={18} className="mr-1.5" />
                   Print & Save
                 </Button>
               </div>
@@ -713,6 +767,29 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
           </Card>
         </div>
       </div>
+
+      {/* Official Staff Salary Slip Modal (PDF / Image / Print / Verification) */}
+      {selectedStaff && (
+        <StaffSalarySlipModal
+          isOpen={isSlipModalOpen}
+          onClose={() => setIsSlipModalOpen(false)}
+          staff={selectedStaff}
+          month={selectedMonth}
+          baseSalary={baseSalary}
+          extraAllowance={extraAllowance}
+          extraLecturesCount={extraLecturesCount}
+          extraLectureRate={extraLectureRate}
+          leavesTaken={leavesTaken}
+          leaveDeduction={leaveDeduction}
+          lateMinutes={lateMinutes}
+          lateDeduction={lateDeduction}
+          advanceDeduction={advanceDeduction}
+          netSalary={netSalary}
+          totalRemainingAdvance={totalRemainingAdvance}
+          totalLecturesCount={totalLecturesCount}
+          regularLecturesCount={regularLecturesCount}
+        />
+      )}
     </div>
   );
 }
