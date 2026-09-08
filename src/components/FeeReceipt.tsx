@@ -23,9 +23,24 @@ import { toast } from 'sonner';
 import { getUnifiedTransactions } from '../utils/fee';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas-pro';
+import QRCode from 'qrcode';
 
 export default function FeeReceipt({ student, settings }: { student: any, settings: any }) {
   const receiptRef = React.useRef<HTMLDivElement>(null);
+  const [qrCodeUrl, setQrCodeUrl] = React.useState<string>('');
+
+  React.useEffect(() => {
+    if (!student) return;
+    const verifyId = student.id || student.rollNo || student.studentId || '';
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://superiorcollegejahanian.com';
+    const qrPayload = `${origin}/?verify=receipt&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(student.rollNo || '')}`;
+
+    QRCode.toDataURL(qrPayload, {
+      width: 120,
+      margin: 1,
+      color: { dark: '#0f172a', light: '#ffffff' }
+    }).then(setQrCodeUrl).catch(console.error);
+  }, [student]);
 
   const getProgramInfo = () => {
     const group = (student.group || student.category || '').toLowerCase();
@@ -366,13 +381,28 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
             )}
           </div>
 
-          {/* Footer Signatures */}
-          <div className="flex justify-between px-4 pb-2 mt-auto">
-            <div className="text-center w-48 border-t-2 border-slate-200 pt-2 group">
+          {/* Footer Signatures & QR Verification */}
+          <div className="flex justify-between items-end px-4 pb-2 mt-auto">
+            <div className="text-center w-40 border-t-2 border-slate-200 pt-2 group">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 group-hover:text-slate-500 transition-colors">Treasury Officer</p>
               <p className="text-[7px] text-slate-300 font-bold mt-0.5">DEPARTMENT OF FINANCE</p>
             </div>
-            <div className="text-center w-48 border-t-2 border-slate-800 pt-2">
+
+            {/* Official Online Verification QR Code */}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl">
+              {qrCodeUrl ? (
+                <img src={qrCodeUrl} alt="Verify QR" className="w-11 h-11 border border-slate-300 rounded p-0.5 bg-white shrink-0" />
+              ) : (
+                <div className="w-11 h-11 bg-slate-200 rounded animate-pulse shrink-0" />
+              )}
+              <div className="text-left text-[8px] leading-tight">
+                <span className="font-black text-slate-800 uppercase block">Scan to Verify 🛡️</span>
+                <span className="text-slate-500 font-medium">Official College Portal</span>
+                <span className="font-mono text-[7px] text-emerald-700 block mt-0.5">SGC-VERIFIED</span>
+              </div>
+            </div>
+
+            <div className="text-center w-40 border-t-2 border-slate-800 pt-2">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-900">Registrar Verification</p>
               <p className="text-[7px] text-slate-500 font-bold mt-0.5 uppercase tracking-widest">Superior Group Records</p>
             </div>

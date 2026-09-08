@@ -60,6 +60,7 @@ import AcademicView from "./components/AcademicView";
 import WhatsAppCenterView from "./components/WhatsAppCenterView";
 import GlobalCommandPalette from "./components/GlobalCommandPalette";
 import StudentDossier360 from "./components/StudentDossier360";
+import PublicVerificationView from "./components/PublicVerificationView";
 import { Search } from "lucide-react";
 
 import { Settings as SettingsIcon } from "lucide-react";
@@ -898,6 +899,22 @@ export default function App() {
 
     setExpandedMenu(parentMenu || autoParent);
   };
+
+  const isVerifyMode = typeof window !== 'undefined' && (
+    new URLSearchParams(window.location.search).has('verify') ||
+    new URLSearchParams(window.location.search).has('v') ||
+    window.location.pathname.startsWith('/verify')
+  );
+
+  if (isVerifyMode) {
+    return (
+      <PublicVerificationView 
+        onGoToAdmin={() => {
+          window.location.href = window.location.origin + window.location.pathname;
+        }} 
+      />
+    );
+  }
 
   if (authLoading || (!user && !isBrandingLoaded) || (user && data.loading)) {
     return (

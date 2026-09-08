@@ -26,15 +26,9 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
 
   React.useEffect(() => {
     if (!admission) return;
-    const qrPayload = `SUPERIOR COLLEGE JAHANIAN - OFFICIAL ADMISSION\n` +
-      `Name: ${admission.fullName}\n` +
-      `Roll No: ${admission.collegeNo || admission.studentId || 'N/A'}\n` +
-      `Group: ${admission.group || 'N/A'}\n` +
-      `Section: ${admission.section || 'A'}\n` +
-      `Session: ${admission.session || settings?.academicSession || '2026-28'}\n` +
-      `Total Package: Rs. ${admission.totalPackage || 0}\n` +
-      `Received: Rs. ${admission.feeReceived || 0}\n` +
-      `Balance: Rs. ${(admission.totalPackage || 0) - (admission.feeReceived || 0)}`;
+    const verifyId = admission.collegeNo || admission.studentId || admission.id || '';
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://superiorcollegejahanian.com';
+    const qrPayload = `${origin}/?verify=admission&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(admission.collegeNo || '')}`;
 
     QRCode.toDataURL(qrPayload, {
       width: 140,

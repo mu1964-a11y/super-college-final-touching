@@ -18,6 +18,7 @@ import {
 import { Printer, Download, Building2, Calendar, FileText, CheckCircle2, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { calculateStudentFeeBreakdown } from "../lib/feeCalculations";
+import QRCode from "qrcode";
 
 interface BankChallanModalProps {
   isOpen: boolean;
@@ -75,6 +76,7 @@ export default function BankChallanModal({
     return d.toISOString().split("T")[0];
   });
   const [lateFeeFine, setLateFeeFine] = useState("500");
+  const [qrMap, setQrMap] = useState<Record<string, string>>({});
   const printRef = useRef<HTMLDivElement>(null);
 
   const uniqueSections = React.useMemo(() => {
@@ -90,6 +92,20 @@ export default function BankChallanModal({
     if (selectedSection === "all") return students;
     return students.filter((s) => (s.section || '').trim().toLowerCase() === selectedSection.toLowerCase());
   }, [students, selectedSection]);
+
+  // Generate Online Verification QR Codes for visible students
+  React.useEffect(() => {
+    visibleStudents.forEach(async (s) => {
+      if (qrMap[s.id]) return;
+      const verifyUrl = `${window.location.origin}/?verify=challan&id=${encodeURIComponent(s.id)}&roll=${encodeURIComponent(s.rollNo || s.id)}&sec=${encodeURIComponent(s.section || '')}`;
+      try {
+        const url = await QRCode.toDataURL(verifyUrl, { width: 90, margin: 1 });
+        setQrMap(prev => ({ ...prev, [s.id]: url }));
+      } catch (err) {
+        console.error("QR Code generation error:", err);
+      }
+    });
+  }, [visibleStudents]);
 
   if (!isOpen || !students || students.length === 0) return null;
 
@@ -385,6 +401,29 @@ export default function BankChallanModal({
 
                         {/* Footer & Signature Boxes */}
                         <div className="pt-2 border-t border-slate-200">
+                          {/* Verification QR Code Box */}
+                          <div className="flex items-center justify-between gap-1.5 mb-2 bg-slate-50 p-1 rounded border border-slate-200">
+                            <div className="flex items-center gap-1.5">
+                              {qrMap[student.id] ? (
+                                <img
+                                  src={qrMap[student.id]}
+                                  alt="Verify QR"
+                                  className="w-10 h-10 border border-slate-300 rounded bg-white p-0.5 shrink-0"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 bg-slate-200 rounded animate-pulse shrink-0" />
+                              )}
+                              <div className="text-[7.5px] leading-tight text-slate-600">
+                                <span className="font-black text-slate-900 block uppercase">Scan to Verify 🛡️</span>
+                                <span className="text-slate-500 font-medium">Official Online Portal</span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[7px] text-slate-400 block uppercase font-bold">Challan Ref</span>
+                              <span className="font-mono font-black text-[8px] text-slate-700">{challanNo}</span>
+                            </div>
+                          </div>
+
                           <div className="grid grid-cols-2 gap-2 text-center text-[8px] text-slate-500 mb-1">
                             <div className="border-t border-dashed border-slate-400 pt-1">
                               Depositor Signature

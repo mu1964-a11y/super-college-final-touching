@@ -37,13 +37,9 @@ export default function StudentIDCardModal({
 
   React.useEffect(() => {
     if (!student) return;
-    const qrPayload = `SUPERIOR GROUP OF COLLEGES - JAHANIAN\n` +
-      `Student: ${student.fullName}\n` +
-      `Roll No: ${student.collegeNo || student.id}\n` +
-      `Group: ${student.group || 'General'}\n` +
-      `Section: ${student.section || 'A'}\n` +
-      `Session: ${student.session || '2026-28'}\n` +
-      `Contact: ${student.fatherContact || student.contact || 'N/A'}`;
+    const verifyId = student.collegeNo || student.id || student.studentId || '';
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://superiorcollegejahanian.com';
+    const qrPayload = `${origin}/?verify=card&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(student.collegeNo || '')}`;
 
     QRCode.toDataURL(qrPayload, {
       width: 160,
