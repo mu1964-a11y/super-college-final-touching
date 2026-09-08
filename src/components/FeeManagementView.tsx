@@ -72,6 +72,7 @@ import { safeLocalStorage } from "../utils/safeStorage";
 
 import { getUnifiedTransactions } from "../utils/fee";
 import { useDebounce } from "../hooks/useDebounce";
+import { calculateStudentFeeBreakdown } from "../lib/feeCalculations";
 
 
 export default function FeeManagementView({
@@ -1839,6 +1840,57 @@ Baraye meherbani aakhri tareekh se qabal accounts office mein fee jama karwa kar
                 </Select>
               </div>
             </div>
+            {selectedStudent && (() => {
+              const breakdown = calculateStudentFeeBreakdown(selectedStudent);
+              return (
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500 font-bold uppercase text-[9.5px] tracking-wider">Current Installment:</span>
+                    <span className="font-mono font-black text-slate-800">Rs. {breakdown.currentInstallmentDue.toLocaleString()}</span>
+                  </div>
+                  {breakdown.previousArrears > 0 && (
+                    <div className="flex items-center justify-between text-xs bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1">
+                      <span className="text-rose-700 font-bold uppercase text-[9.5px] tracking-wider">★ Previous Arrears:</span>
+                      <span className="font-mono font-black text-rose-700">+ Rs. {breakdown.previousArrears.toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200">
+                    <span className="font-black text-slate-900 uppercase text-[10px] tracking-wider">Total Payable Now:</span>
+                    <span className="font-mono font-black text-emerald-700 text-sm">Rs. {breakdown.totalPayableBeforeDue.toLocaleString()}</span>
+                  </div>
+                  
+                  {/* Quick autofill buttons */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    {breakdown.currentInstallmentDue > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setPaymentAmount(String(breakdown.currentInstallmentDue))}
+                        className="text-[9px] font-black uppercase tracking-wider bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                      >
+                        Installment: {breakdown.currentInstallmentDue.toLocaleString()}
+                      </button>
+                    )}
+                    {breakdown.previousArrears > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setPaymentAmount(String(breakdown.totalPayableBeforeDue))}
+                        className="text-[9px] font-black uppercase tracking-wider bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                      >
+                        + Arrears: {breakdown.totalPayableBeforeDue.toLocaleString()}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setPaymentAmount(String(breakdown.totalBalance))}
+                      className="text-[9px] font-black uppercase tracking-wider bg-slate-200 hover:bg-slate-300 text-slate-800 px-2.5 py-1 rounded-lg transition-colors cursor-pointer ml-auto"
+                    >
+                      Full: {breakdown.totalBalance.toLocaleString()}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="space-y-2">
               <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
                 Amount To Receive (Rs.)
@@ -1853,7 +1905,7 @@ Baraye meherbani aakhri tareekh se qabal accounts office mein fee jama karwa kar
               />
               {selectedStudent && (
                 <p className="text-[10px] font-bold text-rose-500 italic uppercase">
-                  Current Balance: Rs.{" "}
+                  Remaining Arrears / Balance: Rs.{" "}
                   {(
                     (selectedStudent?.totalPackage || 0) -
                     (selectedStudent?.feeReceived || 0)

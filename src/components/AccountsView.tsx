@@ -95,11 +95,13 @@ import {
 export function parseExpenseDetails(exp: Expense) {
   const description = exp.description || '';
   let expenseType: 'Daily' | 'Monthly' | 'Operational' | 'General' = exp.expenseType || 'General';
-  let paidTo = exp.paidTo || '';
-  let voucherNo = exp.voucherNo || '';
+  let paidTo = exp.paidTo || (exp as any).paid_to || '';
+  let voucherNo = exp.voucherNo || (exp as any).voucher_no || '';
 
   if (!exp.expenseType) {
-    if (description.includes('[Daily]')) expenseType = 'Daily';
+    if (description.includes('[Bank Deposit]') || exp.category?.toLowerCase().includes('bank deposit') || (exp as any).expense_type === 'Bank Deposit') {
+      expenseType = 'Operational';
+    } else if (description.includes('[Daily]')) expenseType = 'Daily';
     else if (description.includes('[Monthly]')) expenseType = 'Monthly';
     else if (description.includes('[Operational]')) expenseType = 'Operational';
     else {
@@ -124,6 +126,7 @@ export function parseExpenseDetails(exp: Expense) {
     .replace(/\[(Daily|Monthly|Operational)\]/gi, '')
     .replace(/\[Paid to:[^\]]+\]/gi, '')
     .replace(/\[Voucher:[^\]]+\]/gi, '')
+    .replace(/\[Bank Deposit\]/gi, '')
     .trim();
 
   return {
@@ -149,6 +152,7 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
   const [incomeFilters, setIncomeFilters] = useState({ startDate: '', endDate: '', minAmount: '', maxAmount: '' });
   const [expenseFilters, setExpenseFilters] = useState({ startDate: '', endDate: '', minAmount: '', maxAmount: '' });
   const [isChallanModalOpen, setIsChallanModalOpen] = useState(false);
+  const [isBankDepositOpen, setIsBankDepositOpen] = useState(false);
   const [challanStudents, setChallanStudents] = useState<any[] | null>(null);
 
   const selectedStudent = data.students.find((s: Student) => s.id === selectedStudentId);
@@ -214,8 +218,26 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
     return fromIncomes + fromPendingAdmissions;
   }, [activeIncomes, data.students, data.admissions]);
 
+  const isBankDeposit = (exp: Expense) => {
+    const cat = (exp.category || '').toLowerCase();
+    const type = ((exp as any).expense_type || (exp as any).expenseType || '').toLowerCase();
+    return cat.includes('bank deposit') || type.includes('bank deposit');
+  };
+
+  const totalOperationalExpenses = React.useMemo(() => {
+    return (data.expenses || [])
+      .filter((exp: Expense) => !isBankDeposit(exp))
+      .reduce((acc: number, curr: Expense) => acc + (curr.amount || 0), 0);
+  }, [data.expenses]);
+
+  const totalBankDeposits = React.useMemo(() => {
+    return (data.expenses || [])
+      .filter((exp: Expense) => isBankDeposit(exp))
+      .reduce((acc: number, curr: Expense) => acc + (curr.amount || 0), 0);
+  }, [data.expenses]);
+
   const totalExpenses = (data.expenses || []).reduce((acc: number, curr: Expense) => acc + (curr.amount || 0), 0);
-  const netBalance = totalIncome - totalExpenses;
+  const netBalance = totalIncome - totalOperationalExpenses;
 
   // Filtered Expenses with multi-field search and nature filtering
   const filteredExpenses = React.useMemo(() => {
@@ -497,6 +519,10 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
 
       <Dialog open={isAddEntryOpen} onOpenChange={setIsAddEntryOpen}>
         <AddEntryDialog data={data} onClose={() => setIsAddEntryOpen(false)} />
+      </Dialog>
+
+      <Dialog open={isBankDepositOpen} onOpenChange={setIsBankDepositOpen}>
+        <BankDepositDialog data={data} onClose={() => setIsBankDepositOpen(false)} />
       </Dialog>
 
       {/* Delete Expense Confirmation Dialog */}
@@ -940,6 +966,15 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
               </Button>
 
               <Button 
+                onClick={() => setIsBankDepositOpen(true)}
+                variant="outline"
+                className="h-12 px-5 rounded-2xl border-blue-200 text-blue-700 hover:bg-blue-50 font-bold"
+              >
+                <Building2 size={16} className="mr-2 text-blue-600" />
+                Deposit to Bank
+              </Button>
+
+              <Button 
                 onClick={() => setIsAddEntryOpen(true)}
                 className="h-12 px-5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-lg shadow-rose-200"
               >
@@ -1181,7 +1216,11 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
 
         {/* Daily Cash Closing (Roznamcha / Day-Book) Tab */}
         <TabsContent value="daily-closing" className="space-y-6">
-          <DailyCashClosingTab data={data} activeIncomes={activeIncomes} />
+          <DailyCashClosingTab 
+            data={data} 
+            activeIncomes={activeIncomes} 
+            onOpenBankDeposit={() => setIsBankDepositOpen(true)} 
+          />
         </TabsContent>
       </Tabs>
 
@@ -1204,7 +1243,15 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
 // ---------------------------------------------------------------------------
 // Phase 3: Daily Cash Closing Dashboard & Roznamcha (Day-Book) Component
 // ---------------------------------------------------------------------------
-function DailyCashClosingTab({ data, activeIncomes }: { data: any; activeIncomes: any[] }) {
+function DailyCashClosingTab({ 
+  data, 
+  activeIncomes,
+  onOpenBankDeposit 
+}: { 
+  data: any; 
+  activeIncomes: any[];
+  onOpenBankDeposit?: () => void;
+}) {
   const [closingDate, setClosingDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [cashNotes, setCashNotes] = useState({
     n5000: "",
@@ -1219,6 +1266,32 @@ function DailyCashClosingTab({ data, activeIncomes }: { data: any; activeIncomes
   const [closingRemarks, setClosingRemarks] = useState("");
   const [isSendingDailyBriefing, setIsSendingDailyBriefing] = useState(false);
   const [journalTab, setJournalTab] = useState<"inflow" | "outflow">("inflow");
+
+  const isBankDeposit = (exp: any) => {
+    const cat = (exp.category || '').toLowerCase();
+    const type = (exp.expense_type || exp.expenseType || '').toLowerCase();
+    return cat.includes('bank deposit') || type.includes('bank deposit');
+  };
+
+  // Continuous Opening Balance (Yesterday's Closing Cash in Safe)
+  const openingSafeBalance = React.useMemo(() => {
+    // Inflows strictly before closingDate in Cash
+    const priorCashInflows = (activeIncomes || []).filter((inc: any) => {
+      const d = String(inc.date || '').split('T')[0];
+      if (!d || d >= closingDate) return false;
+      const m = (inc.paymentMethod || inc.type || '').toLowerCase();
+      return !m.includes('bank') && !m.includes('online') && !m.includes('cheque');
+    }).reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0);
+
+    // Prior safe outflows strictly before closingDate (both operational cash expenses & bank contra deposits)
+    const priorCashOutflows = (data.expenses || []).filter((exp: any) => {
+      const d = String(exp.date || '').split('T')[0];
+      if (!d || d >= closingDate) return false;
+      return true;
+    }).reduce((sum: number, exp: any) => sum + (Number(exp.amount) || 0), 0);
+
+    return priorCashInflows - priorCashOutflows;
+  }, [activeIncomes, data.expenses, closingDate]);
 
   // Filter incomes for the selected date
   const todayIncomes = React.useMemo(() => {
@@ -1257,13 +1330,23 @@ function DailyCashClosingTab({ data, activeIncomes }: { data: any; activeIncomes
 
   const totalInflowAll = dailyInflowCash + dailyInflowBank;
 
-  // Breakdown of Expenses: Cash outflow
-  const dailyOutflowCash = React.useMemo(() => {
-    return todayExpenses.reduce((sum: number, exp: any) => sum + (Number(exp.amount) || 0), 0);
+  // Breakdown of Expenses: Operational Cash Outflow vs Bank Contra Deposits
+  const dailyBankDeposits = React.useMemo(() => {
+    return todayExpenses
+      .filter((exp: any) => isBankDeposit(exp))
+      .reduce((sum: number, exp: any) => sum + (Number(exp.amount) || 0), 0);
   }, [todayExpenses]);
 
-  // Net Cash in Safe according to system transactions
-  const dailyNetCash = dailyInflowCash - dailyOutflowCash;
+  const dailyOutflowOperational = React.useMemo(() => {
+    return todayExpenses
+      .filter((exp: any) => !isBankDeposit(exp))
+      .reduce((sum: number, exp: any) => sum + (Number(exp.amount) || 0), 0);
+  }, [todayExpenses]);
+
+  const totalOutflowToday = dailyOutflowOperational + dailyBankDeposits;
+
+  // Expected Net Cash in Safe at Closing
+  const expectedClosingCashInSafe = openingSafeBalance + dailyInflowCash - totalOutflowToday;
 
   // Physical Currency Calculation
   const physicalCashTotal = React.useMemo(() => {
@@ -1280,7 +1363,7 @@ function DailyCashClosingTab({ data, activeIncomes }: { data: any; activeIncomes
   }, [cashNotes]);
 
   const isCountEntered = physicalCashTotal > 0 || Object.values(cashNotes).some((v) => Number(v) > 0);
-  const closingDiscrepancy = isCountEntered ? physicalCashTotal - dailyNetCash : 0;
+  const closingDiscrepancy = isCountEntered ? physicalCashTotal - expectedClosingCashInSafe : 0;
 
   // Quick Date Setters
   const setQuickDate = (daysAgo: number) => {
@@ -1307,15 +1390,17 @@ function DailyCashClosingTab({ data, activeIncomes }: { data: any; activeIncomes
 📊 *Daily Financial Closing Briefing (Roznamcha)*
 📅 *Date:* ${closingDate}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-💰 *Total Cash Collected (Inflow):* Rs. ${dailyInflowCash.toLocaleString()}
+🏦 *Opening Safe Balance (Carry Fwd):* Rs. ${openingSafeBalance.toLocaleString()}
+💰 *Today's Cash Inflow:* Rs. ${dailyInflowCash.toLocaleString()}
 💳 *Online / Bank Transfers:* Rs. ${dailyInflowBank.toLocaleString()}
-📉 *Daily Cash Expenses (Outflow):* Rs. ${dailyOutflowCash.toLocaleString()}
+📉 *Daily Operational Expenses:* Rs. ${dailyOutflowOperational.toLocaleString()}
+🏛️ *Cash Deposited to Bank (Contra):* Rs. ${dailyBankDeposits.toLocaleString()}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-💵 *System Net Cash In Safe:* Rs. ${dailyNetCash.toLocaleString()}
+💵 *Expected Net Cash In Safe:* Rs. ${expectedClosingCashInSafe.toLocaleString()}
 🪙 *Physical Cash Counted:* Rs. ${physicalCashTotal.toLocaleString()}
 ⚖️ *Reconciliation Status:* ${varianceText}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-📝 *Daily Activity:* ${todayIncomes.length} Inflows Processed | ${todayExpenses.length} Expense Vouchers
+📝 *Daily Activity:* ${todayIncomes.length} Inflows Processed | ${todayExpenses.length} Outflows
 ${closingRemarks ? `📌 *Closing Notes:* ${closingRemarks}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n` : ""}
 Accounts Department • Superior College Jahanian`;
 
@@ -1367,19 +1452,56 @@ Accounts Department • Superior College Jahanian`;
         theme: "grid",
         head: [["Closing Metric Head", "Amount (PKR)", "Remarks / Method"]],
         body: [
-          ["Cash Collections (Fees & Incomes)", `Rs. ${dailyInflowCash.toLocaleString()}`, `${todayIncomes.length} receipt transactions`],
-          ["Bank / Online Direct Collections", `Rs. ${dailyInflowBank.toLocaleString()}`, "Direct bank transfer / cheque"],
-          ["Gross Daily Inflow", `Rs. ${totalInflowAll.toLocaleString()}`, "Total revenue processed today"],
-          ["Petty Cash & Operational Expenses", `Rs. ${dailyOutflowCash.toLocaleString()}`, `${todayExpenses.length} expense vouchers`],
-          ["System Net Cash In Safe", `Rs. ${dailyNetCash.toLocaleString()}`, "Expected cash in safe"],
-          ["Physical Cash Counted (Denominations)", `Rs. ${physicalCashTotal.toLocaleString()}`, isCountEntered ? (closingDiscrepancy === 0 ? "100% Balanced" : closingDiscrepancy > 0 ? "Surplus" : "Shortage") : "Count pending"],
-          ["Audit Discrepancy / Variance", `Rs. ${closingDiscrepancy.toLocaleString()}`, closingDiscrepancy === 0 ? "RECONCILED" : "DISCREPANCY DETECTED"],
+          ["1. Opening Cash in Safe (Carry Forward)", `Rs. ${openingSafeBalance.toLocaleString()}`, "Balance from previous day's closing"],
+          ["2. Cash Collections (Fees & Incomes)", `Rs. ${dailyInflowCash.toLocaleString()}`, `${todayIncomes.length} receipt transactions`],
+          ["3. Bank / Online Direct Collections", `Rs. ${dailyInflowBank.toLocaleString()}`, "Direct bank transfer / cheque (Non-cash)"],
+          ["4. Gross Total Inflow Today", `Rs. ${totalInflowAll.toLocaleString()}`, "Total revenue processed today"],
+          ["5. Petty Cash & Operational Expenses", `Rs. ${dailyOutflowOperational.toLocaleString()}`, `${todayExpenses.filter((e: any) => !isBankDeposit(e)).length} operational vouchers`],
+          ["6. Cash Deposited to College Bank (Contra)", `Rs. ${dailyBankDeposits.toLocaleString()}`, `${todayExpenses.filter((e: any) => isBankDeposit(e)).length} bank deposit slips`],
+          ["7. Expected Net Closing Cash In Safe", `Rs. ${expectedClosingCashInSafe.toLocaleString()}`, "Opening + Inflows - Operational - Bank Transfers"],
+          ["8. Physical Cash Counted (Denominations)", `Rs. ${physicalCashTotal.toLocaleString()}`, isCountEntered ? (closingDiscrepancy === 0 ? "100% Balanced ✅" : closingDiscrepancy > 0 ? "Surplus" : "Shortage") : "Count pending"],
+          ["9. Audit Discrepancy / Variance", `Rs. ${closingDiscrepancy.toLocaleString()}`, closingDiscrepancy === 0 ? "RECONCILED & BALANCED ✅" : "DISCREPANCY DETECTED ⚠️"],
         ],
         headStyles: { fillColor: [11, 77, 69], textColor: 255, fontStyle: "bold" },
         styles: { fontSize: 9, cellPadding: 5 },
       });
 
-      let nextY = (doc as any).lastAutoTable.finalY + 25;
+      let nextY = (doc as any).lastAutoTable.finalY + 16;
+
+      // Currency Denominations breakdown in PDF
+      if (isCountEntered) {
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(30, 41, 59);
+        doc.text("Physical Currency Denomination Breakdown:", 40, nextY);
+
+        autoTable(doc, {
+          startY: nextY + 6,
+          theme: "plain",
+          head: [["Rs. 5000", "Rs. 1000", "Rs. 500", "Rs. 100", "Rs. 50", "Rs. 20", "Rs. 10", "Coins", "Total Counted"]],
+          body: [[
+            `x ${cashNotes.n5000 || 0}`,
+            `x ${cashNotes.n1000 || 0}`,
+            `x ${cashNotes.n500 || 0}`,
+            `x ${cashNotes.n100 || 0}`,
+            `x ${cashNotes.n50 || 0}`,
+            `x ${cashNotes.n20 || 0}`,
+            `x ${cashNotes.n10 || 0}`,
+            `Rs. ${cashNotes.coins || 0}`,
+            `Rs. ${physicalCashTotal.toLocaleString()}`
+          ]],
+          headStyles: { fillColor: [241, 245, 249], textColor: [51, 65, 85], fontStyle: "bold", fontSize: 8 },
+          styles: { fontSize: 8, cellPadding: 4, halign: "center" }
+        });
+
+        nextY = (doc as any).lastAutoTable.finalY + 20;
+      }
+
+      // Page break guard
+      if (nextY > 640) {
+        doc.addPage();
+        nextY = 40;
+      }
 
       // Inflow Details Table
       doc.setFontSize(11);
@@ -1416,24 +1538,25 @@ Accounts Department • Superior College Jahanian`;
       doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(30, 41, 59);
-      doc.text("2. Daily Cash Outflow (Expense Vouchers)", 40, nextY);
+      doc.text("2. Daily Cash Outflow & Bank Transfers", 40, nextY);
 
       autoTable(doc, {
         startY: nextY + 8,
         theme: "striped",
-        head: [["Voucher #", "Category", "Paid To", "Description", "Amount (PKR)"]],
+        head: [["Voucher / Ref #", "Type / Head", "Paid To / Bank", "Description", "Amount (PKR)"]],
         body: todayExpenses.length > 0
           ? todayExpenses.map((exp: any) => {
               const d = parseExpenseDetails(exp);
+              const isDeposit = isBankDeposit(exp);
               return [
-                d.voucherNo || "V-EXP",
-                exp.category || "Petty Cash",
-                d.paidTo || "-",
+                d.voucherNo || (isDeposit ? "BD-SLIP" : "V-EXP"),
+                isDeposit ? "Bank Deposit (Contra)" : (exp.category || "Petty Cash"),
+                d.paidTo || (isDeposit ? "College Bank Account" : "-"),
                 d.cleanDescription || exp.description || "-",
                 `Rs. ${(Number(exp.amount) || 0).toLocaleString()}`,
               ];
             })
-          : [["-", "No expenses recorded on this date", "-", "-", "Rs. 0"]],
+          : [["-", "No expenses or bank transfers on this date", "-", "-", "Rs. 0"]],
         headStyles: { fillColor: [225, 29, 72], textColor: 255 },
         styles: { fontSize: 8, cellPadding: 4 },
       });
@@ -1484,17 +1607,17 @@ Accounts Department • Superior College Jahanian`;
           <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
             <button
               onClick={() => setQuickDate(0)}
-              className={`px-3 py-1 text-[11px] font-black rounded-lg transition-all ${
+              className={`px-3 py-1 text-[11px] font-black rounded-lg transition-all cursor-pointer ${
                 closingDate === new Date().toISOString().split("T")[0]
-                  ? "bg-white text-superior-teal shadow-xs"
-                  : "text-slate-500 hover:text-slate-800"
+                  ? "bg-white text-superior-teal shadow-xs font-black"
+                  : "text-slate-500 hover:text-slate-800 font-bold"
               }`}
             >
               Today
             </button>
             <button
               onClick={() => setQuickDate(1)}
-              className="px-3 py-1 text-[11px] font-black rounded-lg text-slate-500 hover:text-slate-800 transition-all"
+              className="px-3 py-1 text-[11px] font-bold rounded-lg text-slate-500 hover:text-slate-800 transition-all cursor-pointer"
             >
               Yesterday
             </button>
@@ -1517,11 +1640,20 @@ Accounts Department • Superior College Jahanian`;
           </Badge>
         </div>
 
-        <div className="flex items-center gap-2.5 w-full md:w-auto">
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+          {onOpenBankDeposit && (
+            <Button
+              onClick={onOpenBankDeposit}
+              className="h-9 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs flex items-center gap-2 shadow-sm shadow-blue-200 cursor-pointer"
+            >
+              <Building2 size={15} />
+              Deposit to Bank (Contra)
+            </Button>
+          )}
           <Button
             onClick={exportRoznamchaPDF}
             variant="outline"
-            className="h-9 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs flex items-center gap-2"
+            className="h-9 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs flex items-center gap-2 cursor-pointer"
           >
             <Printer size={15} />
             Export Roznamcha PDF
@@ -1529,7 +1661,7 @@ Accounts Department • Superior College Jahanian`;
           <Button
             onClick={handleSendDailyWhatsAppBriefing}
             disabled={isSendingDailyBriefing}
-            className="h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-2 shadow-sm shadow-emerald-200"
+            className="h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-2 shadow-sm shadow-emerald-200 cursor-pointer"
           >
             <MessageSquare size={15} />
             {isSendingDailyBriefing ? "Sending..." : "WhatsApp Daily Briefing"}
@@ -1537,91 +1669,121 @@ Accounts Department • Superior College Jahanian`;
         </div>
       </div>
 
-      {/* 4 Financial Status Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Cash Inflow */}
-        <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between">
+      {/* 5 Financial Status Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+        {/* Card 1: Opening Safe Balance */}
+        <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              1. Opening in Safe
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+              <History size={16} />
+            </div>
+          </div>
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
-              Cash Inflow Today
+            <h3 className="text-xl font-black text-slate-800">
+              Rs. {openingSafeBalance.toLocaleString()}
+            </h3>
+            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+              Yesterday's carry forward
             </p>
-            <h3 className="text-2xl font-black text-emerald-600">
+          </div>
+        </div>
+
+        {/* Card 2: Cash Inflow Today */}
+        <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">
+              2. Cash Inflow Today
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <TrendingUp size={16} />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black text-emerald-600">
               Rs. {dailyInflowCash.toLocaleString()}
             </h3>
-            <p className="text-[10px] text-slate-500 font-semibold mt-1">
-              + Rs. {dailyInflowBank.toLocaleString()} online/bank
+            <p className="text-[10px] text-slate-500 font-semibold mt-0.5">
+              + Rs. {dailyInflowBank.toLocaleString()} bank/online
             </p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-            <TrendingUp size={22} />
           </div>
         </div>
 
-        {/* Total Cash Outflow */}
-        <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between">
+        {/* Card 3: Outflows (Ops + Bank) */}
+        <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-black text-rose-600 uppercase tracking-widest">
+              3. Cash Outflows
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+              <TrendingDown size={16} />
+            </div>
+          </div>
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
-              Cash Outflow (Expenses)
-            </p>
-            <h3 className="text-2xl font-black text-rose-600">
-              Rs. {dailyOutflowCash.toLocaleString()}
+            <h3 className="text-xl font-black text-rose-600">
+              Rs. {totalOutflowToday.toLocaleString()}
             </h3>
-            <p className="text-[10px] text-slate-500 font-semibold mt-1">
-              {todayExpenses.length} vouchers recorded
+            <p className="text-[10px] text-slate-500 font-semibold mt-0.5">
+              Rs. {dailyOutflowOperational.toLocaleString()} ops + Rs. {dailyBankDeposits.toLocaleString()} bank
             </p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-            <TrendingDown size={22} />
           </div>
         </div>
 
-        {/* System Net Cash in Safe */}
-        <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between">
+        {/* Card 4: System Net Cash in Safe */}
+        <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-black text-superior-teal uppercase tracking-widest">
+              4. System Safe Balance
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-teal-50 text-superior-teal flex items-center justify-center shrink-0">
+              <Wallet size={16} />
+            </div>
+          </div>
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
-              System Net Cash in Safe
-            </p>
-            <h3 className="text-2xl font-black text-slate-800">
-              Rs. {dailyNetCash.toLocaleString()}
+            <h3 className="text-xl font-black text-slate-900">
+              Rs. {expectedClosingCashInSafe.toLocaleString()}
             </h3>
-            <p className="text-[10px] text-slate-400 font-semibold mt-1">
-              Inflow - Outflow cash ledger
+            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+              Opening + Inflow - Outflows
             </p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-            <Wallet size={22} />
           </div>
         </div>
 
-        {/* Physical Cash Counted */}
-        <div className={`p-5 rounded-[2rem] border shadow-sm flex items-center justify-between transition-colors ${
+        {/* Card 5: Physical Cash Counted */}
+        <div className={cn(
+          "p-4 rounded-3xl border shadow-sm flex flex-col justify-between transition-colors",
           !isCountEntered
-            ? "bg-amber-50/50 border-amber-100"
+            ? "bg-amber-50/60 border-amber-200"
             : closingDiscrepancy === 0
-            ? "bg-emerald-50/50 border-emerald-100"
-            : "bg-rose-50/50 border-rose-100"
-        }`}>
+            ? "bg-emerald-50/60 border-emerald-200"
+            : "bg-rose-50/60 border-rose-200"
+        )}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">
+              5. Physical Count
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-white text-slate-700 flex items-center justify-center shrink-0 shadow-xs">
+              <Coins size={16} />
+            </div>
+          </div>
           <div>
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-              Physical Cash Counted
-            </p>
-            <h3 className="text-2xl font-black text-slate-900">
+            <h3 className="text-xl font-black text-slate-900">
               Rs. {physicalCashTotal.toLocaleString()}
             </h3>
-            <p className={`text-[10px] font-black mt-1 ${
+            <p className={cn(
+              "text-[10px] font-black mt-0.5",
               !isCountEntered ? "text-amber-700" : closingDiscrepancy === 0 ? "text-emerald-700" : "text-rose-700"
-            }`}>
+            )}>
               {!isCountEntered
-                ? "Enter notes breakdown below"
+                ? "Count pending ⏳"
                 : closingDiscrepancy === 0
-                ? "100% Balanced with System"
+                ? "100% BALANCED ✅"
                 : closingDiscrepancy > 0
-                ? `+Rs. ${closingDiscrepancy.toLocaleString()} (Surplus)`
-                : `-Rs. ${Math.abs(closingDiscrepancy).toLocaleString()} (Shortage)`}
+                ? `+Rs. ${closingDiscrepancy.toLocaleString()} Surplus`
+                : `-Rs. ${Math.abs(closingDiscrepancy).toLocaleString()} Shortage`}
             </p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-white shadow-xs text-slate-700 flex items-center justify-center shrink-0">
-            <Coins size={22} />
           </div>
         </div>
       </div>
@@ -1636,14 +1798,14 @@ Accounts Department • Superior College Jahanian`;
                 Roznamcha Day-Book Journal
               </h3>
               <p className="text-xs text-slate-400 font-semibold">
-                Chronological list of all transactions for {closingDate}
+                Chronological register for {closingDate}
               </p>
             </div>
 
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
               <button
                 onClick={() => setJournalTab("inflow")}
-                className={`px-3 py-1.5 text-xs font-black rounded-lg transition-all ${
+                className={`px-3 py-1.5 text-xs font-black rounded-lg transition-all cursor-pointer ${
                   journalTab === "inflow"
                     ? "bg-white text-emerald-700 shadow-xs"
                     : "text-slate-500 hover:text-slate-800"
@@ -1653,13 +1815,13 @@ Accounts Department • Superior College Jahanian`;
               </button>
               <button
                 onClick={() => setJournalTab("outflow")}
-                className={`px-3 py-1.5 text-xs font-black rounded-lg transition-all ${
+                className={`px-3 py-1.5 text-xs font-black rounded-lg transition-all cursor-pointer ${
                   journalTab === "outflow"
                     ? "bg-white text-rose-700 shadow-xs"
                     : "text-slate-500 hover:text-slate-800"
                 }`}
               >
-                Expenses ({todayExpenses.length})
+                Outflows ({todayExpenses.length})
               </button>
             </div>
           </div>
@@ -1710,8 +1872,9 @@ Accounts Department • Superior College Jahanian`;
               <Table>
                 <TableHeader>
                   <TableRow className="border-slate-100 hover:bg-transparent">
-                    <TableHead className="font-black text-slate-400 uppercase text-[10px]">Voucher / Head</TableHead>
-                    <TableHead className="font-black text-slate-400 uppercase text-[10px]">Paid To</TableHead>
+                    <TableHead className="font-black text-slate-400 uppercase text-[10px]">Voucher / Ref</TableHead>
+                    <TableHead className="font-black text-slate-400 uppercase text-[10px]">Category / Type</TableHead>
+                    <TableHead className="font-black text-slate-400 uppercase text-[10px]">Paid To / Bank</TableHead>
                     <TableHead className="font-black text-slate-400 uppercase text-[10px]">Description</TableHead>
                     <TableHead className="font-black text-slate-400 uppercase text-[10px] text-right">Amount</TableHead>
                   </TableRow>
@@ -1720,19 +1883,30 @@ Accounts Department • Superior College Jahanian`;
                   {todayExpenses.length > 0 ? (
                     todayExpenses.map((exp: any, i: number) => {
                       const d = parseExpenseDetails(exp);
+                      const isDeposit = isBankDeposit(exp);
                       return (
-                        <TableRow key={exp.id || i} className="hover:bg-slate-50/50">
+                        <TableRow key={exp.id || i} className={cn("hover:bg-slate-50/50", isDeposit && "bg-blue-50/30")}>
                           <TableCell className="font-bold text-slate-800 text-xs">
-                            <span className="font-mono text-[10px] text-slate-400 mr-1.5">{d.voucherNo || "V-EXP"}</span>
-                            {exp.category}
+                            <span className="font-mono text-[10px] text-slate-400">
+                              {d.voucherNo || (isDeposit ? "BD-SLIP" : "V-EXP")}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {isDeposit ? (
+                              <Badge className="bg-blue-100 text-blue-800 border-none font-bold text-[10px]">
+                                Bank Deposit (Contra)
+                              </Badge>
+                            ) : (
+                              <span className="text-xs font-semibold text-slate-700">{exp.category}</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-slate-600 text-xs">
-                            {d.paidTo || "-"}
+                            {d.paidTo || (isDeposit ? "College Bank Account" : "-")}
                           </TableCell>
                           <TableCell className="text-slate-500 text-xs truncate max-w-[150px]">
                             {d.cleanDescription || exp.description || "-"}
                           </TableCell>
-                          <TableCell className="font-black text-rose-600 text-xs text-right">
+                          <TableCell className={cn("font-black text-xs text-right", isDeposit ? "text-blue-600" : "text-rose-600")}>
                             Rs. {(Number(exp.amount) || 0).toLocaleString()}
                           </TableCell>
                         </TableRow>
@@ -1740,8 +1914,8 @@ Accounts Department • Superior College Jahanian`;
                     })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center py-12 text-slate-400 text-xs font-medium">
-                        No expenses recorded on this date.
+                      <TableCell colSpan={5} className="text-center py-12 text-slate-400 text-xs font-medium">
+                        No expenses or bank transfers recorded on this date.
                       </TableCell>
                     </TableRow>
                   )}
@@ -1778,7 +1952,7 @@ Accounts Department • Superior College Jahanian`;
                   coins: "",
                 })
               }
-              className="text-xs text-slate-400 hover:text-slate-600"
+              className="text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
             >
               Clear
             </Button>
@@ -1855,8 +2029,12 @@ Accounts Department • Superior College Jahanian`;
               </span>
             </div>
             <div className="flex justify-between items-center text-xs font-bold text-slate-500">
-              <span>System Safe Net Balance:</span>
-              <span className="font-mono">Rs. {dailyNetCash.toLocaleString()}</span>
+              <span>Expected Closing Safe Balance:</span>
+              <span className="font-mono text-slate-800">Rs. {expectedClosingCashInSafe.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center text-[11px] font-semibold text-slate-400">
+              <span>Opening Carry Forward:</span>
+              <span className="font-mono">Rs. {openingSafeBalance.toLocaleString()}</span>
             </div>
             <div
               className={`p-3 rounded-xl border text-xs font-black flex items-center justify-between ${
@@ -2586,7 +2764,44 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
           </div>
 
           {type === 'expense' ? (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
+              {/* Quick Autocomplete Expense Shortcut Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0 mr-1">
+                  Frequent:
+                </span>
+                {[
+                  { name: 'Printing & Stationery', type: 'Daily' },
+                  { name: 'Refreshment & Tea', type: 'Daily' },
+                  { name: 'Electricity Bill', type: 'Monthly' },
+                  { name: 'Generator Diesel & Fuel', type: 'Daily' },
+                  { name: 'Repair & Maintenance', type: 'Daily' },
+                  { name: 'Board Registration Fee', type: 'Operational' },
+                  { name: 'Flex & Advertising', type: 'Operational' },
+                  { name: 'Office Supplies', type: 'Daily' },
+                ].map(chip => (
+                  <button
+                    key={chip.name}
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => ({
+                        ...prev,
+                        category: chip.name,
+                        expenseType: chip.type as any,
+                      }));
+                    }}
+                    className={cn(
+                      "px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition-all border cursor-pointer shrink-0",
+                      formData.category === chip.name
+                        ? "bg-superior-teal text-white border-superior-teal shadow-xs"
+                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100 hover:border-slate-300"
+                    )}
+                  >
+                    {chip.name}
+                  </button>
+                ))}
+              </div>
+
               <Select value={formData.category} onValueChange={handleCategoryChange}>
                 <SelectTrigger className="w-full h-13 rounded-2xl bg-slate-50 border border-slate-200 hover:border-superior-teal/50 font-bold px-4 text-base shadow-sm transition-all flex items-center justify-between cursor-pointer">
                   <SelectValue placeholder="Select College Expense Head..." />
@@ -2777,6 +2992,205 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
             type="submit"
           >
             Save {type === 'expense' ? 'Expense Record' : 'Income Entry'}
+          </Button>
+        </div>
+      </form>
+    </DialogContent>
+  );
+}
+
+function BankDepositDialog({ data, onClose, defaultDate }: { data: any, onClose: () => void, defaultDate?: string }) {
+  const [bankName, setBankName] = useState('Meezan Bank');
+  const [customBank, setCustomBank] = useState('');
+  const [accountNo, setAccountNo] = useState('');
+  const [amount, setAmount] = useState('');
+  const [date, setDate] = useState(defaultDate || new Date().toISOString().split('T')[0]);
+  const [slipRef, setSlipRef] = useState('');
+  const [depositedBy, setDepositedBy] = useState('');
+  const [notes, setNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const POPULAR_BANKS = [
+    'Meezan Bank',
+    'Habib Bank Limited (HBL)',
+    'Bank of Punjab (BOP)',
+    'National Bank of Pakistan (NBP)',
+    'Allied Bank Limited (ABL)',
+    'United Bank Limited (UBL)',
+    'Bank Alfalah',
+    'Askari Bank'
+  ];
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalBank = bankName === '__custom__' ? customBank.trim() : bankName;
+    if (!finalBank || !amount || Number(amount) <= 0) {
+      toast.error('Please enter a valid bank name and deposit amount');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await data.recordBankDeposit({
+        bankName: finalBank,
+        accountNo: accountNo.trim() || 'Official College Account',
+        amount: Number(amount),
+        slipRef: slipRef.trim() || undefined,
+        depositedBy: depositedBy.trim() || data.currentUser?.email || 'Accounts Office',
+        date,
+        notes: notes.trim() || undefined
+      });
+      onClose();
+    } catch (err: any) {
+      toast.error(`Bank deposit failed: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <DialogContent className="w-[95vw] max-w-xl rounded-[2.5rem] p-6 sm:p-8 shadow-2xl border-slate-100 bg-white">
+      <DialogHeader className="pb-3 border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 shadow-inner">
+            <Building2 size={24} />
+          </div>
+          <div>
+            <DialogTitle className="text-xl sm:text-2xl font-display font-black text-slate-800 tracking-tight">
+              Deposit Cash to Bank (Contra)
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 font-medium">
+              Transfer physical cash from college safe to bank accounts without inflating expenses.
+            </DialogDescription>
+          </div>
+        </div>
+      </DialogHeader>
+
+      <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+        <div className="bg-blue-50/70 p-3 rounded-2xl border border-blue-100 flex items-center gap-3 text-xs text-blue-800">
+          <ShieldCheck size={18} className="text-blue-600 shrink-0" />
+          <span>
+            <strong>Contra Voucher:</strong> Deducts cash from the daily safe register and credits the selected bank account safely.
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500">Deposit Date *</Label>
+            <Input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="h-11 rounded-xl bg-slate-50 border-slate-200 font-medium text-sm px-3"
+              required
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500">Deposit Amount (Rs.) *</Label>
+            <Input
+              type="number"
+              min="1"
+              placeholder="0.00"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              className="h-11 rounded-xl bg-slate-50 border-slate-200 font-black text-lg text-blue-600 px-3"
+              required
+              autoFocus
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500">Target College Bank *</Label>
+          <Select value={bankName} onValueChange={setBankName}>
+            <SelectTrigger className="w-full h-11 rounded-xl bg-slate-50 border-slate-200 font-bold text-sm">
+              <SelectValue placeholder="Select Bank..." />
+            </SelectTrigger>
+            <SelectContent align="start" className="rounded-2xl border-slate-100 shadow-2xl p-2 bg-white max-h-[320px]">
+              {POPULAR_BANKS.map(b => (
+                <SelectItem key={b} value={b} className="py-2 px-3 rounded-xl text-sm font-semibold cursor-pointer">
+                  {b}
+                </SelectItem>
+              ))}
+              <SelectItem value="__custom__" className="py-2 px-3 rounded-xl text-sm font-bold text-blue-600 cursor-pointer">
+                + Other Bank / Custom Account
+              </SelectItem>
+            </SelectContent>
+          </Select>
+
+          {bankName === '__custom__' && (
+            <div className="pt-2">
+              <Input
+                placeholder="Enter custom bank name..."
+                value={customBank}
+                onChange={e => setCustomBank(e.target.value)}
+                className="h-11 rounded-xl bg-blue-50/50 border-blue-200 font-bold text-sm px-3"
+                autoFocus
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500">Bank Account # / IBAN</Label>
+            <Input
+              placeholder="e.g. 0102-0105829101"
+              value={accountNo}
+              onChange={e => setAccountNo(e.target.value)}
+              className="h-11 rounded-xl bg-slate-50 border-slate-200 text-sm px-3 font-mono"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500">Deposit Slip / Ref #</Label>
+            <Input
+              placeholder="e.g. SLIP-99824"
+              value={slipRef}
+              onChange={e => setSlipRef(e.target.value)}
+              className="h-11 rounded-xl bg-slate-50 border-slate-200 text-sm px-3"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500">Deposited By (Cashier)</Label>
+            <Input
+              placeholder="e.g. Muhammad Kashif"
+              value={depositedBy}
+              onChange={e => setDepositedBy(e.target.value)}
+              className="h-11 rounded-xl bg-slate-50 border-slate-200 text-sm px-3"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500">Remarks / Purpose</Label>
+            <Input
+              placeholder="e.g. Safe fee collection transfer"
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              className="h-11 rounded-xl bg-slate-50 border-slate-200 text-sm px-3"
+            />
+          </div>
+        </div>
+
+        <div className="pt-3 flex gap-3 border-t border-slate-100">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            className="flex-1 rounded-xl font-bold h-11 text-sm border-slate-200 cursor-pointer"
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            disabled={isSubmitting}
+            className="flex-1 rounded-xl font-bold h-11 text-sm bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200 cursor-pointer"
+          >
+            {isSubmitting ? "Recording Transfer..." : "Confirm Bank Deposit"}
           </Button>
         </div>
       </form>

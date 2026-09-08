@@ -15,8 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Printer, Download, Building2, Calendar, FileText, CheckCircle2 } from "lucide-react";
+import { Printer, Download, Building2, Calendar, FileText, CheckCircle2, Filter } from "lucide-react";
 import { toast } from "sonner";
+import { calculateStudentFeeBreakdown } from "../lib/feeCalculations";
 
 interface BankChallanModalProps {
   isOpen: boolean;
@@ -67,6 +68,7 @@ export default function BankChallanModal({
   settings,
 }: BankChallanModalProps) {
   const [selectedBankId, setSelectedBankId] = useState("meezan");
+  const [selectedSection, setSelectedSection] = useState<string>("all");
   const [dueDate, setDueDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 10);
@@ -74,6 +76,20 @@ export default function BankChallanModal({
   });
   const [lateFeeFine, setLateFeeFine] = useState("500");
   const printRef = useRef<HTMLDivElement>(null);
+
+  const uniqueSections = React.useMemo(() => {
+    const set = new Set<string>();
+    (students || []).forEach((s) => {
+      if (s.section && s.section.trim() !== '') set.add(s.section.trim());
+    });
+    return Array.from(set).sort();
+  }, [students]);
+
+  const visibleStudents = React.useMemo(() => {
+    if (!students || students.length === 0) return [];
+    if (selectedSection === "all") return students;
+    return students.filter((s) => (s.section || '').trim().toLowerCase() === selectedSection.toLowerCase());
+  }, [students, selectedSection]);
 
   if (!isOpen || !students || students.length === 0) return null;
 
@@ -91,15 +107,6 @@ export default function BankChallanModal({
       ""
     );
     return `SCJ-${year}-${cleanId.slice(-4) || String(idx + 1).padStart(4, "0")}`;
-  };
-
-  const calculatePayable = (student: any) => {
-    const balance =
-      (Number(student.totalPackage || 0) - Number(student.feeReceived || 0));
-    if (balance > 0) {
-      return Math.min(balance, Math.max(5000, Math.round(balance / 2)));
-    }
-    return Number(student.monthlyFee || 8000);
   };
 
   const numberToWords = (num: number): string => {
@@ -169,12 +176,36 @@ export default function BankChallanModal({
               />
             </div>
 
+            {uniqueSections.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <Filter size={13} className="text-slate-400" />
+                <Label className="text-xs font-bold text-slate-600 whitespace-nowrap">
+                  Section:
+                </Label>
+                <Select value={selectedSection} onValueChange={setSelectedSection}>
+                  <SelectTrigger className="h-8 w-32 text-xs font-bold bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs font-bold">
+                      All ({students.length})
+                    </SelectItem>
+                    {uniqueSections.map((sec) => (
+                      <SelectItem key={sec} value={sec} className="text-xs font-semibold">
+                        {sec}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <Button
               onClick={handlePrint}
               className="h-8 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-2 shadow-sm"
             >
               <Printer size={14} />
-              Print / Save PDF
+              Print / Save PDF ({visibleStudents.length})
             </Button>
           </div>
         </div>
@@ -182,11 +213,12 @@ export default function BankChallanModal({
         {/* Scrollable Printable Challan Canvas */}
         <div className="flex-1 overflow-y-auto p-6 bg-slate-200/70">
           <div ref={printRef} className="space-y-8 print:space-y-0 print:m-0">
-            {students.map((student, sIdx) => {
+            {visibleStudents.map((student, sIdx) => {
+              const breakdown = calculateStudentFeeBreakdown(student, new Date(dueDate));
               const challanNo = getChallanNo(student, sIdx);
-              const payable = calculatePayable(student);
               const lateFine = Number(lateFeeFine) || 0;
-              const totalAfterDue = payable + lateFine;
+              const payable = breakdown.totalPayableBeforeDue;
+              const totalAfterDue = breakdown.totalPayableAfterDue || (payable + lateFine);
               const copies = [
                 { label: "BANK COPY", bg: "bg-emerald-50", border: "border-emerald-600" },
                 { label: "COLLEGE COPY", bg: "bg-blue-50", border: "border-blue-600" },
@@ -294,7 +326,7 @@ export default function BankChallanModal({
                             </div>
                           </div>
 
-                          {/* Itemized Fee Breakdown Table */}
+                          {/* Itemized Fee Breakdown Table with Auto-Arrears */}
                           <div className="border border-slate-300 rounded overflow-hidden mb-2">
                             <table className="w-full text-[9px]">
                               <thead className="bg-slate-100 text-slate-700 font-black border-b border-slate-300">
@@ -306,15 +338,29 @@ export default function BankChallanModal({
                               <tbody className="divide-y divide-slate-200 font-semibold">
                                 <tr>
                                   <td className="py-1 px-1.5 text-slate-700">Tuition / Installment</td>
-                                  <td className="py-1 px-1.5 text-right font-mono">{payable.toLocaleString()}</td>
+                                  <td className="py-1 px-1.5 text-right font-mono font-bold">Rs. {breakdown.currentInstallmentDue.toLocaleString()}</td>
                                 </tr>
-                                <tr>
-                                  <td className="py-1 px-1.5 text-slate-500">Exam / Lab Charges</td>
-                                  <td className="py-1 px-1.5 text-right font-mono text-slate-400">0</td>
-                                </tr>
-                                <tr className="bg-slate-50 font-black text-[9.5px]">
-                                  <td className="py-1 px-1.5 text-slate-900">Within Due Date:</td>
-                                  <td className="py-1 px-1.5 text-right font-mono text-emerald-700">
+                                {breakdown.previousArrears > 0 && (
+                                  <tr className="bg-rose-50/50">
+                                    <td className="py-1 px-1.5 text-rose-700 font-bold">
+                                      ★ Previous Arrears (پچھلا بقایا)
+                                    </td>
+                                    <td className="py-1 px-1.5 text-right font-mono font-bold text-rose-700">
+                                      + Rs. {breakdown.previousArrears.toLocaleString()}
+                                    </td>
+                                  </tr>
+                                )}
+                                {breakdown.advanceBalance > 0 && (
+                                  <tr className="bg-emerald-50/50">
+                                    <td className="py-1 px-1.5 text-emerald-700 font-bold">Advance Credit</td>
+                                    <td className="py-1 px-1.5 text-right font-mono font-bold text-emerald-700">
+                                      - Rs. {breakdown.advanceBalance.toLocaleString()}
+                                    </td>
+                                  </tr>
+                                )}
+                                <tr className="bg-slate-100 font-black text-[9.5px]">
+                                  <td className="py-1.5 px-1.5 text-slate-900 uppercase">Within Due Date:</td>
+                                  <td className="py-1.5 px-1.5 text-right font-mono text-emerald-800 font-black">
                                     Rs. {payable.toLocaleString()}
                                   </td>
                                 </tr>
@@ -324,7 +370,7 @@ export default function BankChallanModal({
                                 </tr>
                                 <tr className="bg-rose-50 font-black text-[9.5px] border-t border-rose-200">
                                   <td className="py-1 px-1.5 text-rose-900">After Due Date:</td>
-                                  <td className="py-1 px-1.5 text-right font-mono text-rose-700">
+                                  <td className="py-1 px-1.5 text-right font-mono text-rose-700 font-black">
                                     Rs. {totalAfterDue.toLocaleString()}
                                   </td>
                                 </tr>

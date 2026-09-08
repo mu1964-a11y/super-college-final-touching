@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
 import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus } from '../../types';
+import { calculateStudentFeeBreakdown } from '../../lib/feeCalculations';
 
 export function useAccountsOperations(ctx: any) {
   const { generateStudentId, user, admissions, students, staff, expenses, setExpenses, fetchData, logActivity } = ctx;
@@ -142,58 +143,81 @@ export function useAccountsOperations(ctx: any) {
       const targetId = student?.id || admission?.id || studentId;
       const targetName = student?.fullName || admission?.fullName || fallbackName || 'Unknown Student';
 
-      // 1. Record in Income table
+      // Synchronized official receipt ID
+      const syncReceiptId = payment.receiptId || `REC-${new Date().getFullYear().toString().slice(-2)}-${Math.floor(100000 + Math.random() * 900000)}`;
+      const safePayment: FeePayment = {
+        ...payment,
+        receiptId: syncReceiptId,
+      };
+
+      // 1. Record in Income table (Roznamcha Inflow)
       const { error: incomeError } = await supabase.from('income').insert({
         student_id: targetId,
         student_name: targetName, 
-        fee_type: payment.feeType || 'Monthly Installment',
-        amount: payment.amountPaid,
-        month: payment.month,
-        year: payment.year,
-        date: payment.datePaid,
-        status: payment.status,
-        recorded_by: payment.collectedBy || user?.email || 'System'
+        fee_type: safePayment.feeType || 'Monthly Installment',
+        amount: safePayment.amountPaid,
+        month: safePayment.month,
+        year: safePayment.year,
+        date: safePayment.datePaid,
+        status: safePayment.status,
+        payment_method: (safePayment as any).paymentMethod || 'Cash',
+        recorded_by: safePayment.collectedBy || user?.email || 'System'
       });
       if (incomeError) throw incomeError;
 
       if (student) {
         // 2. Update Student Record Metadata
-        const newFeeReceived = (student.feeReceived || 0) + payment.amountPaid;
+        const newFeeReceived = (student.feeReceived || 0) + safePayment.amountPaid;
         const history = student.feeHistory || [];
-        const updatedHistory = [...history, payment];
+        const updatedHistory = [...history, safePayment];
 
-        // Calculate Proportional Distribution
+        const totalPkg = student.totalPackage || 0;
+        const remainingBalance = Math.max(0, totalPkg - newFeeReceived);
+
+        // Run smart installment breakdown to mark installments as Paid/Partial
+        const breakdown = calculateStudentFeeBreakdown({
+          ...student,
+          feeReceived: newFeeReceived,
+          totalPackage: totalPkg,
+        });
+
         const currentLedger = student.feeLedger || {
-          totalPackage: student.totalPackage || 0,
+          totalPackage: totalPkg,
           totalReceived: student.feeReceived || 0,
-          remainingBalance: (student.totalPackage || 0) - (student.feeReceived || 0),
+          remainingBalance: remainingBalance,
           installments: [],
           transactions: []
         };
 
-        const totalPkg = student.totalPackage || 0;
-        const remainingBalance = Math.max(0, totalPkg - newFeeReceived);
-        const totalInst = student.totalInstallments || 12;
-        const remainingInst = Math.max(0, totalInst - updatedHistory.length);
-        
-        const newMonthlyFee = remainingInst > 0 ? Math.ceil(remainingBalance / remainingInst) : 0;
-
         const transaction: FeeTransaction = {
           id: `tx-${Date.now()}`,
-          date: payment.datePaid,
-          amount: payment.amountPaid,
-          description: payment.feeType ? `${payment.feeType} (${payment.month} ${payment.year})` : `Installment Payment - ${payment.month} ${payment.year}`,
-          paymentMethod: 'Cash',
-          receiptId: `REC-${Date.now().toString().slice(-6)}`,
-          recordedBy: payment.collectedBy || user?.email || 'System'
+          date: safePayment.datePaid || new Date().toISOString().split('T')[0],
+          amount: safePayment.amountPaid,
+          description: safePayment.feeType ? `${safePayment.feeType} (${safePayment.month} ${safePayment.year})` : `Installment Payment - ${safePayment.month} ${safePayment.year}`,
+          paymentMethod: (safePayment as any).paymentMethod || 'Cash',
+          receiptId: syncReceiptId,
+          recordedBy: safePayment.collectedBy || user?.email || 'System'
         };
 
         const updatedLedger = {
           ...currentLedger,
+          totalPackage: totalPkg,
           totalReceived: newFeeReceived,
           remainingBalance: remainingBalance,
+          installments: breakdown.installments,
           transactions: [transaction, ...(currentLedger.transactions || [])]
         };
+
+        // Optimistic UI state update
+        if (ctx.setStudents) {
+          ctx.setStudents((prev: any[]) => prev.map(s => s.id === student.id ? {
+            ...s,
+            feeReceived: newFeeReceived,
+            feeHistory: updatedHistory,
+            feeLedger: updatedLedger,
+            monthlyFee: breakdown.monthlyTuition
+          } : s));
+        }
 
         const { error: studentUpdateError } = await supabase
           .from('students')
@@ -201,8 +225,8 @@ export function useAccountsOperations(ctx: any) {
             fee_received: newFeeReceived,
             fee_history: updatedHistory,
             fee_ledger: updatedLedger,
-            monthly_fee: newMonthlyFee,
-            total_package: student.totalPackage // Ensure sync
+            monthly_fee: breakdown.monthlyTuition,
+            total_package: totalPkg
           })
           .eq('id', student.id);
 
@@ -212,31 +236,47 @@ export function useAccountsOperations(ctx: any) {
         if (student.admissionId) {
           const linkedAdmission = admissions.find(a => a.id === student.admissionId);
           let admissionStatus: AdmissionStatus = linkedAdmission?.status || 'Not Paid';
-          const totalPkgAdmission = linkedAdmission?.totalPackage || student.totalPackage || 0;
+          const totalPkgAdmission = linkedAdmission?.totalPackage || totalPkg;
           
           if (newFeeReceived >= totalPkgAdmission && totalPkgAdmission > 0) admissionStatus = 'Full Paid';
           else if (newFeeReceived > 0) admissionStatus = 'Partial Paid';
+
+          if (ctx.setAdmissions) {
+            ctx.setAdmissions((prev: any[]) => prev.map(a => a.id === student.admissionId ? {
+              ...a,
+              feeReceived: newFeeReceived,
+              feeHistory: updatedHistory,
+              feeLedger: updatedLedger,
+              status: admissionStatus,
+              totalPackage: totalPkgAdmission
+            } : a));
+          }
 
           await supabase.from('admissions').update({ 
             fee_received: newFeeReceived,
             fee_history: updatedHistory,
             fee_ledger: updatedLedger,
             status: admissionStatus,
-            total_package: totalPkgAdmission // Ensure sync
+            total_package: totalPkgAdmission
           }).eq('id', student.admissionId);
         }
       } else if (admission) {
         // Update Admission only
-        const newFeeReceived = (admission.feeReceived || 0) + payment.amountPaid;
+        const newFeeReceived = (admission.feeReceived || 0) + safePayment.amountPaid;
         const history = admission.feeHistory || [];
-        const updatedHistory = [...history, payment];
+        const updatedHistory = [...history, safePayment];
 
         let admissionStatus: AdmissionStatus = admission.status || 'Not Paid';
         const totalPkg = admission.totalPackage || 0;
         if (newFeeReceived >= totalPkg && totalPkg > 0) admissionStatus = 'Full Paid';
         else if (newFeeReceived > 0) admissionStatus = 'Partial Paid';
 
-        // Calculate a basic ledger for admission if it doesn't exist
+        const breakdown = calculateStudentFeeBreakdown({
+          ...admission,
+          feeReceived: newFeeReceived,
+          totalPackage: totalPkg,
+        });
+
         const currentLedger = admission.feeLedger || {
           totalPackage: totalPkg,
           totalReceived: admission.feeReceived || 0,
@@ -247,16 +287,30 @@ export function useAccountsOperations(ctx: any) {
 
         const updatedLedger = {
           ...currentLedger,
+          totalPackage: totalPkg,
           totalReceived: newFeeReceived,
           remainingBalance: Math.max(0, totalPkg - newFeeReceived),
+          installments: breakdown.installments,
           transactions: [{
             id: `tx-adm-${Date.now()}`,
-            date: payment.datePaid,
-            amount: payment.amountPaid,
-            description: payment.feeType || 'Partial Fee Payment',
-            recordedBy: user?.email || 'System'
+            date: safePayment.datePaid || new Date().toISOString().split('T')[0],
+            amount: safePayment.amountPaid,
+            description: safePayment.feeType || 'Fee Payment',
+            paymentMethod: (safePayment as any).paymentMethod || 'Cash',
+            receiptId: syncReceiptId,
+            recordedBy: safePayment.collectedBy || user?.email || 'System'
           }, ...(currentLedger.transactions || [])]
         };
+
+        if (ctx.setAdmissions) {
+          ctx.setAdmissions((prev: any[]) => prev.map(a => a.id === admission.id ? {
+            ...a,
+            feeReceived: newFeeReceived,
+            status: admissionStatus,
+            feeHistory: updatedHistory,
+            feeLedger: updatedLedger
+          } : a));
+        }
 
         const { error: admissionUpdateError } = await supabase
           .from('admissions')
@@ -271,8 +325,9 @@ export function useAccountsOperations(ctx: any) {
         if (admissionUpdateError) throw admissionUpdateError;
       }
 
-      // await fetchData(true);
-      toast.success("Fee payment recorded and ledger updated!");
+      logActivity("Fee Collected", `Received Rs. ${safePayment.amountPaid.toLocaleString()} for ${targetName} (${syncReceiptId})`, "info");
+      toast.success(`Fee payment recorded! Receipt: ${syncReceiptId}`);
+      if (fetchData) fetchData(true);
     } catch (e: any) {
       console.error("Record Fee Error:", e);
       toast.error(`Failed to record fee: ${e.message}`);
@@ -406,11 +461,44 @@ export function useAccountsOperations(ctx: any) {
           recorded_by: user?.email
         });
 
-        // await fetchData(true);
         toast.success("Salary payment recorded");
+        if (fetchData) fetchData(true);
       } catch (e: any) {
-        toast.error(`Salary record failed: ${e.message}`);
+        toast.error(`Salary payment failed: ${e.message}`);
       }
     };
-  return { addIncome, addExpense, deleteExpense, recordFeePayment, recordFeeTransaction, updateInstallments, updateFeePackage, addSalaryPayment };
+
+    const recordBankDeposit = async (deposit: {
+      bankName: string;
+      accountNo: string;
+      amount: number;
+      slipRef?: string;
+      depositedBy?: string;
+      date: string;
+      notes?: string;
+    }) => {
+      try {
+        const desc = `[Bank Deposit] ${deposit.bankName} (${deposit.accountNo}) Ref: ${deposit.slipRef || 'N/A'}${deposit.notes ? ' - ' + deposit.notes : ''}`;
+        const { error } = await supabase.from('expenses').insert({
+          category: 'Bank Deposit (Contra)',
+          expense_type: 'Bank Deposit',
+          description: desc,
+          amount: Number(deposit.amount),
+          date: deposit.date,
+          added_by: deposit.depositedBy || user?.email || 'Admin',
+          payment_method: 'Bank Deposit',
+          paid_to: deposit.bankName,
+          voucher_no: deposit.slipRef || `BD-${Date.now().toString().slice(-6)}`
+        });
+        if (error) throw error;
+
+        logActivity("Bank Deposit", `Transferred Rs. ${Number(deposit.amount).toLocaleString()} from safe to ${deposit.bankName}`, "info");
+        toast.success(`Rs. ${Number(deposit.amount).toLocaleString()} deposited to ${deposit.bankName}!`);
+        if (fetchData) fetchData(true);
+      } catch (e: any) {
+        toast.error(`Bank deposit failed: ${e.message}`);
+      }
+    };
+
+  return { addIncome, addExpense, deleteExpense, recordFeePayment, recordFeeTransaction, updateInstallments, updateFeePackage, addSalaryPayment, recordBankDeposit };
 }
