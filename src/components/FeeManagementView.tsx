@@ -1478,24 +1478,24 @@ Baraye meherbani aakhri tareekh se qabal accounts office mein fee jama karwa kar
           <CardContent className="p-0 border-b-0">
             <div className="overflow-x-auto hide-scrollbar">
               <Table>
-                <TableHeader className="bg-slate-50/50 sticky top-0 z-10 shadow-sm border-b border-slate-100">
+                <TableHeader className="bg-slate-50/95 dark:bg-slate-900/95 sticky top-0 z-10 shadow-xs backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800">
                   <TableRow className="border-none">
-                    <TableHead className="font-black text-[10px] uppercase tracking-widest pl-8 h-12">
+                    <TableHead className="font-black text-[10px] uppercase tracking-widest pl-8 h-12 text-slate-600 dark:text-slate-400">
                       Student Profile
                     </TableHead>
-                    <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">
+                    <TableHead className="font-black text-[10px] uppercase tracking-widest h-12 text-slate-600 dark:text-slate-400">
                       Total Package
                     </TableHead>
-                    <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">
+                    <TableHead className="font-black text-[10px] uppercase tracking-widest h-12 text-slate-600 dark:text-slate-400">
                       Total Received
                     </TableHead>
-                    <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">
+                    <TableHead className="font-black text-[10px] uppercase tracking-widest h-12 text-slate-600 dark:text-slate-400">
                       Current Balance
                     </TableHead>
-                    <TableHead className="font-black text-[10px] uppercase tracking-widest h-12">
+                    <TableHead className="font-black text-[10px] uppercase tracking-widest h-12 text-slate-600 dark:text-slate-400">
                       Progress
                     </TableHead>
-                    <TableHead className="font-black text-[10px] uppercase tracking-widest text-right pr-8 h-12">
+                    <TableHead className="font-black text-[10px] uppercase tracking-widest text-right pr-8 h-12 text-slate-600 dark:text-slate-400">
                       Actions
                     </TableHead>
                   </TableRow>

@@ -372,7 +372,7 @@ export default function AdmissionsView({
       return (
         <Badge
           variant="outline"
-          className="bg-slate-100 text-slate-500 border-slate-200 font-black text-[9px] uppercase tracking-widest px-3 py-1 rounded-lg"
+          className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 font-black text-[9px] uppercase tracking-wider px-2.5 py-0.5 rounded-full"
         >
           Pending
         </Badge>
@@ -383,7 +383,7 @@ export default function AdmissionsView({
         return (
           <Badge
             variant="outline"
-            className="bg-emerald-50 text-emerald-600 border-emerald-100 font-black text-[9px] uppercase tracking-widest px-3 py-1 rounded-lg"
+            className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 font-black text-[9px] uppercase tracking-wider px-2.5 py-0.5 rounded-full"
           >
             Full Paid
           </Badge>
@@ -392,7 +392,7 @@ export default function AdmissionsView({
         return (
           <Badge
             variant="outline"
-            className="bg-amber-50 text-amber-600 border-amber-100 font-black text-[9px] uppercase tracking-widest px-3 py-1 rounded-lg"
+            className="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 font-black text-[9px] uppercase tracking-wider px-2.5 py-0.5 rounded-full"
           >
             Partial Paid
           </Badge>
@@ -401,7 +401,7 @@ export default function AdmissionsView({
         return (
           <Badge
             variant="outline"
-            className="bg-rose-50 text-rose-600 border-rose-100 font-black text-[9px] uppercase tracking-widest px-3 py-1 rounded-lg"
+            className="bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 font-black text-[9px] uppercase tracking-wider px-2.5 py-0.5 rounded-full"
           >
             Unpaid
           </Badge>
@@ -410,7 +410,7 @@ export default function AdmissionsView({
         return (
           <Badge
             variant="outline"
-            className="bg-blue-50 text-blue-600 border-blue-100 font-black text-[9px] uppercase tracking-widest px-3 py-1 rounded-lg"
+            className="bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 font-black text-[9px] uppercase tracking-wider px-2.5 py-0.5 rounded-full"
           >
             Confirmed
           </Badge>
@@ -419,7 +419,7 @@ export default function AdmissionsView({
         return (
           <Badge
             variant="outline"
-            className="bg-slate-50 text-slate-500 border-slate-100 font-black text-[9px] uppercase tracking-widest px-3 py-1 rounded-lg"
+            className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 font-black text-[9px] uppercase tracking-wider px-2.5 py-0.5 rounded-full"
           >
             {status || "Pending"}
           </Badge>
@@ -844,14 +844,19 @@ _Welcome to the Superior Family!_`;
       {/* Page Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
         <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-3xl font-display font-black text-superior-teal tracking-tight">
-              Admission Pipeline
-            </h2>
-            <span className="text-slate-300 text-2xl">/</span>
-            <span className="urdu-text text-2xl text-superior-gold font-medium">
-              ایڈمیشن پائپ لائن
-            </span>
+          <div className="flex flex-col items-start gap-1.5">
+            <div className="flex items-center gap-3">
+              <h2 className="text-3xl font-display font-black text-slate-900 dark:text-slate-100 tracking-tight">
+                Admission Pipeline
+              </h2>
+              <span className="text-slate-300 dark:text-slate-700 text-2xl">/</span>
+              <span className="urdu-text text-2xl text-superior-gold font-medium">
+                ایڈمیشن پائپ لائن
+              </span>
+            </div>
+            <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+              Session {data?.settings?.academicSession || "2026-28"} • Candidate Intake & Verification
+            </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -1066,37 +1071,37 @@ _Welcome to the Superior Family!_`;
         onValueChange={(val) => setLocalProgram(val)}
         className="w-full mb-6"
       >
-        <TabsList className="bg-slate-100 p-1.5 rounded-2xl w-full flex items-center justify-start overflow-x-auto scrollbar-hide h-auto border border-slate-200/50">
+        <TabsList className="bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-2xl w-full flex items-center justify-start overflow-x-auto scrollbar-hide h-auto border border-slate-200/70 dark:border-slate-700/80">
           <TabsTrigger
             value="all"
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
           >
             All Groups
           </TabsTrigger>
           <TabsTrigger
             value="fsc"
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
           >
             <School size={15} className="mr-2 inline-block" />
             Inter
           </TabsTrigger>
           <TabsTrigger
             value="dit"
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
           >
             <GraduationCap size={15} className="mr-2 inline-block" />
             DIT
           </TabsTrigger>
           <TabsTrigger
             value="ukl3"
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
           >
             <Globe size={15} className="mr-2 inline-block" />
             UKL3
           </TabsTrigger>
           <TabsTrigger
             value="bs"
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
           >
             <GraduationCap size={15} className="mr-2 inline-block" />
             BS
@@ -1105,9 +1110,9 @@ _Welcome to the Superior Family!_`;
       </Tabs>
 
       <div className="space-y-4 mb-6">
-        <div className="bg-[#053b32] rounded-[1.5rem] p-3 shadow-xl text-white relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-superior-gold/5 blur-3xl -translate-y-1/2 translate-x-1/2 rounded-full pointer-events-none" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 relative z-10">
+        <div className="bg-gradient-to-r from-[#064e43] via-[#053d34] to-[#042822] rounded-3xl p-3.5 shadow-xl text-white relative overflow-hidden border border-emerald-500/20">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-superior-gold/10 blur-3xl -translate-y-1/2 translate-x-1/2 rounded-full pointer-events-none" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 relative z-10">
             <SummaryCard
               label="Overall Applicant Pipeline"
               value={summaryStats.total}

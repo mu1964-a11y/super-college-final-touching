@@ -383,34 +383,37 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
       {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
         <div>
-          <div className="flex flex-col items-start gap-1">
+          <div className="flex flex-col items-start gap-1.5">
             <div className="flex items-center gap-3">
-              <h3 className="text-3xl font-display font-black text-superior-teal tracking-tight">
+              <h3 className="text-3xl font-display font-black text-slate-900 dark:text-slate-100 tracking-tight">
                 {gender === 'Male' ? 'Boys Campus' : gender === 'Female' ? 'Girls Campus' : 'Student Records'}
               </h3>
-              <span className="text-slate-300 text-2xl">/</span>
+              <span className="text-slate-300 dark:text-slate-700 text-2xl">/</span>
               <span className="urdu-text text-2xl text-superior-gold font-medium">
                 {gender === 'Male' ? 'بوائز کیمپس' : gender === 'Female' ? 'گرلز کیمپس' : 'طلباء کا ریکارڈ'}
               </span>
             </div>
+            <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+              Live Enrollment Directory & Academic Folders
+            </p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex gap-2">
-            <Button onClick={handleExportPDF} variant="outline" className="h-14 rounded-[2rem] border-slate-200 text-slate-600 hover:text-red-600 hover:bg-red-50 hover:border-red-100 flex items-center gap-2">
-              <Download size={18} /> PDF
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex gap-2.5">
+            <Button onClick={handleExportPDF} variant="outline" className="h-12 px-5 rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center gap-2 font-black text-[10px] uppercase tracking-wider shadow-2xs">
+              <Download size={16} className="text-rose-500" /> PDF
             </Button>
-            <Button onClick={handleExportExcel} variant="outline" className="h-14 rounded-[2rem] border-slate-200 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 hover:border-emerald-100 flex items-center gap-2">
-              <Download size={18} /> Excel
+            <Button onClick={handleExportExcel} variant="outline" className="h-12 px-5 rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 flex items-center gap-2 font-black text-[10px] uppercase tracking-wider shadow-2xs">
+              <Download size={16} className="text-emerald-500" /> Excel
             </Button>
           </div>
-          <div className="bg-white px-8 py-4 rounded-[2rem] border border-slate-100 flex items-center gap-6 shadow-sm">
+          <div className="bg-white dark:bg-slate-900 px-6 py-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 flex items-center gap-4 shadow-sm">
             <div className="text-right">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Total Students</p>
-              <p className="text-3xl font-display font-black text-superior-teal leading-none">{filteredStudents.length}</p>
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Total Enrolled</p>
+              <p className="text-2xl font-display font-black text-slate-900 dark:text-slate-100 leading-tight">{filteredStudents.length}</p>
             </div>
-            <div className="w-14 h-14 rounded-2xl bg-superior-teal/5 flex items-center justify-center text-superior-teal shadow-inner">
-              <GraduationCap size={28} />
+            <div className="w-11 h-11 rounded-xl bg-superior-teal/10 dark:bg-superior-gold/10 flex items-center justify-center text-superior-teal dark:text-superior-gold shadow-inner">
+              <GraduationCap size={22} />
             </div>
           </div>
         </div>
@@ -760,19 +763,19 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           ))}
         </div>
       ) : (
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden auto-mx-4">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden auto-mx-4">
           <Table>
-            <TableHeader className="bg-slate-50/50">
-              <TableRow>
-                <TableHead className="w-[50px]"></TableHead>
-                <TableHead>Student Details</TableHead>
-                <TableHead>Program/Class</TableHead>
-                <TableHead>Section</TableHead>
-                <TableHead>Subjects</TableHead>
-                <TableHead>Contact Info</TableHead>
-                <TableHead>Total Package</TableHead>
-                <TableHead>Balance</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+            <TableHeader className="bg-slate-50/90 dark:bg-slate-900/90 sticky top-0 z-10 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800">
+              <TableRow className="border-none">
+                <TableHead className="w-[50px] pl-6"></TableHead>
+                <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">Student Details</TableHead>
+                <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">Program/Class</TableHead>
+                <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">Section</TableHead>
+                <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">Subjects</TableHead>
+                <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">Contact Info</TableHead>
+                <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">Total Package</TableHead>
+                <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">Balance</TableHead>
+                <TableHead className="text-right font-black text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400 pr-6">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

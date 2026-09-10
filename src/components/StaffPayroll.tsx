@@ -285,20 +285,20 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
 
   if (!selectedStaff) {
     return (
-      <Card className="bg-white border-none shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden">
-        <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-8">
+      <Card className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm rounded-2xl overflow-hidden">
+        <CardHeader className="bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800 p-6 sm:p-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <CardTitle className="text-2xl font-black text-slate-800">Payroll Management</CardTitle>
-              <CardDescription className="text-slate-500 mt-2 text-base">Select a staff member to compute salary, manage attendance deductions and advances.</CardDescription>
+              <CardTitle className="text-2xl font-black text-slate-800 dark:text-white">Payroll Management</CardTitle>
+              <CardDescription className="text-slate-500 dark:text-slate-400 mt-1 text-sm">Select a staff member to compute salary, manage attendance deductions and advances.</CardDescription>
             </div>
             <div className="relative w-full md:w-72">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
               <Input
                 placeholder="Search staff by ID or Name..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 h-12 bg-white border-slate-200 rounded-xl w-full text-sm font-medium"
+                className="pl-11 h-11 bg-white dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700 rounded-xl w-full text-sm font-medium text-slate-800 dark:text-slate-100"
               />
             </div>
           </div>
@@ -306,36 +306,36 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
         <CardContent className="p-0">
           <div className="max-h-[600px] overflow-auto">
             <Table>
-              <TableHeader className="bg-slate-50 sticky top-0 z-10 hidden md:table-header-group">
-                <TableRow className="border-slate-100">
-                  <TableHead className="font-bold text-slate-600">Staff ID</TableHead>
-                  <TableHead className="font-bold text-slate-600">Name & Role</TableHead>
-                  <TableHead className="font-bold text-slate-600">Base Salary</TableHead>
-                  <TableHead className="font-bold text-slate-600 text-right">Action</TableHead>
+              <TableHeader className="bg-slate-50/90 dark:bg-slate-800/80 sticky top-0 z-10 backdrop-blur-md hidden md:table-header-group">
+                <TableRow className="border-slate-200/80 dark:border-slate-800">
+                  <TableHead className="font-bold text-slate-600 dark:text-slate-300">Staff ID</TableHead>
+                  <TableHead className="font-bold text-slate-600 dark:text-slate-300">Name & Role</TableHead>
+                  <TableHead className="font-bold text-slate-600 dark:text-slate-300">Base Salary</TableHead>
+                  <TableHead className="font-bold text-slate-600 dark:text-slate-300 text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredStaff.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="h-64 text-center text-slate-500">
+                    <TableCell colSpan={4} className="h-64 text-center text-slate-500 dark:text-slate-400">
                       No staff members found matching your search.
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredStaff.map((staff) => (
-                    <TableRow key={staff.id} className="border-slate-50 hover:bg-slate-50/80 transition-colors">
-                      <TableCell className="font-mono text-sm font-bold text-slate-600">{staff.id}</TableCell>
+                    <TableRow key={staff.id} className="border-slate-100 dark:border-slate-800/60 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                      <TableCell className="font-mono text-sm font-bold text-slate-600 dark:text-slate-400">{staff.id}</TableCell>
                       <TableCell>
-                        <p className="font-bold text-slate-800">{staff.fullName}</p>
-                        <p className="text-xs text-slate-500 font-medium">{staff.role}</p>
+                        <p className="font-bold text-slate-800 dark:text-white">{staff.fullName}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{staff.role}</p>
                       </TableCell>
-                      <TableCell className="font-semibold text-slate-700">
+                      <TableCell className="font-semibold text-slate-700 dark:text-slate-300">
                         RS {(staff.baseSalary || staff.salary || 0).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button 
                           variant="outline" 
-                          className="rounded-xl border-superior-teal/30 text-superior-teal hover:bg-superior-teal hover:text-white"
+                          className="rounded-xl border-emerald-600/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-600 hover:text-white dark:hover:bg-emerald-600 transition-all font-semibold"
                           onClick={() => {
                             setSelectedStaff(staff);
                             setLeavesTaken(0);
@@ -371,10 +371,10 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column Config */}
         <div className="lg:col-span-1 space-y-6 print:hidden">
-          <Card className="bg-white border-none shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden">
-            <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-6">
-              <CardTitle className="text-lg font-black text-slate-800 flex items-center gap-2">
-                <Clock className="text-superior-teal" size={20} />
+          <Card className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm rounded-2xl overflow-hidden">
+            <CardHeader className="bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800 p-6">
+              <CardTitle className="text-lg font-black text-slate-800 dark:text-white flex items-center gap-2">
+                <Clock className="text-emerald-600 dark:text-emerald-400" size={20} />
                 Attendance Config
               </CardTitle>
             </CardHeader>
@@ -383,10 +383,10 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">Payroll Month</label>
                   <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                    <SelectTrigger className="h-12 bg-slate-50 border-slate-200 rounded-xl font-medium">
+                    <SelectTrigger className="h-12 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-800 dark:text-slate-100">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="rounded-xl border-none shadow-xl">
+                    <SelectContent className="rounded-xl border-slate-200 dark:border-slate-800 dark:bg-slate-900 shadow-xl">
                       {[0, 1, 2, 3, 4, 5, 6].map(i => {
                         const date = subMonths(new Date(), i);
                         const val = format(date, 'yyyy-MM');
@@ -402,7 +402,7 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
                     type="number"
                     value={monthDays}
                     onChange={(e) => setMonthDays(Number(e.target.value) || 1)}
-                    className="h-12 bg-slate-50 border-slate-200 rounded-xl"
+                    className="h-12 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 font-medium"
                   />
                   <p className="text-[10px] text-slate-400">Used for Daily Rate calculation</p>
                 </div>
@@ -413,7 +413,7 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
                     type="time"
                     value={collegeStartTime}
                     onChange={(e) => setCollegeStartTime(e.target.value)}
-                    className="h-12 bg-slate-50 border-slate-200 rounded-xl"
+                    className="h-12 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 font-medium"
                   />
                 </div>
 
@@ -423,7 +423,7 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
                     type="number"
                     value={hoursPerDay}
                     onChange={(e) => setHoursPerDay(Number(e.target.value) || 1)}
-                    className="h-12 bg-slate-50 border-slate-200 rounded-xl"
+                    className="h-12 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 font-medium"
                     step="0.5"
                   />
                   <p className="text-[10px] text-slate-400">Determines expected check-out time.</p>
@@ -432,79 +432,85 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
             </CardContent>
           </Card>
 
-          <Card className="bg-white border-none shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden pb-4">
-            <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-6 flex flex-row items-center justify-between">
-              <CardTitle className="text-lg font-black text-slate-800 flex items-center gap-2">
-                <CreditCard className="text-superior-gold" size={20} />
+          <Card className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm rounded-2xl overflow-hidden pb-4">
+            <CardHeader className="bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800 p-6 flex flex-row items-center justify-between">
+              <CardTitle className="text-lg font-black text-slate-800 dark:text-white flex items-center gap-2">
+                <CreditCard className="text-amber-500" size={20} />
                 Advances
               </CardTitle>
               <Dialog open={isAdvanceDialogOpen} onOpenChange={setIsAdvanceDialogOpen}>
                 <DialogTrigger render={
-                  <Button variant="outline" size="sm" className="rounded-xl border-slate-200 text-slate-600 font-semibold hover:bg-superior-gold/10 hover:text-superior-gold">
+                  <Button variant="outline" size="sm" className="rounded-xl border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold hover:bg-amber-500/10 hover:text-amber-600">
                     <Plus size={16} className="mr-1" /> Issue
                   </Button>
                 } />
-                <DialogContent className="rounded-[2rem] border-none shadow-2xl p-8 max-w-md">
+                <DialogContent className="rounded-2xl border-slate-200 dark:border-slate-800 dark:bg-slate-900 shadow-2xl p-8 max-w-md">
                   <DialogHeader>
-                    <DialogTitle className="text-2xl font-black text-slate-800">Issue Advance Salary</DialogTitle>
-                    <DialogDescription className="text-slate-500">Record a new advance payment for {selectedStaff.fullName}.</DialogDescription>
+                    <DialogTitle className="text-2xl font-black text-slate-800 dark:text-white">Issue Advance Salary</DialogTitle>
+                    <DialogDescription className="text-slate-500 dark:text-slate-400">Record a new advance payment for {selectedStaff.fullName}.</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-6 mt-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-bold text-slate-600">Advance Amount (RS)</label>
+                      <label className="text-sm font-bold text-slate-600 dark:text-slate-300">Advance Amount (RS)</label>
                       <Input 
                         type="number" 
                         value={advanceAmount || ''}
                         onChange={(e) => setAdvanceAmount(Number(e.target.value))}
-                        className="h-14 font-mono text-lg rounded-xl bg-slate-50 border-slate-200" 
+                        className="h-14 font-mono text-lg rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white" 
                         placeholder="0"
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-bold text-slate-600">Number of Months (For Reference)</label>
+                      <label className="text-sm font-bold text-slate-600 dark:text-slate-300">Number of Months (For Reference)</label>
                       <Input 
                         type="number" 
                         value={advanceMonths}
                         onChange={(e) => setAdvanceMonths(Number(e.target.value))}
-                        className="h-12 rounded-xl bg-slate-50 border-slate-200" 
+                        className="h-12 rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white" 
                         min="1"
                       />
                     </div>
                      <div className="space-y-2">
-                      <label className="text-sm font-bold text-slate-600">Notes (Optional)</label>
+                      <label className="text-sm font-bold text-slate-600 dark:text-slate-300">Notes (Optional)</label>
                       <Input 
                         value={advanceNotes}
                         onChange={(e) => setAdvanceNotes(e.target.value)}
-                        className="h-12 rounded-xl bg-slate-50 border-slate-200" 
+                        className="h-12 rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white" 
                         placeholder="e.g., Medical Emergency, Eid Advance"
                       />
                     </div>
                   </div>
-                  <DialogFooter className="mt-8">
-                    <Button onClick={handleIssueAdvance} className="w-full h-14 rounded-xl bg-superior-teal hover:bg-superior-teal/90 text-white font-black text-lg">
-                      Issue Advance
+                  <DialogFooter className="mt-6">
+                    <Button 
+                      onClick={handleIssueAdvance} 
+                      className="w-full h-12 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold"
+                    >
+                      Record Advance Payment
                     </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
             </CardHeader>
             <CardContent className="p-6 space-y-4">
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-                <div>
-                  <span className="font-semibold text-slate-600 text-xs block">Remaining Balance</span>
-                  <span className="text-[10px] text-slate-400">Total Borrowed: RS {totalInitialAdvance.toLocaleString()}</span>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Total Advanced</p>
+                  <p className="text-lg font-mono font-black text-slate-700 dark:text-slate-200">RS {totalInitialAdvance.toLocaleString()}</p>
                 </div>
-                <span className="font-bold text-superior-gold text-lg">RS {totalRemainingAdvance.toLocaleString()}</span>
+                <div className="p-4 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-100/60 dark:border-amber-900/30">
+                  <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-1">Remaining</p>
+                  <p className="text-lg font-mono font-black text-amber-600 dark:text-amber-400">RS {totalRemainingAdvance.toLocaleString()}</p>
+                </div>
               </div>
 
               {/* Repayment Progress Tracker */}
               {totalInitialAdvance > 0 && (
-                <div className="space-y-1.5 p-3 rounded-xl bg-slate-50/70 border border-slate-100">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-600">
+                <div className="space-y-1.5 p-3 rounded-xl bg-slate-50/70 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-300">
                     <span>Repaid Progress</span>
                     <span>{advanceRepaidPercent}% ({advanceRepaidAmount.toLocaleString()} / {totalInitialAdvance.toLocaleString()})</span>
                   </div>
-                  <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                  <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
                     <div 
                       className="bg-emerald-500 h-full rounded-full transition-all duration-500" 
                       style={{ width: `${Math.min(100, Math.max(0, advanceRepaidPercent))}%` }}
@@ -514,14 +520,14 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
               )}
 
               {totalRemainingAdvance > 0 && (
-                <div className="space-y-2 mt-4 pt-4 border-t border-slate-100">
+                <div className="space-y-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-slate-500 uppercase">Deduct From This Month</label>
                     {suggestedInstallment > 0 && (
                       <button 
                         type="button"
                         onClick={() => setAdvanceDeduction(suggestedInstallment)}
-                        className="text-[11px] font-bold text-superior-teal hover:underline flex items-center gap-1"
+                        className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
                       >
                         <Sparkles size={12} /> Auto: RS {suggestedInstallment.toLocaleString()}
                       </button>
@@ -532,7 +538,7 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
                     value={advanceDeduction || ''}
                     onChange={(e) => setAdvanceDeduction(Number(e.target.value) || 0)}
                     max={totalRemainingAdvance}
-                    className="h-12 bg-white border-slate-200 rounded-xl text-amber-600 font-bold"
+                    className="h-12 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-xl text-amber-600 font-bold"
                     placeholder="0"
                   />
                   <p className="text-[10px] text-slate-400">Max available to deduct: RS {totalRemainingAdvance.toLocaleString()}</p>
@@ -544,29 +550,29 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
 
         {/* Payslip preview */}
         <div className="lg:col-span-2 space-y-6">
-          <Card className="bg-white border-none shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden printable-payslip print:shadow-none print:rounded-none">
-            <div className="bg-slate-800 p-8 text-white flex flex-col sm:flex-row items-center justify-between gap-6 print:bg-white print:text-black print:border-b-2 print:border-slate-800 print:p-0 print:pb-4">
+          <Card className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm rounded-2xl overflow-hidden printable-payslip print:shadow-none print:rounded-none">
+            <div className="bg-gradient-to-r from-[#064e43] via-[#053d34] to-[#042822] p-8 text-white flex flex-col sm:flex-row items-center justify-between gap-6 print:bg-white print:text-black print:border-b-2 print:border-slate-800 print:p-0 print:pb-4">
               <div>
-                <h2 className="text-3xl font-black mb-1">Superior Group of Colleges</h2>
-                <p className="text-slate-300 font-medium print:text-slate-600">Staff Payslip - {format(new Date(selectedMonth + '-01'), 'MMMM yyyy')}</p>
+                <h2 className="text-3xl font-black mb-1 tracking-tight">Superior Group of Colleges</h2>
+                <p className="text-emerald-200/90 font-medium print:text-slate-600">Staff Payslip - {format(new Date(selectedMonth + '-01'), 'MMMM yyyy')}</p>
               </div>
               <div className="text-right flex items-center gap-3 print:hidden">
                 <Button 
                   onClick={() => setIsSlipModalOpen(true)}
-                  className="h-12 px-5 rounded-xl bg-superior-teal text-white hover:bg-superior-teal/90 font-bold shadow-lg gap-2"
+                  className="h-11 px-5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold shadow-sm gap-2"
                 >
-                  <Download size={17} />
+                  <Download size={16} />
                   Official Slip (PDF / Print)
                 </Button>
-                <Button onClick={handleGeneratePayslip} variant="outline" className="h-12 px-5 rounded-xl bg-white text-slate-800 hover:bg-slate-100 font-bold shadow-lg">
-                  <Printer size={18} className="mr-1.5" />
+                <Button onClick={handleGeneratePayslip} variant="outline" className="h-11 px-5 rounded-xl bg-white text-slate-800 hover:bg-slate-100 font-bold shadow-sm">
+                  <Printer size={16} className="mr-1.5" />
                   Print & Save
                 </Button>
               </div>
             </div>
             
             <CardContent className="p-8 space-y-8 print:p-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 p-6 bg-slate-50 rounded-2xl border border-slate-100 print:bg-transparent print:border-none print:p-0">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 p-6 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 print:bg-transparent print:border-none print:p-0">
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 print:text-slate-600">Staff ID</p>
                   <p className="font-mono font-bold text-slate-700 print:text-black">{selectedStaff.id}</p>
@@ -664,72 +670,75 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
               </div>
 
               <div>
-                <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 print:text-black"><FileText className="text-superior-teal print:hidden" size={20}/> Salary Details</h3>
-                <div className="rounded-2xl border border-slate-200 overflow-hidden print:border print:border-black print:rounded-none">
+                <h3 className="text-lg font-black text-slate-800 dark:text-white mb-4 flex items-center gap-2 print:text-black">
+                  <FileText className="text-emerald-600 dark:text-emerald-400 print:hidden" size={20}/> 
+                  Salary Details
+                </h3>
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden print:border print:border-black print:rounded-none">
                   <Table className="print:border-collapse">
-                    <TableHeader className="bg-slate-50 print:bg-slate-100">
-                      <TableRow className="print:border-b print:border-black">
-                        <TableHead className="font-bold text-slate-600 w-2/3 print:text-black print:py-2">Description</TableHead>
-                        <TableHead className="font-bold text-slate-600 text-right print:text-black print:py-2">Amount (RS)</TableHead>
+                    <TableHeader className="bg-slate-50 dark:bg-slate-800/80 print:bg-slate-100">
+                      <TableRow className="border-slate-200 dark:border-slate-800 print:border-b print:border-black">
+                        <TableHead className="font-bold text-slate-600 dark:text-slate-300 w-2/3 print:text-black print:py-2">Description</TableHead>
+                        <TableHead className="font-bold text-slate-600 dark:text-slate-300 text-right print:text-black print:py-2">Amount (RS)</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      <TableRow className="print:border-b print:border-slate-300">
-                        <TableCell className="font-semibold text-slate-700 print:text-black print:py-2">Gross Base Salary</TableCell>
-                        <TableCell className="text-right font-bold text-slate-800 print:text-black print:py-2">{baseSalary.toLocaleString()}</TableCell>
+                      <TableRow className="border-slate-100 dark:border-slate-800/80 print:border-b print:border-slate-300">
+                        <TableCell className="font-semibold text-slate-700 dark:text-slate-300 print:text-black print:py-2">Gross Base Salary</TableCell>
+                        <TableCell className="text-right font-bold text-slate-800 dark:text-white print:text-black print:py-2">{baseSalary.toLocaleString()}</TableCell>
                       </TableRow>
 
-                      <TableRow className="print:border-b print:border-slate-300">
-                        <TableCell className="text-slate-500 font-medium print:text-black print:py-2">
+                      <TableRow className="border-slate-100 dark:border-slate-800/80 print:border-b print:border-slate-300">
+                        <TableCell className="text-slate-500 dark:text-slate-400 font-medium print:text-black print:py-2">
                           Total Lectures Given
                         </TableCell>
-                        <TableCell className="text-right font-bold text-slate-500 print:text-black print:py-2">
+                        <TableCell className="text-right font-bold text-slate-500 dark:text-slate-400 print:text-black print:py-2">
                           {totalLecturesCount} ({regularLecturesCount} Reg, {extraLecturesCount} Ext)
                         </TableCell>
                       </TableRow>
                       
                       {extraAllowance > 0 && (
-                        <TableRow className="print:border-b print:border-slate-300">
-                          <TableCell className="text-indigo-600 font-medium border-l-2 border-indigo-500 print:text-black print:py-2">
+                        <TableRow className="border-slate-100 dark:border-slate-800/80 print:border-b print:border-slate-300">
+                          <TableCell className="text-indigo-600 dark:text-indigo-400 font-medium border-l-2 border-indigo-500 print:text-black print:py-2">
                             Extra Lectures Allowance ({extraLecturesCount} lectures @ RS {extraLectureRate.toFixed(2)}/lec)
                           </TableCell>
-                          <TableCell className="text-right font-bold text-indigo-600 print:text-black print:py-2">+ {extraAllowance.toFixed(0)}</TableCell>
+                          <TableCell className="text-right font-bold text-indigo-600 dark:text-indigo-400 print:text-black print:py-2">+ {extraAllowance.toFixed(0)}</TableCell>
                         </TableRow>
                       )}
 
                       {leaveDeduction > 0 && (
-                        <TableRow className="print:border-b print:border-slate-300">
-                          <TableCell className="text-rose-600 font-medium border-l-2 border-rose-500 print:text-black print:py-2">
+                        <TableRow className="border-slate-100 dark:border-slate-800/80 print:border-b print:border-slate-300">
+                          <TableCell className="text-rose-600 dark:text-rose-400 font-medium border-l-2 border-rose-500 print:text-black print:py-2">
                             Leave Deduction ({leavesTaken} days @ RS {computedDailyRate.toFixed(2)}/day)
                           </TableCell>
-                          <TableCell className="text-right font-bold text-rose-600 print:text-black print:py-2">- {leaveDeduction.toFixed(0)}</TableCell>
+                          <TableCell className="text-right font-bold text-rose-600 dark:text-rose-400 print:text-black print:py-2">- {leaveDeduction.toFixed(0)}</TableCell>
                         </TableRow>
                       )}
                       
                       {lateDeduction > 0 && (
-                        <TableRow className="print:border-b print:border-slate-300">
-                          <TableCell className="text-rose-600 font-medium border-l-2 border-rose-500 print:text-black print:py-2">
+                        <TableRow className="border-slate-100 dark:border-slate-800/80 print:border-b print:border-slate-300">
+                          <TableCell className="text-rose-600 dark:text-rose-400 font-medium border-l-2 border-rose-500 print:text-black print:py-2">
                             Late Deduction ({lateMinutes} mins @ RS {computedMinuteRate.toFixed(2)}/min)
                           </TableCell>
-                          <TableCell className="text-right font-bold text-rose-600 print:text-black print:py-2">- {lateDeduction.toFixed(0)}</TableCell>
+                          <TableCell className="text-right font-bold text-rose-600 dark:text-rose-400 print:text-black print:py-2">- {lateDeduction.toFixed(0)}</TableCell>
                         </TableRow>
                       )}
                       
                       {advanceDeduction > 0 && (
-                         <TableRow className="print:border-b print:border-slate-300">
-                          <TableCell className="text-amber-600 font-medium border-l-2 border-amber-500 print:text-black print:py-2">
+                         <TableRow className="border-slate-100 dark:border-slate-800/80 print:border-b print:border-slate-300">
+                          <TableCell className="text-amber-600 dark:text-amber-400 font-medium border-l-2 border-amber-500 print:text-black print:py-2">
                             Advance Recovery Deducted
                           </TableCell>
-                          <TableCell className="text-right font-bold text-amber-600 print:text-black print:py-2">- {advanceDeduction.toFixed(0)}</TableCell>
+                          <TableCell className="text-right font-bold text-amber-600 dark:text-amber-400 print:text-black print:py-2">- {advanceDeduction.toFixed(0)}</TableCell>
                         </TableRow>
                       )}
                       
-                      <TableRow className="bg-slate-50 print:bg-transparent print:border-t-2 print:border-black">
-                        <TableCell className="font-black pt-6 pb-6 print:py-4">
+                      <TableRow className="bg-emerald-50/50 dark:bg-emerald-950/20 border-t border-slate-200 dark:border-slate-700 print:bg-transparent print:border-t-2 print:border-black">
+                        <TableCell className="font-black text-slate-900 dark:text-white pt-5 pb-5 print:py-4">
                            NET SALARY PAYABLE
                         </TableCell>
-                        <TableCell className="text-right font-black text-2xl text-superior-teal pt-6 pb-6 print:py-4 print:text-black">
-                          RS {Math.max(0, netSalary).toLocaleString()}
+                        <TableCell className="text-right font-black text-2xl text-emerald-700 dark:text-emerald-400 pt-5 pb-5 print:py-4 print:text-black">
+                           RS {Math.max(0, netSalary).toLocaleString()}
                         </TableCell>
                       </TableRow>
                     </TableBody>

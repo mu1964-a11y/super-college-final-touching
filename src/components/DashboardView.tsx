@@ -1136,86 +1136,167 @@ export default function DashboardView({
 
       {activeDashboardTab === "overview" && (
         <>
-      {/* Program-wise Gender Breakdown */}
-      <div className="relative z-10 space-y-6">
-        <div className="flex items-center justify-between px-2">
-          <div>
-            <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Academic Group Demographics</h3>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Real-time Boys vs Girls split across programs</p>
-          </div>
-          <Badge variant="outline" className="bg-white border-slate-200 text-slate-500 font-black px-4 py-1.5 rounded-xl shadow-sm">
-            <Users size={14} className="mr-2 text-superior-teal" />
-            Total Enrollment: {totalEnrollmentCount}
-          </Badge>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" style={{ perspective: 1000 }}>
-          {[
-            { 
-              name: "Intermediate (FSC)", 
-              icon: GraduationCap, 
-              color: "emerald", 
-              total: academicPerformance.fscCount,
-              boys: academicPerformance.fscBoysCount,
-              girls: academicPerformance.fscGirlsCount,
-              page: 'students-boys',
-              status: academicPerformance.fscCount > 20 ? "Active" : academicPerformance.fscCount > 0 ? "Low intake" : "No enrollment"
-            },
-            { 
-              name: "Diploma in IT (DIT)", 
-              icon: LandPlot, 
-              color: "blue", 
-              total: academicPerformance.ditCount,
-              boys: academicPerformance.ditBoysCount,
-              girls: academicPerformance.ditGirlsCount,
-              page: 'students-dit',
-              status: academicPerformance.ditCount > 20 ? "Active" : academicPerformance.ditCount > 0 ? "Low intake" : "No enrollment"
-            },
-            { 
-              name: "B.S Program", 
-              icon: BookOpen, 
-              color: "rose", 
-              total: academicPerformance.bsCount,
-              boys: academicPerformance.bsBoysCount,
-              girls: academicPerformance.bsGirlsCount,
-              page: 'students-bs',
-              status: academicPerformance.bsCount > 20 ? "Active" : academicPerformance.bsCount > 0 ? "Low intake" : "No enrollment"
-            },
-            { 
-              name: "UK Level 3", 
-              icon: ShieldCheck, 
-              color: "indigo", 
-              total: academicPerformance.ukL3Count,
-              boys: academicPerformance.ukL3BoysCount,
-              girls: academicPerformance.ukL3GirlsCount,
-              page: 'students-ukl3',
-              status: academicPerformance.ukL3Count > 20 ? "Active" : academicPerformance.ukL3Count > 0 ? "No enrollment" : "No enrollment"
-            }
-          ].map((prog) => {
-            const boysPercent = prog.total > 0 ? Math.round((prog.boys / prog.total) * 100) : 0;
-            const girlsPercent = prog.total > 0 ? Math.round((prog.girls / prog.total) * 100) : 0;
-
-            return (
-              <motion.div
-                key={prog.name}
-                whileHover={{ 
-                  y: -12,
-                  scale: 1.04,
-                  rotateX: 6,
-                  rotateY: -4,
-                  boxShadow: "0 20px 40px rgba(0,0,0,0.15), 0 8px 16px rgba(0,0,0,0.06)"
-                }}
-                transition={{ type: "spring", stiffness: 350, damping: 22 }}
-                className={cn(
-                  "bg-white rounded-2xl p-5 border-2 relative overflow-hidden flex flex-col justify-between transition-colors duration-300",
-                  prog.color === "emerald" ? "border-emerald-500 shadow-lg shadow-emerald-500/5" : 
-                  prog.color === "blue" ? "border-blue-500 shadow-lg shadow-blue-500/5" : 
-                  prog.color === "rose" ? "border-rose-500 shadow-lg shadow-rose-500/5" : "border-indigo-500 shadow-lg shadow-indigo-500/5"
-                )}
-                style={{ transformStyle: "preserve-3d" }}
+          {/* 1-Click Rapid Actions Command Bar */}
+          <div className="relative z-10 bg-white dark:bg-slate-900 rounded-3xl p-4 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+            <div className="flex items-center justify-between px-2 pb-3 mb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="flex h-2.5 w-2.5 rounded-full bg-superior-gold shadow-[0_0_8px_rgba(201,168,76,0.8)] animate-pulse" />
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">
+                  Rapid Actions Command Bar
+                </span>
+              </div>
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                1-Click Direct Access
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <button
+                onClick={() => setActivePage("fee")}
+                className="group flex items-center gap-3 p-3 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/40 border border-emerald-200/70 dark:border-emerald-800/60 transition-all active:scale-95 text-left shadow-2xs hover:shadow-sm"
               >
-                
-                <div className="flex items-start justify-between mb-2">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                  <CreditCard size={19} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-slate-800 dark:text-slate-100 truncate">Collect Fee</p>
+                  <p className="text-[10px] font-medium text-emerald-700 dark:text-emerald-400 truncate">Vouchers & Ledger</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setActivePage("admissions");
+                  setTimeout(() => window.dispatchEvent(new CustomEvent('open-new-admission')), 100);
+                }}
+                className="group flex items-center gap-3 p-3 rounded-2xl bg-purple-50/70 dark:bg-purple-950/30 hover:bg-purple-100/80 dark:hover:bg-purple-900/40 border border-purple-200/70 dark:border-purple-800/60 transition-all active:scale-95 text-left shadow-2xs hover:shadow-sm"
+              >
+                <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                  <UserPlus size={19} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-slate-800 dark:text-slate-100 truncate">New Admission</p>
+                  <p className="text-[10px] font-medium text-purple-700 dark:text-purple-400 truncate">Enroll Candidate</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActivePage("attendance")}
+                className="group flex items-center gap-3 p-3 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 hover:bg-blue-100/80 dark:hover:bg-blue-900/40 border border-blue-200/70 dark:border-blue-800/60 transition-all active:scale-95 text-left shadow-2xs hover:shadow-sm"
+              >
+                <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                  <CheckCircle2 size={19} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-slate-800 dark:text-slate-100 truncate">Attendance</p>
+                  <p className="text-[10px] font-medium text-blue-700 dark:text-blue-400 truncate">Daily Biometrics</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActivePage("whatsapp-center")}
+                className="group flex items-center gap-3 p-3 rounded-2xl bg-teal-50/70 dark:bg-teal-950/30 hover:bg-teal-100/80 dark:hover:bg-teal-900/40 border border-teal-200/70 dark:border-teal-800/60 transition-all active:scale-95 text-left shadow-2xs hover:shadow-sm"
+              >
+                <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                  <MessageSquare size={19} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-slate-800 dark:text-slate-100 truncate">WhatsApp Hub</p>
+                  <p className="text-[10px] font-medium text-teal-700 dark:text-teal-400 truncate">Notices & SMS</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActivePage("fee")}
+                className="group flex items-center gap-3 p-3 rounded-2xl bg-rose-50/70 dark:bg-rose-950/30 hover:bg-rose-100/80 dark:hover:bg-rose-900/40 border border-rose-200/70 dark:border-rose-800/60 transition-all active:scale-95 text-left shadow-2xs hover:shadow-sm"
+              >
+                <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                  <AlertCircle size={19} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-slate-800 dark:text-slate-100 truncate">Fee Arrears</p>
+                  <p className="text-[10px] font-medium text-rose-700 dark:text-rose-400 truncate">{defaultersCount} Defaulters</p>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Program-wise Gender Breakdown */}
+          <div className="relative z-10 space-y-6">
+            <div className="flex items-center justify-between px-2">
+              <div>
+                <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">Academic Group Demographics</h3>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Real-time Boys vs Girls split across programs</p>
+              </div>
+              <Badge variant="outline" className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-black px-4 py-1.5 rounded-xl shadow-sm">
+                <Users size={14} className="mr-2 text-superior-teal dark:text-superior-gold" />
+                Total Enrollment: {totalEnrollmentCount}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" style={{ perspective: 1000 }}>
+              {[
+                { 
+                  name: "Intermediate (FSC)", 
+                  icon: GraduationCap, 
+                  color: "emerald", 
+                  total: academicPerformance.fscCount,
+                  boys: academicPerformance.fscBoysCount,
+                  girls: academicPerformance.fscGirlsCount,
+                  page: 'students-boys',
+                  status: academicPerformance.fscCount > 20 ? "Active" : academicPerformance.fscCount > 0 ? "Low intake" : "No enrollment"
+                },
+                { 
+                  name: "Diploma in IT (DIT)", 
+                  icon: LandPlot, 
+                  color: "blue", 
+                  total: academicPerformance.ditCount,
+                  boys: academicPerformance.ditBoysCount,
+                  girls: academicPerformance.ditGirlsCount,
+                  page: 'students-dit',
+                  status: academicPerformance.ditCount > 20 ? "Active" : academicPerformance.ditCount > 0 ? "Low intake" : "No enrollment"
+                },
+                { 
+                  name: "B.S Program", 
+                  icon: BookOpen, 
+                  color: "rose", 
+                  total: academicPerformance.bsCount,
+                  boys: academicPerformance.bsBoysCount,
+                  girls: academicPerformance.bsGirlsCount,
+                  page: 'students-bs',
+                  status: academicPerformance.bsCount > 20 ? "Active" : academicPerformance.bsCount > 0 ? "Low intake" : "No enrollment"
+                },
+                { 
+                  name: "UK Level 3", 
+                  icon: ShieldCheck, 
+                  color: "indigo", 
+                  total: academicPerformance.ukL3Count,
+                  boys: academicPerformance.ukL3BoysCount,
+                  girls: academicPerformance.ukL3GirlsCount,
+                  page: 'students-ukl3',
+                  status: academicPerformance.ukL3Count > 20 ? "Active" : academicPerformance.ukL3Count > 0 ? "No enrollment" : "No enrollment"
+                }
+              ].map((prog) => {
+                const boysPercent = prog.total > 0 ? Math.round((prog.boys / prog.total) * 100) : 0;
+                const girlsPercent = prog.total > 0 ? Math.round((prog.girls / prog.total) * 100) : 0;
+
+                return (
+                  <motion.div
+                    key={prog.name}
+                    whileHover={{ 
+                      y: -10,
+                      scale: 1.03,
+                      boxShadow: "0 20px 40px rgba(0,0,0,0.12), 0 8px 16px rgba(0,0,0,0.05)"
+                    }}
+                    transition={{ type: "spring", stiffness: 350, damping: 22 }}
+                    className={cn(
+                      "bg-white dark:bg-slate-900 rounded-3xl p-5 border-2 relative overflow-hidden flex flex-col justify-between transition-colors duration-300",
+                      prog.color === "emerald" ? "border-emerald-500/40 dark:border-emerald-600/40 shadow-lg shadow-emerald-500/5" : 
+                      prog.color === "blue" ? "border-blue-500/40 dark:border-blue-600/40 shadow-lg shadow-blue-500/5" : 
+                      prog.color === "rose" ? "border-rose-500/40 dark:border-rose-600/40 shadow-lg shadow-rose-500/5" : "border-indigo-500/40 dark:border-indigo-600/40 shadow-lg shadow-indigo-500/5"
+                    )}
+                    style={{ transformStyle: "preserve-3d" }}
+                  >
+                    <div className="flex items-start justify-between mb-2">
                   <div className={cn(
                     "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border",
                     prog.color === "emerald" ? "bg-emerald-50 text-emerald-600 border-emerald-100" : 
@@ -1334,27 +1415,30 @@ export default function DashboardView({
         )}
 
       {/* Filter Row */}
-      <div className="flex items-center justify-between px-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-2">
         <div className="flex items-center gap-3">
-          <div className="w-1.5 h-6 bg-superior-gold rounded-full" />
-          <h3 className="text-xl font-serif font-black text-slate-800">
-            Financial Snapshot
-          </h3>
+          <div className="w-1.5 h-6 bg-superior-gold rounded-full shadow-[0_0_8px_rgba(201,168,76,0.6)]" />
+          <div>
+            <h3 className="text-xl font-display font-black text-slate-800 dark:text-slate-100 tracking-tight">
+              Financial & Operational Snapshot
+            </h3>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Real-time ledger and cash flow health</p>
+          </div>
         </div>
-        <div className="flex items-center gap-3 bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm">
-          <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-3">
-            Viewing Data For:
+        <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
+          <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 ml-3">
+            Month:
           </span>
           <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-            <SelectTrigger className="w-[180px] h-10 rounded-xl bg-slate-50 border-transparent focus:bg-white transition-all font-bold text-slate-600">
+            <SelectTrigger className="w-[180px] h-9 rounded-xl bg-slate-50 dark:bg-slate-800 border-transparent text-slate-700 dark:text-slate-200 focus:bg-white font-bold text-xs">
               <SelectValue placeholder="Select Month" />
             </SelectTrigger>
-            <SelectContent className="rounded-xl border-slate-100 shadow-2xl">
-              <SelectItem value="all" className="font-bold">
+            <SelectContent className="rounded-xl border-slate-200 dark:border-slate-700 shadow-2xl bg-white dark:bg-slate-900">
+              <SelectItem value="all" className="font-bold text-xs">
                 Total Collection (All Months)
               </SelectItem>
               {monthsList.map((m) => (
-                <SelectItem key={m} value={m}>
+                <SelectItem key={m} value={m} className="text-xs">
                   {m} {new Date().getFullYear()}
                 </SelectItem>
               ))}
@@ -1363,85 +1447,101 @@ export default function DashboardView({
         </div>
       </div>
 
-      {/* Financial Snapshot - Restructured for ss2 Layout */}
+      {/* Financial Snapshot - Elevated Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* May Collection Card */}
+        {/* Monthly Collection Card */}
         <div 
-          onClick={() => setActivePage("accounts")}
-          className="bg-emerald-50 rounded-2xl p-6 border border-emerald-100/50 relative overflow-hidden cursor-pointer hover:shadow-lg transition-shadow group flex flex-col justify-between min-h-[160px]"
+          onClick={() => setActivePage("fee")}
+          className="bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent dark:from-emerald-950/30 dark:via-slate-900 dark:to-slate-900 rounded-3xl p-6 border border-emerald-500/20 dark:border-emerald-800/40 relative overflow-hidden cursor-pointer hover:shadow-xl transition-all group flex flex-col justify-between min-h-[175px]"
         >
           <div>
-            <div className="flex items-center gap-2 mb-2 text-emerald-600">
-               <ReceiptText size={16} />
-               <p className="text-[12px] font-bold uppercase tracking-widest leading-none">
-                 {selectedMonth === "all" ? "TOTAL REVENUE" : `${selectedMonth.toUpperCase()} COLLECTION`}
-               </p>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
+                <ReceiptText size={16} />
+                <p className="text-[11px] font-black uppercase tracking-widest">
+                  {selectedMonth === "all" ? "TOTAL REVENUE" : `${selectedMonth.toUpperCase()} COLLECTION`}
+                </p>
+              </div>
+              <Badge className="bg-emerald-600 text-white text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg">
+                Active Flow
+              </Badge>
             </div>
-            <h4 className="text-4xl font-display font-black text-emerald-600 tracking-tighter">
+            <h4 className="text-3xl lg:text-4xl font-display font-black text-emerald-700 dark:text-emerald-400 tracking-tighter mt-1">
               Rs. {(monthlyIncome || 0).toLocaleString()}
             </h4>
-            <p className="text-[11px] font-semibold text-emerald-600/80 mt-1">
-              {selectedMonth === "all" ? "Total fee received" : "Total fee received this month"}
+            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mt-1">
+              {selectedMonth === "all" ? "Total verified tuition & fees received" : "Verified ledger payments received this month"}
             </p>
           </div>
-          {/* Faux Bar Chart Representation at bottom */}
-          <div className="flex items-end gap-1.5 h-12 mt-4 opacity-70 group-hover:opacity-100 transition-opacity">
-            {[40, 50, 60, 45, 80].map((h, i) => (
-              <div key={i} className="flex-1 rounded-sm bg-emerald-400" style={{ height: `${h}%` }} />
+          {/* Visual Mini Chart Bars */}
+          <div className="flex items-end gap-1.5 h-10 mt-4 opacity-80 group-hover:opacity-100 transition-opacity">
+            {[35, 55, 75, 45, 90, 60, 85].map((h, i) => (
+              <div key={i} className="flex-1 rounded-sm bg-emerald-500/60 dark:bg-emerald-500/40 group-hover:bg-emerald-500 transition-colors" style={{ height: `${h}%` }} />
             ))}
           </div>
         </div>
 
         {/* PSA Card */}
         <div 
-          onClick={() => setActivePage("accounts")}
-          className="bg-white rounded-2xl p-6 border border-slate-200 cursor-pointer hover:shadow-lg transition-shadow flex flex-col justify-center min-h-[160px]"
+          onClick={() => setActivePage("fee")}
+          className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 cursor-pointer hover:shadow-xl transition-all flex flex-col justify-between min-h-[175px]"
         >
-          <div className="flex items-center gap-2 text-slate-400 mb-2">
-            <TrendingUp size={16} />
-            <p className="text-[12px] font-bold uppercase tracking-widest leading-none">PER STUDENT AVG (PSA)</p>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                <TrendingUp size={16} className="text-superior-gold" />
+                <p className="text-[11px] font-black uppercase tracking-widest">PER STUDENT AVG (PSA)</p>
+              </div>
+              <Badge variant="outline" className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[9px] font-bold">
+                Cohort Metric
+              </Badge>
+            </div>
+            <h4 className="text-3xl lg:text-4xl font-display font-black text-slate-900 dark:text-slate-100 tracking-tighter mt-1">
+              Rs. {Math.round(academicPerformance.totalAvg).toLocaleString()}
+            </h4>
+            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mt-1">
+              Average annualized package value per student
+            </p>
           </div>
-          <h4 className="text-4xl font-display font-black text-slate-800 tracking-tighter">
-            Rs. {Math.round(academicPerformance.totalAvg).toLocaleString()}
-          </h4>
-          <p className="text-[11px] font-semibold text-slate-500 mt-1 mb-4">
-            Institutional value / student
-          </p>
           {activeStudentsRevenue > 0 && (
-             <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-sm w-max">
-               <ArrowUpRight size={10} /> +4.2% vs last month
-             </span>
+            <div className="mt-3">
+              <span className="inline-flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg">
+                <ArrowUpRight size={12} /> Institutional Yield Optimal
+              </span>
+            </div>
           )}
         </div>
 
-        {/* Consolidated Card */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 grid grid-cols-2 gap-4 gap-y-6">
-           <div className="cursor-pointer" onClick={() => setActivePage("students-boys")}>
-             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 leading-none">TOTAL ENROLLMENT</p>
-             <h5 className="text-3xl font-black text-slate-800 tracking-tighter mb-1 leading-none">{totalEnrollmentCount}</h5>
-             <Badge variant="outline" className="bg-slate-50 text-slate-600 rounded-sm px-1.5 py-0 text-[9px] border-slate-200">All programs</Badge>
+        {/* Consolidated Campus Operations Card */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200/80 dark:border-slate-800 grid grid-cols-2 gap-4 gap-y-5">
+           <div className="cursor-pointer group" onClick={() => setActivePage("students-boys")}>
+             <p className="text-[10px] text-slate-400 dark:text-slate-500 font-black uppercase tracking-widest mb-1 leading-none">TOTAL ENROLLMENT</p>
+             <h5 className="text-2xl lg:text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tighter mb-1 leading-none group-hover:text-superior-teal transition-colors">{totalEnrollmentCount}</h5>
+             <Badge variant="outline" className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md px-1.5 py-0 text-[9px] border-slate-200 dark:border-slate-700">All programs</Badge>
            </div>
            
-           <div className="cursor-pointer" onClick={() => setActivePage("staff")}>
-             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 leading-none">STAFF PRESENCE</p>
-             <h5 className="text-3xl font-black text-slate-800 tracking-tighter mb-1 leading-none">{totalStaff}/{totalStaff}</h5>
-             <Badge variant="outline" className="bg-emerald-50 text-emerald-600 rounded-sm px-1.5 py-0 text-[9px] border-emerald-100 border flex w-max items-center gap-1"><CheckCircle2 size={8} /> Full</Badge>
+           <div className="cursor-pointer group" onClick={() => setActivePage("staff")}>
+             <p className="text-[10px] text-slate-400 dark:text-slate-500 font-black uppercase tracking-widest mb-1 leading-none">STAFF SQUAD</p>
+             <h5 className="text-2xl lg:text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tighter mb-1 leading-none group-hover:text-amber-600 transition-colors">{totalStaff} Members</h5>
+             <Badge variant="outline" className="bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded-md px-1.5 py-0 text-[9px] border-emerald-200 dark:border-emerald-800 flex w-max items-center gap-1"><CheckCircle2 size={9} /> Active Staff</Badge>
            </div>
 
-           <div className="cursor-pointer" onClick={() => setActivePage("leads")}>
-             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 leading-none">RAW LEADS</p>
-             <h5 className="text-3xl font-black text-slate-800 tracking-tighter mb-1 leading-none">{(data.leads?.length || 0).toLocaleString()}</h5>
-             <Badge variant="outline" className="bg-rose-50 text-rose-600 rounded-sm px-1.5 py-0 text-[10px] border-rose-100">
-                <ArrowDownRight size={10} className="inline mr-0.5" /> 1% converted
+           <div className="cursor-pointer group" onClick={() => setActivePage("leads")}>
+             <p className="text-[10px] text-slate-400 dark:text-slate-500 font-black uppercase tracking-widest mb-1 leading-none">MARKETING PIPELINE</p>
+             <h5 className="text-2xl lg:text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tighter mb-1 leading-none group-hover:text-pink-600 transition-colors">{(data.leads?.length || 0).toLocaleString()} Leads</h5>
+             <Badge variant="outline" className="bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 rounded-md px-1.5 py-0 text-[9px] border-purple-200 dark:border-purple-800">
+                Admissions pool
              </Badge>
            </div>
 
-           <div>
-             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 leading-none">LEAD CONVERSION</p>
-             <h5 className="text-2xl font-black text-slate-800 tracking-tighter mb-1 leading-none">
-                {data.leads?.length ? `${Math.round((confirmedAdmissions.length / data.leads.length) * 100)}%` : "0%"}
+           <div className="cursor-pointer group" onClick={() => setActivePage("admissions")}>
+             <p className="text-[10px] text-slate-400 dark:text-slate-500 font-black uppercase tracking-widest mb-1 leading-none">CONFIRMED SEATS</p>
+             <h5 className="text-2xl lg:text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tighter mb-1 leading-none group-hover:text-superior-teal transition-colors">
+                {confirmedAdmissions.length}
              </h5>
-             <Badge variant="outline" className="bg-rose-50 text-rose-600 rounded-sm px-1.5 py-0 text-[9px] border-rose-100">Needs attention</Badge>
+             <Badge variant="outline" className="bg-superior-gold/15 text-superior-gold rounded-md px-1.5 py-0 text-[9px] border-superior-gold/30">
+               {data.leads?.length ? `${Math.round((confirmedAdmissions.length / data.leads.length) * 100)}% Conv.` : "Enrolled"}
+             </Badge>
            </div>
         </div>
       </div>

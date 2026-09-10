@@ -33,6 +33,17 @@ import {
   LogIn,
   Key,
   MessageCircle,
+  Phone,
+  User as UserIcon,
+  ArrowRight,
+  ArrowLeft,
+  ChevronLeft,
+  Check,
+  Clock,
+  QrCode,
+  Star,
+  Activity,
+  Wifi,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useSupabaseData } from "./hooks/useSupabaseData";
@@ -61,6 +72,12 @@ import WhatsAppCenterView from "./components/WhatsAppCenterView";
 import GlobalCommandPalette from "./components/GlobalCommandPalette";
 import StudentDossier360 from "./components/StudentDossier360";
 import PublicVerificationView from "./components/PublicVerificationView";
+import StudentPortal from "./components/StudentPortal";
+import StaffPortal from "./components/StaffPortal";
+import PortalGatewayView from "./components/PortalGatewayView";
+import WelcomeScreen from "./components/WelcomeScreen";
+import AcademicCanvasBackground from "./components/AcademicCanvasBackground";
+import PortalAuthCard from "./components/PortalAuthCard";
 import { Search } from "lucide-react";
 
 import { Settings as SettingsIcon } from "lucide-react";
@@ -243,6 +260,20 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(() => !!safeLocalStorage.getItem('scj_remembered_email'));
   const [loginError, setLoginError] = useState("");
+  const [portalSession, setPortalSession] = useState<{ type: 'student' | 'staff'; data: any } | null>(() => {
+    try {
+      const saved = safeLocalStorage.getItem('scj_portal_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [loginPortal, setLoginPortal] = useState<'admin' | 'student' | 'staff'>('student');
+  const [portalViewMode, setPortalViewMode] = useState<'welcome' | 'gateway' | 'login'>('welcome');
+  const [studentIdInput, setStudentIdInput] = useState("");
+  const [studentPhoneInput, setStudentPhoneInput] = useState("");
+  const [staffIdInput, setStaffIdInput] = useState("");
+  const [staffPassInput, setStaffPassInput] = useState("");
   const [brandingSettings, setBrandingSettings] = useState<{
     name: string;
     logo: string | null;
@@ -517,7 +548,206 @@ export default function App() {
   const [enteredPassword, setEnteredPassword] = useState("");
   const [selectedSession, setSelectedSession] = useState("all");
 
-  const data = useSupabaseData(user);
+  const effectiveUser = user || (portalSession ? { id: `portal-${portalSession.type}-${portalSession.data?.id || 'session'}` } : null);
+  const data = useSupabaseData(effectiveUser);
+
+  const handleStudentPortalLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setLoginError("");
+
+    const rawId = studentIdInput.trim().toLowerCase();
+    const rawCred = studentPhoneInput.trim().toLowerCase().replace(/[\s-]/g, "");
+
+    if (!rawId || !rawCred) {
+      setLoginError("Please enter your Student Roll No / ID and Registered Mobile Number.\nMeharbani farma kar apna Roll No / ID aur registered mobile number darj karein.");
+      setAuthLoading(false);
+      return;
+    }
+
+    try {
+      // 1. Try local list if available
+      let matchedStudent = (data.students || []).find((s) => {
+        const sId = (s.id || "").toLowerCase();
+        const sRoll = (s.rollNo || "").toLowerCase();
+        const sCollegeNo = (s.collegeNo || "").toLowerCase();
+        const sBForm = (s.bayFormNo || "").replace(/\D/g, "");
+        const sName = (s.fullName || "").toLowerCase();
+        const sBoard = (s.boardRollNo || "").toLowerCase();
+
+        const idMatch = sId === rawId || sRoll === rawId || sCollegeNo === rawId || sBForm === rawId.replace(/\D/g, "") || sBoard === rawId || sName === rawId;
+        if (!idMatch) return false;
+
+        const contacts = [
+          (s.contact || "").replace(/[\s-]/g, "").toLowerCase(),
+          (s.fatherContact || "").replace(/[\s-]/g, "").toLowerCase(),
+          (s.secondaryContact || "").replace(/[\s-]/g, "").toLowerCase(),
+        ].filter(Boolean);
+
+        const dob = (s.dob || "").replace(/[\s-]/g, "").toLowerCase();
+        const firstName = (s.fullName || "").split(" ")[0].toLowerCase();
+
+        return contacts.some(c => c.includes(rawCred) || rawCred.includes(c) || (rawCred.length >= 4 && c.endsWith(rawCred))) ||
+               dob === rawCred ||
+               firstName === rawCred;
+      });
+
+      // 2. If not found in memory, query Supabase directly
+      if (!matchedStudent && isSupabaseConfigured) {
+        const { data: dbStudents, error } = await supabase
+          .from('students')
+          .select('*');
+
+        if (!error && dbStudents && dbStudents.length > 0) {
+          const found = dbStudents.find((s: any) => {
+            const sId = (s.id || "").toLowerCase();
+            const sRoll = (s.roll_no || "").toLowerCase();
+            const sCollegeNo = (s.college_no || "").toLowerCase();
+            const sBForm = (s.bay_form_no || "").replace(/\D/g, "");
+            const sName = (s.full_name || "").toLowerCase();
+            const sBoard = (s.board_roll_no || "").toLowerCase();
+
+            const idMatch = sId === rawId || sRoll === rawId || sCollegeNo === rawId || sBForm === rawId.replace(/\D/g, "") || sBoard === rawId || sName === rawId;
+            if (!idMatch) return false;
+
+            const contacts = [
+              (s.contact || s.contact_number || "").replace(/[\s-]/g, "").toLowerCase(),
+              (s.father_contact || "").replace(/[\s-]/g, "").toLowerCase(),
+              (s.secondary_contact || "").replace(/[\s-]/g, "").toLowerCase(),
+            ].filter(Boolean);
+
+            const dob = (s.dob || "").replace(/[\s-]/g, "").toLowerCase();
+            const firstName = (s.full_name || "").split(" ")[0].toLowerCase();
+
+            return contacts.some(c => c.includes(rawCred) || rawCred.includes(c) || (rawCred.length >= 4 && c.endsWith(rawCred))) ||
+                   dob === rawCred ||
+                   firstName === rawCred;
+          });
+
+          if (found) {
+            matchedStudent = {
+              ...found,
+              fullName: found.full_name,
+              fatherName: found.father_name,
+              rollNo: found.roll_no,
+              collegeNo: found.college_no,
+              bayFormNo: found.bay_form_no,
+              boardRollNo: found.board_roll_no,
+              contact: found.contact,
+              fatherContact: found.father_contact,
+              secondaryContact: found.secondary_contact,
+              admissionFee: found.admission_fee,
+              totalPackage: found.total_package,
+              totalFeeFinalized: found.total_fee_finalized,
+              feeReceived: found.fee_received,
+              academicPart: found.academic_part || 'Part-1',
+              session: found.session,
+              feeLedger: found.fee_ledger,
+              feeHistory: found.fee_history
+            };
+          }
+        }
+      }
+
+      if (matchedStudent) {
+        const sessionObj = { type: 'student' as const, data: matchedStudent };
+        safeLocalStorage.setItem('scj_portal_user', JSON.stringify(sessionObj));
+        setPortalSession(sessionObj);
+        toast.success(`Welcome to Student Portal, ${matchedStudent.fullName || 'Student'}!`);
+        setAuthLoading(false);
+        return;
+      }
+
+      setLoginError("❌ Student Record Not Found or Credentials Mismatch.\nApka Roll No / ID ya Mobile number match nahi ho raha. Meharbani farma kar apna Roll No aur college mein diya gaya phone number check karein.");
+      setAuthLoading(false);
+    } catch (err: any) {
+      setLoginError(`❌ Verification error: ${err?.message || 'Server connection error'}`);
+      setAuthLoading(false);
+    }
+  };
+
+  const handleStaffPortalLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setLoginError("");
+
+    const rawId = staffIdInput.trim().toLowerCase();
+    const rawCred = staffPassInput.trim().toLowerCase().replace(/[\s-]/g, "");
+
+    if (!rawId || !rawCred) {
+      setLoginError("Please enter your Staff ID / Name and CNIC / Phone Number.\nMeharbani farma kar apna Staff ID aur CNIC ya phone number likhein.");
+      setAuthLoading(false);
+      return;
+    }
+
+    try {
+      // 1. Try local list first
+      let matchedStaff = (data.staff || []).find((st) => {
+        const stId = (st.id || "").toLowerCase();
+        const stName = (st.fullName || "").toLowerCase();
+
+        const idMatch = stId === rawId || stName.includes(rawId) || rawId.includes(stName);
+        if (!idMatch) return false;
+
+        const stCnic = (st.cnic || "").replace(/[\s-]/g, "").toLowerCase();
+        const stPhone = (st.contact || "").replace(/[\s-]/g, "").toLowerCase();
+
+        return (stCnic && (stCnic.includes(rawCred) || rawCred.includes(stCnic) || (rawCred.length >= 4 && stCnic.endsWith(rawCred)))) ||
+               (stPhone && (stPhone.includes(rawCred) || rawCred.includes(stPhone) || (rawCred.length >= 4 && stPhone.endsWith(rawCred))));
+      });
+
+      // 2. Query Supabase directly if not in memory
+      if (!matchedStaff && isSupabaseConfigured) {
+        const { data: dbStaff, error } = await supabase
+          .from('staff')
+          .select('*');
+
+        if (!error && dbStaff && dbStaff.length > 0) {
+          const found = dbStaff.find((st: any) => {
+            const stId = (st.id || "").toLowerCase();
+            const stName = (st.full_name || "").toLowerCase();
+
+            const idMatch = stId === rawId || stName.includes(rawId) || rawId.includes(stName);
+            if (!idMatch) return false;
+
+            const stCnic = (st.cnic || "").replace(/[\s-]/g, "").toLowerCase();
+            const stPhone = (st.contact || "").replace(/[\s-]/g, "").toLowerCase();
+
+            return (stCnic && (stCnic.includes(rawCred) || rawCred.includes(stCnic) || (rawCred.length >= 4 && stCnic.endsWith(rawCred)))) ||
+                   (stPhone && (stPhone.includes(rawCred) || rawCred.includes(stPhone) || (rawCred.length >= 4 && stPhone.endsWith(rawCred))));
+          });
+
+          if (found) {
+            matchedStaff = {
+              ...found,
+              fullName: found.full_name,
+              photo: found.photo_url || found.photo,
+              salary: found.salary,
+              contact: found.contact,
+              cnic: found.cnic,
+              role: found.role,
+              designation: found.designation
+            };
+          }
+        }
+      }
+
+      if (matchedStaff) {
+        const sessionObj = { type: 'staff' as const, data: matchedStaff };
+        safeLocalStorage.setItem('scj_portal_user', JSON.stringify(sessionObj));
+        setPortalSession(sessionObj);
+        toast.success(`Welcome to Faculty Portal, ${matchedStaff.fullName || 'Professor'}!`);
+        setAuthLoading(false);
+        return;
+      }
+
+      setLoginError("❌ Staff Profile Not Found or Security Match Failed.\nApka Staff ID ya CNIC/Phone number match nahi hua. Meharbani farma kar sahi maloomat darj karein.");
+      setAuthLoading(false);
+    } catch (err: any) {
+      setLoginError(`❌ Verification error: ${err?.message || 'Server connection error'}`);
+      setAuthLoading(false);
+    }
+  };
 
   // Snappy transition countdown timer for app loading screen
   React.useEffect(() => {
@@ -916,455 +1146,383 @@ export default function App() {
     );
   }
 
-  if (authLoading || (!user && !isBrandingLoaded) || (user && data.loading)) {
+  if (authLoading || (!user && !portalSession && !isBrandingLoaded) || ((user || portalSession) && data.loading)) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-[#042e27] via-[#085a4e] to-[#011a15] relative overflow-hidden font-sans">
-        <div className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none">
-          <motion.div
-            animate={{ rotateX: 360, rotateZ: 360 }}
-            transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
-            className="w-[120vw] h-[120vw] lg:w-[80vw] lg:h-[80vw] absolute opacity-30"
-            style={{ transformStyle: "preserve-3d", perspective: "1000px" }}
-          >
-            <div
-              className="absolute inset-10 rounded-full border border-superior-gold/20 shadow-[0_0_100px_rgba(201,168,76,0.1)]"
-              style={{ transform: "rotateX(70deg)" }}
-            />
-          </motion.div>
-          <div className="absolute w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10 mix-blend-overlay" />
-          <div className="absolute w-full h-full bg-gradient-to-t from-[#011a15] via-transparent to-transparent z-0" />
-        </div>
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-white relative overflow-hidden font-sans select-none px-4">
+        {/* Academic Blueprint Canvas Background */}
+        <AcademicCanvasBackground logo={brandingSettings.logo} />
 
-        <div className="relative z-10 flex flex-col items-center justify-center">
-          {brandingSettings.logo ? (
-            <div className="relative mb-10 w-44 h-44 flex items-center justify-center">
-               <div className="absolute inset-0 rounded-full overflow-hidden shadow-[0_0_30px_rgba(201,168,76,0.2)] bg-[#011a15]">
-                 <motion.img 
-                   src={brandingSettings.logo}
-                   alt="College Logo"
-                   className="w-full h-full object-cover"
-                   initial={{ opacity: 0, scale: 0.8 }}
-                   animate={{ opacity: 1, scale: 1 }}
-                   transition={{ duration: 0.8 }}
-                 />
-               </div>
-               
-               {/* Overlay countdown in the center layout style but empty block to match structure */}
-               <div className="absolute inset-0 flex items-center justify-center z-20">
-                   <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="w-12 h-12 border-4 border-superior-gold/20 border-t-superior-gold rounded-full shadow-[0_0_15px_rgba(201,168,76,0.5)]"
-                   />
-               </div>
-               
-               {/* 360 spinner rings */}
-               <motion.div
-                 animate={{ rotate: 360 }}
-                 transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-                 className="absolute inset-[-10px] rounded-full border border-superior-gold/20 border-t-superior-gold/80 shadow-[0_0_20px_rgba(201,168,76,0.3)] z-10"
-               />
-               <motion.div
-                 animate={{ rotate: -360 }}
-                 transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-                 className="absolute inset-[-24px] rounded-full border border-white/5 border-b-white/30 z-10 pointer-events-none"
-               />
+        {/* Central Floating Crystal Card */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 15 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="relative z-10 w-full max-w-lg bg-white/90 border border-slate-200/90 rounded-[2.5rem] p-8 md:p-10 shadow-[0_25px_70px_rgba(8,90,78,0.12),inset_0_1px_1px_rgba(255,255,255,1)] backdrop-blur-2xl flex flex-col items-center text-center overflow-hidden"
+        >
+          {/* Top Emerald Accent Line */}
+          <div className="absolute top-0 inset-x-0 h-[2.5px] bg-gradient-to-r from-transparent via-[#085a4e]/50 to-transparent" />
+
+          {/* 3D Floating College Crest Medallion */}
+          <div className="relative mb-6 w-32 h-32 flex items-center justify-center perspective-[800px]">
+            <div className="absolute inset-1 rounded-full border border-emerald-500/30 shadow-[0_0_25px_rgba(8,90,78,0.2)] animate-pulse" />
+            <div className="w-28 h-28 rounded-full p-[4px] bg-gradient-to-tr from-[#8a651a] via-[#f7e096] to-[#b89437] shadow-xl flex items-center justify-center">
+              <div className="w-full h-full rounded-full bg-white flex items-center justify-center p-2.5 overflow-hidden">
+                {brandingSettings.logo ? (
+                  <img src={brandingSettings.logo} alt="Logo" className="w-full h-full object-cover rounded-full" />
+                ) : (
+                  <School size={48} className="text-[#085a4e]" />
+                )}
+              </div>
             </div>
-          ) : (
-            <div className="relative mb-10 w-32 h-32 flex flex-col items-center justify-center bg-white/5 rounded-full border border-white/10 backdrop-blur-md">
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                  className="w-12 h-12 rounded-full border-4 border-white/10 border-t-superior-gold"
-                />
-              <motion.div
-                 animate={{ rotate: 360 }}
-                 transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                 className="absolute inset-0 rounded-full border border-superior-gold/20 border-t-superior-gold/80 pointer-events-none"
-               />
-            </div>
-          )}
-
-        <div className="relative z-10 text-center space-y-3 px-4">
-          <div className="flex items-center justify-center gap-2 mb-1">
-            <div className="h-px w-8 bg-superior-gold/40" />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-superior-gold">
-              Superior Group of Colleges
-            </span>
-            <div className="h-px w-8 bg-superior-gold/40" />
-          </div>
-
-          <h2 className="text-xl md:text-3xl font-black text-white tracking-[0.15em] uppercase drop-shadow-md">
-            {brandingSettings.name || "Superior College Jahanian"}
-          </h2>
-          
-          {/* Animated Gold Progress Line */}
-          <div className="w-48 h-1 bg-white/10 rounded-full mx-auto overflow-hidden mt-3 relative">
+            {/* Spinning Outer Ring */}
             <motion.div
-              animate={{ x: ["-100%", "100%"] }}
-              transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-              className="w-1/2 h-full bg-gradient-to-r from-transparent via-superior-gold to-transparent"
+              animate={{ rotate: 360 }}
+              transition={{ duration: 5, repeat: Infinity, ease: "linear" }}
+              className="absolute inset-[-4px] rounded-full border border-emerald-600/30 border-t-[#085a4e]"
             />
           </div>
 
-          <p className="text-white/60 font-semibold text-xs tracking-widest uppercase mt-3">
-            {authLoading ? "Verifying Credentials & Workspace..." : "Connecting to Secure Academic Environment..."}
-          </p>
-        </div>
-        </div>
+          {/* Institutional Branding */}
+          <div className="space-y-1 mb-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[9px] font-black uppercase tracking-[0.25em] text-[#085a4e] shadow-xs">
+              <Sparkles size={10} />
+              <span>Superior Group of Colleges</span>
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight pt-1">
+              {brandingSettings.name || "Superior College Jahanian"}
+            </h2>
+            <p className="text-[11px] font-bold text-emerald-700 tracking-wide">
+              Jahanian Main Campus • Academic Operating Cloud
+            </p>
+          </div>
+
+          {/* Dynamic Progress Indicator */}
+          <div className="w-full max-w-xs mt-4 pt-2">
+            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200/80 relative">
+              <motion.div
+                animate={{ x: ["-100%", "100%"] }}
+                transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+                className="w-1/2 h-full bg-gradient-to-r from-[#085a4e] via-[#0a6d5f] to-[#c9a84c] rounded-full shadow-[0_0_10px_rgba(8,90,78,0.3)]"
+              />
+            </div>
+            <p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mt-2.5">
+              {authLoading ? "Verifying Credentials & Workspace..." : "Connecting to Secure Academic Environment..."}
+            </p>
+          </div>
+
+          {/* Footer Security Pill */}
+          <div className="flex items-center gap-1.5 mt-6 text-slate-400 text-[10px] uppercase font-bold tracking-widest">
+            <Shield size={12} className="text-[#085a4e]" />
+            <span>256-Bit TLS 1.3 Certified • Institutional Gateway</span>
+          </div>
+        </motion.div>
       </div>
     );
   }
 
-  if (!user) {
-    return (
-      <div className="h-screen w-full flex bg-gradient-to-br from-[#021c17] via-[#053229] to-[#011410] relative overflow-hidden font-sans select-none">
-        {/* Animated 3D Welcome Background with majestic curves */}
-        <div className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
-            className="w-[140vw] h-[140vw] lg:w-[100vw] lg:h-[100vw] absolute opacity-20 pointer-events-none"
-          >
-            <div
-              className="absolute inset-10 rounded-full border border-superior-gold/10 shadow-[0_0_120px_rgba(201,168,76,0.05)]"
-            />
-            <div
-              className="absolute inset-40 rounded-full border-2 border-white/[0.02]"
-            />
-          </motion.div>
-          {/* Majestic background circles and arc matching the screenshot */}
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[850px] h-[850px] rounded-full border border-superior-gold/10 z-0 pointer-events-none hidden md:block" />
-          <div className="absolute right-[-100px] top-1/2 -translate-y-1/2 w-[1000px] h-[1000px] rounded-full border border-white/[0.02] z-0 pointer-events-none hidden md:block" />
-          
-          {/* Glowing particle stars matching screenshot precisely */}
-          <div className="absolute top-[35%] left-[45%] w-1.5 h-1.5 bg-superior-gold/80 rounded-full shadow-[0_0_12px_#c9a84c] z-0 pointer-events-none animate-pulse" />
-          <div className="absolute bottom-[28%] left-[43%] w-1.5 h-1.5 bg-superior-gold/80 rounded-full shadow-[0_0_12px_#c9a84c] z-0 pointer-events-none animate-pulse" />
-          <div className="absolute top-[62%] right-[10%] w-1 h-1 bg-white/60 rounded-full shadow-[0_0_8px_#ffffff] z-0 pointer-events-none animate-ping" />
-          
-          <div className="absolute w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-5 mix-blend-overlay" />
-          <div className="absolute w-full h-full bg-gradient-to-t from-[#011410] via-transparent to-transparent z-0" />
-        </div>
-
-        {/* The Welcome Content - custom layout */}
-        <motion.div
-          animate={{
-            scale: showLoginForm ? 0.95 : 1,
-            opacity: showLoginForm ? 0.9 : 1,
+  // Active student or faculty portal session view
+  if (portalSession) {
+    if (portalSession.type === "student") {
+      const liveStudent = (data.students || []).find((s) => s.id === portalSession.data?.id) || portalSession.data;
+      return (
+        <StudentPortal
+          student={liveStudent}
+          academicRecords={data.academicRecords || []}
+          staffTimetable={data.staffTimetable || []}
+          studentAttendance={data.studentAttendance || []}
+          collegeSettings={brandingSettings}
+          onLogout={() => {
+            safeLocalStorage.removeItem("scj_portal_user");
+            setPortalSession(null);
+            toast.info("Logged out from Student Portal");
           }}
-          transition={{ type: "spring", damping: 30, stiffness: 100 }}
-          className={cn(
-            "absolute inset-0 flex flex-col items-center justify-center z-10 transition-all duration-700 text-white p-6 md:p-12",
-            showLoginForm
-              ? "w-full md:w-[55%] xl:w-[65%] md:left-[45%] xl:left-[35%] hidden md:flex"
-              : "w-full left-0",
-          )}
+        />
+      );
+    } else if (portalSession.type === "staff") {
+      const liveStaff = (data.staff || []).find((st) => st.id === portalSession.data?.id) || portalSession.data;
+      return (
+        <StaffPortal
+          staff={liveStaff}
+          staffTimetable={data.staffTimetable || []}
+          staffAttendance={data.staffAttendance || []}
+          salaryPayments={data.salaryPayments || []}
+          staffAdvances={data.staffAdvances || []}
+          collegeSettings={brandingSettings}
+          onLogout={() => {
+            safeLocalStorage.removeItem("scj_portal_user");
+            setPortalSession(null);
+            toast.info("Logged out from Faculty Portal");
+          }}
+        />
+      );
+    }
+  }
+
+  if (!user) {
+    if (portalViewMode === "welcome") {
+      return (
+        <WelcomeScreen
+          brandingSettings={brandingSettings}
+          onEnter={() => setPortalViewMode("gateway")}
+          onDirectSelectPortal={(portal) => {
+            setLoginPortal(portal);
+            setPortalViewMode("login");
+            setLoginError("");
+          }}
+        />
+      );
+    }
+
+    if (portalViewMode === "gateway") {
+      return (
+        <PortalGatewayView
+          brandingSettings={brandingSettings}
+          onSelectPortal={(portal) => {
+            setLoginPortal(portal);
+            setPortalViewMode("login");
+            setLoginError("");
+          }}
+          onBackToWelcome={() => setPortalViewMode("welcome")}
+        />
+      );
+    }
+
+    const currentPortalConfig = {
+      student: {
+        badge: "STUDENT ACADEMIC ACCESS",
+        badgeClass: "bg-[#063b30] text-amber-200 border-superior-gold/35",
+        btnClass: "bg-gradient-to-r from-[#c9a84c] via-[#f7e096] to-[#b89437] text-slate-950 font-black shadow-[0_10px_30px_rgba(201,168,76,0.35)] hover:shadow-[0_15px_45px_rgba(201,168,76,0.55)] hover:brightness-110",
+        accentBorder: "focus:border-superior-gold focus:ring-2 focus:ring-superior-gold/30",
+        welcomeRole: "Student Portal",
+        welcomeGreeting: "Welcome Back, Student",
+        welcomeDesc: "Enter your roll number and registered contact to view fee vouchers, result cards, and timetables.",
+        rightBadge: "ACADEMIC EXCELLENCE & SCHOLARSHIP",
+        rightTitle: "Empowering Scholars Toward Extraordinary Heights.",
+        rightDesc: "Welcome to the official student portal. Check clearance status on fee vouchers, download verified 3-copy bank challans, inspect terminal examination marksheets, and view lecture rosters.",
+        bentoTiles: [
+          { title: "Bank Fee Clearance", metric: "100% Cleared", sub: "Bank Reconciled • Verified", icon: CheckCircle2, tag: "Status: Verified", tagClass: "bg-superior-gold/15 text-amber-200 border-superior-gold/35" },
+          { title: "Terminal Result Cards", metric: "Grade A+ (82/85)", sub: "Physics Mid-Term Evaluation", icon: Award, tag: "Term Record", tagClass: "bg-superior-gold/15 text-amber-200 border-superior-gold/35" },
+          { title: "Classroom Presence", metric: "97.4% Attendance", sub: "Active Semester Presence", icon: Calendar, tag: "Real-time Meter", tagClass: "bg-superior-gold/15 text-amber-200 border-superior-gold/35" },
+        ],
+        quote: "Education is the passport to the future, for tomorrow belongs to those who prepare for it today.",
+        quoteAuthor: "Superior Academic Senate",
+      },
+      staff: {
+        badge: "FACULTY WORKPLACE",
+        badgeClass: "bg-[#063b30] text-amber-200 border-superior-gold/35",
+        btnClass: "bg-gradient-to-r from-[#c9a84c] via-[#f7e096] to-[#b89437] text-slate-950 font-black shadow-[0_10px_30px_rgba(201,168,76,0.35)] hover:shadow-[0_15px_45px_rgba(201,168,76,0.55)] hover:brightness-110",
+        accentBorder: "focus:border-superior-gold focus:ring-2 focus:ring-superior-gold/30",
+        welcomeRole: "Faculty Workplace",
+        welcomeGreeting: "Welcome, Faculty Member",
+        welcomeDesc: "Enter your staff ID and password or CNIC to review class rosters, biometric logs, and monthly payslips.",
+        rightBadge: "PEDAGOGICAL LEADERSHIP",
+        rightTitle: "Dedicated to World-Class Teaching & Mentorship.",
+        rightDesc: "A unified digital terminal for teaching faculty and staff. Manage assigned period schedules, review daily biometric attendance entries, and access authenticated monthly salary vouchers.",
+        bentoTiles: [
+          { title: "Assigned Teaching Roster", metric: "4 Periods Today", sub: "Room 14 (ICS-II) • Morning Session", icon: Calendar, tag: "Class Active", tagClass: "bg-superior-gold/15 text-amber-200 border-superior-gold/35" },
+          { title: "Biometric Verification", metric: "08:02 AM Punch", sub: "Official Duty Check-In Confirmed", icon: Clock, tag: "Status: On Duty", tagClass: "bg-superior-gold/15 text-amber-200 border-superior-gold/35" },
+          { title: "Payroll & Compensation", metric: "Payslip Ready", sub: "Monthly Salary Voucher Reconciled", icon: CreditCard, tag: "PDF Download", tagClass: "bg-superior-gold/15 text-amber-200 border-superior-gold/35" },
+        ],
+        quote: "The task of the modern educator is not to cut down jungles, but to irrigate deserts and inspire discovery.",
+        quoteAuthor: "Faculty Advisory Board",
+      },
+      admin: {
+        badge: "CAMPUS GOVERNANCE",
+        badgeClass: "bg-[#063b30] text-amber-200 border-superior-gold/35",
+        btnClass: "bg-gradient-to-r from-[#c9a84c] via-[#f7e096] to-[#b89437] text-slate-950 font-black shadow-[0_10px_30px_rgba(201,168,76,0.35)] hover:shadow-[0_15px_45px_rgba(201,168,76,0.55)] hover:brightness-110",
+        accentBorder: "focus:border-superior-gold focus:ring-2 focus:ring-superior-gold/30",
+        welcomeRole: "Administrative Console",
+        welcomeGreeting: "Administrative Console",
+        welcomeDesc: "Authorized personnel access only. Manage admissions pipelines, double-entry cashbooks, and campus staff.",
+        rightBadge: "INSTITUTIONAL GOVERNANCE",
+        rightTitle: "Enterprise Governance & Real-Time Intelligence.",
+        rightDesc: "Master institutional command terminal. Supervise pre-admission lead conversions, monitor live double-entry accounts ledgers, disburse faculty payroll, and orchestrate campus-wide communications.",
+        bentoTiles: [
+          { title: "Total Student Enrollment", metric: "1,450+ Scholars", sub: "Active Enrolled Scholars Monitored", icon: Users, tag: "Live Roster", tagClass: "bg-superior-gold/15 text-amber-200 border-superior-gold/35" },
+          { title: "Double-Entry Ledger", metric: "Accounts Balanced", sub: "Cashbook & Fee Clearance Audited", icon: Wallet, tag: "Audit Passed", tagClass: "bg-superior-gold/15 text-amber-200 border-superior-gold/35" },
+          { title: "System Security Node", metric: "256-Bit SSL", sub: "End-to-End Cryptographic Protection", icon: Shield, tag: "Cloud Sync OK", tagClass: "bg-superior-gold/15 text-amber-200 border-superior-gold/35" },
+        ],
+        quote: "Strategic institutional leadership builds sustainable academic excellence and enduring community trust.",
+        quoteAuthor: "Executive Board of Trustees",
+      },
+    }[loginPortal];
+
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center p-3 sm:p-5 lg:p-7 font-sans select-none relative overflow-x-hidden overflow-y-auto text-slate-800">
+        {/* Real Campus Photo Background + Reduced Wave & Top Slogan */}
+        <AcademicCanvasBackground logo={brandingSettings.logo} />
+
+        {/* Master Split-Card Container (1140-1180px width) */}
+        <motion.div
+          initial={{ opacity: 0, y: 16, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.45, ease: "easeOut" }}
+          className="relative z-10 w-full max-w-[1140px] xl:max-w-[1180px] mx-auto rounded-3xl sm:rounded-[2.25rem] bg-white border border-slate-200/90 shadow-[0_25px_80px_rgba(0,0,0,0.22)] overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[580px] lg:min-h-[600px]"
         >
-          {/* Large Logo layout shown during initial countdown screen of 2.5s */}
-          {!showLoginForm && (
-            <motion.div
-              animate={{ y: [0, -10, 0] }}
-              transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-              className="relative mb-8 md:mb-12"
-            >
-              <div className="w-32 h-32 md:w-44 md:h-44 bg-white/5 backdrop-blur-2xl rounded-full border border-white/10 shadow-[0_30px_60px_rgba(0,0,0,0.6),inset_0_2px_5px_rgba(255,255,255,0.1)] flex items-center justify-center relative overflow-hidden p-1">
-                <div className="w-full h-full bg-white rounded-full flex items-center justify-center p-4">
-                  {brandingSettings.logo ? (
-                    <img
-                      src={brandingSettings.logo}
-                      alt="Logo"
-                      className="w-full h-full object-contain rounded-full"
-                    />
-                  ) : (
-                    <School
-                      size={60}
-                      className="text-[#053229]"
-                    />
-                  )}
-                </div>
-              </div>
-              <div className="absolute -bottom-6 -right-6 w-20 h-20 bg-superior-gold/15 blur-[40px] rounded-full" />
-            </motion.div>
-          )}
+          {/* LEFT PANEL (approx 38-40% - 5 cols): Deep Superior Emerald Brand Canvas */}
+          <div className="lg:col-span-5 bg-gradient-to-br from-[#064e43] via-[#053e35] to-[#022822] p-7 sm:p-9 lg:p-10 flex flex-col justify-between text-white relative overflow-hidden">
+            {/* Subtle Background Watermark */}
+            <div className="absolute inset-0 [background-image:radial-gradient(rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none" />
+            <div className="absolute top-1/4 right-0 w-80 h-80 opacity-[0.08] pointer-events-none text-white flex items-center justify-center">
+              <GraduationCap size={320} className="stroke-[1]" />
+            </div>
+            <div className="absolute -top-16 -left-16 w-60 h-60 rounded-full bg-emerald-400/15 blur-3xl pointer-events-none" />
 
-          <div className="text-center sm:text-left md:max-w-2xl xl:max-w-3xl relative z-10">
-            <div>
-              {/* Display text styled exactly like the screenshot with elegant styling */}
-              <h1 className="text-4xl md:text-5xl xl:text-7xl font-sans font-black tracking-tight leading-[1.1] text-white">
-                Welcome to
-                <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-superior-gold via-yellow-400 to-[#e3c16f]">
-                  {brandingSettings.name || "Superior College"}
+            <div className="relative z-10">
+              {/* Top Navigation: Return to Portals & TLS Badge */}
+              <div className="flex items-center justify-between mb-5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPortalViewMode("gateway");
+                    setLoginError("");
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white text-xs font-bold transition-all cursor-pointer group shadow-sm backdrop-blur-md"
+                >
+                  <ArrowLeft size={13} className="transition-transform group-hover:-translate-x-0.5" />
+                  <span>Return to Portals</span>
+                </button>
+
+                <span className="text-[10px] font-mono text-emerald-200 tracking-wider">
+                  TLS 1.3 SECURE
                 </span>
-                {!(brandingSettings.name || "").toLowerCase().includes("jahanian") && (
-                  <>
-                    <br />
-                    Jahanian
-                  </>
-                )}
-              </h1>
-            </div>
-
-            <div>
-              {/* Gold Graduation Cap divider matching the screenshot */}
-              <div className="flex items-center gap-4 w-full max-w-xl my-6">
-                <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent to-superior-gold/40" />
-                <GraduationCap className="text-superior-gold w-6 h-6 shrink-0 filter drop-shadow-[0_0_8px_rgba(201,168,76,0.6)]" />
-                <div className="h-[1px] flex-1 bg-gradient-to-l from-transparent to-superior-gold/40" />
               </div>
-              
-              <p className="text-sm md:text-base text-white/60 font-medium leading-relaxed max-w-xl mb-8">
-                Experience the next generation of academic management. Secure, 
-                unified ecosystem for students, staff, and administration. 
-                Streamlined operations at your fingertips, crafted for excellence.
-              </p>
 
-              {/* Grid with 3 columns matching second half of first screenshot */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mt-10 w-full max-w-2xl">
-                {[
-                  {
-                    icon: Shield,
-                    title: "Enterprise Security",
-                    desc: "Advanced protection for your data"
-                  },
-                  {
-                    icon: Zap,
-                    title: "Lightning Fast",
-                    desc: "Optimized for speed and performance"
-                  },
-                  {
-                    icon: Database,
-                    title: "Real-time Sync",
-                    desc: "Always up-to-date information"
-                  }
-                ].map((feat, i) => (
-                  <div key={i} className="flex flex-col items-center sm:items-start text-center sm:text-left gap-3">
-                    <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center shadow-lg shadow-black/20 hover:border-superior-gold/30 hover:bg-white/10 transition-all duration-300">
-                      <feat.icon className="text-superior-gold w-5 h-5 filter drop-shadow-[0_0_4px_rgba(201,168,76,0.5)]" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-bold text-white tracking-widest uppercase">{feat.title}</h3>
-                      <p className="text-[11px] text-white/50 mt-1 leading-normal font-medium">{feat.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {!showLoginForm && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.5 }}
-                className="mt-12 flex items-center gap-4 justify-center sm:justify-start text-superior-gold text-[10px] md:text-xs font-black uppercase tracking-[0.3em]"
-              >
-                <motion.div
-                  animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                  className="w-2 h-2 bg-superior-gold rounded-full shadow-[0_0_10px_rgba(201,168,76,0.8)]"
-                />
-                Initializing Secure Access
-                <motion.div
-                  animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 1.5, repeat: Infinity, delay: 0.5 }}
-                  className="w-2 h-2 bg-superior-gold rounded-full shadow-[0_0_10px_rgba(201,168,76,0.8)]"
-                />
-              </motion.div>
-            )}
-          </div>
-        </motion.div>
-
-        {/* The Login Panel - floating glassmorphic card on the left */}
-        <AnimatePresence>
-          {showLoginForm && (
-            <motion.div
-              initial={{ x: "-100%", opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: "-100%", opacity: 0 }}
-              transition={{
-                type: "spring",
-                damping: 30,
-                stiffness: 120,
-              }}
-              className="absolute md:fixed top-0 left-0 w-full md:w-[45%] xl:w-[35%] h-full z-20 flex flex-col items-center justify-center p-4 sm:p-6 md:p-8"
-            >
-              {/* Glassmorphic card design matching the screenshot precisely */}
-              <div className="w-full max-w-[420px] bg-[#03241e]/75 border border-white/10 rounded-[2.5rem] shadow-[0_45px_100px_-15px_rgba(0,0,0,0.85),inset_0_1px_2px_rgba(255,255,255,0.15)] p-6 md:p-8 relative overflow-hidden backdrop-blur-2xl">
-                {/* Subtle internal glowing spots */}
-                <div className="absolute top-0 right-0 w-32 h-32 bg-superior-gold/5 blur-[50px] rounded-full pointer-events-none" />
-                <div className="absolute bottom-0 left-0 w-32 h-32 bg-superior-teal/10 blur-[50px] rounded-full pointer-events-none" />
-
-                <div className="mb-6 text-center">
-                  {/* Glowing Logo Circle */}
-                  <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center p-1.5 border-2 border-superior-gold/40 shadow-[0_0_20px_rgba(201,168,76,0.3)] mx-auto mb-3.5 relative">
+              {/* Brand Identity Lockup */}
+              <div className="flex items-center gap-3.5 mb-6">
+                <div className="w-12 h-12 rounded-full p-0.5 bg-gradient-to-tr from-[#c9a84c] via-[#f7e096] to-[#b89437] shadow-lg flex items-center justify-center shrink-0">
+                  <div className="w-full h-full rounded-full bg-white overflow-hidden flex items-center justify-center">
                     {brandingSettings.logo ? (
                       <img
                         src={brandingSettings.logo}
                         alt="Logo"
-                        className="w-full h-full object-contain rounded-full"
+                        className="w-full h-full object-cover rounded-full"
                       />
                     ) : (
-                      <School
-                        size={36}
-                        className="text-[#053229]"
-                      />
+                      <School size={22} className="text-[#053229]" />
                     )}
-                  </div>
-
-                  <h2 className="text-xl md:text-2xl font-sans font-black text-white uppercase tracking-[0.1em] mt-2 mb-1">
-                    Superior
-                  </h2>
-                  <p className="text-xs font-bold text-superior-gold tracking-[0.2em] uppercase">
-                    Staff Portal
-                  </p>
-                  
-                  {/* Spacer divider */}
-                  <div className="h-[2px] w-10 bg-superior-gold/30 rounded-full mx-auto my-3" />
-
-                  {/* Secure connection sub-badge */}
-                  <div className="flex items-center gap-1.5 justify-center bg-[#053229]/50 border border-white/5 px-2.5 py-1 rounded-full w-fit mx-auto">
-                    <Shield size={11} className="text-superior-gold shrink-0" />
-                    <span className="text-[9px] font-black text-white/75 uppercase tracking-widest leading-none">
-                      Secure Access • Trusted Platform
-                    </span>
                   </div>
                 </div>
-
-                <form
-                  onSubmit={handleLogin}
-                  className="space-y-4 flex flex-col border-none bg-transparent shadow-none p-0"
-                >
-                  {loginError && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="bg-red-500/15 text-red-200 text-xs font-semibold p-4 rounded-2xl border border-red-500/30 flex items-start gap-3 backdrop-blur-md whitespace-pre-line text-left leading-relaxed shadow-lg shadow-black/20"
-                    >
-                      <AlertTriangle
-                        size={16}
-                        className="shrink-0 mt-0.5 text-red-400"
-                      />
-                      <span className="flex-1 font-medium">{loginError}</span>
-                    </motion.div>
-                  )}
-
-                  <div className="space-y-4">
-                    {/* Admin Email container */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-white/50 uppercase tracking-widest ml-1">
-                        Admin Email
-                      </label>
-                      <div className="relative">
-                        <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
-                        <Input
-                          placeholder="admin@superior.edu"
-                          type="email"
-                          required
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          className="pl-12 bg-black/30 border border-white/10 text-white placeholder:text-white/20 h-13 rounded-xl focus:border-superior-gold/40 focus:ring-1 focus:ring-superior-gold/40 text-sm font-medium backdrop-blur-md w-full"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Password container */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-white/50 uppercase tracking-widest ml-1">
-                        Password
-                      </label>
-                      <div className="relative">
-                        <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
-                        <Input
-                          placeholder="Enter Secure Key"
-                          type={showPassword ? "text" : "password"}
-                          required
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          className="pl-12 pr-12 bg-black/30 border border-white/10 text-white placeholder:text-white/20 h-13 rounded-xl focus:border-superior-gold/40 focus:ring-1 focus:ring-superior-gold/40 text-sm font-medium backdrop-blur-md w-full"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition-colors"
-                        >
-                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Remember me and Forgot Password */}
-                  <div className="flex items-center justify-between px-1 text-xs">
-                    <label className="flex items-center gap-2 text-white/70 font-medium cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={rememberMe}
-                        onChange={(e) => setRememberMe(e.target.checked)}
-                        className="rounded border-white/20 bg-black/40 focus:ring-0 checked:bg-superior-gold checked:border-superior-gold h-4 w-4 shrink-0 transition-colors"
-                      />
-                      <span>Remember me</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => toast.info("Contact management to change administrator password.")}
-                      className="text-superior-gold hover:text-yellow-400 font-bold tracking-wide transition-colors"
-                    >
-                      Forgot Password?
-                    </button>
-                  </div>
-
-                  {/* SIGN IN Button with Gradient */}
-                  <Button
-                    type="submit"
-                    disabled={authLoading}
-                    className="w-full bg-gradient-to-r from-superior-gold to-[#b7953d] hover:brightness-110 text-slate-950 mt-4 h-13 rounded-xl text-xs font-black uppercase tracking-[0.2em] shadow-[0_8px_20px_rgba(201,168,76,0.2)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer border-none disabled:opacity-80"
-                  >
-                    {authLoading ? (
-                      <>
-                        <motion.div
-                          animate={{ rotate: 360 }}
-                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                          className="w-4 h-4 rounded-full border-2 border-slate-950 border-t-transparent shrink-0"
-                        />
-                        <span>VERIFYING...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>SIGN IN</span>
-                        <LogIn size={14} className="stroke-[3]" />
-                      </>
-                    )}
-                  </Button>
-
-                  {/* Divider line OR */}
-                  <div className="flex items-center gap-3 my-2">
-                    <div className="h-[1px] flex-1 bg-white/5" />
-                    <span className="text-[9px] text-white/25 font-bold tracking-widest uppercase">
-                      OR
-                    </span>
-                    <div className="h-[1px] flex-1 bg-white/5" />
-                  </div>
-
-                  {/* LOGIN WITH SECURE KEY */}
-                  <button
-                    type="button"
-                    onClick={() => toast.info("Secure physical safety credentials is set to SuperAdmin control.")}
-                    className="w-full bg-white/[0.03] hover:bg-white/[0.08] text-white/90 border border-white/10 transition-all duration-200 h-13 rounded-xl text-xs font-bold uppercase tracking-[0.15em] flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <Shield size={14} className="text-superior-gold shrink-0" />
-                    LOGIN WITH SECURE KEY
-                  </button>
-
-                  {/* Padd lock footer description */}
-                  <div className="flex items-center gap-2 justify-center pt-4 text-white/30 text-[10px] font-medium tracking-wide">
-                    <Lock size={11} className="text-superior-gold" />
-                    <span>Your data is protected with enterprise-grade security</span>
-                  </div>
-                </form>
+                <div>
+                  <h2 className="text-xs sm:text-[13px] font-black text-white uppercase tracking-wider leading-snug">
+                    {brandingSettings.name || "SUPERIOR COLLEGE JAHANIAN"}
+                  </h2>
+                  <p className="text-[10px] sm:text-[11px] font-semibold text-amber-200/90 tracking-wide">
+                    Jahanian Campus &bull; {currentPortalConfig.welcomeRole}
+                  </p>
+                </div>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+
+              {/* Welcome Role Header & Description */}
+              <div className="mb-7">
+                <h1 className="text-2xl sm:text-3xl lg:text-[32px] font-black tracking-tight text-white leading-tight">
+                  Welcome to{" "}
+                  <span className="text-[#f5d47a] block sm:inline">
+                    {currentPortalConfig.welcomeRole}.
+                  </span>
+                </h1>
+                <p className="text-xs sm:text-[13px] text-emerald-100/85 mt-2.5 leading-relaxed max-w-md">
+                  {currentPortalConfig.welcomeDesc}
+                </p>
+              </div>
+
+              {/* 3 Role-Specific Feature Pillars */}
+              <div className="grid grid-cols-3 gap-3 pt-1">
+                {currentPortalConfig.bentoTiles.map((tile, idx) => {
+                  const TileIcon = tile.icon;
+                  return (
+                    <div key={idx} className="flex flex-col items-center text-center">
+                      <div className="w-10 h-10 rounded-full bg-emerald-800/60 border border-emerald-500/30 flex items-center justify-center text-emerald-200 mb-2 shadow-inner">
+                        <TileIcon size={18} />
+                      </div>
+                      <h4 className="text-[11px] sm:text-xs font-bold text-white leading-tight">
+                        {tile.title}
+                      </h4>
+                      <p className="text-[9.5px] sm:text-[10px] text-emerald-200/70 mt-1 leading-snug">
+                        {tile.sub}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Bottom Slogan Line */}
+            <div className="relative z-10 pt-5 mt-5 border-t border-emerald-700/40 text-center">
+              <span className="text-[9px] sm:text-[10px] font-bold text-emerald-200/60 uppercase tracking-[0.25em]">
+                &mdash;&mdash; EMPOWERING BRIGHTER TOMORROWS &mdash;&mdash;
+              </span>
+            </div>
+          </div>
+
+          {/* RIGHT PANEL (approx 60-62% - 7 cols): Crisp White Authentication Studio */}
+          <div className="lg:col-span-7 bg-white p-7 sm:p-9 lg:p-11 flex flex-col justify-between relative">
+            {/* Top Status Indicators Row */}
+            <div className="w-full flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/80 text-[11px] sm:text-xs font-semibold text-emerald-900 shadow-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>All Academic Systems Operational</span>
+              </div>
+
+              <div className="flex items-center gap-3 text-slate-500 text-[11px] sm:text-xs font-medium">
+                <span className="inline-flex items-center gap-1 text-slate-600">
+                  <Lock size={13} className="text-emerald-700" />
+                  <span>Secure Login</span>
+                </span>
+                <span className="text-slate-300">|</span>
+                <span className="inline-flex items-center gap-1 font-mono text-[10.5px] text-slate-400">
+                  <Wifi size={12} className="text-emerald-700" />
+                  <span>TLS 1.3 Encrypted</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Centered Auth Studio Container */}
+            <div className="my-auto py-2 flex justify-center w-full">
+              <PortalAuthCard
+                loginPortal={loginPortal}
+                currentPortalConfig={currentPortalConfig}
+                brandingSettings={brandingSettings}
+                students={data.students || []}
+                staffList={data.staff || []}
+                authLoading={authLoading}
+                setAuthLoading={setAuthLoading}
+                onLoginSuccessStudent={(matchedStudent) => {
+                  const sessionObj = { type: 'student' as const, data: matchedStudent };
+                  safeLocalStorage.setItem('scj_portal_user', JSON.stringify(sessionObj));
+                  setPortalSession(sessionObj);
+                  toast.success(`Welcome to Student Portal, ${matchedStudent.fullName || 'Student'}!`);
+                  setAuthLoading(false);
+                }}
+                onLoginSuccessStaff={(matchedStaff) => {
+                  const sessionObj = { type: 'staff' as const, data: matchedStaff };
+                  safeLocalStorage.setItem('scj_portal_user', JSON.stringify(sessionObj));
+                  setPortalSession(sessionObj);
+                  toast.success(`Welcome to Faculty Portal, ${matchedStaff.fullName || 'Professor'}!`);
+                  setAuthLoading(false);
+                }}
+                onAdminLogin={handleLogin}
+                adminEmail={email}
+                setAdminEmail={setEmail}
+                adminPassword={password}
+                setAdminPassword={setPassword}
+                rememberMe={rememberMe}
+                setRememberMe={setRememberMe}
+                onBackToGateway={() => {
+                  setPortalViewMode("gateway");
+                  setLoginError("");
+                }}
+              />
+            </div>
+
+            {/* Bottom Card Footer */}
+            <div className="w-full pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 gap-2">
+              <span>&copy; 2026 Superior Group of Colleges Jahanian. All rights reserved.</span>
+              <span className="font-medium text-slate-500">Session 2026-28</span>
+            </div>
+          </div>
+
+        </motion.div>
       </div>
     );
   }
@@ -1388,45 +1546,31 @@ export default function App() {
     ];
 
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-[#021c17] via-[#053229] to-[#011410] relative overflow-hidden font-sans select-none">
-        {/* Animated Background effects */}
-        <div className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none">
-          <motion.div
-            animate={{ rotate: -360 }}
-            transition={{ duration: 50, repeat: Infinity, ease: "linear" }}
-            className="w-[140vw] h-[140vw] lg:w-[100vw] lg:h-[100vw] absolute opacity-15 pointer-events-none"
-          >
-            <div className="absolute inset-20 rounded-full border border-superior-teal/30 shadow-[0_0_80px_rgba(8,90,78,0.15)]" />
-            <div className="absolute inset-40 rounded-full border border-superior-gold/5" />
-          </motion.div>
-          
-          {/* Subtle glowing spheres in the background */}
-          <div className="absolute top-[20%] left-[25%] w-80 h-80 bg-superior-teal/20 blur-[120px] rounded-full pointer-events-none" />
-          <div className="absolute bottom-[20%] right-[25%] w-80 h-80 bg-superior-gold/5 blur-[100px] rounded-full pointer-events-none animate-pulse" />
-          
-          <div className="absolute w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-5 mix-blend-overlay" />
-          <div className="absolute w-full h-full bg-gradient-to-t from-[#011a15] via-transparent to-transparent z-0" />
-        </div>
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-white relative overflow-hidden font-sans select-none px-4">
+        {/* Architectural Academic Blueprint Canvas */}
+        <AcademicCanvasBackground logo={brandingSettings.logo} />
 
-        {/* Outer relative wrapper container */}
-        <div className="relative z-10 flex flex-col items-center justify-center px-4 w-full max-w-2xl">
-          
+        {/* Floating Master Crystal Pellet Card */}
+        <div className="relative z-10 w-full max-w-xl bg-white/95 border border-slate-200/90 rounded-[2.5rem] p-8 md:p-10 shadow-[0_25px_70px_rgba(8,90,78,0.12)] backdrop-blur-xl flex flex-col items-center overflow-hidden">
+          {/* Top Accent Line */}
+          <div className="absolute top-0 inset-x-0 h-[2.5px] bg-gradient-to-r from-transparent via-[#085a4e]/50 to-transparent" />
+
           {/* Main Logo Sphere */}
-          <div className="relative mb-8 w-40 h-40 flex items-center justify-center">
+          <div className="relative mb-6 w-32 h-32 flex items-center justify-center">
             {/* Glowing inner rings */}
-            <div className="absolute inset-2 rounded-full border border-superior-gold/30 shadow-[0_0_40px_rgba(201,168,76,0.35)] animate-pulse" />
-            <div className="absolute inset-0 rounded-full border-2 border-white/5 border-t-superior-gold shadow-[0_0_30px_rgba(201,168,76,0.2)] bg-[#011a15] overflow-hidden p-[2px]">
-              <div className="w-full h-full rounded-full bg-white flex items-center justify-center p-3">
+            <div className="absolute inset-1 rounded-full border border-emerald-500/30 shadow-[0_0_25px_rgba(8,90,78,0.2)] animate-pulse" />
+            <div className="absolute inset-0 rounded-full border-2 border-[#085a4e]/30 bg-gradient-to-tr from-[#085a4e] via-[#0a6d5f] to-[#c9a84c] shadow-lg p-[2px] overflow-hidden">
+              <div className="w-full h-full rounded-full bg-white flex items-center justify-center p-2.5 overflow-hidden">
                 {brandingSettings.logo ? (
-                  <img src={brandingSettings.logo} alt="Logo" className="w-full h-full object-contain rounded-full" />
+                  <img src={brandingSettings.logo} alt="Logo" className="w-full h-full object-cover rounded-full" />
                 ) : (
-                  <School size={72} className="text-[#053229]" />
+                  <School size={56} className="text-[#085a4e]" />
                 )}
               </div>
             </div>
             {/* Countdown HUD Center Overlaid */}
             {loadingCountdown > 0 && (
-              <div className="absolute -bottom-2 -right-2 bg-slate-900/90 border border-superior-gold/50 rounded-full w-10 h-10 flex items-center justify-center z-20 shadow-lg text-superior-gold font-sans font-black text-sm">
+              <div className="absolute -bottom-1 -right-1 bg-slate-900 border border-emerald-500/60 rounded-full w-8 h-8 flex items-center justify-center z-20 shadow-md text-[#c9a84c] font-sans font-black text-xs">
                 {loadingCountdown}s
               </div>
             )}
@@ -1435,53 +1579,53 @@ export default function App() {
             <motion.div
               animate={{ rotate: 360 }}
               transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
-              className="absolute inset-[-12px] rounded-full border border-superior-gold/25 border-t-superior-gold/90"
+              className="absolute inset-[-8px] rounded-full border border-emerald-600/30 border-t-[#085a4e]"
             />
             <motion.div
               animate={{ rotate: -360 }}
               transition={{ duration: 12, repeat: Infinity, ease: "linear" }}
-              className="absolute inset-[-24px] rounded-full border border-white/5 border-b-white/30 pointer-events-none"
+              className="absolute inset-[-16px] rounded-full border border-slate-200/60 border-b-emerald-600/30 pointer-events-none"
             />
           </div>
 
           {/* Heading Text display */}
-          <div className="text-center space-y-1 mt-2">
-            <h1 className="text-xs md:text-sm font-bold text-superior-gold tracking-[0.3em] uppercase">
+          <div className="text-center space-y-1">
+            <h1 className="text-xs md:text-sm font-black text-emerald-800 tracking-[0.25em] uppercase">
               {brandingSettings.name || "Superior College"}
             </h1>
             {!(brandingSettings.name || "").toLowerCase().includes("jahanian") && (
-              <h2 className="text-3xl md:text-5xl font-sans font-black text-white tracking-[0.1em] uppercase drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">
-                Jahanian
+              <h2 className="text-2xl md:text-3xl font-sans font-black text-slate-900 tracking-tight uppercase">
+                Jahanian Campus
               </h2>
             )}
           </div>
 
           {/* Graduation Cap Lines Divider */}
-          <div className="flex items-center gap-3 w-56 my-4 mx-auto">
-            <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent to-superior-gold/40" />
-            <GraduationCap className="text-superior-gold w-4.5 h-4.5 shrink-0 filter drop-shadow-[0_0_4px_#c9a84c]" />
-            <div className="h-[1px] flex-1 bg-gradient-to-l from-transparent to-superior-gold/40" />
+          <div className="flex items-center gap-3 w-48 my-3 mx-auto">
+            <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent to-emerald-600/40" />
+            <GraduationCap className="text-[#085a4e] w-4 h-4 shrink-0" />
+            <div className="h-[1px] flex-1 bg-gradient-to-l from-transparent to-emerald-600/40" />
           </div>
 
-          {/* Welcome subtitle message with Name Highlighted in Gold */}
+          {/* Welcome subtitle message */}
           {user && (
             <motion.p
               initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-xs md:text-sm text-white/60 font-medium tracking-wide mb-6"
+              className="text-xs md:text-sm text-slate-600 font-medium tracking-wide mb-5 text-center"
             >
-              Welcome back, <span className="text-superior-gold font-black shadow-superior-gold/10 drop-shadow">{user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Admin"}</span>! Logging you in...
+              Welcome back, <span className="text-emerald-800 font-black">{user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Admin"}</span>! Logging you in...
             </motion.p>
           )}
 
-          {/* Premium Glazzmorphic Checklist / Stepper Card */}
-          <div className="relative z-10 w-full max-w-xl bg-[#03241e]/75 border border-white/10 rounded-[2rem] p-6 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.85)] backdrop-blur-xl mt-4">
+          {/* Crystal Pellet Stepper Card */}
+          <div className="w-full bg-[#f8fafc] border border-slate-200/80 rounded-2xl p-5 shadow-inner mt-2">
             {/* Steps line horizontal layout */}
-            <div className="flex items-center justify-between relative mb-8 px-4">
+            <div className="flex items-center justify-between relative mb-6 px-2">
               {/* Connecting line behind icons */}
-              <div className="absolute top-[22px] left-10 right-10 h-[2px] bg-white/5 z-0 rounded-full">
+              <div className="absolute top-[20px] left-8 right-8 h-[2px] bg-slate-200 z-0 rounded-full">
                 <motion.div
-                  className="h-full bg-gradient-to-r from-superior-gold to-yellow-400"
+                  className="h-full bg-gradient-to-r from-[#085a4e] via-[#0a6d5f] to-[#c9a84c]"
                   initial={{ width: "0%" }}
                   animate={{ width: `${Math.min(100, (Math.max(0, 5 - loadingCountdown - 1) / 3) * 100)}%` }}
                   transition={{ duration: 0.5 }}
@@ -1489,10 +1633,9 @@ export default function App() {
               </div>
 
               {steps.map((st) => {
-                const currentProgressIndex = 5 - loadingCountdown; // steps counts up: 0,1,2,3,4,5
+                const currentProgressIndex = 5 - loadingCountdown;
                 const isCompleted = currentProgressIndex >= st.id;
                 const isActive = currentProgressIndex === st.id - 1;
-                const isPending = currentProgressIndex < st.id - 1;
 
                 return (
                   <div key={st.id} className="flex flex-col items-center z-10 relative flex-1">
@@ -1500,24 +1643,24 @@ export default function App() {
                       animate={isActive ? { scale: [1, 1.08, 1] } : {}}
                       transition={{ duration: 2, repeat: Infinity }}
                       className={cn(
-                        "w-11 h-11 rounded-full border flex items-center justify-center transition-all duration-300 shadow-md",
+                        "w-10 h-10 rounded-full border flex items-center justify-center transition-all duration-300 shadow-xs",
                         isCompleted
-                          ? "bg-superior-gold border-superior-gold text-slate-950"
+                          ? "bg-[#085a4e] border-[#085a4e] text-white"
                           : isActive
-                          ? "bg-[#053229] border-superior-gold text-superior-gold shadow-[0_0_15px_rgba(201,168,76,0.5)]"
-                          : "bg-[#021814]/80 border-white/5 text-white/30"
+                          ? "bg-emerald-50 border-emerald-600 text-[#085a4e] shadow-[0_0_12px_rgba(8,90,78,0.3)]"
+                          : "bg-white border-slate-200 text-slate-400"
                       )}
                     >
                       {isCompleted ? (
-                        <CheckCircle2 size={18} className="stroke-[3]" />
+                        <CheckCircle2 size={16} className="stroke-[3]" />
                       ) : (
-                        <st.icon size={16} className={cn(isActive && "animate-pulse")} />
+                        <st.icon size={15} className={cn(isActive && "animate-pulse")} />
                       )}
                     </motion.div>
                     <span
                       className={cn(
-                        "text-[9px] font-black tracking-wider uppercase mt-3 transition-colors duration-300",
-                        isCompleted ? "text-white" : isActive ? "text-superior-gold" : "text-white/30"
+                        "text-[9px] font-black tracking-wider uppercase mt-2.5 transition-colors duration-300",
+                        isCompleted ? "text-[#085a4e]" : isActive ? "text-slate-900" : "text-slate-400"
                       )}
                     >
                       {st.label}
@@ -1527,15 +1670,18 @@ export default function App() {
               })}
             </div>
 
-            {/* Dynamic system percentage loader in gold gradient bar */}
-            <div className="space-y-2 px-2 mt-6">
-              <div className="flex justify-between items-center text-[10px] font-black tracking-widest text-[#c9a84c] uppercase">
-                <span>Enterprise Core System</span>
-                <span>{currentPercent}%</span>
+            {/* Dynamic system percentage loader */}
+            <div className="space-y-1.5 px-1 mt-4">
+              <div className="flex justify-between items-center text-[10px] font-black tracking-widest text-slate-700 uppercase">
+                <span className="flex items-center gap-1.5 text-emerald-800">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                  Enterprise Core System
+                </span>
+                <span className="font-mono text-emerald-800">{currentPercent}%</span>
               </div>
-              <div className="w-full h-2.5 bg-black/40 rounded-full overflow-hidden border border-white/5 relative">
+              <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden border border-slate-200/80 relative">
                 <motion.div
-                  className="h-full bg-gradient-to-r from-[#e3c16f] via-superior-gold to-yellow-400 shadow-[0_0_10px_rgba(201,168,76,0.5)] rounded-full"
+                  className="h-full bg-gradient-to-r from-[#085a4e] via-[#0a6d5f] to-[#c9a84c] shadow-[0_0_10px_rgba(8,90,78,0.3)] rounded-full"
                   initial={{ width: "15%" }}
                   animate={{ width: `${currentPercent}%` }}
                   transition={{ duration: 0.5 }}
@@ -1545,9 +1691,9 @@ export default function App() {
           </div>
 
           {/* Shield safety caption */}
-          <div className="flex items-center gap-1.5 mt-8 text-white/40 text-[10px] uppercase font-black tracking-widest">
-            <Shield size={12} className="text-superior-gold shrink-0" />
-            <span>Secure Connection • Protecting Your Workspace</span>
+          <div className="flex items-center gap-1.5 mt-6 text-slate-500 text-[10px] uppercase font-bold tracking-widest">
+            <Shield size={12} className="text-[#085a4e] shrink-0" />
+            <span>Secure TLS Connection • Superior Academic Cloud</span>
           </div>
 
         </div>
@@ -1598,25 +1744,25 @@ export default function App() {
 
             {/* Sidebar as Floating Drawer */}
             <motion.aside
-              initial={{ x: -250 }}
+              initial={{ x: -270 }}
               animate={{ x: 0 }}
-              exit={{ x: -250 }}
-              transition={{ type: "spring", damping: 30, stiffness: 200 }}
-              className="fixed left-0 top-0 bottom-0 w-[250px] bg-[#053229] text-white z-50 flex flex-col shadow-[20px_0_40px_rgba(0,0,0,0.6)] border-r border-white/[0.04] overflow-hidden"
+              exit={{ x: -270 }}
+              transition={{ type: "spring", damping: 28, stiffness: 220 }}
+              className="fixed left-0 top-0 bottom-0 w-[265px] bg-gradient-to-b from-[#064e43] via-[#053d34] to-[#042822] text-white z-50 flex flex-col shadow-[24px_0_48px_rgba(0,0,0,0.5)] border-r border-white/10 overflow-hidden"
             >
-              {/* Premium Minimalist Background Effects */}
-              <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-superior-gold/[0.06] to-transparent z-0 pointer-events-none" />
-              <div className="absolute -top-40 -left-40 w-80 h-80 bg-superior-gold/[0.05] rounded-full blur-[100px] z-0 pointer-events-none" />
+              {/* Premium Background Effects */}
+              <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-superior-gold/10 to-transparent z-0 pointer-events-none" />
+              <div className="absolute -top-40 -left-40 w-80 h-80 bg-superior-gold/10 rounded-full blur-[100px] z-0 pointer-events-none" />
 
-              <div className="px-4 py-3 h-14 flex items-center justify-between relative z-10 border-b border-white/[0.04]">
+              <div className="px-4 py-3.5 h-16 flex items-center justify-between relative z-10 border-b border-white/10 bg-black/10">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-superior-gold/45 to-transparent p-[1px] flex items-center justify-center flex-shrink-0 shadow-lg">
-                    <div className="w-full h-full rounded-full bg-white overflow-hidden flex items-center justify-center p-0.5">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-superior-gold/50 to-superior-gold/10 p-[1.5px] flex items-center justify-center shrink-0 shadow-md">
+                    <div className="w-full h-full rounded-[10px] bg-white overflow-hidden flex items-center justify-center p-0.5">
                       {brandingSettings.logo ? (
                         <img
                           src={brandingSettings.logo}
                           alt="Logo"
-                          className="w-full h-full rounded-full object-contain"
+                          className="w-full h-full rounded-[8px] object-contain"
                           onError={(e) => {
                             (e.target as any).style.display = "none";
                             const parent = (e.target as any).parentElement;
@@ -1630,21 +1776,18 @@ export default function App() {
                           }}
                         />
                       ) : (
-                        <School size={16} className="text-superior-teal" />
+                        <School size={18} className="text-superior-teal" />
                       )}
                     </div>
                   </div>
                   <div className="overflow-hidden text-left flex flex-col justify-center">
-                    <h1 className="font-sans font-bold text-[14px] leading-tight tracking-wide text-white/95">
-                      {settings?.collegeName
-                        ?.split(" ")
-                        .map((w: string) => w[0])
-                        .join("") || "SCJ"}
+                    <h1 className="font-sans font-black text-[13px] leading-tight tracking-wide text-white truncate max-w-[150px]">
+                      {settings?.collegeName || "Superior College"}
                     </h1>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <div className="w-1.5 h-1.5 rounded-full bg-superior-gold animate-pulse" />
-                      <p className="text-[8px] text-white/60 font-mono tracking-widest font-bold uppercase">
-                        Workspace
+                      <div className="w-1.5 h-1.5 rounded-full bg-superior-gold shadow-[0_0_6px_rgba(201,168,76,0.8)] animate-pulse" />
+                      <p className="text-[9px] text-white/70 font-mono tracking-wider font-bold uppercase truncate">
+                        {settings?.campusName || "Jahanian"} • {selectedSession}
                       </p>
                     </div>
                   </div>
@@ -1653,9 +1796,10 @@ export default function App() {
                   variant="ghost"
                   size="icon"
                   onClick={() => setIsSidebarOpen(false)}
-                  className="text-white/30 hover:text-white hover:bg-white/5 rounded-lg h-7 w-7"
+                  className="text-white/40 hover:text-white hover:bg-white/10 rounded-lg h-8 w-8 transition-colors"
+                  title="Close Menu"
                 >
-                  <X size={14} />
+                  <X size={16} />
                 </Button>
               </div>
 
@@ -1901,38 +2045,50 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#fcfdfd] dark:bg-slate-950">
         {/* Header - Unified Navigation */}
-        <header className="h-20 bg-white dark:bg-slate-900 flex items-center justify-between px-6 border-b border-slate-100 dark:border-slate-800 sticky top-0 z-30 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.1)]">
-          <div className="flex items-center gap-6">
+        {/* Header - Unified Navigation */}
+        <header className="h-18 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex items-center justify-between px-5 md:px-6 border-b border-slate-100 dark:border-slate-800 sticky top-0 z-30 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.06)]">
+          <div className="flex items-center gap-3 md:gap-4">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setIsSidebarOpen(true)}
-              className="text-slate-500 hover:text-superior-teal hover:bg-slate-50 rounded-xl h-10 w-10 transition-all active:scale-90"
+              className="text-slate-600 dark:text-slate-300 hover:text-superior-teal hover:bg-emerald-50/50 dark:hover:bg-slate-800 rounded-xl h-10 w-10 transition-all active:scale-95"
+              title="Open Navigation Menu"
             >
               <Menu size={22} />
             </Button>
-            <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800 px-4 py-1.5 rounded-full border border-slate-100 dark:border-slate-700">
-              <div className="w-1.5 h-1.5 rounded-full bg-superior-gold shadow-[0_0_8px_rgba(201,168,76,0.5)]" />
-              <h2 className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-[0.25em]">
+
+            {/* Dynamic Campus Badge */}
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700">
+              <School size={13} className="text-superior-teal dark:text-superior-gold" />
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                {activePage.includes("boys") ? "Boys Campus" : activePage.includes("girls") ? "Girls Campus" : (settings?.campusName || "Jahanian Campus")}
+              </span>
+            </div>
+
+            {/* Active View Indicator */}
+            <div className="flex items-center gap-2.5 bg-superior-teal/5 dark:bg-slate-800 px-3.5 py-1.5 rounded-full border border-superior-teal/15 dark:border-slate-700">
+              <div className="w-2 h-2 rounded-full bg-superior-gold shadow-[0_0_8px_rgba(201,168,76,0.6)]" />
+              <h2 className="text-[11px] font-black text-superior-teal dark:text-emerald-400 uppercase tracking-[0.2em]">
                 {activePage.replace("-", " ")}
               </h2>
             </div>
           </div>
 
           {/* Shortcut Modules Floating Bar */}
-          <div className="hidden lg:flex flex-1 justify-center">
-            <div className="flex items-center gap-2 p-1 bg-transparent border-none">
+          <div className="hidden lg:flex flex-1 justify-center px-4">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-50/70 dark:bg-slate-800/60 rounded-2xl border border-slate-200/50 dark:border-slate-700/50 backdrop-blur-sm">
               {[
-                { id: "dashboard", label: "Dashboard", Icon: Home, color: "text-blue-500", shadow: "drop-shadow-[0_4px_6px_rgba(59,130,246,0.6)]" },
-                { id: "leads", label: "Marketing", Icon: Sparkles, color: "text-pink-500", shadow: "drop-shadow-[0_4px_6px_rgba(236,72,153,0.6)]" },
-                { id: "admissions", label: "Admissions", Icon: Layers, color: "text-purple-500", shadow: "drop-shadow-[0_4px_6px_rgba(168,85,247,0.6)]" },
-                { id: "students", label: "Students", Icon: Users, color: "text-emerald-500", shadow: "drop-shadow-[0_4px_6px_rgba(16,185,129,0.6)]" },
-                { id: "staff", label: "Staff", Icon: Briefcase, color: "text-amber-500", shadow: "drop-shadow-[0_4px_6px_rgba(245,158,11,0.6)]" },
-                { id: "fee", label: "Accounts", Icon: Wallet, color: "text-teal-500", shadow: "drop-shadow-[0_4px_6px_rgba(20,184,166,0.6)]" },
-                { id: "academic", label: "Academic", Icon: GraduationCap, color: "text-indigo-500", shadow: "drop-shadow-[0_4px_6px_rgba(99,102,241,0.6)]" },
-                { id: "attendance", label: "Attendance", Icon: CheckCircle2, color: "text-green-500", shadow: "drop-shadow-[0_4px_6px_rgba(34,197,94,0.6)]" },
-                { id: "reports", label: "Reports", Icon: BarChart3, color: "text-rose-500", shadow: "drop-shadow-[0_4px_6px_rgba(244,63,94,0.6)]" },
-                { id: "settings", label: "Settings", Icon: SettingsIcon, color: "text-slate-600 dark:text-slate-300", shadow: "drop-shadow-[0_4px_6px_rgba(100,116,139,0.6)]" },
+                { id: "dashboard", label: "Dashboard", Icon: Home, color: "text-blue-500", shadow: "drop-shadow-[0_4px_6px_rgba(59,130,246,0.4)]" },
+                { id: "leads", label: "Marketing", Icon: Sparkles, color: "text-pink-500", shadow: "drop-shadow-[0_4px_6px_rgba(236,72,153,0.4)]" },
+                { id: "admissions", label: "Admissions", Icon: Layers, color: "text-purple-500", shadow: "drop-shadow-[0_4px_6px_rgba(168,85,247,0.4)]" },
+                { id: "students", label: "Students", Icon: Users, color: "text-emerald-500", shadow: "drop-shadow-[0_4px_6px_rgba(16,185,129,0.4)]" },
+                { id: "staff", label: "Staff", Icon: Briefcase, color: "text-amber-500", shadow: "drop-shadow-[0_4px_6px_rgba(245,158,11,0.4)]" },
+                { id: "fee", label: "Accounts", Icon: Wallet, color: "text-teal-500", shadow: "drop-shadow-[0_4px_6px_rgba(20,184,166,0.4)]" },
+                { id: "academic", label: "Academic", Icon: GraduationCap, color: "text-indigo-500", shadow: "drop-shadow-[0_4px_6px_rgba(99,102,241,0.4)]" },
+                { id: "attendance", label: "Attendance", Icon: CheckCircle2, color: "text-green-500", shadow: "drop-shadow-[0_4px_6px_rgba(34,197,94,0.4)]" },
+                { id: "reports", label: "Reports", Icon: BarChart3, color: "text-rose-500", shadow: "drop-shadow-[0_4px_6px_rgba(244,63,94,0.4)]" },
+                { id: "settings", label: "Settings", Icon: SettingsIcon, color: "text-slate-600 dark:text-slate-300", shadow: "drop-shadow-[0_4px_6px_rgba(100,116,139,0.4)]" },
               ]
                 .filter((mod) => allowedSections.includes(mod.id))
                 .map((mod) => {
@@ -1940,30 +2096,30 @@ export default function App() {
                   return (
                     <div key={mod.id} className="relative group flex items-center justify-center">
                       <motion.button
-                        whileHover={{ scale: 1.15, y: -4, rotate: 2 }}
-                        transition={{ duration: 0.3, type: "spring", stiffness: 300 }}
+                        whileHover={{ scale: 1.12, y: -2 }}
+                        transition={{ duration: 0.2, type: "spring", stiffness: 350 }}
                         onClick={() => handleNavClick(mod.id as Page)}
                         className={cn(
-                          "flex items-center justify-center w-[46px] h-[46px] rounded-[16px] transition-all duration-300 relative",
+                          "flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-200 relative",
                           isActive
-                            ? `bg-white/80 dark:bg-slate-800/80 shadow-[0_4px_12px_rgba(0,0,0,0.05)] border border-white/50 dark:border-slate-700/50 ring-2 ring-white/20 ring-offset-1 ring-offset-slate-50 dark:ring-offset-slate-900`
-                            : "bg-white/20 dark:bg-slate-800/20 backdrop-blur-md border border-white/30 dark:border-slate-700/30 hover:bg-white/60 dark:hover:bg-slate-800/60 shadow-sm"
+                            ? "bg-white dark:bg-slate-700 shadow-sm border border-superior-teal/30 dark:border-superior-gold/30 ring-2 ring-superior-teal/20"
+                            : "hover:bg-white/80 dark:hover:bg-slate-700/60 text-slate-500"
                         )}
                       >
                         <mod.Icon 
-                          size={22} 
+                          size={20} 
                           strokeWidth={isActive ? 2.5 : 2} 
                           className={cn(
-                            "transition-all duration-300",
+                            "transition-all duration-200",
                             isActive 
-                              ? `${mod.color} ${mod.shadow} scale-110` 
-                              : `text-slate-500 dark:text-slate-400 group-hover:${mod.color} group-hover:${mod.shadow} group-hover:scale-110`
+                              ? `${mod.color} ${mod.shadow} scale-105` 
+                              : `text-slate-500 dark:text-slate-400 group-hover:${mod.color} group-hover:${mod.shadow} group-hover:scale-105`
                           )}
                         />
                       </motion.button>
                       
                       {/* Tooltip */}
-                      <div className="absolute top-[56px] left-1/2 -translate-x-1/2 px-3 py-1.5 bg-slate-800 dark:bg-white text-white dark:text-slate-900 text-[11px] font-bold tracking-widest rounded-[8px] opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-[60] whitespace-nowrap shadow-xl">
+                      <div className="absolute top-[48px] left-1/2 -translate-x-1/2 px-2.5 py-1 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[10px] font-black uppercase tracking-wider rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 z-[60] whitespace-nowrap shadow-lg">
                         {mod.label}
                       </div>
                     </div>
@@ -1972,16 +2128,35 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Right Action Stack */}
+          <div className="flex items-center gap-2.5 md:gap-3">
+            {/* Academic Session Selector Dropdown Pill */}
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 shadow-2xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)] animate-pulse" />
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300 whitespace-nowrap">
+                Session:
+              </span>
+              <select
+                value={selectedSession}
+                onChange={(e) => setSelectedSession(e.target.value)}
+                className="bg-transparent text-[11px] font-black text-emerald-950 dark:text-emerald-200 uppercase tracking-wider border-none focus:outline-none cursor-pointer pr-1 font-mono"
+              >
+                <option value="all" className="text-slate-900 bg-white dark:bg-slate-900">All</option>
+                {(availableSessions || ["2024-26", "2025-27", "2026-28", "2027-29"]).map((sess: string) => (
+                  <option key={sess} value={sess} className="text-slate-900 bg-white dark:bg-slate-900">{sess}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Spotlight Command Palette Trigger */}
             <button
               onClick={() => setIsCommandPaletteOpen(true)}
-              className="hidden sm:flex items-center gap-3 px-3.5 py-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-teal-500/40 text-slate-500 dark:text-slate-400 transition-all duration-200 shadow-xs group"
+              className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-superior-teal/40 text-slate-500 dark:text-slate-400 transition-all duration-200 shadow-2xs group"
               title="Global Spotlight Search (Ctrl + K)"
             >
-              <Search size={15} className="text-slate-400 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors" />
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Search students, modules...</span>
-              <kbd className="inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-white dark:bg-slate-900 text-slate-500 rounded-md border border-slate-200 dark:border-slate-700 shadow-2xs">
+              <Search size={14} className="text-slate-400 group-hover:text-superior-teal transition-colors" />
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Search...</span>
+              <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-mono font-bold bg-white dark:bg-slate-900 text-slate-500 rounded border border-slate-200 dark:border-slate-700 shadow-2xs">
                 Ctrl K
               </kbd>
             </button>
@@ -1991,115 +2166,98 @@ export default function App() {
               variant="ghost"
               size="icon"
               onClick={() => setIsCommandPaletteOpen(true)}
-              className="sm:hidden text-slate-500 hover:text-teal-600 rounded-xl h-10 w-10"
+              className="sm:hidden text-slate-500 hover:text-superior-teal rounded-xl h-9 w-9"
               title="Search (Ctrl + K)"
             >
-              <Search size={18} />
+              <Search size={17} />
             </Button>
 
-            {/* Executive User Role Badge */}
-            <div className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
+            {/* Dark Mode Toggle */}
+            <button
+              onClick={() => {
+                const newTheme = document.documentElement.classList.contains("dark") ? "light" : "dark";
+                if (newTheme === "dark") {
+                  document.documentElement.classList.add("dark");
+                  safeLocalStorage.setItem("theme", "dark");
+                } else {
+                  document.documentElement.classList.remove("dark");
+                  safeLocalStorage.setItem("theme", "light");
+                }
+                window.dispatchEvent(new Event('themechange'));
+              }}
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:hover:text-amber-300 dark:hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+              title="Toggle Dark Mode"
+            >
+              <svg className="w-4 h-4 hidden dark:block text-amber-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+              <svg className="w-4 h-4 block dark:hidden text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+              </svg>
+            </button>
+
+            {/* Notifications */}
+            {isSuperAdmin && (
+              <NotificationPanel
+                notifications={data.notifications}
+                onMarkRead={data.markNotificationRead}
+                onClearAll={data.clearAllNotifications}
+              />
+            )}
+
+            {/* Executive User Profile Badge */}
+            <div
+              onClick={() => isAdmin && setIsAccessDialogOpen(true)}
+              className={cn(
+                "flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-2xl border transition-all cursor-pointer shadow-2xs group",
+                isAdmin
+                  ? "bg-slate-50/90 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 hover:border-superior-gold/40 hover:bg-white dark:hover:bg-slate-800"
+                  : "bg-slate-50 dark:bg-slate-800/60 border-slate-200/60 dark:border-slate-700 cursor-default"
+              )}
+              title={isAdmin ? "Click to manage sub-admins & access" : undefined}
+            >
               <div className="relative">
                 <div className={cn(
                   "w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black shadow-inner",
                   isSuperAdmin 
-                    ? "bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 font-black shadow-amber-500/20" 
+                    ? "bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 shadow-amber-500/20" 
                     : isAdmin 
-                    ? "bg-gradient-to-br from-teal-500 to-emerald-700 text-white font-black shadow-teal-500/20"
+                    ? "bg-gradient-to-br from-[#085a4e] to-emerald-700 text-white shadow-emerald-500/20"
                     : "bg-gradient-to-br from-slate-600 to-slate-800 text-white"
                 )}>
                   {userPermission?.displayName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'A'}
                 </div>
                 <div className={cn(
                   "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-800",
-                  isSuperAdmin ? "bg-amber-400" : isAdmin ? "bg-teal-500" : "bg-emerald-500"
+                  isSuperAdmin ? "bg-amber-400" : isAdmin ? "bg-emerald-500" : "bg-teal-500"
                 )} />
               </div>
-              <div className="flex flex-col text-left leading-none">
-                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate max-w-[120px]">
+              <div className="hidden sm:flex flex-col text-left leading-none">
+                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate max-w-[110px] group-hover:text-superior-teal dark:group-hover:text-superior-gold transition-colors">
                   {userPermission?.displayName || user?.email?.split('@')[0] || 'Administrator'}
                 </span>
                 <span className={cn(
-                  "text-[9px] font-black uppercase tracking-wider mt-0.5",
-                  isSuperAdmin ? "text-amber-600 dark:text-amber-400" : isAdmin ? "text-teal-600 dark:text-teal-400" : "text-slate-400"
+                  "text-[8px] font-black uppercase tracking-wider mt-0.5",
+                  isSuperAdmin ? "text-amber-600 dark:text-amber-400" : isAdmin ? "text-superior-teal dark:text-emerald-400" : "text-slate-400"
                 )}>
                   {isSuperAdmin ? "Super Admin" : isAdmin ? "Administrator" : "Sub-Admin"}
                 </span>
               </div>
             </div>
 
+            {/* Sign Out Button */}
             <Button
               onClick={handleLogout}
               variant="outline"
-              className="group flex items-center gap-2 px-4 py-2.5 rounded-2xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-200 dark:hover:border-rose-800 hover:text-rose-600 transition-all duration-300 shadow-sm hover:shadow-md active:scale-95"
+              size="sm"
+              className="group flex items-center gap-1.5 px-3 py-2 rounded-xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-200 dark:hover:border-rose-800 hover:text-rose-600 transition-all duration-200 shadow-2xs active:scale-95"
+              title="Sign Out of Session"
             >
-              <LogOut size={16} className="text-slate-400 dark:text-slate-500 group-hover:text-rose-500 transition-colors" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 dark:text-slate-400 group-hover:text-rose-700 dark:group-hover:text-rose-400">
+              <LogOut size={15} className="text-slate-400 group-hover:text-rose-500 transition-colors" />
+              <span className="hidden md:inline text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 group-hover:text-rose-600">
                 Sign Out
               </span>
             </Button>
-
-            <div className="h-8 w-[1px] bg-slate-100 dark:bg-slate-800 mx-1" />
-
-            <div className="flex items-center gap-3">
-              {isSuperAdmin && (
-                <NotificationPanel
-                  notifications={data.notifications}
-                  onMarkRead={data.markNotificationRead}
-                  onClearAll={data.clearAllNotifications}
-                />
-              )}
-
-              <button
-                onClick={() => {
-                  const newTheme = document.documentElement.classList.contains("dark") ? "light" : "dark";
-                  if (newTheme === "dark") {
-                    document.documentElement.classList.add("dark");
-                    safeLocalStorage.setItem("theme", "dark");
-                  } else {
-                    document.documentElement.classList.remove("dark");
-                    safeLocalStorage.setItem("theme", "light");
-                  }
-                  // Force a re-render for icon if needed, or we can just use CSS to show/hide icons
-                  window.dispatchEvent(new Event('themechange'));
-                }}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:text-amber-300 dark:hover:bg-slate-800 transition-colors"
-                title="Toggle Dark Mode"
-              >
-                <svg className="w-4 h-4 hidden dark:block text-amber-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-                <svg className="w-4 h-4 block dark:hidden text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-              </button>
-
-              <div
-                onClick={() => isAdmin && setIsAccessDialogOpen(true)}
-                className={cn(
-                  "flex items-center gap-3 ml-2 pl-3 py-1 pr-1 border border-slate-100 dark:border-slate-700 rounded-2xl bg-slate-50/50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 hover:border-superior-gold/30 transition-all cursor-pointer group shadow-sm",
-                  !isAdmin &&
-                    "cursor-default border-slate-100 dark:border-slate-700 grayscale opacity-60",
-                )}
-              >
-                <div className="text-right hidden sm:block">
-                  <p className="text-[10px] font-black text-slate-800 dark:text-slate-300 leading-none uppercase tracking-widest group-hover:text-superior-teal dark:group-hover:text-superior-gold">
-                    {userPermission?.displayName || (isAdmin ? "Master Admin" : "Sub Admin")}
-                  </p>
-                </div>
-                <div
-                  className={cn(
-                    "w-8 h-8 rounded-xl border-2 border-superior-gold flex items-center justify-center text-[10px] font-black text-superior-teal bg-superior-gold/10 shadow-sm",
-                  )}
-                >
-                  {userPermission?.displayName
-                    ? (userPermission.displayName.trim().split(/\s+/).length > 1
-                        ? (userPermission.displayName.trim().split(/\s+/)[0][0] + userPermission.displayName.trim().split(/\s+/).slice(-1)[0][0]).toUpperCase()
-                        : userPermission.displayName.trim().substring(0, 2).toUpperCase())
-                    : (isAdmin ? "AD" : "U")}
-                </div>
-              </div>
-            </div>
           </div>
         </header>
 

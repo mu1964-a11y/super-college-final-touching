@@ -295,41 +295,54 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
         <div>
           <div className="flex items-center gap-3">
-            <h3 className="text-3xl font-display font-black text-superior-teal tracking-tight">
+            <h3 className="text-3xl font-display font-black text-slate-900 dark:text-white tracking-tight">
               {title || "Staff Management"}
             </h3>
             {!title && (
               <>
-                <span className="text-slate-300 text-2xl">/</span>
+                <span className="text-slate-300 dark:text-slate-700 text-2xl">/</span>
                 <span className="urdu-text text-2xl text-superior-gold font-medium">اسٹاف مینجمنٹ</span>
               </>
             )}
           </div>
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1 uppercase tracking-wider">
+            Faculty Directory &bull; Payroll Engine &bull; Attendance & Timetable
+          </p>
         </div>
         
         {!hideNavigation && (
           <div className="flex items-center gap-4">
-            <div className="bg-white px-6 py-4 rounded-3xl flex items-center gap-5 border border-slate-100 shadow-sm">
-              <div className="text-right">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Staff</p>
-                <p className="text-2xl font-display font-black text-superior-teal tracking-tight">{data.staff.length}</p>
+            <div className="bg-white dark:bg-slate-900 px-5 py-3.5 rounded-2xl flex items-center gap-4 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-inner">
+                <Users size={20} />
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-superior-teal/5 text-superior-teal flex items-center justify-center shadow-inner">
-                <Users size={24} />
+              <div className="text-right">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Total Staff</p>
+                <p className="text-xl font-display font-black text-slate-800 dark:text-white tracking-tight">{data.staff.length}</p>
               </div>
             </div>
           </div>
         )}
       </div>
 
-      <Tabs value={activeModule} onValueChange={(v: any) => setActiveModule(v)} className="w-full space-y-8">
+      <Tabs value={activeModule} onValueChange={(v: any) => setActiveModule(v)} className="w-full space-y-6">
         {!hideNavigation && (
-          <TabsList className="bg-white p-2 rounded-2xl border border-slate-100 shadow-sm h-auto flex flex-wrap gap-2 w-full justify-start overflow-x-auto">
-            <TabsTrigger value="directory" className="rounded-xl px-6 py-3 font-bold text-slate-500 data-[state=active]:bg-superior-teal data-[state=active]:text-white">Directory</TabsTrigger>
-            <TabsTrigger value="attendance" className="rounded-xl px-6 py-3 font-bold text-slate-500 data-[state=active]:bg-superior-teal data-[state=active]:text-white">Attendance</TabsTrigger>
-            <TabsTrigger value="payroll" className="rounded-xl px-6 py-3 font-bold text-slate-500 data-[state=active]:bg-superior-teal data-[state=active]:text-white">Payroll & Salaries</TabsTrigger>
-            <TabsTrigger value="timetable" className="rounded-xl px-6 py-3 font-bold text-slate-500 data-[state=active]:bg-superior-teal data-[state=active]:text-white">Timetable</TabsTrigger>
-            <TabsTrigger value="subjects" className="rounded-xl px-6 py-3 font-bold text-slate-500 data-[state=active]:bg-superior-teal data-[state=active]:text-white">Subjects</TabsTrigger>
+          <TabsList className="bg-slate-100/80 dark:bg-slate-900/80 p-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 h-auto flex flex-wrap gap-2 w-full justify-start overflow-x-auto">
+            <TabsTrigger value="directory" className="rounded-xl px-5 py-2.5 font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#064e43] data-[state=active]:to-[#085a4e] data-[state=active]:text-white data-[state=active]:shadow-md transition-all flex items-center gap-2">
+              <Users size={15} /> Directory
+            </TabsTrigger>
+            <TabsTrigger value="attendance" className="rounded-xl px-5 py-2.5 font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#064e43] data-[state=active]:to-[#085a4e] data-[state=active]:text-white data-[state=active]:shadow-md transition-all flex items-center gap-2">
+              <Calendar size={15} /> Attendance
+            </TabsTrigger>
+            <TabsTrigger value="payroll" className="rounded-xl px-5 py-2.5 font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#064e43] data-[state=active]:to-[#085a4e] data-[state=active]:text-white data-[state=active]:shadow-md transition-all flex items-center gap-2">
+              <CreditCard size={15} /> Payroll & Salaries
+            </TabsTrigger>
+            <TabsTrigger value="timetable" className="rounded-xl px-5 py-2.5 font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#064e43] data-[state=active]:to-[#085a4e] data-[state=active]:text-white data-[state=active]:shadow-md transition-all flex items-center gap-2">
+              <Clock size={15} /> Timetable
+            </TabsTrigger>
+            <TabsTrigger value="subjects" className="rounded-xl px-5 py-2.5 font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#064e43] data-[state=active]:to-[#085a4e] data-[state=active]:text-white data-[state=active]:shadow-md transition-all flex items-center gap-2">
+              <GraduationCap size={15} /> Subjects
+            </TabsTrigger>
           </TabsList>
         )}
 
@@ -382,32 +395,32 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
 
       {/* Category Tabs */}
       <Tabs value={roleFilter} className="w-full" onValueChange={setRoleFilter}>
-        <TabsList className="bg-slate-100/50 p-1.5 rounded-2xl border border-slate-200/50 h-auto flex flex-wrap max-w-fit mb-8">
-          <TabsTrigger value="all" className="rounded-xl font-bold px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all">All ({data.staff.length})</TabsTrigger>
-          <TabsTrigger value="Management" className="rounded-xl font-bold px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all">Management</TabsTrigger>
-          <TabsTrigger value="Academic" className="rounded-xl font-bold px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all">Academic</TabsTrigger>
-          <TabsTrigger value="Administration" className="rounded-xl font-bold px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all">Admin</TabsTrigger>
-          <TabsTrigger value="Support" className="rounded-xl font-bold px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all">Support</TabsTrigger>
+        <TabsList className="bg-slate-100/80 dark:bg-slate-900/80 p-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 h-auto flex flex-wrap max-w-fit mb-6">
+          <TabsTrigger value="all" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">All ({data.staff.length})</TabsTrigger>
+          <TabsTrigger value="Management" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Management</TabsTrigger>
+          <TabsTrigger value="Academic" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Academic</TabsTrigger>
+          <TabsTrigger value="Administration" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Admin</TabsTrigger>
+          <TabsTrigger value="Support" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Support</TabsTrigger>
         </TabsList>
       </Tabs>
 
       {/* Filters Bar */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-wrap items-center gap-5 mb-10 hover:border-superior-teal/20 transition-all duration-500">
-        <div className="flex items-center gap-3 pr-5 border-r border-slate-100">
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-wrap items-center gap-4 mb-8 hover:border-emerald-500/30 transition-all duration-300">
+        <div className="flex items-center gap-3 pr-4 border-r border-slate-200 dark:border-slate-800">
           <Checkbox 
             id="select-all-staff"
             checked={selectedStaffIds.length === filteredStaff.length && filteredStaff.length > 0} 
             onCheckedChange={toggleSelectAll} 
-            className="w-5 h-5 rounded-lg border-slate-200 data-[state=checked]:bg-superior-teal data-[state=checked]:border-superior-teal transition-all"
+            className="w-4 h-4 rounded-md border-slate-300 dark:border-slate-600 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600 transition-all"
           />
-          <Label htmlFor="select-all-staff" className="text-[11px] font-black text-slate-400 cursor-pointer uppercase tracking-widest">Select All</Label>
+          <Label htmlFor="select-all-staff" className="text-[10px] font-black text-slate-400 cursor-pointer uppercase tracking-widest">Select All</Label>
         </div>
 
         <div className="relative flex-1 min-w-[280px]">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
           <Input 
-            placeholder="Search staff by name or ID..." 
-            className="pl-12 h-12 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-medium"
+            placeholder="Search staff by name, role, or ID..." 
+            className="pl-11 h-11 rounded-xl bg-slate-50 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-900 focus:border-emerald-500/40 text-slate-800 dark:text-slate-100 transition-all font-medium text-sm"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />

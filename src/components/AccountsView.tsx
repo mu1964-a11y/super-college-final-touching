@@ -469,49 +469,54 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header Section - Exactly matching SS1 Student Records layout */}
+      {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <div className="flex items-center gap-3">
-            <h3 className="text-3xl font-display font-black text-superior-teal tracking-tight">
-              Accounts & Finance
-            </h3>
-            <span className="text-slate-300 text-2xl">/</span>
-            <span className="urdu-text text-2xl text-superior-gold font-medium">اکاؤنٹس اور فنانس</span>
+          <div className="flex flex-col items-start gap-1.5">
+            <div className="flex items-center gap-3">
+              <h3 className="text-3xl font-display font-black text-slate-900 dark:text-slate-100 tracking-tight">
+                Accounts & Finance
+              </h3>
+              <span className="text-slate-300 dark:text-slate-700 text-2xl">/</span>
+              <span className="urdu-text text-2xl text-superior-gold font-medium">اکاؤنٹس اور فنانس</span>
+            </div>
+            <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+              Session {data?.settings?.academicSession || "2026-28"} • Central Ledger & Cash Book
+            </p>
           </div>
         </div>
         
-        <div className="flex items-center gap-4">
-          <div className="flex gap-2">
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex gap-2.5">
             <Button 
               variant="outline" 
-              className="h-14 rounded-[2rem] border-slate-200 text-slate-600 hover:text-superior-teal hover:bg-slate-50 flex items-center gap-2 font-bold px-5 text-sm"
+              className="h-12 px-5 rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 font-black text-[10px] uppercase tracking-wider shadow-2xs"
             >
-              <Calendar size={16} className="text-superior-gold" />
+              <Calendar size={15} className="text-superior-gold" />
               This Month
             </Button>
             <Button 
-              className="h-14 rounded-[2rem] bg-superior-teal text-white hover:bg-superior-teal/90 flex items-center gap-2 font-bold px-6 text-sm shadow-md shadow-superior-teal/15 cursor-pointer"
+              className="h-12 px-6 rounded-2xl bg-superior-teal text-white hover:bg-superior-teal/90 flex items-center gap-2 font-black text-[10px] uppercase tracking-wider shadow-md shadow-superior-teal/15 cursor-pointer"
               onClick={() => setIsAddEntryOpen(true)}
             >
-              <Plus size={18} />
+              <Plus size={17} />
               Add Entry
             </Button>
           </div>
 
-          <div className="bg-white px-8 py-4 rounded-[2rem] border border-slate-100 flex items-center gap-6 shadow-sm">
+          <div className="bg-white dark:bg-slate-900 px-6 py-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 flex items-center gap-4 shadow-sm">
             <div className="text-right">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Net Balance</p>
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-0.5">Net Campus Balance</p>
               <p className={cn(
-                "text-3xl font-display font-black leading-none",
-                netBalance >= 0 ? "text-superior-teal" : "text-rose-600"
+                "text-2xl font-display font-black leading-none",
+                netBalance >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
               )}>Rs. {netBalance.toLocaleString()}</p>
             </div>
             <div className={cn(
-              "w-14 h-14 rounded-2xl flex items-center justify-center shadow-inner",
-              netBalance >= 0 ? "bg-superior-teal/5 text-superior-teal" : "bg-rose-50 text-rose-600"
+              "w-11 h-11 rounded-xl flex items-center justify-center shadow-inner",
+              netBalance >= 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
             )}>
-              <Wallet size={28} />
+              <Wallet size={22} />
             </div>
           </div>
         </div>
@@ -560,42 +565,42 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
         </DialogContent>
       </Dialog>
 
-      {/* Primary Navigation Tabs - Exactly matching SS1 Student Records Tabs design */}
+      {/* Primary Navigation Tabs */}
       <Tabs value={activeTab} className="w-full" onValueChange={setActiveTab}>
-        <TabsList className="bg-slate-100 p-1.5 rounded-2xl w-full flex items-center justify-start overflow-x-auto scrollbar-hide h-auto border border-slate-200/50 mb-6">
+        <TabsList className="bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-2xl w-full flex items-center justify-start overflow-x-auto scrollbar-hide h-auto border border-slate-200/70 dark:border-slate-700/80 mb-6">
           <TabsTrigger 
             value="summary" 
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
           >
             <BarChart3 size={15} className="mr-2 inline-block" />
             Financial Summary
           </TabsTrigger>
           <TabsTrigger 
             value="income" 
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
           >
             <TrendingUp size={15} className="mr-2 inline-block" />
             Income Records
           </TabsTrigger>
           <TabsTrigger 
             value="expenses" 
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
           >
             <TrendingDown size={15} className="mr-2 inline-block" />
             Expenses Manager
           </TabsTrigger>
           <TabsTrigger 
             value="fee-manager" 
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
           >
             <Receipt size={15} className="mr-2 inline-block" />
             Fee Collections
           </TabsTrigger>
           <TabsTrigger 
             value="daily-closing" 
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
           >
-            <Clock size={15} className="mr-2 inline-block text-emerald-600" />
+            <Clock size={15} className="mr-2 inline-block text-emerald-600 dark:text-emerald-400" />
             Daily Cash Closing (Roznamcha)
           </TabsTrigger>
         </TabsList>
@@ -603,39 +608,41 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
         <TabsContent value="summary" className="space-y-6">
           {/* Financial Summary Metric Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 shadow-sm">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 shadow-sm">
                   <TrendingUp size={24} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-0.5">Total Income</p>
-                  <h4 className="text-2xl font-display font-black text-slate-800 leading-tight">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-0.5">Total Income</p>
+                  <h4 className="text-2xl font-display font-black text-slate-900 dark:text-slate-100 leading-tight">
                     Rs. {(totalIncome || 0).toLocaleString()}
                   </h4>
                 </div>
               </div>
-              <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50 border-none font-bold text-xs px-2.5 py-1 rounded-lg">Live</Badge>
+              <Badge className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold text-xs px-2.5 py-1 rounded-lg">Live</Badge>
             </div>
 
-            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 shadow-sm">
+                <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 shadow-sm">
                   <TrendingDown size={24} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-0.5">Total Expenses</p>
-                  <h4 className="text-2xl font-display font-black text-slate-800 leading-tight">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-0.5">Total Expenses</p>
+                  <h4 className="text-2xl font-display font-black text-slate-900 dark:text-slate-100 leading-tight">
                     Rs. {(totalExpenses || 0).toLocaleString()}
                   </h4>
                 </div>
               </div>
-              <Badge className="bg-rose-50 text-rose-700 hover:bg-rose-50 border-none font-bold text-xs px-2.5 py-1 rounded-lg">Live</Badge>
+              <Badge className="bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 font-bold text-xs px-2.5 py-1 rounded-lg">Live</Badge>
             </div>
 
             <div className={cn(
               "p-5 rounded-3xl border shadow-sm flex items-center justify-between text-white transition-all",
-              netBalance >= 0 ? "bg-superior-teal border-superior-teal/30 shadow-superior-teal/15" : "bg-rose-700 border-rose-800"
+              netBalance >= 0 
+                ? "bg-gradient-to-r from-[#064e43] via-[#053d34] to-[#042822] border-emerald-500/20 shadow-xl" 
+                : "bg-gradient-to-r from-rose-800 to-rose-950 border-rose-700 shadow-xl"
             )}>
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-2xl bg-white/15 text-superior-gold flex items-center justify-center shrink-0">
