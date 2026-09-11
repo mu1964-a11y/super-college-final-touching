@@ -22,7 +22,8 @@ import {
   CreditCard,
   Printer,
   FileSpreadsheet,
-  Upload
+  Upload,
+  Clock
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { 
