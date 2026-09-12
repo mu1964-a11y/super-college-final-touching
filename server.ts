@@ -915,6 +915,29 @@ Return strictly the raw JSON without markdown code fences.`;
     }
   });
 
+  // Explicit download endpoint for Windows Desktop App Installer
+  app.get(["/downloads/:filename", "/api/download/:filename"], (req, res) => {
+    const filename = req.params.filename;
+    const candidatePaths = [
+      path.join(__dirname, "public", "downloads", filename),
+      path.join(process.cwd(), "public", "downloads", filename),
+      path.join(__dirname, "release", filename),
+      path.join(process.cwd(), "release", filename),
+      path.join(__dirname, "release", "Superior College Jahanian ERP Setup 1.0.0.exe"),
+      path.join(process.cwd(), "release", "Superior College Jahanian ERP Setup 1.0.0.exe"),
+    ];
+
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+        res.setHeader("Content-Type", "application/vnd.microsoft.portable-executable");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        return res.sendFile(path.resolve(p));
+      }
+    }
+
+    res.status(404).send("Installer file not found.");
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
