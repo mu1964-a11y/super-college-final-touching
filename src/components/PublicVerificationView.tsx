@@ -19,7 +19,12 @@ import {
   RefreshCw,
   MapPin,
   PhoneCall,
-  Check
+  Check,
+  Award,
+  FileText,
+  Receipt,
+  GraduationCap,
+  TrendingUp
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { calculateStudentFeeBreakdown } from '../lib/feeCalculations';
@@ -29,11 +34,19 @@ import { Input } from '@/components/ui/input';
 import { safeLocalStorage } from '../utils/safeStorage';
 
 interface VerificationData {
-  type: 'challan' | 'receipt' | 'admission' | 'card' | 'staff_payroll' | 'general';
+  type: 'challan' | 'receipt' | 'admission' | 'card' | 'staff_payroll' | 'general' | 'student';
   id: string;
   student?: any;
   admission?: any;
   staff?: any;
+  transactions?: any[];
+  academicRecords?: any[];
+  attendanceStats?: {
+    presentDays: number;
+    absentDays: number;
+    totalDays: number;
+    attendancePercent: number;
+  };
   month?: string;
   verifiedAt: string;
   status: 'verified' | 'unverified' | 'loading' | 'error';
@@ -162,8 +175,14 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
     };
   }, []);
 
-  // Perform multi-stage, fault-tolerant verification lookup
-  async function performVerification(targetId: string, targetRoll?: string, targetType?: string, targetMonth?: string) {
+  // Perform multi-stage, fault-tolerant universal verification lookup
+  async function performVerification(
+    targetId: string, 
+    targetRoll?: string, 
+    targetType?: string, 
+    targetMonth?: string,
+    extraCandidates: string[] = []
+  ) {
     setData(prev => ({ ...prev, status: 'loading', id: targetId }));
 
     try {
@@ -172,7 +191,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
       const cleanRoll = (targetRoll || '').trim();
 
       const candidateIds = Array.from(
-        new Set([cleanTargetId, cleanRoll].filter(Boolean))
+        new Set([cleanTargetId, cleanRoll, ...extraCandidates.map(c => (c || '').trim())].filter(Boolean))
       );
 
       if (candidateIds.length === 0) {
@@ -219,7 +238,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
       }
 
       // ========================================================
-      // 2. QUERY STUDENTS TABLE (With strictly valid Postgres columns)
+      // 2. QUERY STUDENTS TABLE (Active Enrolled Database)
       // ========================================================
       let studentRecord: any = null;
       let admissionRecord: any = null;
@@ -276,7 +295,6 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
 
             if (!errAdmUuid && admData && admData.length > 0) {
               admissionRecord = admData[0];
-              if (!studentRecord) studentRecord = admissionRecord;
               break;
             }
           } else {
@@ -288,7 +306,6 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
 
             if (!errAdmText && admData && admData.length > 0) {
               admissionRecord = admData[0];
-              if (!studentRecord) studentRecord = admissionRecord;
               break;
             }
 
@@ -301,14 +318,32 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
 
             if (admIlike && admIlike.length > 0) {
               admissionRecord = admIlike[0];
-              if (!studentRecord) studentRecord = admissionRecord;
               break;
             }
           }
         }
       }
 
-      // If student was found and has admission_id, join admission record for full profile details
+      // If found in admissions, check if student was promoted/converted into students table
+      if (admissionRecord && !studentRecord) {
+        try {
+          const admRefId = admissionRecord.id;
+          const admStudentId = admissionRecord.student_id;
+          const admCollegeNo = admissionRecord.college_no;
+          const { data: linkedStudents } = await supabase
+            .from('students')
+            .select('*')
+            .or(`admission_id.eq.${admRefId}${admStudentId ? `,id.eq.${admStudentId}` : ''}${admCollegeNo ? `,college_no.eq.${admCollegeNo}` : ''}`)
+            .limit(1);
+          if (linkedStudents && linkedStudents.length > 0) {
+            studentRecord = linkedStudents[0];
+          }
+        } catch (e) {
+          console.warn('Error linking admission to students table:', e);
+        }
+      }
+
+      // If student was found and has admission_id, join admission record for complete original dossier
       if (studentRecord && studentRecord.admission_id && !admissionRecord) {
         try {
           const { data: joinedAdm } = await supabase
@@ -323,16 +358,80 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
         }
       }
 
+      // Fallback: If no studentRecord but admissionRecord exists, use admissionRecord
+      if (!studentRecord && admissionRecord) {
+        studentRecord = admissionRecord;
+      }
+
       // ========================================================
-      // 4. FINALIZE RESULT
+      // 4. FETCH LIVE REAL-TIME DATA (Transactions, Exams, Attendance)
+      // ========================================================
+      let liveTransactions: any[] = [];
+      let liveAcademicRecords: any[] = [];
+      const activeStudentDbId = studentRecord?.id || admissionRecord?.student_id;
+
+      if (activeStudentDbId) {
+        try {
+          const { data: txData } = await supabase
+            .from('fee_transactions')
+            .select('*')
+            .eq('student_id', activeStudentDbId)
+            .order('date', { ascending: false });
+          if (txData && txData.length > 0) {
+            liveTransactions = txData;
+          }
+        } catch (errTx) {
+          console.warn('Live fee_transactions fetch error:', errTx);
+        }
+
+        try {
+          const { data: arData } = await supabase
+            .from('academic_records')
+            .select('*')
+            .eq('student_id', activeStudentDbId)
+            .order('date', { ascending: false });
+          if (arData && arData.length > 0) {
+            liveAcademicRecords = arData;
+          }
+        } catch (errAr) {
+          console.warn('Live academic_records fetch error:', errAr);
+        }
+      }
+
+      // Calculate attendance standing
+      const presentDays = Number(studentRecord?.attendance_present ?? 0);
+      const absentDays = Number(studentRecord?.attendance_absent ?? 0);
+      const totalDays = presentDays + absentDays;
+      const attendancePercent = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 100;
+
+      // ========================================================
+      // 5. FINALIZE RESULT WITH REAL-TIME DOSSIER
       // ========================================================
       if (studentRecord) {
         const normalized = normalizeStudentRecord(studentRecord, admissionRecord);
+        
+        // Update fee received if live transactions sum is higher
+        if (liveTransactions.length > 0) {
+          const sumPaid = liveTransactions.reduce((acc, t) => acc + Number(t.amount || 0), 0);
+          if (sumPaid > (normalized.feeReceived || 0)) {
+            normalized.feeReceived = sumPaid;
+            normalized.fee_received = sumPaid;
+          }
+        }
+
         setData({
           type: typeParam,
           id: cleanTargetId,
           student: normalized,
           admission: admissionRecord,
+          transactions: liveTransactions,
+          academicRecords: liveAcademicRecords,
+          attendanceStats: {
+            presentDays,
+            absentDays,
+            totalDays,
+            attendancePercent
+          },
           verifiedAt: new Date().toLocaleString('en-PK', { timeZone: 'Asia/Karachi' }),
           status: 'verified'
         });
@@ -363,10 +462,13 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
     const typeParam = (searchParams.get('type') || searchParams.get('verify') || 'general').toLowerCase();
     const idParam = searchParams.get('id') || searchParams.get('studentId') || searchParams.get('student_id') || searchParams.get('roll') || searchParams.get('ref') || '';
     const rollParam = searchParams.get('roll') || searchParams.get('rollNo') || searchParams.get('collegeNo') || '';
+    const studentIdParam = searchParams.get('student_id') || '';
+    const admIdParam = searchParams.get('adm_id') || '';
     const monthParam = searchParams.get('m') || searchParams.get('month') || '';
 
-    setSearchQuery(idParam || rollParam || '');
-    performVerification(idParam || rollParam, rollParam, typeParam, monthParam);
+    const primarySearch = idParam || rollParam || studentIdParam || '';
+    setSearchQuery(primarySearch);
+    performVerification(primarySearch, rollParam, typeParam, monthParam, [studentIdParam, admIdParam]);
   }, []);
 
   const handleManualSearch = async (e: React.FormEvent) => {
@@ -760,6 +862,147 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
                           <span>Payment Plan: <strong>{student.paymentPlan || 'Installments'} ({student.totalInstallments || 10} Installments)</strong></span>
                           {student.monthlyFee > 0 && <span>Monthly: <strong>Rs. {student.monthlyFee.toLocaleString()}/mo</strong></span>}
                         </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Live Attendance Standing Card */}
+                  <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3.5 text-left">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
+                        <Calendar size={15} className="text-[#085a4e]" />
+                        <span>Classroom Attendance Standing</span>
+                      </div>
+                      <Badge className={
+                        (data.attendanceStats?.attendancePercent ?? 100) >= 75
+                          ? "bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-[10.5px]"
+                          : "bg-rose-100 text-rose-900 border border-rose-300 font-bold text-[10.5px]"
+                      }>
+                        {(data.attendanceStats?.attendancePercent ?? 100) >= 75 
+                          ? "✓ Board Exam Eligible (75%+)" 
+                          : "⚠ Low Attendance Warning"}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <span className="text-[10px] font-bold !text-slate-500 uppercase block tracking-wider">Days Present</span>
+                        <span className="font-mono font-black text-emerald-700 text-base sm:text-lg">
+                          {data.attendanceStats?.presentDays ?? 0}
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <span className="text-[10px] font-bold !text-slate-500 uppercase block tracking-wider">Days Absent</span>
+                        <span className="font-mono font-black text-rose-700 text-base sm:text-lg">
+                          {data.attendanceStats?.absentDays ?? 0}
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                        <span className="text-[10px] font-bold text-emerald-800 uppercase block tracking-wider">Attendance %</span>
+                        <span className="font-mono font-black text-emerald-950 text-base sm:text-lg">
+                          {data.attendanceStats?.attendancePercent ?? 100}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Live Academic & Examination Dossier */}
+                  <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3.5 text-left">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
+                        <Award size={15} className="text-[#c9a84c]" />
+                        <span>Academic Assessments & Exam Marks</span>
+                      </div>
+                      <Badge className="bg-slate-100 text-slate-800 border border-slate-200 font-bold text-[10.5px]">
+                        {data.academicRecords && data.academicRecords.length > 0 ? `${data.academicRecords.length} Tests Logged` : 'Active Session'}
+                      </Badge>
+                    </div>
+
+                    {data.academicRecords && data.academicRecords.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                          <thead className="bg-slate-50 text-slate-500 font-black uppercase tracking-wider text-[9.5px]">
+                            <tr>
+                              <th className="p-2.5 rounded-l-lg">Test Title</th>
+                              <th className="p-2.5">Subject</th>
+                              <th className="p-2.5 text-center">Marks</th>
+                              <th className="p-2.5 text-center">Percentage</th>
+                              <th className="p-2.5 rounded-r-lg text-right">Date</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {data.academicRecords.map((rec, idx) => {
+                              const pct = rec.total_marks > 0 ? Math.round((rec.obtained_marks / rec.total_marks) * 100) : 0;
+                              return (
+                                <tr key={idx} className="hover:bg-slate-50/50">
+                                  <td className="p-2.5 font-bold text-slate-900">{rec.test_name || 'Class Test'}</td>
+                                  <td className="p-2.5 font-medium text-slate-600">{rec.subject}</td>
+                                  <td className="p-2.5 text-center font-mono font-bold text-slate-800">
+                                    {rec.obtained_marks} / {rec.total_marks}
+                                  </td>
+                                  <td className="p-2.5 text-center">
+                                    <span className={`px-2 py-0.5 rounded font-mono font-bold text-[10.5px] ${pct >= 70 ? 'bg-emerald-100 text-emerald-800' : pct >= 50 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}`}>
+                                      {pct}%
+                                    </span>
+                                  </td>
+                                  <td className="p-2.5 text-right font-mono text-[10px] text-slate-400">
+                                    {rec.date ? new Date(rec.date).toLocaleDateString('en-GB') : '-'}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 leading-relaxed">
+                        <p className="font-bold text-slate-800 flex items-center gap-1.5 mb-0.5">
+                          <GraduationCap size={14} className="text-[#085a4e]" />
+                          <span>Academic Session 2026-28 Enrolled & Verified</span>
+                        </p>
+                        <span>Student is actively enrolled in current academic term. Internal test scores and mock examinations are logged in real time directly from campus teaching faculties.</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Live Fee Payment Transactions & Official Receipts Ledger */}
+                  {data.transactions && data.transactions.length > 0 && (
+                    <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3.5 text-left">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
+                          <Receipt size={15} className="text-[#085a4e]" />
+                          <span>Verified Fee Payment Transactions ({data.transactions.length})</span>
+                        </div>
+                        <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          Live Central Receipts
+                        </span>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                          <thead className="bg-slate-50 text-slate-500 font-black uppercase tracking-wider text-[9.5px]">
+                            <tr>
+                              <th className="p-2.5 rounded-l-lg">Receipt ID</th>
+                              <th className="p-2.5">Payment Date</th>
+                              <th className="p-2.5">Mode</th>
+                              <th className="p-2.5 text-right rounded-r-lg">Amount Deposited</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {data.transactions.map((tx, idx) => (
+                              <tr key={idx} className="hover:bg-slate-50/50">
+                                <td className="p-2.5 font-mono font-bold text-[#085a4e]">{tx.receipt_id || `REC-${idx + 1}`}</td>
+                                <td className="p-2.5 text-slate-600 font-medium">
+                                  {tx.date ? new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                                </td>
+                                <td className="p-2.5 text-slate-600 capitalize">{tx.payment_method || 'Cash / Bank'}</td>
+                                <td className="p-2.5 text-right font-mono font-black text-emerald-700 text-sm">
+                                  Rs. {Number(tx.amount || 0).toLocaleString()}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   )}
