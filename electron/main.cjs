@@ -1,12 +1,12 @@
-const { app, BrowserWindow, shell, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, Menu, globalShortcut } = require('electron');
 const path = require('path');
-const http = require('http');
-const { fork } = require('child_process');
+const express = require('express');
 const fs = require('fs');
 
 let mainWindow = null;
-let serverProcess = null;
-let DEFAULT_PORT = 3000;
+let httpServer = null;
+const DEFAULT_PORT = 3000;
+const distPath = path.join(__dirname, '../dist');
 
 // Enforce single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -22,65 +22,62 @@ app.on('second-instance', () => {
   }
 });
 
-// Helper to check if local server is responsive
-function checkServerHealth(port) {
+// Start lightweight in-process Express server to serve dist assets and local APIs
+function startInternalServer() {
   return new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${port}/api/health`, (res) => {
-      resolve(res.statusCode === 200);
+    const serverApp = express();
+
+    serverApp.use(express.json({ limit: '50mb' }));
+    serverApp.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+    // Serve production static assets from dist
+    serverApp.use(express.static(distPath));
+
+    // Health check endpoint
+    serverApp.get('/api/health', (req, res) => {
+      res.json({ status: 'ok', client: 'Superior College Jahanian ERP Desktop' });
     });
-    req.on('error', () => resolve(false));
-    req.setTimeout(1000, () => {
-      req.destroy();
-      resolve(false);
+
+    // Dedicated download endpoint for installers
+    serverApp.get(['/downloads/:filename', '/api/download/:filename'], (req, res) => {
+      const candidates = [
+        path.join(distPath, 'downloads', req.params.filename),
+        path.join(__dirname, '../public/downloads', req.params.filename),
+      ];
+      for (const c of candidates) {
+        if (fs.existsSync(c)) {
+          return res.download(c);
+        }
+      }
+      res.status(404).send('File not found');
+    });
+
+    // SPA wildcard catch-all: serves index.html for any frontend route
+    serverApp.get('*', (req, res) => {
+      const indexPath = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(500).send('Application build not found.');
+      }
+    });
+
+    // Try default port 3000 first
+    httpServer = serverApp.listen(DEFAULT_PORT, '127.0.0.1', () => {
+      console.log(`[Electron Main] Internal server active on http://127.0.0.1:${DEFAULT_PORT}`);
+      resolve(DEFAULT_PORT);
+    });
+
+    httpServer.on('error', (err) => {
+      console.warn(`[Electron Main] Port ${DEFAULT_PORT} unavailable (${err.code}), binding to random available port...`);
+      // If port 3000 is occupied, bind to any available random port (port 0)
+      httpServer = serverApp.listen(0, '127.0.0.1', () => {
+        const dynamicPort = httpServer.address().port;
+        console.log(`[Electron Main] Internal server bound to port: ${dynamicPort}`);
+        resolve(dynamicPort);
+      });
     });
   });
-}
-
-// Start local Express server if packaged or if not already running
-async function ensureServerRunning() {
-  const isHealthy = await checkServerHealth(DEFAULT_PORT);
-  if (isHealthy) {
-    console.log(`[Electron Main] Server already active on port ${DEFAULT_PORT}`);
-    return DEFAULT_PORT;
-  }
-
-  // Determine path to server.js
-  let serverPath = path.join(__dirname, '../server.js');
-  if (!fs.existsSync(serverPath)) {
-    // In some packaged structures, it might be in app.asar or resources
-    const altPath = path.join(process.resourcesPath, 'app', 'server.js');
-    if (fs.existsSync(altPath)) {
-      serverPath = altPath;
-    }
-  }
-
-  if (fs.existsSync(serverPath)) {
-    console.log(`[Electron Main] Launching embedded server from: ${serverPath}`);
-    serverProcess = fork(serverPath, [], {
-      env: {
-        ...process.env,
-        PORT: String(DEFAULT_PORT),
-        NODE_ENV: 'production'
-      },
-      stdio: 'ignore'
-    });
-
-    serverProcess.on('exit', (code) => {
-      console.log(`[Electron Main] Server process exited with code ${code}`);
-    });
-
-    // Wait up to 15 seconds for server to report ready
-    const start = Date.now();
-    while (Date.now() - start < 15000) {
-      await new Promise(r => setTimeout(r, 400));
-      if (await checkServerHealth(DEFAULT_PORT)) {
-        console.log(`[Electron Main] Embedded server is now online on port ${DEFAULT_PORT}`);
-        return DEFAULT_PORT;
-      }
-    }
-  }
-
-  return DEFAULT_PORT;
 }
 
 function createWindow(port) {
@@ -101,7 +98,8 @@ function createWindow(port) {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
-      webSecurity: true,
+      webSecurity: false, // Ensures direct Supabase and local API communication
+      allowRunningInsecureContent: false,
     }
   });
 
@@ -135,7 +133,7 @@ function createWindow(port) {
         { role: 'zoomIn' },
         { role: 'zoomOut' },
         { type: 'separator' },
-        { role: 'toggledevtools' }
+        { role: 'toggledevtools', accelerator: 'F12' }
       ]
     },
     {
@@ -166,9 +164,19 @@ function createWindow(port) {
   const menu = Menu.buildFromTemplate(menuTemplate);
   Menu.setApplicationMenu(menu);
 
-  const targetUrl = `http://127.0.0.1:${port}`;
-  console.log(`[Electron Main] Loading URL: ${targetUrl}`);
+  // In development mode with hot reload, use dev server; otherwise use in-process server
+  const targetUrl = process.env.VITE_DEV_SERVER_URL || `http://127.0.0.1:${port}`;
+  console.log(`[Electron Main] Navigating to: ${targetUrl}`);
   mainWindow.loadURL(targetUrl);
+
+  // Fail-safe: If internal HTTP loading encounters an error, fallback immediately to direct local file
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.warn(`[Electron Main] Page failed to load (${errorCode}: ${errorDescription}). Falling back to local file...`);
+    const fallbackFile = path.join(distPath, 'index.html');
+    if (fs.existsSync(fallbackFile)) {
+      mainWindow.loadFile(fallbackFile);
+    }
+  });
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.maximize();
@@ -215,7 +223,7 @@ ipcMain.on('open-external', (event, url) => {
 
 // App lifecycle
 app.whenReady().then(async () => {
-  const port = await ensureServerRunning();
+  const port = await startInternalServer();
   createWindow(port);
 
   app.on('activate', () => {
@@ -232,11 +240,11 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  if (serverProcess) {
+  if (httpServer) {
     try {
-      serverProcess.kill();
+      httpServer.close();
     } catch (e) {
-      // process already dead
+      // server already closed
     }
   }
 });
