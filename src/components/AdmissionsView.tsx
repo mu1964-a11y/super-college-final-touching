@@ -1607,71 +1607,113 @@ _Welcome to the Superior Family!_`;
                       <TableCell>
                         {getStatusBadge(admission.status, admission.isAdmitted)}
                       </TableCell>
-                      <TableCell className="text-right pr-8">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger className="h-10 w-10 rounded-xl hover:bg-white hover:border-slate-200 border border-transparent transition-all flex items-center justify-center text-slate-400 outline-hidden">
-                            <MoreHorizontal size={18} />
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent
-                            align="end"
-                            className="rounded-2xl p-2 min-w-[200px] border-slate-200 shadow-xl"
+                      <TableCell className="text-right pr-6">
+                        <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          {/* Direct 1-Click Admission Slip */}
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveAdmission(admission);
+                              setDialogType("slip");
+                            }}
+                            size="sm"
+                            title="Download Admission Slip"
+                            className="h-8 px-2.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 hover:text-teal-800 border border-teal-200/80 font-black uppercase tracking-wider text-[10px] flex items-center gap-1.5 shadow-xs transition-all hover:scale-105 active:scale-95"
                           >
-                            <DropdownMenuItem
-                              className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700"
-                              onClick={() => {
-                                setActiveAdmission(admission);
-                                setDialogType("profile");
-                              }}
+                            <Download size={13} className="text-teal-600 shrink-0" />
+                            <span className="hidden xl:inline">Slip</span>
+                          </Button>
+
+                          {/* Direct 1-Click Fee Receipt (Bakaya) */}
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveAdmission(admission);
+                              setDialogType("receipt");
+                            }}
+                            size="sm"
+                            title="Download Admission Fee Receipt (Bakaya)"
+                            className="h-8 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:text-emerald-800 border border-emerald-200/80 font-black uppercase tracking-wider text-[10px] flex items-center gap-1.5 shadow-xs transition-all hover:scale-105 active:scale-95"
+                          >
+                            <Receipt size={13} className="text-emerald-600 shrink-0" />
+                            <span className="hidden xl:inline">Receipt</span>
+                          </Button>
+
+                          {/* Direct 1-Click View Profile */}
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveAdmission(admission);
+                              setDialogType("profile");
+                            }}
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-slate-400 hover:text-superior-teal hover:bg-slate-100 rounded-lg transition-all"
+                            title="View Admission Profile"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+
+                          {/* Dropdown Menu for Other Actions */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger 
+                              onClick={(e) => e.stopPropagation()}
+                              className="h-8 w-8 rounded-lg hover:bg-slate-100 border border-slate-200/60 transition-all flex items-center justify-center text-slate-500 outline-hidden hover:text-slate-800"
+                              title="More Actions"
                             >
-                              <Eye size={16} className="text-superior-teal" />{" "}
-                              View Profile
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700"
-                              onClick={() => {
-                                setActiveAdmission(admission);
-                                setDialogType("edit");
-                              }}
+                              <MoreHorizontal size={16} />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              className="rounded-2xl p-2 min-w-[200px] border-slate-200 shadow-xl"
                             >
-                              <Edit size={16} className="text-superior-gold" />{" "}
-                              Edit Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-superior-teal"
-                              onClick={() => {
-                                setActiveAdmission(admission);
-                                setDialogType("slip");
-                              }}
-                            >
-                              <Download size={16} /> Download Slip
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-superior-gold"
-                              onClick={() => {
-                                setActiveAdmission(admission);
-                                setDialogType("receipt");
-                              }}
-                            >
-                              <Receipt size={16} /> Fee Receipt (Bakaya)
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-emerald-600 hover:bg-emerald-50"
-                              onClick={() => sendWhatsAppConfirmationNotice(admission)}
-                            >
-                              <MessageSquare size={16} className="text-emerald-500" /> WhatsApp Notice
-                            </DropdownMenuItem>
-                            <Separator className="my-2 bg-slate-100" />
-                            <DropdownMenuItem
-                              className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-rose-600 hover:bg-rose-50"
-                              onClick={() => {
-                                setActiveAdmission(admission);
-                                setDialogType("delete");
-                              }}
-                            >
-                              <Trash2 size={16} /> Delete Record
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              <DropdownMenuItem
+                                className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700"
+                                onClick={() => {
+                                  setActiveAdmission(admission);
+                                  setDialogType("edit");
+                                }}
+                              >
+                                <Edit size={16} className="text-superior-gold" />{" "}
+                                Edit Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-superior-teal"
+                                onClick={() => {
+                                  setActiveAdmission(admission);
+                                  setDialogType("slip");
+                                }}
+                              >
+                                <Download size={16} /> Download Slip
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-emerald-600"
+                                onClick={() => {
+                                  setActiveAdmission(admission);
+                                  setDialogType("receipt");
+                                }}
+                              >
+                                <Receipt size={16} /> Fee Receipt (Bakaya)
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-emerald-600 hover:bg-emerald-50"
+                                onClick={() => sendWhatsAppConfirmationNotice(admission)}
+                              >
+                                <MessageSquare size={16} className="text-emerald-500" /> WhatsApp Notice
+                              </DropdownMenuItem>
+                              <Separator className="my-2 bg-slate-100" />
+                              <DropdownMenuItem
+                                className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-rose-600 hover:bg-rose-50"
+                                onClick={() => {
+                                  setActiveAdmission(admission);
+                                  setDialogType("delete");
+                                }}
+                              >
+                                <Trash2 size={16} /> Delete Record
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );

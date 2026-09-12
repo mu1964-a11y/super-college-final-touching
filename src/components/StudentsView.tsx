@@ -24,7 +24,9 @@ import {
   Droplet,
   MapPin,
   Mail,
-  Phone
+  Phone,
+  Receipt,
+  FileText
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { 
@@ -758,6 +760,52 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                     </div>
                   </div>
                 </div>
+
+                {/* Direct Printable Action Buttons on Card */}
+                <div className="flex items-center gap-1.5 pt-3 border-t border-slate-100 mt-3" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedStudent(student);
+                      setDialogType('id_card');
+                    }}
+                    className="flex-1 h-7.5 rounded-xl bg-emerald-50/80 hover:bg-emerald-100 text-emerald-700 hover:text-emerald-800 border-emerald-200/70 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-1 shadow-2xs transition-all active:scale-95 px-1.5"
+                    title="Print Student ID Card"
+                  >
+                    <CreditCard size={11} className="text-emerald-600 shrink-0" />
+                    ID Card
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedStudent(student);
+                      setDialogType('receipt');
+                    }}
+                    className="flex-1 h-7.5 rounded-xl bg-teal-50/80 hover:bg-teal-100 text-teal-700 hover:text-teal-800 border-teal-200/70 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-1 shadow-2xs transition-all active:scale-95 px-1.5"
+                    title="Download Fee Receipt"
+                  >
+                    <Receipt size={11} className="text-teal-600 shrink-0" />
+                    Receipt
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedStudent(student);
+                      setDialogType('profile_fees');
+                    }}
+                    className="flex-1 h-7.5 rounded-xl bg-amber-50/80 hover:bg-amber-100 text-amber-800 hover:text-amber-900 border-amber-200/70 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-1 shadow-2xs transition-all active:scale-95 px-1.5"
+                    title="Fee Statement & Vouchers"
+                  >
+                    <Wallet size={11} className="text-amber-700 shrink-0" />
+                    Statement
+                  </Button>
+                </div>
               </div>
             </motion.div>
           ))}
@@ -866,11 +914,62 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                            Rs. {(student.feeLedger?.remainingBalance || (student.totalPackage || 0) - (student.feeReceived || 0)).toLocaleString()}
                          </span>
                       </TableCell>
-                      <TableCell className="text-right">
-                         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                           <Button onClick={() => { setSelectedStudent(student); setDialogType('id_card'); }} variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-emerald-600" title="Print Student ID Card"><CreditCard className="h-4 w-4" /></Button>
-                           <Button onClick={() => { setSelectedStudent(student); setDialogType('receipt'); }} variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-emerald-500" title="Download Receipt"><Download className="h-4 w-4" /></Button>
-                           <Button onClick={() => { setSelectedStudent(student); setDialogType('edit'); }} variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-superior-teal" title="Edit Student"><Edit className="h-4 w-4" /></Button>
+                      <TableCell className="text-right pr-6">
+                         <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                           {/* Direct 1-Click ID Card */}
+                           <Button 
+                             onClick={() => { setSelectedStudent(student); setDialogType('id_card'); }} 
+                             size="sm" 
+                             className="h-8 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:text-emerald-800 border border-emerald-200/80 font-black uppercase tracking-wider text-[10px] flex items-center gap-1.5 shadow-xs transition-all hover:scale-105 active:scale-95" 
+                             title="Print Official Student ID Card"
+                           >
+                             <CreditCard size={13} className="text-emerald-600 shrink-0" />
+                             <span className="hidden xl:inline">ID Card</span>
+                           </Button>
+
+                           {/* Direct 1-Click Fee Receipt */}
+                           <Button 
+                             onClick={() => { setSelectedStudent(student); setDialogType('receipt'); }} 
+                             size="sm" 
+                             className="h-8 px-2.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 hover:text-teal-800 border border-teal-200/80 font-black uppercase tracking-wider text-[10px] flex items-center gap-1.5 shadow-xs transition-all hover:scale-105 active:scale-95" 
+                             title="Download Fee Receipt"
+                           >
+                             <Receipt size={13} className="text-teal-600 shrink-0" />
+                             <span className="hidden xl:inline">Receipt</span>
+                           </Button>
+
+                           {/* Direct 1-Click Fee Statement & Vouchers */}
+                           <Button 
+                             onClick={() => { setSelectedStudent(student); setDialogType('profile_fees'); }} 
+                             size="sm" 
+                             className="h-8 px-2.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 hover:text-amber-900 border border-amber-200/80 font-black uppercase tracking-wider text-[10px] flex items-center gap-1.5 shadow-xs transition-all hover:scale-105 active:scale-95" 
+                             title="View Fee Statement & Vouchers"
+                           >
+                             <Wallet size={13} className="text-amber-700 shrink-0" />
+                             <span className="hidden xl:inline">Statement</span>
+                           </Button>
+
+                           {/* View Profile */}
+                           <Button 
+                             onClick={() => { setSelectedStudent(student); setDialogType('profile'); }} 
+                             variant="ghost" 
+                             size="icon" 
+                             className="h-8 w-8 text-slate-400 hover:text-superior-teal hover:bg-slate-100 rounded-lg transition-all" 
+                             title="View Student 360 Dossier"
+                           >
+                             <Eye className="h-4 w-4" />
+                           </Button>
+
+                           {/* Edit Details */}
+                           <Button 
+                             onClick={() => { setSelectedStudent(student); setDialogType('edit'); }} 
+                             variant="ghost" 
+                             size="icon" 
+                             className="h-8 w-8 text-slate-400 hover:text-superior-teal hover:bg-slate-100 rounded-lg transition-all" 
+                             title="Edit Student Information"
+                           >
+                             <Edit className="h-4 w-4" />
+                           </Button>
                          </div>
                       </TableCell>
                   </TableRow>

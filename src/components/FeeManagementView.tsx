@@ -19,6 +19,8 @@ import {
   Building2,
   Eye,
   MessageSquare,
+  FileText,
+  Receipt,
 } from "lucide-react";
 import { motion } from "motion/react";
 import StudentDossier360 from "./StudentDossier360";
@@ -1602,8 +1604,56 @@ Baraye meherbani aakhri tareekh se qabal accounts office mein fee jama karwa kar
                                 </p>
                               </div>
                             </TableCell>
-                            <TableCell className="text-right pr-8">
-                              <div className="flex items-center justify-end gap-2">
+                            <TableCell className="text-right pr-6 py-4">
+                              <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                {/* Direct 1-Click 3-Copy Bank Challan */}
+                                <Button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setChallanStudents([student]);
+                                    setIsChallanModalOpen(true);
+                                  }}
+                                  size="sm"
+                                  title="Print 3-Copy Bank Challan Voucher"
+                                  className="h-8 px-2.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-800 border border-indigo-200/80 font-black uppercase tracking-wider text-[10px] flex items-center gap-1.5 shadow-xs transition-all hover:scale-105 active:scale-95"
+                                >
+                                  <Building2 size={13} className="text-indigo-600 shrink-0" />
+                                  <span className="hidden xl:inline">Challan</span>
+                                </Button>
+
+                                {/* Direct 1-Click Latest Receipt */}
+                                {getUnifiedTransactions(student) && getUnifiedTransactions(student).length > 0 && (
+                                  <Button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      generateReceipt(
+                                        student,
+                                        getUnifiedTransactions(student)[0],
+                                      );
+                                    }}
+                                    size="sm"
+                                    title="Download Latest Fee Receipt"
+                                    className="h-8 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:text-emerald-800 border border-emerald-200/80 font-black uppercase tracking-wider text-[10px] flex items-center gap-1.5 shadow-xs transition-all hover:scale-105 active:scale-95"
+                                  >
+                                    <Receipt size={13} className="text-emerald-600 shrink-0" />
+                                    <span className="hidden xl:inline">Receipt</span>
+                                  </Button>
+                                )}
+
+                                {/* Direct 1-Click Fee Statement */}
+                                <Button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    generateFeeStatement(student);
+                                  }}
+                                  size="sm"
+                                  title="Download Complete Fee Statement / Ledger"
+                                  className="h-8 px-2.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 hover:text-amber-900 border border-amber-200/80 font-black uppercase tracking-wider text-[10px] flex items-center gap-1.5 shadow-xs transition-all hover:scale-105 active:scale-95"
+                                >
+                                  <FileText size={13} className="text-amber-700 shrink-0" />
+                                  <span className="hidden xl:inline">Statement</span>
+                                </Button>
+
                                 {balance > 0 && (
                                   <Button
                                     onClick={(e) => {
@@ -1613,10 +1663,10 @@ Baraye meherbani aakhri tareekh se qabal accounts office mein fee jama karwa kar
                                     disabled={sendingNoticeId === student.id}
                                     size="sm"
                                     title="Send 1-Click WhatsApp Fee Due Reminder"
-                                    className="h-8 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-wider text-[10px] flex items-center gap-1 shadow-sm shadow-emerald-200 transition-all hover:scale-[1.02]"
+                                    className="h-8 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-wider text-[10px] flex items-center gap-1 shadow-xs shadow-emerald-200 transition-all hover:scale-105 active:scale-95"
                                   >
                                     <MessageSquare size={13} className="shrink-0" />
-                                    <span className="hidden sm:inline">Notice</span>
+                                    <span className="hidden 2xl:inline">Notice</span>
                                   </Button>
                                 )}
                                 <Button
@@ -1626,14 +1676,15 @@ Baraye meherbani aakhri tareekh se qabal accounts office mein fee jama karwa kar
                                     setIsPaymentOpen(true);
                                   }}
                                   size="sm"
-                                  className="h-8 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 font-bold uppercase tracking-widest text-[10px]"
+                                  className="h-8 px-3 rounded-lg bg-superior-teal hover:bg-superior-teal/90 text-white font-bold uppercase tracking-widest text-[10px] shadow-xs transition-all hover:scale-105 active:scale-95"
                                 >
                                   Collect
                                 </Button>
                                 <DropdownMenu>
                                   <DropdownMenuTrigger
                                     onClick={(e) => e.stopPropagation()}
-                                    className="h-8 w-8 p-0 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 outline-none transition-all hover:text-slate-600"
+                                    className="h-8 w-8 p-0 rounded-lg hover:bg-slate-100 border border-slate-200/60 flex items-center justify-center text-slate-500 outline-hidden transition-all hover:text-slate-800"
+                                    title="More Options"
                                   >
                                     <MoreHorizontal className="h-4 w-4" />
                                   </DropdownMenuTrigger>
@@ -1687,10 +1738,9 @@ Baraye meherbani aakhri tareekh se qabal accounts office mein fee jama karwa kar
                                         e.stopPropagation();
                                         generateFeeStatement(student);
                                       }}
-                                      className="gap-3 p-3 rounded-xl font-black text-xs text-emerald-600 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 uppercase tracking-widest italic"
+                                      className="gap-3 p-3 rounded-xl font-black text-xs text-amber-700 cursor-pointer hover:bg-amber-50 focus:bg-amber-50 uppercase tracking-widest italic"
                                     >
-                                      <Download size={14} /> Download Fee
-                                      Statement
+                                      <FileText size={14} /> Download Fee Statement
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
                                       onClick={(e) => {
@@ -1698,7 +1748,7 @@ Baraye meherbani aakhri tareekh se qabal accounts office mein fee jama karwa kar
                                         setChallanStudents([student]);
                                         setIsChallanModalOpen(true);
                                       }}
-                                      className="gap-3 p-3 rounded-xl font-black text-xs text-emerald-800 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 uppercase tracking-widest italic"
+                                      className="gap-3 p-3 rounded-xl font-black text-xs text-indigo-700 cursor-pointer hover:bg-indigo-50 focus:bg-indigo-50 uppercase tracking-widest italic"
                                     >
                                       <Building2 size={14} /> 3-Copy Bank Challan
                                     </DropdownMenuItem>
@@ -1717,8 +1767,7 @@ Baraye meherbani aakhri tareekh se qabal accounts office mein fee jama karwa kar
                                           }}
                                           className="gap-3 p-3 rounded-xl font-black text-xs text-emerald-600 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 uppercase tracking-widest italic"
                                         >
-                                          <Download size={14} /> Download Latest
-                                          Receipt
+                                          <Receipt size={14} /> Download Latest Receipt
                                         </DropdownMenuItem>
                                       )}
                                   </DropdownMenuContent>
