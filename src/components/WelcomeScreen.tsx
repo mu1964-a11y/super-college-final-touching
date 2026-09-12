@@ -330,10 +330,11 @@ export default function WelcomeScreen({
                 </span>
               ) : (
                 <a
-                  href="/downloads/Superior-College-ERP-Setup.exe"
-                  download="Superior-College-ERP-Setup.exe"
+                  href="https://github.com/mu1964-a11y/super-college-final-touching/releases/download/v1.0.0/Superior.College.Jahanian.ERP.Setup.1.0.0.exe"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] transition-all border border-emerald-200/90 shadow-xs hover:shadow-sm hover:scale-[1.02] cursor-pointer"
-                  title="Download Windows Desktop App Installer (.exe)"
+                  title="Download Windows Desktop App Setup Installer (.exe)"
                 >
                   <Download size={12} className="text-emerald-700 stroke-[2.5]" />
                   <span>Download Desktop App (.exe)</span>
