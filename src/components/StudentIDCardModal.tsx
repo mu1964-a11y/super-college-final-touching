@@ -210,8 +210,8 @@ export default function StudentIDCardModal({
                   <div className="absolute -left-6 -top-6 w-24 h-24 bg-amber-400/20 rounded-full blur-xl pointer-events-none" />
 
                   <div 
-                    className="w-14 h-14 rounded-full bg-white p-1 shadow-md mb-2 flex items-center justify-center border-2 border-amber-400 shrink-0"
-                    style={{ width: '56px', height: '56px', minWidth: '56px', minHeight: '56px' }}
+                    className="w-14 h-14 rounded-full bg-white p-1 shadow-md mb-2 flex items-center justify-center border-2 border-amber-400 shrink-0 overflow-hidden"
+                    style={{ width: '56px', height: '56px', minWidth: '56px', minHeight: '56px', clipPath: 'circle(49.5% at 50% 50%)' }}
                   >
                     {settings?.logo ? (
                       <img 

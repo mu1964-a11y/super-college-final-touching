@@ -528,7 +528,10 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
 
           <div className="flex flex-col items-center relative z-10">
             {/* Authentic Circular Superior College Logo */}
-            <div className="w-20 h-20 sm:w-22 sm:h-22 rounded-full !bg-white p-1 shadow-[0_12px_30px_rgba(0,0,0,0.35)] border-2 border-[#c9a84c] flex items-center justify-center mb-3.5 relative overflow-hidden shrink-0">
+            <div 
+              className="w-20 h-20 sm:w-22 sm:h-22 rounded-full !bg-white p-1 shadow-[0_12px_30px_rgba(0,0,0,0.35)] border-2 border-[#c9a84c] flex items-center justify-center mb-3.5 relative overflow-hidden shrink-0"
+              style={{ clipPath: 'circle(49.5% at 50% 50%)' }}
+            >
               {collegeLogo ? (
                 <img 
                   src={collegeLogo} 

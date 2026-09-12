@@ -9,3 +9,5 @@ coverage/
 .whatsapp_auth/
 .whatsapp_chat_logs.json
 *.zip
+release/
+public/downloads/*.exe

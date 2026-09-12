@@ -11,6 +11,8 @@ import {
   Calendar,
   Signal,
   Check,
+  Download,
+  Laptop,
 } from "lucide-react";
 import AcademicCanvasBackground from "./AcademicCanvasBackground";
 
@@ -29,6 +31,7 @@ export default function WelcomeScreen({
   onDirectSelectPortal,
 }: WelcomeScreenProps) {
   const [selectedRole, setSelectedRole] = useState<"student" | "staff" | "admin">("student");
+  const isDesktopApp = typeof window !== "undefined" && Boolean((window as any).electronAPI?.isDesktop);
 
   const handleProceed = (roleToUse = selectedRole) => {
     if (onDirectSelectPortal) {
@@ -101,12 +104,12 @@ export default function WelcomeScreen({
             {/* Top Brand Identity Lockup */}
             <div className="flex items-center gap-3.5 mb-7 sm:mb-8">
               <div className="w-12 h-12 rounded-full p-0.5 bg-gradient-to-tr from-[#c9a84c] via-[#f7e096] to-[#b89437] shadow-lg flex items-center justify-center shrink-0">
-                <div className="w-full h-full rounded-full bg-white overflow-hidden flex items-center justify-center">
+                <div className="w-full h-full rounded-full bg-white overflow-hidden flex items-center justify-center" style={{ clipPath: 'circle(49.5% at 50% 50%)' }}>
                   {brandingSettings.logo ? (
                     <img
                       src={brandingSettings.logo}
                       alt="Logo"
-                      className="w-full h-full object-cover rounded-full"
+                      className="w-full h-full object-contain rounded-full select-none"
                     />
                   ) : (
                     <School size={22} className="text-[#053229]" />
@@ -319,7 +322,25 @@ export default function WelcomeScreen({
           {/* Bottom Card Footer */}
           <div className="w-full pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 gap-2">
             <span>&copy; 2026 Superior Group of Colleges Jahanian. All rights reserved.</span>
-            <span className="font-medium text-slate-500">Session 2026-28</span>
+            <div className="flex items-center gap-3">
+              {isDesktopApp ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100/90 text-emerald-800 text-[10.5px] font-bold border border-emerald-300 shadow-xs">
+                  <Laptop size={12} className="text-emerald-700" />
+                  <span>Desktop App Active</span>
+                </span>
+              ) : (
+                <a
+                  href="/downloads/Superior-College-ERP-Setup.exe"
+                  download="Superior-College-ERP-Setup.exe"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] transition-all border border-emerald-200/90 shadow-xs hover:shadow-sm hover:scale-[1.02] cursor-pointer"
+                  title="Download Windows Desktop App Installer (.exe)"
+                >
+                  <Download size={12} className="text-emerald-700 stroke-[2.5]" />
+                  <span>Download Desktop App (.exe)</span>
+                </a>
+              )}
+              <span className="font-medium text-slate-500">Session 2026-28</span>
+            </div>
           </div>
         </div>
       </motion.div>

@@ -594,9 +594,9 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
               {/* Report Header */}
               <div className="flex justify-between items-start border-b-4 border-superior-teal pb-12 mb-12">
                 <div className="flex gap-8 items-center">
-                  <div className="w-28 h-28 rounded-full bg-white shadow-inner border border-slate-100 flex items-center justify-center overflow-hidden p-0">
+                  <div className="w-28 h-28 rounded-full bg-white shadow-inner border border-slate-100 flex items-center justify-center overflow-hidden p-0" style={{ clipPath: 'circle(49.5% at 50% 50%)' }}>
                     {data.settings?.logo ? (
-                      <img src={data.settings.logo} alt="Logo" className="w-full h-full object-cover" />
+                      <img src={data.settings.logo} alt="Logo" className="w-full h-full object-contain rounded-full select-none" />
                     ) : (
                       <div className="bg-superior-teal w-full h-full flex items-center justify-center text-white rounded-2xl">
                         <School size={56} />

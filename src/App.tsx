@@ -1757,12 +1757,15 @@ export default function App() {
               <div className="px-4 py-3.5 h-16 flex items-center justify-between relative z-10 border-b border-white/10 bg-black/10">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-superior-gold/50 to-superior-gold/10 p-[1.5px] flex items-center justify-center shrink-0 shadow-md">
-                    <div className="w-full h-full rounded-[10px] bg-white overflow-hidden flex items-center justify-center p-0.5">
+                    <div 
+                      className="w-full h-full rounded-full bg-white overflow-hidden flex items-center justify-center p-0.5"
+                      style={{ clipPath: 'circle(49.5% at 50% 50%)' }}
+                    >
                       {brandingSettings.logo ? (
                         <img
                           src={brandingSettings.logo}
                           alt="Logo"
-                          className="w-full h-full rounded-[8px] object-contain"
+                          className="w-full h-full rounded-full object-contain select-none"
                           onError={(e) => {
                             (e.target as any).style.display = "none";
                             const parent = (e.target as any).parentElement;

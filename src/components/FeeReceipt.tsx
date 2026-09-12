@@ -163,13 +163,13 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
             <div className="w-full flex items-center justify-center gap-4 mb-1">
                <div 
                  className="w-16 h-16 rounded-full flex items-center justify-center overflow-hidden border border-slate-200 bg-white shadow-sm shrink-0"
-                 style={{ width: '64px', height: '64px', minWidth: '64px', minHeight: '64px' }}
+                 style={{ width: '64px', height: '64px', minWidth: '64px', minHeight: '64px', clipPath: 'circle(49.5% at 50% 50%)' }}
                >
                 {settings?.logo ? (
                   <img 
                     src={settings.logo} 
                     alt="Logo" 
-                    className="w-full h-full object-contain" 
+                    className="w-full h-full object-contain rounded-full select-none" 
                     style={{ width: '64px', height: '64px', objectFit: 'contain' }}
                     width={64}
                     height={64}
@@ -416,14 +416,14 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
 
           {/* Bottom Branding */}
           <div 
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center rounded-full overflow-hidden"
-            style={{ width: '280px', height: '280px', opacity: 0.04 }}
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center rounded-full overflow-hidden select-none"
+            style={{ width: '280px', height: '280px', opacity: 0.045, clipPath: 'circle(49.5% at 50% 50%)' }}
           >
             {settings?.logo ? (
               <img 
                 src={settings.logo} 
                 alt="" 
-                className="w-full h-full object-contain rounded-full" 
+                className="w-full h-full object-contain rounded-full mix-blend-multiply" 
                 style={{ width: '280px', height: '280px', objectFit: 'contain' }}
                 width={280}
                 height={280}

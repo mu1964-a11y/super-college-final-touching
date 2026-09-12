@@ -2637,27 +2637,27 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
   };
 
   return (
-    <DialogContent className="w-[95vw] max-w-4xl rounded-[2.5rem] p-6 sm:p-9 max-h-[92vh] overflow-y-auto shadow-2xl border-slate-100">
+    <DialogContent className="w-[95vw] max-w-3xl lg:max-w-4xl rounded-3xl sm:rounded-[2.5rem] p-5 sm:p-7 max-h-[92vh] overflow-y-auto overflow-x-hidden shadow-2xl border-slate-100 bg-white min-w-0">
       <DialogHeader className="pb-2 border-b border-slate-100">
-        <DialogTitle className="text-2xl sm:text-3xl font-display font-black text-superior-teal tracking-tight flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-superior-gold flex items-center justify-center text-superior-teal shadow-lg shadow-superior-gold/20 shrink-0">
-            <Plus size={22} />
+        <DialogTitle className="text-xl sm:text-2xl font-display font-black text-superior-teal tracking-tight flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-superior-gold flex items-center justify-center text-superior-teal shadow-md shadow-superior-gold/20 shrink-0">
+            <Plus size={20} />
           </div>
           <span>Add Financial Transaction</span>
         </DialogTitle>
-        <DialogDescription className="text-sm text-slate-500 font-medium pt-1">
+        <DialogDescription className="text-xs sm:text-sm text-slate-500 font-medium pt-0.5">
           Record college expenses or miscellaneous income in the official accounts ledger.
         </DialogDescription>
       </DialogHeader>
 
-      <form onSubmit={handleSubmit} className="space-y-6 pt-2">
+      <form onSubmit={handleSubmit} className="space-y-4 pt-1 w-full min-w-0">
         <Tabs value={type} onValueChange={(v: any) => setType(v)} className="w-full">
-          <TabsList className="grid grid-cols-2 rounded-2xl bg-slate-100 p-1.5 h-auto">
-            <TabsTrigger value="expense" className="rounded-xl font-bold py-3 text-sm sm:text-base data-[state=active]:bg-rose-600 data-[state=active]:text-white transition-all flex items-center justify-center gap-2">
+          <TabsList className="grid grid-cols-2 rounded-2xl bg-slate-100 p-1.5 h-auto w-full">
+            <TabsTrigger value="expense" className="rounded-xl font-bold py-2.5 text-sm sm:text-base data-[state=active]:bg-rose-600 data-[state=active]:text-white transition-all flex items-center justify-center gap-2">
               <span>Expense</span>
               <span className="font-nastaleeq text-base font-normal tracking-normal">(کالج خرچہ)</span>
             </TabsTrigger>
-            <TabsTrigger value="income" className="rounded-xl font-bold py-3 text-sm sm:text-base data-[state=active]:bg-emerald-600 data-[state=active]:text-white transition-all flex items-center justify-center gap-2">
+            <TabsTrigger value="income" className="rounded-xl font-bold py-2.5 text-sm sm:text-base data-[state=active]:bg-emerald-600 data-[state=active]:text-white transition-all flex items-center justify-center gap-2">
               <span>Income</span>
               <span className="font-nastaleeq text-base font-normal tracking-normal">(آمدن)</span>
             </TabsTrigger>
@@ -2666,19 +2666,19 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
 
         {/* Expense Nature Selector */}
         {type === 'expense' && (
-          <div className="space-y-2.5 bg-slate-50/80 p-4 rounded-3xl border border-slate-100">
+          <div className="space-y-2 bg-slate-50/80 p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl border border-slate-100 w-full min-w-0">
             <div className="flex items-center justify-between px-1">
               <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500">
                 Expense Frequency / Nature
               </Label>
-              <span className="text-[11px] text-slate-400 font-bold">Automatic filtering & tracking</span>
+              <span className="text-[10px] sm:text-[11px] text-slate-400 font-bold">Automatic filtering & tracking</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 w-full">
               <button
                 type="button"
                 onClick={() => setFormData({ ...formData, expenseType: 'Daily' })}
                 className={cn(
-                  "py-3 px-4 rounded-2xl font-bold text-sm border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer",
+                  "py-2.5 px-3 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm border transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer w-full text-center",
                   formData.expenseType === 'Daily'
                     ? "bg-amber-500 text-white border-amber-600 shadow-md shadow-amber-200 ring-2 ring-amber-400/30"
                     : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
@@ -2686,7 +2686,7 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
               >
                 <span>Daily / Petty Cash</span>
                 <span className={cn(
-                  "font-nastaleeq text-sm font-normal",
+                  "font-nastaleeq text-xs sm:text-sm font-normal",
                   formData.expenseType === 'Daily' ? "text-amber-100" : "text-slate-500"
                 )}>
                   روزمرہ اخراجات
@@ -2697,7 +2697,7 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
                 type="button"
                 onClick={() => setFormData({ ...formData, expenseType: 'Monthly' })}
                 className={cn(
-                  "py-3 px-4 rounded-2xl font-bold text-sm border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer",
+                  "py-2.5 px-3 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm border transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer w-full text-center",
                   formData.expenseType === 'Monthly'
                     ? "bg-indigo-600 text-white border-indigo-700 shadow-md shadow-indigo-200 ring-2 ring-indigo-400/30"
                     : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
@@ -2705,7 +2705,7 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
               >
                 <span>Monthly / Fixed</span>
                 <span className={cn(
-                  "font-nastaleeq text-sm font-normal",
+                  "font-nastaleeq text-xs sm:text-sm font-normal",
                   formData.expenseType === 'Monthly' ? "text-indigo-100" : "text-slate-500"
                 )}>
                   ماہانہ اخراجات / بلز
@@ -2716,7 +2716,7 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
                 type="button"
                 onClick={() => setFormData({ ...formData, expenseType: 'Operational' })}
                 className={cn(
-                  "py-3 px-4 rounded-2xl font-bold text-sm border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer",
+                  "py-2.5 px-3 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm border transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer w-full text-center",
                   formData.expenseType === 'Operational'
                     ? "bg-sky-600 text-white border-sky-700 shadow-md shadow-sky-200 ring-2 ring-sky-400/30"
                     : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
@@ -2724,7 +2724,7 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
               >
                 <span>Operational / Board</span>
                 <span className={cn(
-                  "font-nastaleeq text-sm font-normal",
+                  "font-nastaleeq text-xs sm:text-sm font-normal",
                   formData.expenseType === 'Operational' ? "text-sky-100" : "text-slate-500"
                 )}>
                   چالان / پروجیکٹس
@@ -2734,31 +2734,31 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full min-w-0">
+          <div className="space-y-1.5 min-w-0">
             <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Date</Label>
             <Input 
               type="date" 
               value={formData.date}
               onChange={e => setFormData({...formData, date: e.target.value})}
-              className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-medium text-base px-4"
+              className="h-11 rounded-xl bg-slate-50 border-slate-200 font-medium text-sm sm:text-base px-3 sm:px-4 w-full"
             />
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5 min-w-0">
             <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Amount (Rs.) *</Label>
             <Input 
               type="number" 
               placeholder="0.00"
               value={formData.amount}
               onChange={e => setFormData({...formData, amount: e.target.value})}
-              className="h-12 rounded-2xl bg-slate-50 border-slate-200 font-black text-xl text-rose-600 px-4"
+              className="h-11 rounded-xl bg-slate-50 border-slate-200 font-black text-lg sm:text-xl text-rose-600 px-3 sm:px-4 w-full"
               required
             />
           </div>
         </div>
 
         {/* Category Head Selection */}
-        <div className="space-y-2">
+        <div className="space-y-2 w-full min-w-0">
           <div className="flex justify-between items-center ml-1">
             <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500">
               {type === 'expense' ? 'Expense Head / Category *' : 'Income Category *'}
@@ -2771,10 +2771,10 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
           </div>
 
           {type === 'expense' ? (
-            <div className="space-y-2.5">
-              {/* Quick Autocomplete Expense Shortcut Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0 mr-1">
+            <div className="space-y-2 w-full min-w-0">
+              {/* Quick Autocomplete Expense Shortcut Pills - Wrapped to prevent blowout */}
+              <div className="flex flex-wrap items-center gap-1.5 w-full min-w-0">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0 mr-0.5">
                   Frequent:
                 </span>
                 {[
@@ -2798,7 +2798,7 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
                       }));
                     }}
                     className={cn(
-                      "px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition-all border cursor-pointer shrink-0",
+                      "px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all border cursor-pointer",
                       formData.category === chip.name
                         ? "bg-superior-teal text-white border-superior-teal shadow-xs"
                         : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100 hover:border-slate-300"
@@ -2810,15 +2810,15 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
               </div>
 
               <Select value={formData.category} onValueChange={handleCategoryChange}>
-                <SelectTrigger className="w-full h-13 rounded-2xl bg-slate-50 border border-slate-200 hover:border-superior-teal/50 font-bold px-4 text-base shadow-sm transition-all flex items-center justify-between cursor-pointer">
+                <SelectTrigger className="w-full h-11 rounded-xl bg-slate-50 border border-slate-200 hover:border-superior-teal/50 font-bold px-3 sm:px-4 text-sm sm:text-base shadow-sm transition-all flex items-center justify-between cursor-pointer">
                   <SelectValue placeholder="Select College Expense Head..." />
                 </SelectTrigger>
                 <SelectContent 
                   align="start" 
                   alignItemWithTrigger={false}
-                  className="w-[var(--anchor-width)] min-w-[360px] sm:min-w-[660px] max-w-[95vw] max-h-[480px] rounded-3xl p-3 shadow-2xl border-slate-200 bg-white"
+                  className="w-[var(--anchor-width)] min-w-[320px] sm:min-w-[600px] max-w-[95vw] max-h-[420px] rounded-2xl p-2.5 shadow-2xl border-slate-200 bg-white"
                 >
-                  <div className="px-2 py-1.5 mb-2 bg-slate-50 rounded-xl flex items-center justify-between text-xs text-slate-500 font-bold border border-slate-100">
+                  <div className="px-2 py-1 mb-2 bg-slate-50 rounded-xl flex items-center justify-between text-xs text-slate-500 font-bold border border-slate-100">
                     <span>Click any head to select. Automatically sets frequency.</span>
                     <span className="text-superior-teal">8 Main Groups</span>
                   </div>
@@ -2827,22 +2827,22 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
                     const heads = COLLEGE_EXPENSE_HEADS_CONFIG.filter(h => h.group === grp);
                     if (heads.length === 0) return null;
                     return (
-                      <div key={grp} className="mb-3">
-                        <div className="px-3 py-1.5 text-xs font-black uppercase tracking-wider text-superior-teal bg-emerald-50/80 rounded-xl flex items-center justify-between mb-1 sticky top-0 z-10 backdrop-blur-sm border border-emerald-100/50">
+                      <div key={grp} className="mb-2.5">
+                        <div className="px-3 py-1 text-xs font-black uppercase tracking-wider text-superior-teal bg-emerald-50/80 rounded-xl flex items-center justify-between mb-1 sticky top-0 z-10 backdrop-blur-sm border border-emerald-100/50">
                           <span>{grp}</span>
                           <span className="text-[10px] font-bold text-superior-teal/70">{heads.length} Heads</span>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 px-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 px-1">
                           {heads.map(h => (
                             <SelectItem 
                               key={h.name} 
                               value={h.name} 
-                              className="py-2.5 px-3 rounded-xl text-sm font-semibold cursor-pointer hover:bg-slate-100 focus:bg-emerald-50 focus:text-emerald-900 transition-colors"
+                              className="py-2 px-2.5 rounded-lg text-xs sm:text-sm font-semibold cursor-pointer hover:bg-slate-100 focus:bg-emerald-50 focus:text-emerald-900 transition-colors"
                             >
                               <div className="flex items-center justify-between w-full gap-2">
                                 <span className="truncate">{h.name}</span>
                                 <span className={cn(
-                                  "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0",
+                                  "text-[9.5px] font-bold px-1.5 py-0.5 rounded-full shrink-0",
                                   h.defaultType === 'Daily' ? "bg-amber-100 text-amber-800" :
                                   h.defaultType === 'Monthly' ? "bg-indigo-100 text-indigo-800" :
                                   "bg-sky-100 text-sky-800"
@@ -2858,7 +2858,7 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
                   })}
                   
                   <div className="pt-2 border-t border-slate-100 mt-2 px-1">
-                    <SelectItem value="__custom__" className="py-3 px-3 rounded-xl text-sm font-bold text-superior-teal hover:bg-emerald-50 focus:bg-emerald-50">
+                    <SelectItem value="__custom__" className="py-2.5 px-3 rounded-xl text-sm font-bold text-superior-teal hover:bg-emerald-50 focus:bg-emerald-50">
                       <div className="flex items-center gap-2">
                         <span>+ Custom Head /</span>
                         <span className="font-nastaleeq text-sm font-normal">دیگر خرچہ درج کریں...</span>
@@ -2874,7 +2874,7 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
                     placeholder="Enter custom expense head name..."
                     value={formData.customCategory}
                     onChange={e => setFormData({...formData, customCategory: e.target.value})}
-                    className="h-12 rounded-2xl bg-amber-50/50 border-amber-200 font-bold text-amber-900 text-base px-4"
+                    className="h-11 rounded-xl bg-amber-50/50 border-amber-200 font-bold text-amber-900 text-sm sm:text-base px-3 sm:px-4"
                     autoFocus
                   />
                 </div>
@@ -2882,16 +2882,16 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
             </div>
           ) : (
             <Select value={formData.category} onValueChange={v => setFormData({...formData, category: v})}>
-              <SelectTrigger className="w-full h-13 rounded-2xl bg-slate-50 border-slate-200 font-bold px-4 text-base">
+              <SelectTrigger className="w-full h-11 rounded-xl bg-slate-50 border-slate-200 font-bold px-3 sm:px-4 text-sm sm:text-base">
                 <SelectValue placeholder="Select income category..." />
               </SelectTrigger>
               <SelectContent 
                 align="start" 
                 alignItemWithTrigger={false}
-                className="w-[var(--anchor-width)] min-w-[320px] sm:min-w-[440px] rounded-2xl shadow-2xl border-slate-100 p-2"
+                className="w-[var(--anchor-width)] min-w-[300px] sm:min-w-[400px] rounded-2xl shadow-2xl border-slate-100 p-2"
               >
                 {incomeCategories.map(c => (
-                  <SelectItem key={c} value={c} className="py-2.5 px-3 rounded-xl text-sm font-semibold cursor-pointer">
+                  <SelectItem key={c} value={c} className="py-2 px-3 rounded-xl text-sm font-semibold cursor-pointer">
                     {c}
                   </SelectItem>
                 ))}
@@ -2902,8 +2902,8 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
 
         {/* Vendor / Paid To & Voucher No */}
         {type === 'expense' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            <div className="space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full min-w-0">
+            <div className="space-y-1.5 min-w-0">
               <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">
                 Paid To / Vendor Name
               </Label>
@@ -2911,10 +2911,10 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
                 placeholder="e.g. Munir Electrician, PTCL, PSO"
                 value={formData.paidTo}
                 onChange={e => setFormData({...formData, paidTo: e.target.value})}
-                className="h-12 rounded-2xl bg-slate-50 border-slate-200 text-sm font-medium px-4"
+                className="h-11 rounded-xl bg-slate-50 border-slate-200 text-sm font-medium px-3 sm:px-4 w-full"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5 min-w-0">
               <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">
                 Voucher / Slip / Challan #
               </Label>
@@ -2922,49 +2922,49 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
                 placeholder="e.g. V-104, Challan #892"
                 value={formData.voucherNo}
                 onChange={e => setFormData({...formData, voucherNo: e.target.value})}
-                className="h-12 rounded-2xl bg-slate-50 border-slate-200 text-sm font-mono font-medium px-4"
+                className="h-11 rounded-xl bg-slate-50 border-slate-200 text-sm font-mono font-medium px-3 sm:px-4 w-full"
               />
             </div>
           </div>
         )}
 
         {type === 'income' && (
-          <div className="space-y-2">
+          <div className="space-y-1.5 w-full min-w-0">
             <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Payer Name / Source</Label>
             <Input 
               placeholder="e.g. Scrap Sale or Payer Name"
               value={formData.studentName}
               onChange={e => setFormData({...formData, studentName: e.target.value})}
-              className="h-12 rounded-2xl bg-slate-50 border-slate-200 text-base px-4"
+              className="h-11 rounded-xl bg-slate-50 border-slate-200 text-sm sm:text-base px-3 sm:px-4 w-full"
             />
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full min-w-0">
+          <div className="space-y-1.5 min-w-0">
             <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Payment Method</Label>
             <Select value={formData.paymentMethod || "Cash"} onValueChange={v => setFormData({...formData, paymentMethod: v})}>
-              <SelectTrigger className="w-full h-12 rounded-2xl bg-slate-50 border-slate-200 font-bold px-4 text-base">
+              <SelectTrigger className="w-full h-11 rounded-xl bg-slate-50 border-slate-200 font-bold px-3 sm:px-4 text-sm sm:text-base">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent 
                 align="start" 
                 alignItemWithTrigger={false}
-                className="w-[var(--anchor-width)] min-w-[280px] rounded-2xl shadow-xl border-slate-100 p-2"
+                className="w-[var(--anchor-width)] min-w-[260px] rounded-2xl shadow-xl border-slate-100 p-2"
               >
-                <SelectItem value="Cash" className="py-2.5 px-3 rounded-xl cursor-pointer">
+                <SelectItem value="Cash" className="py-2 px-3 rounded-xl cursor-pointer">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold">Cash</span>
                     <span className="font-nastaleeq text-sm font-normal text-slate-500">(کیش)</span>
                   </div>
                 </SelectItem>
-                <SelectItem value="Bank Transfer" className="py-2.5 px-3 rounded-xl cursor-pointer">
+                <SelectItem value="Bank Transfer" className="py-2 px-3 rounded-xl cursor-pointer">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold">Bank Transfer</span>
                     <span className="font-nastaleeq text-sm font-normal text-slate-500">(بینک)</span>
                   </div>
                 </SelectItem>
-                <SelectItem value="Cheque" className="py-2.5 px-3 rounded-xl cursor-pointer">
+                <SelectItem value="Cheque" className="py-2 px-3 rounded-xl cursor-pointer">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold">Cheque</span>
                     <span className="font-nastaleeq text-sm font-normal text-slate-500">(چیک)</span>
@@ -2974,24 +2974,24 @@ function AddEntryDialog({ data, onClose }: { data: any, onClose: () => void }) {
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5 min-w-0">
             <Label className="text-[11px] font-black uppercase tracking-widest text-slate-500 ml-1">Description / Particulars</Label>
             <Input 
               placeholder="e.g. 50 liters generator diesel"
               value={formData.description}
               onChange={e => setFormData({...formData, description: e.target.value})}
-              className="h-12 rounded-2xl bg-slate-50 border-slate-200 text-sm font-medium px-4"
+              className="h-11 rounded-xl bg-slate-50 border-slate-200 text-sm font-medium px-3 sm:px-4 w-full"
             />
           </div>
         </div>
 
-        <div className="pt-4 flex gap-4 border-t border-slate-100">
-          <Button variant="ghost" className="flex-1 rounded-2xl font-bold h-13 text-base" type="button" onClick={onClose}>
+        <div className="pt-3 flex gap-3 border-t border-slate-100 w-full min-w-0">
+          <Button variant="ghost" className="flex-1 rounded-xl font-bold h-11 sm:h-12 text-sm sm:text-base cursor-pointer" type="button" onClick={onClose}>
             Cancel
           </Button>
           <Button 
             className={cn(
-              "flex-1 text-white rounded-2xl font-bold h-13 text-base shadow-xl transition-all cursor-pointer",
+              "flex-1 text-white rounded-xl font-bold h-11 sm:h-12 text-sm sm:text-base shadow-lg transition-all cursor-pointer",
               type === 'expense' 
                 ? "bg-rose-600 hover:bg-rose-700 shadow-rose-200 active:scale-[0.99]" 
                 : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200 active:scale-[0.99]"

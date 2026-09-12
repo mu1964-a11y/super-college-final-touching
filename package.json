@@ -1,15 +1,22 @@
 {
-  "name": "react-example",
+  "name": "superior-college-jahanian-erp",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Superior College Jahanian ERP Management System & LMS",
+  "author": "Superior College Jahanian",
   "type": "module",
-  "main": "server.js",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --platform=node --format=esm --packages=external --outfile=server.js",
+    "generate:icon": "node scripts/generate-ico.cjs",
+    "electron:dev": "concurrently -k \"cross-env NODE_ENV=development tsx server.ts\" \"wait-on http://127.0.0.1:3000/api/health && electron electron/main.cjs\"",
+    "electron:pack": "npm run build && npm run generate:icon && electron-builder --win --dir",
+    "electron:build:win": "npm run build && npm run generate:icon && electron-builder --win",
+    "electron:portable": "npm run build && npm run generate:icon && electron-builder --win portable",
     "start": "node server.js",
     "preview": "vite preview",
-    "clean": "rm -rf dist",
+    "clean": "rm -rf dist release",
     "lint": "tsc --noEmit && eslint ."
   },
   "dependencies": {
@@ -59,6 +66,10 @@
     "@types/react-dom": "^19.2.3",
     "@typescript-eslint/eslint-plugin": "^8.59.1",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^10.0.5",
+    "cross-env": "^10.1.0",
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.28.0",
     "eslint": "^9.21.0",
     "eslint-plugin-jsx-a11y": "^6.10.2",
@@ -69,6 +80,56 @@
     "ts-morph": "^28.0.0",
     "typescript": "~5.8.2",
     "typescript-eslint": "^8.59.1",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "wait-on": "^9.1.0"
+  },
+  "build": {
+    "appId": "pk.edu.superiorjahanian.erp",
+    "productName": "Superior College Jahanian ERP",
+    "copyright": "Copyright © 2026 Superior Group of Colleges Jahanian",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "server.js",
+      "server/**/*",
+      "build/icon.ico",
+      "build/icon.png",
+      "public/**/*",
+      ".env"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "${productName} Setup ${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Superior College ERP",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    },
+    "portable": {
+      "artifactName": "${productName} Portable ${version}.${ext}"
+    }
   }
 }

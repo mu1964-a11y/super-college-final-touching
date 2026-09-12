@@ -114,12 +114,12 @@ export default function PortalGatewayView({
             {/* Brand Identity Lockup */}
             <div className="flex items-center gap-3.5 mb-6">
               <div className="w-12 h-12 rounded-full p-0.5 bg-gradient-to-tr from-[#c9a84c] via-[#f7e096] to-[#b89437] shadow-lg flex items-center justify-center shrink-0">
-                <div className="w-full h-full rounded-full bg-white overflow-hidden flex items-center justify-center">
+                <div className="w-full h-full rounded-full bg-white overflow-hidden flex items-center justify-center" style={{ clipPath: 'circle(49.5% at 50% 50%)' }}>
                   {brandingSettings.logo ? (
                     <img
                       src={brandingSettings.logo}
                       alt="Logo"
-                      className="w-full h-full object-cover rounded-full"
+                      className="w-full h-full object-contain rounded-full select-none"
                     />
                   ) : (
                     <School size={22} className="text-[#053229]" />
