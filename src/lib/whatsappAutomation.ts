@@ -29,7 +29,15 @@ export function formatWhatsAppPhone(rawPhone?: string): string | null {
  */
 export function getPublicBaseUrl(settings?: any): string {
   // 1. Check explicit setting for public / portal URL if configured
-  const explicitUrl = settings?.publicUrl || settings?.appUrl || settings?.portalUrl;
+  const explicitUrl = 
+    settings?.portalUrl || 
+    settings?.appUrl || 
+    settings?.publicUrl || 
+    settings?.portal_url || 
+    settings?.app_url ||
+    settings?.config?.portalUrl || 
+    settings?.config?.appUrl;
+
   if (explicitUrl && typeof explicitUrl === "string" && explicitUrl.trim()) {
     return explicitUrl.trim().replace(/\/+$/, "");
   }
@@ -52,19 +60,23 @@ export function getPublicBaseUrl(settings?: any): string {
 
   // 3. Fallback to college website configured in settings
   if (settings?.website && typeof settings.website === "string" && settings.website.trim()) {
-    let site = settings.website.trim();
+    let site = settings.website.trim().toLowerCase();
+    // If site contains superiorjhn.com, the web app is hosted at portal.superiorjhn.com
+    if (site.includes("superiorjhn.com")) {
+      return "https://portal.superiorjhn.com";
+    }
     if (!site.startsWith("http://") && !site.startsWith("https://")) {
       site = `https://${site}`;
     }
     return site.replace(/\/+$/, "");
   }
 
-  // 4. Default fallback: window.location.origin if available, else official college domain
+  // 4. Default fallback: window.location.origin if available, else official college portal domain
   if (typeof window !== "undefined" && window.location?.origin && window.location.protocol !== "file:") {
     return window.location.origin.replace(/\/+$/, "");
   }
 
-  return "https://superiorcollegejahanian.com";
+  return "https://portal.superiorjhn.com";
 }
 
 /**

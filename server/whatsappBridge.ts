@@ -1406,7 +1406,25 @@ Admissions, fee concessions ya academic guidance ke liye campus office tashreef 
     const received = Number(student.fee_received || 0);
     const dues = Math.max(0, totalPkg - received);
 
-    const baseUrl = (process.env.APP_URL || process.env.VITE_APP_URL || "https://superiorcollegejahanian.com").replace(/\/+$/, "");
+    let configuredUrl = process.env.APP_URL || process.env.VITE_APP_URL;
+    if (!configuredUrl) {
+      try {
+        const { data: stg } = await supabase.from('settings').select('*').limit(1).maybeSingle();
+        if (stg) {
+          configuredUrl = stg.config?.portalUrl || stg.config?.appUrl || stg.portal_url || stg.app_url;
+          if (!configuredUrl && stg.website) {
+            if (stg.website.includes('superiorjhn.com')) {
+              configuredUrl = 'https://portal.superiorjhn.com';
+            } else {
+              configuredUrl = stg.website.startsWith('http') ? stg.website : `https://${stg.website}`;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load portal URL from settings in whatsappBridge:', e);
+      }
+    }
+    const baseUrl = (configuredUrl || 'https://portal.superiorjhn.com').replace(/\/+$/, '');
     const studentRef = encodeURIComponent(String(student.college_no || student.id || "").trim());
 
     if (intent === "fee") {

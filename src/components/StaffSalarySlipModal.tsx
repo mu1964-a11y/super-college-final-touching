@@ -56,7 +56,7 @@ export default function StaffSalarySlipModal({
   useEffect(() => {
     if (!staff || !isOpen) return;
     const verifyId = staff.id || '';
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://superiorcollegejahanian.com';
+    const origin = typeof window !== 'undefined' && window.location?.origin && window.location.protocol !== 'file:' ? window.location.origin : 'https://portal.superiorjhn.com';
     const qrPayload = `${origin}/?verify=staff_payroll&id=${encodeURIComponent(verifyId)}&m=${encodeURIComponent(month)}`;
 
     QRCode.toDataURL(qrPayload, {

@@ -37,7 +37,7 @@ export default function StudentIDCardModal({
   React.useEffect(() => {
     if (!student) return;
     const verifyId = student.collegeNo || student.id || student.studentId || '';
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://superiorcollegejahanian.com';
+    const origin = typeof window !== 'undefined' && window.location?.origin && window.location.protocol !== 'file:' ? window.location.origin : 'https://portal.superiorjhn.com';
     const qrPayload = `${origin}/?verify=card&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(student.collegeNo || '')}`;
 
     QRCode.toDataURL(qrPayload, {

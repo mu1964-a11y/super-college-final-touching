@@ -31,7 +31,7 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
   React.useEffect(() => {
     if (!student) return;
     const verifyId = student.id || student.rollNo || student.studentId || '';
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://superiorcollegejahanian.com';
+    const origin = typeof window !== 'undefined' && window.location?.origin && window.location.protocol !== 'file:' ? window.location.origin : 'https://portal.superiorjhn.com';
     const qrPayload = `${origin}/?verify=receipt&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(student.rollNo || '')}`;
 
     QRCode.toDataURL(qrPayload, {

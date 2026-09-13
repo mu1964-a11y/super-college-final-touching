@@ -28,7 +28,7 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
   React.useEffect(() => {
     if (!admission) return;
     const verifyId = admission.collegeNo || admission.studentId || admission.id || '';
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://superiorcollegejahanian.com';
+    const origin = typeof window !== 'undefined' && window.location?.origin && window.location.protocol !== 'file:' ? window.location.origin : 'https://portal.superiorjhn.com';
     const qrPayload = `${origin}/?verify=student&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(admission.collegeNo || '')}&student_id=${encodeURIComponent(admission.studentId || '')}&adm_id=${encodeURIComponent(admission.id || '')}`;
 
     QRCode.toDataURL(qrPayload, {
