@@ -25,6 +25,7 @@ import {
 import { motion } from "motion/react";
 import StudentDossier360 from "./StudentDossier360";
 import BankChallanModal from "./BankChallanModal";
+import { getDocumentLink } from "../lib/whatsappAutomation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -123,19 +124,27 @@ export default function FeeManagementView({
     }
 
     const cleanPhone = rawPhone.replace(/\D/g, "");
+    const studentRef = student.collegeNo || student.id || "N/A";
+    const statementUrl = getDocumentLink("statement", studentRef);
+
     const msg = 
 `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
-📄 *OFFICIAL FEE REMINDER NOTICE*
+📄 *OFFICIAL FEE REMINDER & ACCOUNT STATEMENT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Mohtaram Walid/Guardian (${student.fatherName || 'Sahib'}),
 
+Aapke bache ka fee ledger baqaya darj zail hai:
+
 • *Student Name:* ${student.fullName}
-• *Roll Number:* ${student.id || student.collegeNo || 'N/A'}
+• *Roll Number:* ${studentRef}
 • *Class / Group:* ${student.group || student.category || 'Intermediate'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 • *Agreed Package:* Rs. ${Number(student.totalPackage || 0).toLocaleString()}
 • *Fee Deposited:* Rs. ${Number(student.feeReceived || 0).toLocaleString()}
 • *Outstanding Balance:* *Rs. ${Number(balance).toLocaleString()}*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 *Online Fee Statement / Ledger:*
+${statementUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ *Instruction:* Baraye meherbani aakhri tareekh se qabal accounts desk par baqaya fee jama karwa kar computerised receipt hasil karein.
 📞 Accounts Desk: 0301-4455891

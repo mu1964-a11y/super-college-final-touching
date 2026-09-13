@@ -24,6 +24,76 @@ export function formatWhatsAppPhone(rawPhone?: string): string | null {
   return clean;
 }
 
+/**
+ * Resolves the public base URL for short preview & download document links
+ */
+export function getPublicBaseUrl(settings?: any): string {
+  // 1. Check explicit setting for public / portal URL if configured
+  const explicitUrl = settings?.publicUrl || settings?.appUrl || settings?.portalUrl;
+  if (explicitUrl && typeof explicitUrl === "string" && explicitUrl.trim()) {
+    return explicitUrl.trim().replace(/\/+$/, "");
+  }
+
+  // 2. Check window.location if running in a public browser environment (not localhost / LAN)
+  if (typeof window !== "undefined" && window.location?.origin) {
+    const origin = window.location.origin;
+    const hostname = window.location.hostname.toLowerCase();
+    const isLocal = 
+      hostname === "localhost" || 
+      hostname === "127.0.0.1" || 
+      hostname.startsWith("192.168.") || 
+      hostname.startsWith("10.") || 
+      hostname.endsWith(".local") ||
+      window.location.protocol === "file:";
+    if (!isLocal) {
+      return origin.replace(/\/+$/, "");
+    }
+  }
+
+  // 3. Fallback to college website configured in settings
+  if (settings?.website && typeof settings.website === "string" && settings.website.trim()) {
+    let site = settings.website.trim();
+    if (!site.startsWith("http://") && !site.startsWith("https://")) {
+      site = `https://${site}`;
+    }
+    return site.replace(/\/+$/, "");
+  }
+
+  // 4. Default fallback: window.location.origin if available, else official college domain
+  if (typeof window !== "undefined" && window.location?.origin && window.location.protocol !== "file:") {
+    return window.location.origin.replace(/\/+$/, "");
+  }
+
+  return "https://superiorcollegejahanian.com";
+}
+
+/**
+ * Builds ultra-short, context-specific document preview & download link
+ * Examples:
+ * - Admission: /?v=admission&id=1015
+ * - Fee Receipt: /?v=receipt&id=1015&rcp=REC-123456
+ * - Fee Statement: /?v=statement&id=1015
+ * - Result Card: /?v=result&id=1015&m=Sep-2026
+ * - Attendance: /?v=attendance&id=1015
+ */
+export function getDocumentLink(
+  docType: "receipt" | "statement" | "admission" | "result" | "attendance" | "student",
+  identifier: string,
+  extra?: { rcp?: string; m?: string },
+  settings?: any
+): string {
+  const base = getPublicBaseUrl(settings);
+  const cleanId = encodeURIComponent(String(identifier || "").trim());
+  let url = `${base}/?v=${docType}&id=${cleanId}`;
+  if (docType === "receipt" && extra?.rcp) {
+    url += `&rcp=${encodeURIComponent(String(extra.rcp).trim())}`;
+  }
+  if (docType === "result" && extra?.m) {
+    url += `&m=${encodeURIComponent(String(extra.m).trim())}`;
+  }
+  return url;
+}
+
 export interface AutoAdmissionOptions {
   silent?: boolean;
   manualTrigger?: boolean;
@@ -31,7 +101,7 @@ export interface AutoAdmissionOptions {
 
 /**
  * Automatically dispatches official Admission Confirmation WhatsApp notice to parents
- * Includes: Student ID, Roll No, Class, Section, Subjects, Session, Fee details, Orientation.
+ * Includes: Student ID, Roll No, Class, Section, Subjects, Session, Fee details, and ONLY Admission Slip / Receipt links.
  */
 export async function sendAutoAdmissionNotice(
   admission: any,
@@ -65,9 +135,11 @@ export async function sendAutoAdmissionNotice(
     subjectsList = admission.subjects.trim();
   }
 
-  const totalPkg = Number(admission.totalPackage || 0).toLocaleString();
-  const paid = Number(admission.feeReceived || 0).toLocaleString();
-  const balance = Math.max(0, Number(admission.totalPackage || 0) - Number(admission.feeReceived || 0)).toLocaleString();
+  const totalPkgNum = Number(admission.totalPackage || 0);
+  const feeRcvNum = Number(admission.feeReceived || 0);
+  const totalPkg = totalPkgNum.toLocaleString();
+  const paid = feeRcvNum.toLocaleString();
+  const balance = Math.max(0, totalPkgNum - feeRcvNum).toLocaleString();
 
   const concessionLine = admission.concessionReason 
     ? `• *Scholarship / Category:* ${admission.concessionReason}\n` 
@@ -75,6 +147,17 @@ export async function sendAutoAdmissionNotice(
 
   const address = settings?.address || "Superior College, Khanewal Road, Jahanian";
   const helpline = settings?.contactNumber || "0301-4455891";
+
+  // Build Context-Specific Links (ONLY Admission Slip & Initial Fee Receipt if paid)
+  const primaryId = collegeNo !== "Allotted on Orientation" ? collegeNo : (studentId !== "Allotted on Portal" ? studentId : (admission.id || ""));
+  const admissionSlipUrl = getDocumentLink("admission", primaryId, undefined, settings);
+  
+  let docLinksSection = `\n📄 *Official Admission Slip:* ${admissionSlipUrl}`;
+  if (feeRcvNum > 0) {
+    const rcpNo = admission.receiptId || admission.receiptNo || `ADM-${Math.floor(100000 + Math.random() * 900000)}`;
+    const feeReceiptUrl = getDocumentLink("receipt", primaryId, { rcp: rcpNo }, settings);
+    docLinksSection += `\n🧾 *Admission Fee Receipt:* ${feeReceiptUrl}`;
+  }
 
   const message = 
 `🏛️ *${collegeName.toUpperCase()}*
@@ -98,6 +181,8 @@ ${concessionLine}━━━━━━━━━━━━━━━━━━━━━
 • *Agreed Package:* Rs. ${totalPkg}
 • *Fee Deposited:* Rs. ${paid}
 • *Remaining Balance:* Rs. ${balance}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🔗 *Document Verification & Download:*${docLinksSection}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 📍 *Campus Address:* ${address}
 📞 *Helpline / Query:* ${helpline}
@@ -161,6 +246,7 @@ export interface AutoFeePaymentDetails {
 /**
  * Automatically dispatches official Computerized Fee Payment Receipt WhatsApp notice to parents
  * Triggered on any fee collection or installment submission.
+ * Includes ONLY Fee Receipt link & Fee Statement link.
  */
 export async function sendAutoFeeReceiptNotice(
   studentOrAdmission: any,
@@ -206,6 +292,10 @@ export async function sendAutoFeeReceiptNotice(
 
   const helpline = settings?.contactNumber || "0301-4455891";
 
+  // Context-specific links: ONLY Fee Receipt & Fee Statement
+  const receiptUrl = getDocumentLink("receipt", rollNo, { rcp: receiptNo }, settings);
+  const statementUrl = getDocumentLink("statement", rollNo, undefined, settings);
+
   const message = 
 `🏛️ *${collegeName.toUpperCase()}*
 🧾 *OFFICIAL FEE PAYMENT RECEIPT*
@@ -223,6 +313,12 @@ Aapke bache ki fee payment kamyabi se record ho chuki hai.
 • *Payment Date:* ${payDate}
 • *Payment Head:* ${feeType}
 • *Remaining Balance:* Rs. ${remainingBal.toLocaleString()}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🧾 *Computerized Fee Receipt:*
+${receiptUrl}
+
+📊 *Complete Fee Statement / Ledger:*
+${statementUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ✅ Payment verified & registered in official accounts ledger.
 📞 Accounts Desk: ${helpline}
@@ -272,3 +368,213 @@ _Accounts & Finance Department, SGC Jahanian_`;
     return false;
   }
 }
+
+/**
+ * Automatically dispatches official Fee Dues Reminder WhatsApp notice to parents
+ * Includes ONLY Fee Statement link.
+ */
+export async function sendAutoFeeReminderNotice(
+  student: any,
+  settings?: any,
+  options?: { silent?: boolean; manualTrigger?: boolean }
+): Promise<boolean> {
+  if (!student) return false;
+
+  const rawPhone = student.fatherContact || 
+    student.contact || 
+    student.contactNumber || 
+    student.phone || 
+    student.mobile || "";
+  const phone = formatWhatsAppPhone(rawPhone);
+
+  const collegeName = settings?.collegeName || "Superior Group of Colleges Jahanian";
+  const studentName = (student.fullName || "Student").trim();
+  const fatherName = (student.fatherName || "Sahib").trim();
+  const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
+  const group = student.group || student.category || "Intermediate";
+  const totalPkg = Number(student.totalPackage || 0);
+  const feeReceived = Number(student.feeReceived || 0);
+  const balance = Math.max(0, totalPkg - feeReceived);
+  const helpline = settings?.contactNumber || "0301-4455891";
+
+  // Context-specific link: ONLY Fee Statement / Ledger
+  const statementUrl = getDocumentLink("statement", rollNo, undefined, settings);
+
+  const message = 
+`🏛️ *${collegeName.toUpperCase()}*
+📄 *OFFICIAL FEE REMINDER & ACCOUNT STATEMENT*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mohtaram Walid/Guardian (${fatherName}),
+
+Aapke bache ka fee ledger baqaya darj zail hai:
+
+• *Student Name:* ${studentName}
+• *Roll Number:* ${rollNo}
+• *Class / Group:* ${group}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Agreed Package:* Rs. ${totalPkg.toLocaleString()}
+• *Fee Deposited:* Rs. ${feeReceived.toLocaleString()}
+• *Outstanding Balance:* *Rs. ${balance.toLocaleString()}*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 *Online Fee Statement / Ledger:*
+${statementUrl}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ *Instruction:* Baraye meherbani aakhri tareekh se qabal accounts desk par baqaya fee jama karwa kar computerised receipt hasil karein.
+📞 Accounts Desk: ${helpline}
+_Accounts & Finance Department, SGC Jahanian_`;
+
+  if (!phone) {
+    if (!options?.silent) {
+      toast.warning(`No valid phone number registered for ${studentName}. Reminder skipped.`);
+    }
+    return false;
+  }
+
+  try {
+    const res = await fetch("/api/whatsapp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, message }),
+    });
+
+    if (res.ok) {
+      toast.success(`Fee reminder dispatched via WhatsApp to +${phone}!`, { id: "fee-reminder-wa" });
+      return true;
+    } else {
+      const err = await res.json().catch(() => ({}));
+      if (!options?.silent) {
+        toast.info(err.error || "WhatsApp Gateway offline. Click to share reminder.", {
+          id: "fee-reminder-wa",
+          action: {
+            label: "Share Reminder",
+            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
+          },
+        });
+      }
+      return false;
+    }
+  } catch (error) {
+    console.warn("sendAutoFeeReminderNotice network error:", error);
+    if (!options?.silent) {
+      toast.info("WhatsApp Gateway not reachable. Click to share reminder.", {
+        id: "fee-reminder-wa",
+        action: {
+          label: "Share Reminder",
+          onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
+        },
+      });
+    }
+    return false;
+  }
+}
+
+export interface AutoResultDetails {
+  month?: string;
+  testTitle?: string;
+  marksListText?: string;
+  totalObtained?: number;
+  totalMax?: number;
+  percentage?: number;
+  statusText?: string;
+}
+
+/**
+ * Automatically dispatches official Academic Result Card WhatsApp notice to parents
+ * Includes ONLY Academic Result Card link.
+ */
+export async function sendAutoResultNotice(
+  student: any,
+  details: AutoResultDetails,
+  settings?: any,
+  options?: { silent?: boolean; manualTrigger?: boolean }
+): Promise<boolean> {
+  if (!student) return false;
+
+  const rawPhone = student.fatherContact || 
+    student.contact || 
+    student.contactNumber || 
+    student.phone || 
+    student.mobile || "";
+  const phone = formatWhatsAppPhone(rawPhone);
+
+  const collegeName = settings?.collegeName || "Superior Group of Colleges Jahanian";
+  const studentName = (student.fullName || "Student").trim();
+  const fatherName = (student.fatherName || "Sahib").trim();
+  const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
+  const group = student.group || student.category || "Intermediate";
+  const section = student.section ? ` (Sec: ${student.section})` : "";
+  const month = details.month || "Current Term";
+  const helpline = settings?.contactNumber || "0301-4455891";
+
+  // Context-specific link: ONLY Academic Result Card
+  const resultUrl = getDocumentLink("result", rollNo, { m: month }, settings);
+
+  const message = 
+`🏛️ *${collegeName.toUpperCase()}*
+📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mohtaram Walid/Guardian (${fatherName}),
+
+• *Student Name:* ${studentName}
+• *Roll Number:* ${rollNo}
+• *Class & Section:* ${group}${section}
+• *Assessment Term:* ${month}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 *Subject-wise Examination Scores:*
+${details.marksListText || "• Assessment scores registered on portal."}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Grand Total:* ${details.totalObtained ?? "-"} / ${details.totalMax ?? "-"} (${details.percentage ?? 0}%)
+• *Result Status:* ${details.statusText || "Evaluated"}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 *Official Academic Result Card:*
+${resultUrl}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 *Instruction:* Board imtehanat mein aala position ke liye rozana revision aur regular attendance yaqeeni banayein.
+📞 Academic Helpdesk: ${helpline}
+_Office of the Controller of Examinations, SGC Jahanian_`;
+
+  if (!phone) {
+    if (!options?.silent) {
+      toast.warning(`No valid phone number registered for ${studentName}. Result card skipped.`);
+    }
+    return false;
+  }
+
+  try {
+    const res = await fetch("/api/whatsapp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, message }),
+    });
+
+    if (res.ok) {
+      toast.success(`Academic Result Card dispatched to +${phone}!`, { id: "result-wa" });
+      return true;
+    } else {
+      const err = await res.json().catch(() => ({}));
+      if (!options?.silent) {
+        toast.info(err.error || "WhatsApp Gateway offline. Click to share result.", {
+          id: "result-wa",
+          action: {
+            label: "Share Result",
+            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
+          },
+        });
+      }
+      return false;
+    }
+  } catch (error) {
+    console.warn("sendAutoResultNotice network error:", error);
+    if (!options?.silent) {
+      toast.info("WhatsApp Gateway not reachable. Click to share result.", {
+        id: "result-wa",
+        action: {
+          label: "Share Result",
+          onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
+        },
+      });
+    }
+    return false;
+  }
+}
+

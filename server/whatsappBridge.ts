@@ -1406,7 +1406,11 @@ Admissions, fee concessions ya academic guidance ke liye campus office tashreef 
     const received = Number(student.fee_received || 0);
     const dues = Math.max(0, totalPkg - received);
 
+    const baseUrl = (process.env.APP_URL || process.env.VITE_APP_URL || "https://superiorcollegejahanian.com").replace(/\/+$/, "");
+    const studentRef = encodeURIComponent(String(student.college_no || student.id || "").trim());
+
     if (intent === "fee") {
+      const statementUrl = `${baseUrl}/?v=statement&id=${studentRef}`;
       return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
 💰 *OFFICIAL FEE LEDGER SUMMARY*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1420,6 +1424,9 @@ Admissions, fee concessions ya academic guidance ke liye campus office tashreef 
 • *Total Fee Deposited:* Rs. ${received.toLocaleString()}
 • *Outstanding Balance:* *Rs. ${dues.toLocaleString()}*
 • *Account Status:* ${dues > 0 ? "⚠️ PENDING DUES" : "✅ ALL CLEARED"}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 *Online Fee Statement / Ledger:*
+${statementUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ${dues > 0 ? "⚠️ *Note:* Baraye meherbani aakhri tareekh se qabal accounts desk par baqaya fee jama karwa kar computerised receipt hasil karein.\n" : "🎉 Alhamdolillah, tamam dues mukammal tor par clear hain.\n"}📞 Accounts Desk: 0301-4455891
 _Accounts & Finance Department, SGC Jahanian_${this.getMenuFooter()}`;
@@ -1442,6 +1449,8 @@ _Accounts & Finance Department, SGC Jahanian_${this.getMenuFooter()}`;
         marksText = "• Koi naya test record abhi tak portal par upload nahi hua.";
       }
 
+      const resultUrl = `${baseUrl}/?v=result&id=${studentRef}`;
+
       return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
 📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1451,6 +1460,9 @@ _Accounts & Finance Department, SGC Jahanian_${this.getMenuFooter()}`;
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 📝 *Recent Examination Results:*
 ${marksText}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 *Official Academic Result Card:*
+${resultUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 *Instruction:* Behtareen board results ke liye regular homework aur class revision par tawajjah dein.
 📞 Academic Helpdesk: 0301-4455891
@@ -1467,6 +1479,7 @@ _Office of the Controller of Examinations, SGC Jahanian_${this.getMenuFooter()}`
         .maybeSingle();
 
       const todayStatus = todayAtt?.status ? todayAtt.status.toUpperCase() : "Marked in Progress";
+      const attendanceUrl = `${baseUrl}/?v=attendance&id=${studentRef}`;
 
       return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
 📅 *ATTENDANCE & PUNCTUALITY NOTIFICATION*
@@ -1478,6 +1491,9 @@ _Office of the Controller of Examinations, SGC Jahanian_${this.getMenuFooter()}`
 • *Today's Status (${todayStr}):* ${todayStatus === "PRESENT" ? "✅ PRESENT (Hazir)" : todayStatus === "ABSENT" ? "🚨 ABSENT (Ghair Hazir)" : "🕒 " + todayStatus}
 • *Total Present Days:* ${student.attendance_present || 0}
 • *Total Absent Days:* ${student.attendance_absent || 0}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📅 *Classroom Attendance Dossier:*
+${attendanceUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ _Board requirements ke mutabiq 80% haziri imtehanat mein shamil hone ke liye lazmi hai._
 📞 Attendance Desk: 0301-4455891
@@ -1497,6 +1513,8 @@ _Office of the Vice Principal (Discipline), SGC Jahanian_${this.getMenuFooter()}
       marksBrief = records.map((r: any) => `• ${r.subject} (${r.test_name}): ${r.obtained_marks}/${r.total_marks}`).join("\n");
     }
 
+    const dossierUrl = `${baseUrl}/?v=student&id=${studentRef}`;
+
     return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
 📋 *STUDENT 360° EXECUTIVE PROGRESS SUMMARY*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1515,6 +1533,9 @@ ${marksBrief}
 
 📅 *ATTENDANCE RECORD:*
 • Present: ${student.attendance_present || 0} din | Absent: ${student.attendance_absent || 0} din
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 *Complete Student Dossier:*
+${dossierUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 📞 Campus Helpdesk: 0301-4455891
 _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;

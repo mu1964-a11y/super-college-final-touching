@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Student, AcademicRecord } from '../types';
+import { getDocumentLink } from '../lib/whatsappAutomation';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -222,14 +223,17 @@ export default function BatchMarksEntry({
       const rankBadge = student.rank === 1 ? '🥇 1st Position' : student.rank === 2 ? '🥈 2nd Position' : student.rank === 3 ? '🥉 3rd Position' : student.rank ? `Position #${student.rank}` : 'N/A';
       const status = (student.pct ?? 0) >= 50 ? 'PASSED (Kamyab) ✅' : 'NEEDS ATTENTION (Mehnat Darkar) ⚠️';
 
+      const studentRef = student.collegeNo || student.id || student.rollNo || 'N/A';
+      const resultUrl = getDocumentLink('result', studentRef, { m: testDate });
+
       const message = 
 `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
-📊 *OFFICIAL EXAMINATION RESULT NOTIFICATION*
+📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Mohtaram Walid/Guardian (${student.fatherName || 'Sahib'}),
 
 • *Student Name:* ${student.fullName}
-• *Roll Number:* ${student.id || student.rollNo || 'N/A'}
+• *Roll Number:* ${studentRef}
 • *Class & Section:* ${student.group} (Sec: ${student.section || 'A'})
 • *Subject:* ${activeSubject}
 • *Exam / Test:* ${testType} (${testDate})
@@ -238,6 +242,9 @@ Mohtaram Walid/Guardian (${student.fatherName || 'Sahib'}),
 • *Grade:* ${student.grade || 'N/A'}
 • *Class Position:* ${rankBadge}
 • *Result Status:* ${status}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 *Official Academic Result Card:*
+${resultUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 *Instruction:* Board imtehanat ki behtareen tayari ke liye regular revision par tawajjah dein.
 📞 Academic Helpdesk: 0301-4455891

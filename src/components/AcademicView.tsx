@@ -24,6 +24,7 @@ import {
 import BatchMarksEntry from './BatchMarksEntry';
 import ClassMeritList from './ClassMeritList';
 import { motion } from 'motion/react';
+import { getDocumentLink } from '../lib/whatsappAutomation';
 import { 
   Table, 
   TableBody, 
@@ -442,6 +443,9 @@ export default function AcademicView({ data }: { data: any }) {
     const cleanPhone = rawPhone.replace(/\D/g, "");
     const percentNum = totalMax > 0 ? ((totalObtained / totalMax) * 100).toFixed(1) : "0";
     const statusText = Number(percentNum) >= 50 ? "PASSED (Kamyab) ✅" : "NEEDS IMPROVEMENT (Mazeed Mehnat) ⚠️";
+    const studentRef = selectedStudent.collegeNo || selectedStudent.id || "N/A";
+    const monthName = getMonthName(selectedMonth);
+    const resultUrl = getDocumentLink("result", studentRef, { m: monthName });
 
     const marksTableText = records.map((r: any) => {
       const p = Number(r.totalMarks) > 0 ? ((Number(r.obtainedMarks) / Number(r.totalMarks)) * 100).toFixed(0) : "0";
@@ -455,15 +459,18 @@ export default function AcademicView({ data }: { data: any }) {
 Mohtaram Walid/Guardian (${selectedStudent.fatherName || 'Sahib'}),
 
 • *Student Name:* ${selectedStudent.fullName}
-• *Roll Number:* ${selectedStudent.id || selectedStudent.collegeNo || 'N/A'}
+• *Roll Number:* ${studentRef}
 • *Class & Section:* ${selectedStudent.group} (Sec: ${selectedStudent.section})
-• *Assessment Month:* ${getMonthName(selectedMonth)}
+• *Assessment Month:* ${monthName}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 📝 *Subject-wise Examination Scores:*
 ${marksTableText}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 • *Grand Total:* ${totalObtained} / ${totalMax} (${percentNum}%)
 • *Result Status:* ${statusText}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 *Official Academic Result Card:*
+${resultUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 *Instruction:* Board imtehanat mein aala position ke liye rozana revision aur regular attendance yaqeeni banayein.
 📞 Academic Helpdesk: 0301-4455891

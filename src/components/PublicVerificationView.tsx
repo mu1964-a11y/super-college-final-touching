@@ -34,8 +34,9 @@ import { Input } from '@/components/ui/input';
 import { safeLocalStorage } from '../utils/safeStorage';
 
 interface VerificationData {
-  type: 'challan' | 'receipt' | 'admission' | 'card' | 'staff_payroll' | 'general' | 'student';
+  type: 'challan' | 'receipt' | 'statement' | 'admission' | 'result' | 'attendance' | 'card' | 'staff_payroll' | 'general' | 'student';
   id: string;
+  receiptNo?: string;
   student?: any;
   admission?: any;
   staff?: any;
@@ -181,6 +182,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
     targetRoll?: string, 
     targetType?: string, 
     targetMonth?: string,
+    targetReceiptNo?: string,
     extraCandidates: string[] = []
   ) {
     setData(prev => ({ ...prev, status: 'loading', id: targetId }));
@@ -422,6 +424,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
         setData({
           type: typeParam,
           id: cleanTargetId,
+          receiptNo: targetReceiptNo,
           student: normalized,
           admission: admissionRecord,
           transactions: liveTransactions,
@@ -432,6 +435,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
             totalDays,
             attendancePercent
           },
+          month: targetMonth || '',
           verifiedAt: new Date().toLocaleString('en-PK', { timeZone: 'Asia/Karachi' }),
           status: 'verified'
         });
@@ -439,6 +443,8 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
         setData({
           type: typeParam,
           id: cleanTargetId,
+          receiptNo: targetReceiptNo,
+          month: targetMonth || '',
           verifiedAt: new Date().toLocaleString('en-PK', { timeZone: 'Asia/Karachi' }),
           status: 'unverified',
           errorMessage: `No registered student or official college document found matching Reference ID: "${cleanTargetId}".`
@@ -459,23 +465,24 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
   // Initial verification on page mount
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
-    const typeParam = (searchParams.get('type') || searchParams.get('verify') || 'general').toLowerCase();
+    const typeParam = (searchParams.get('v') || searchParams.get('type') || searchParams.get('verify') || searchParams.get('doc') || 'general').toLowerCase();
     const idParam = searchParams.get('id') || searchParams.get('studentId') || searchParams.get('student_id') || searchParams.get('roll') || searchParams.get('ref') || '';
     const rollParam = searchParams.get('roll') || searchParams.get('rollNo') || searchParams.get('collegeNo') || '';
     const studentIdParam = searchParams.get('student_id') || '';
     const admIdParam = searchParams.get('adm_id') || '';
     const monthParam = searchParams.get('m') || searchParams.get('month') || '';
+    const rcpParam = searchParams.get('rcp') || searchParams.get('receipt') || searchParams.get('receipt_id') || '';
 
     const primarySearch = idParam || rollParam || studentIdParam || '';
     setSearchQuery(primarySearch);
-    performVerification(primarySearch, rollParam, typeParam, monthParam, [studentIdParam, admIdParam]);
+    performVerification(primarySearch, rollParam, typeParam, monthParam, rcpParam, [studentIdParam, admIdParam]);
   }, []);
 
   const handleManualSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     setIsSearching(true);
-    await performVerification(searchQuery.trim());
+    await performVerification(searchQuery.trim(), '', data.type, data.month, data.receiptNo);
     setIsSearching(false);
   };
 
@@ -484,9 +491,11 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
   const feeCalc = student ? calculateStudentFeeBreakdown(student) : null;
 
   const docTitle = 
-    data.type === 'challan' ? 'Official 3-Copy Bank Challan' :
-    data.type === 'receipt' ? 'Official College Fee Receipt' :
-    data.type === 'admission' ? 'Official Admission Verification Slip' :
+    data.type === 'receipt' ? 'Official Computerized Fee Receipt Voucher' :
+    data.type === 'statement' || data.type === 'challan' ? 'Official Student Financial Ledger & Fee Statement' :
+    data.type === 'admission' ? 'Official Admission Confirmation Slip' :
+    data.type === 'result' ? 'Official Academic Examination Result Card' :
+    data.type === 'attendance' ? 'Official Classroom Attendance Dossier' :
     data.type === 'card' ? 'Student Identity Verification Card' :
     data.type === 'staff_payroll' ? 'Faculty Monthly Payslip Voucher' :
     'Official Academic & Fee Ledger Record';
@@ -680,334 +689,961 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
               {/* ======================================================== */}
               {student && (
                 <>
-                  {/* Comprehensive Student & Academic Particulars Card */}
-                  <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4 text-left">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
-                        <User size={15} className="text-[#085a4e]" />
-                        <span>Enrolled Student Particulars</span>
-                      </div>
-                      <Badge className="bg-[#085a4e] !text-white border-none font-bold text-[10.5px] px-2.5 py-0.5 shadow-xs">
-                        Active Scholar
-                      </Badge>
-                    </div>
+                  {/* ======================================================== */}
+                  {/* VIEW 1: DEDICATED COMPUTERIZED FEE RECEIPT (v=receipt) */}
+                  {/* ======================================================== */}
+                  {data.type === 'receipt' ? (() => {
+                    const matchedTx = data.transactions?.find((t: any) => data.receiptNo && t.receipt_id === data.receiptNo) || data.transactions?.[0];
+                    const receiptAmount = matchedTx ? Number(matchedTx.amount || 0) : (student.feeReceived || 0);
+                    const receiptDisplayId = data.receiptNo || matchedTx?.receipt_id || `REC-${(student.rollNo || student.id || '101').replace(/[^a-zA-Z0-9]/g, '')}`;
+                    const receiptDate = matchedTx?.date 
+                      ? new Date(matchedTx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) 
+                      : (student.admissionDate || data.verifiedAt.split(',')[0]);
+                    const receiptMethod = matchedTx?.payment_method || 'Official Cash / Online Deposit';
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3.5 text-xs">
-                      <div className="border-b sm:border-b-0 border-slate-100 pb-2 sm:pb-0">
-                        <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Student Full Name:</span>
-                        <span className="font-black !text-slate-950 text-base">
-                          {student.fullName}
-                        </span>
-                      </div>
+                    return (
+                      <div className="space-y-4">
+                        {/* The Computerized Receipt Voucher */}
+                        <div className="!bg-white rounded-2xl p-5 sm:p-7 border-2 border-emerald-600/30 shadow-md space-y-5 text-left relative overflow-hidden">
+                          {/* Receipt Header Banner */}
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b-2 border-slate-100 pb-4 gap-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <Receipt className="text-[#085a4e]" size={20} />
+                                <span className="text-xs font-black uppercase tracking-widest text-[#085a4e]">
+                                  Official Accounts Voucher
+                                </span>
+                              </div>
+                              <h3 className="text-lg sm:text-xl font-black text-slate-900 mt-0.5">
+                                Computerized Fee Receipt
+                              </h3>
+                              <p className="text-[11px] text-slate-500 font-medium">
+                                Directorate of Accounts & Finance • Superior Group of Colleges Jahanian
+                              </p>
+                            </div>
 
-                      <div className="border-b sm:border-b-0 border-slate-100 pb-2 sm:pb-0">
-                        <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Father Name:</span>
-                        <span className="font-black !text-slate-900 text-base">
-                          {student.fatherName}
-                        </span>
-                      </div>
+                            <div className="sm:text-right bg-emerald-50 px-3.5 py-2 rounded-xl border border-emerald-200">
+                              <span className="text-[10px] font-bold text-emerald-800 uppercase block tracking-wider">Receipt No</span>
+                              <span className="font-mono font-black text-[#085a4e] text-sm sm:text-base">
+                                {receiptDisplayId}
+                              </span>
+                              <span className="text-[10px] text-slate-500 block mt-0.5">Issue Date: {receiptDate}</span>
+                            </div>
+                          </div>
 
-                      <div>
-                        <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Roll No / Student ID:</span>
-                        <span className="font-mono font-black text-[#085a4e] text-sm sm:text-base">
-                          {student.rollNo || student.id}
-                        </span>
-                      </div>
+                          {/* Student & Academic Particulars Box */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-xs bg-slate-50/80 p-4 rounded-xl border border-slate-200">
+                            <div>
+                              <span className="text-slate-500 font-bold block text-[10.5px] uppercase tracking-wider">Student Name:</span>
+                              <span className="font-black text-slate-900 text-sm">{student.fullName}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 font-bold block text-[10.5px] uppercase tracking-wider">Father Name:</span>
+                              <span className="font-black text-slate-900 text-sm">{student.fatherName}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 font-bold block text-[10.5px] uppercase tracking-wider">Roll No / Student ID:</span>
+                              <span className="font-mono font-black text-[#085a4e]">{student.rollNo || student.id}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 font-bold block text-[10.5px] uppercase tracking-wider">Class & Program:</span>
+                              <span className="font-black text-slate-900">
+                                {student.group || student.category} {student.section ? `(Section ${student.section})` : ''}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 font-bold block text-[10.5px] uppercase tracking-wider">Academic Session:</span>
+                              <span className="font-bold text-slate-800">{student.session || '2026-28'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 font-bold block text-[10.5px] uppercase tracking-wider">Campus:</span>
+                              <span className="font-bold text-slate-800">{student.campusDisplay || 'Superior College Jahanian'}</span>
+                            </div>
+                          </div>
 
-                      <div>
-                        <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Class & Group:</span>
-                        <span className="font-black !text-slate-900 text-sm">
-                          {student.group || student.category} {student.section ? `(Section ${student.section})` : ''}
-                        </span>
-                      </div>
-
-                      <div>
-                        <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Campus & Gender:</span>
-                        <span className="font-bold !text-slate-800 text-xs sm:text-sm">
-                          {student.campusDisplay || `Superior College Jahanian (${student.gender})`}
-                        </span>
-                      </div>
-
-                      <div>
-                        <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Academic Session:</span>
-                        <span className="font-bold !text-slate-800 text-xs sm:text-sm">
-                          {student.session || '2026-28'} • {student.academicPart || 'Part-1'}
-                        </span>
-                      </div>
-
-                      <div>
-                        <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Registered Student Contact:</span>
-                        <span className="font-mono font-bold !text-slate-900 text-xs sm:text-sm">
-                          {student.contact || 'N/A'}
-                        </span>
-                      </div>
-
-                      {student.fatherContact && (
-                        <div>
-                          <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Father / Guardian Contact:</span>
-                          <span className="font-mono font-bold !text-slate-900 text-xs sm:text-sm">
-                            {student.fatherContact}
-                          </span>
-                        </div>
-                      )}
-
-                      {student.bayFormNo && (
-                        <div>
-                          <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">B-Form / CNIC:</span>
-                          <span className="font-mono font-bold !text-slate-900">
-                            {student.bayFormNo}
-                          </span>
-                        </div>
-                      )}
-
-                      {student.admissionDate && (
-                        <div>
-                          <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Admission Confirmed Date:</span>
-                          <span className="font-bold !text-slate-800">
-                            {student.admissionDate}
-                          </span>
-                        </div>
-                      )}
-
-                      {student.address && (
-                        <div className="sm:col-span-2">
-                          <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Residential Address:</span>
-                          <span className="font-bold !text-slate-800 flex items-center gap-1 mt-0.5">
-                            <MapPin size={12} className="text-slate-400 shrink-0" />
-                            <span>{student.address}</span>
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Enrolled Subjects Badges */}
-                    {student.subjects && student.subjects.length > 0 && (
-                      <div className="pt-2 border-t border-slate-100">
-                        <span className="!text-slate-500 font-bold block text-[10.5px] uppercase tracking-wider mb-2 flex items-center gap-1">
-                          <BookOpen size={12} className="text-[#085a4e]" />
-                          <span>Enrolled Subject Curriculum:</span>
-                        </span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {student.subjects.map((sub: string, idx: number) => (
-                            <span 
-                              key={idx} 
-                              className="px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 !text-slate-800 font-bold text-[11px]"
-                            >
-                              {sub}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Financial & Fee Clearance Summary */}
-                  {feeCalc && (
-                    <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4 text-left">
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
-                          <Coins size={15} className="text-[#c9a84c]" />
-                          <span>Financial Clearance Ledger</span>
-                        </div>
-                        <Badge className={
-                          feeCalc.totalBalance <= 0 
-                            ? "bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-[10.5px]"
-                            : "bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[10.5px]"
-                        }>
-                          {feeCalc.totalBalance <= 0 ? "100% Fully Cleared" : `${clearedPercent}% Paid • Active Dues`}
-                        </Badge>
-                      </div>
-
-                      {/* 4-Stat Metric Boxes */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                          <span className="text-[10.5px] font-bold !text-slate-500 uppercase block tracking-wider">Total Package</span>
-                          <span className="font-mono font-black !text-slate-950 text-sm sm:text-base">
-                            Rs. {(feeCalc.totalPackage || 0).toLocaleString()}
-                          </span>
-                        </div>
-
-                        <div className="p-3 rounded-xl bg-emerald-50/80 border border-emerald-200">
-                          <span className="text-[10.5px] font-bold text-emerald-800 uppercase block tracking-wider">Paid So Far</span>
-                          <span className="font-mono font-black text-emerald-900 text-sm sm:text-base">
-                            Rs. {(feeCalc.feeReceived || 0).toLocaleString()}
-                          </span>
-                        </div>
-
-                        <div className="p-3 rounded-xl bg-rose-50/80 border border-rose-200">
-                          <span className="text-[10.5px] font-bold text-rose-800 uppercase block tracking-wider">Current Due</span>
-                          <span className="font-mono font-black text-rose-900 text-sm sm:text-base">
-                            Rs. {(feeCalc.currentInstallmentDue || 0).toLocaleString()}
-                          </span>
-                        </div>
-
-                        <div className="p-3 rounded-xl bg-slate-100 border border-slate-300">
-                          <span className="text-[10.5px] font-bold !text-slate-600 uppercase block tracking-wider">Total Balance</span>
-                          <span className="font-mono font-black !text-slate-950 text-sm sm:text-base">
-                            Rs. {(feeCalc.totalBalance || 0).toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Progress Bar & Installment Plan Note */}
-                      <div className="space-y-1.5 pt-1">
-                        <div className="flex items-center justify-between text-xs font-bold">
-                          <span className="!text-slate-600">Package Clearance Meter</span>
-                          <span className="font-mono font-black text-[#085a4e]">{clearedPercent}%</span>
-                        </div>
-                        <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-                          <div 
-                            className="h-full bg-gradient-to-r from-[#085a4e] to-emerald-500 rounded-full transition-all duration-500"
-                            style={{ width: `${clearedPercent}%` }}
-                          />
-                        </div>
-                        <div className="flex items-center justify-between text-[10.5px] !text-slate-500 pt-0.5">
-                          <span>Payment Plan: <strong>{student.paymentPlan || 'Installments'} ({student.totalInstallments || 10} Installments)</strong></span>
-                          {student.monthlyFee > 0 && <span>Monthly: <strong>Rs. {student.monthlyFee.toLocaleString()}/mo</strong></span>}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Live Attendance Standing Card */}
-                  <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3.5 text-left">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
-                        <Calendar size={15} className="text-[#085a4e]" />
-                        <span>Classroom Attendance Standing</span>
-                      </div>
-                      <Badge className={
-                        (data.attendanceStats?.attendancePercent ?? 100) >= 75
-                          ? "bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-[10.5px]"
-                          : "bg-rose-100 text-rose-900 border border-rose-300 font-bold text-[10.5px]"
-                      }>
-                        {(data.attendanceStats?.attendancePercent ?? 100) >= 75 
-                          ? "✓ Board Exam Eligible (75%+)" 
-                          : "⚠ Low Attendance Warning"}
-                      </Badge>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-3 text-center">
-                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                        <span className="text-[10px] font-bold !text-slate-500 uppercase block tracking-wider">Days Present</span>
-                        <span className="font-mono font-black text-emerald-700 text-base sm:text-lg">
-                          {data.attendanceStats?.presentDays ?? 0}
-                        </span>
-                      </div>
-                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                        <span className="text-[10px] font-bold !text-slate-500 uppercase block tracking-wider">Days Absent</span>
-                        <span className="font-mono font-black text-rose-700 text-base sm:text-lg">
-                          {data.attendanceStats?.absentDays ?? 0}
-                        </span>
-                      </div>
-                      <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200">
-                        <span className="text-[10px] font-bold text-emerald-800 uppercase block tracking-wider">Attendance %</span>
-                        <span className="font-mono font-black text-emerald-950 text-base sm:text-lg">
-                          {data.attendanceStats?.attendancePercent ?? 100}%
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Live Academic & Examination Dossier */}
-                  <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3.5 text-left">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
-                        <Award size={15} className="text-[#c9a84c]" />
-                        <span>Academic Assessments & Exam Marks</span>
-                      </div>
-                      <Badge className="bg-slate-100 text-slate-800 border border-slate-200 font-bold text-[10.5px]">
-                        {data.academicRecords && data.academicRecords.length > 0 ? `${data.academicRecords.length} Tests Logged` : 'Active Session'}
-                      </Badge>
-                    </div>
-
-                    {data.academicRecords && data.academicRecords.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs text-left">
-                          <thead className="bg-slate-50 text-slate-500 font-black uppercase tracking-wider text-[9.5px]">
-                            <tr>
-                              <th className="p-2.5 rounded-l-lg">Test Title</th>
-                              <th className="p-2.5">Subject</th>
-                              <th className="p-2.5 text-center">Marks</th>
-                              <th className="p-2.5 text-center">Percentage</th>
-                              <th className="p-2.5 rounded-r-lg text-right">Date</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {data.academicRecords.map((rec, idx) => {
-                              const pct = rec.total_marks > 0 ? Math.round((rec.obtained_marks / rec.total_marks) * 100) : 0;
-                              return (
-                                <tr key={idx} className="hover:bg-slate-50/50">
-                                  <td className="p-2.5 font-bold text-slate-900">{rec.test_name || 'Class Test'}</td>
-                                  <td className="p-2.5 font-medium text-slate-600">{rec.subject}</td>
-                                  <td className="p-2.5 text-center font-mono font-bold text-slate-800">
-                                    {rec.obtained_marks} / {rec.total_marks}
-                                  </td>
-                                  <td className="p-2.5 text-center">
-                                    <span className={`px-2 py-0.5 rounded font-mono font-bold text-[10.5px] ${pct >= 70 ? 'bg-emerald-100 text-emerald-800' : pct >= 50 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}`}>
-                                      {pct}%
+                          {/* Payment Item Breakdown Table */}
+                          <div className="border border-slate-200 rounded-xl overflow-hidden">
+                            <table className="w-full text-xs text-left">
+                              <thead className="bg-slate-100/80 text-slate-600 font-black uppercase text-[10px] tracking-wider border-b border-slate-200">
+                                <tr>
+                                  <th className="p-3">Payment Particulars / Head</th>
+                                  <th className="p-3">Payment Mode</th>
+                                  <th className="p-3 text-right">Amount Received</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 bg-white">
+                                <tr>
+                                  <td className="p-3 font-bold text-slate-900">
+                                    College Fee Deposit / Installment
+                                    <span className="text-[10px] text-slate-500 font-normal block">
+                                      Tuition, Lab & Registration Dues
                                     </span>
                                   </td>
-                                  <td className="p-2.5 text-right font-mono text-[10px] text-slate-400">
-                                    {rec.date ? new Date(rec.date).toLocaleDateString('en-GB') : '-'}
+                                  <td className="p-3 font-medium text-slate-600 capitalize">
+                                    {receiptMethod}
+                                  </td>
+                                  <td className="p-3 text-right font-mono font-black text-emerald-700 text-base">
+                                    Rs. {receiptAmount.toLocaleString()}
                                   </td>
                                 </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 leading-relaxed">
-                        <p className="font-bold text-slate-800 flex items-center gap-1.5 mb-0.5">
-                          <GraduationCap size={14} className="text-[#085a4e]" />
-                          <span>Academic Session 2026-28 Enrolled & Verified</span>
-                        </p>
-                        <span>Student is actively enrolled in current academic term. Internal test scores and mock examinations are logged in real time directly from campus teaching faculties.</span>
-                      </div>
-                    )}
-                  </div>
+                              </tbody>
+                            </table>
+                          </div>
 
-                  {/* Live Fee Payment Transactions & Official Receipts Ledger */}
-                  {data.transactions && data.transactions.length > 0 && (
-                    <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3.5 text-left">
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
-                          <Receipt size={15} className="text-[#085a4e]" />
-                          <span>Verified Fee Payment Transactions ({data.transactions.length})</span>
+                          {/* Ledger Financial Summary */}
+                          <div className="grid grid-cols-3 gap-2.5 text-center pt-1">
+                            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">Total Package</span>
+                              <span className="font-mono font-black text-slate-950 text-xs sm:text-sm">
+                                Rs. {(feeCalc?.totalPackage || student.totalPackage || 0).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                              <span className="text-[10px] font-bold text-emerald-800 uppercase block tracking-wider">Total Paid</span>
+                              <span className="font-mono font-black text-emerald-900 text-xs sm:text-sm">
+                                Rs. {(feeCalc?.feeReceived || student.feeReceived || 0).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-300">
+                              <span className="text-[10px] font-bold text-slate-600 uppercase block tracking-wider">Remaining Balance</span>
+                              <span className="font-mono font-black text-slate-950 text-xs sm:text-sm">
+                                Rs. {(feeCalc?.totalBalance || 0).toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Paid Stamp & Digital Verification Seal */}
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-3 border-t border-slate-100">
+                            <div className="flex items-center gap-3">
+                              <div className="border-2 border-emerald-600 rounded-xl px-3 py-1.5 text-center rotate-[-2deg] bg-emerald-50/50">
+                                <span className="text-[11px] font-black text-emerald-700 uppercase tracking-widest flex items-center gap-1">
+                                  <CheckCircle2 size={13} /> PAID & VERIFIED
+                                </span>
+                                <span className="text-[9px] font-bold text-emerald-600 block">
+                                  SGC ACCOUNTS DESK
+                                </span>
+                              </div>
+                              <div className="text-[10.5px] text-slate-500 leading-tight">
+                                <span>Computerized Official Receipt</span>
+                                <span className="block font-mono text-[9.5px] text-slate-400">Ref: {verificationRef}</span>
+                              </div>
+                            </div>
+
+                            <div className="text-right text-[11px] text-slate-500">
+                              <span className="block font-black text-slate-800 uppercase text-[10px]">Directorate of Accounts & Finance</span>
+                              <span>Superior Group of Colleges Jahanian</span>
+                            </div>
+                          </div>
                         </div>
-                        <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                          Live Central Receipts
-                        </span>
+                      </div>
+                    );
+                  })() : data.type === 'statement' || data.type === 'challan' ? (
+                    /* ======================================================== */
+                    /* VIEW 2: DEDICATED FINANCIAL LEDGER & STATEMENT (v=statement) */
+                    /* ======================================================== */
+                    <div className="space-y-4">
+                      {/* Compact Student Header */}
+                      <div className="!bg-white rounded-2xl p-4 border border-slate-200 shadow-sm text-left">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                          <div>
+                            <span className="text-slate-500 font-bold block text-[10.5px] uppercase">Student:</span>
+                            <span className="font-black text-slate-900">{student.fullName}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 font-bold block text-[10.5px] uppercase">Roll No / ID:</span>
+                            <span className="font-mono font-black text-[#085a4e]">{student.rollNo || student.id}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 font-bold block text-[10.5px] uppercase">Program:</span>
+                            <span className="font-bold text-slate-800">{student.group} {student.section ? `(Sec ${student.section})` : ''}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 font-bold block text-[10.5px] uppercase">Session:</span>
+                            <span className="font-bold text-slate-800">{student.session || '2026-28'}</span>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs text-left">
-                          <thead className="bg-slate-50 text-slate-500 font-black uppercase tracking-wider text-[9.5px]">
-                            <tr>
-                              <th className="p-2.5 rounded-l-lg">Receipt ID</th>
-                              <th className="p-2.5">Payment Date</th>
-                              <th className="p-2.5">Mode</th>
-                              <th className="p-2.5 text-right rounded-r-lg">Amount Deposited</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {data.transactions.map((tx, idx) => (
-                              <tr key={idx} className="hover:bg-slate-50/50">
-                                <td className="p-2.5 font-mono font-bold text-[#085a4e]">{tx.receipt_id || `REC-${idx + 1}`}</td>
-                                <td className="p-2.5 text-slate-600 font-medium">
-                                  {tx.date ? new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
-                                </td>
-                                <td className="p-2.5 text-slate-600 capitalize">{tx.payment_method || 'Cash / Bank'}</td>
-                                <td className="p-2.5 text-right font-mono font-black text-emerald-700 text-sm">
-                                  Rs. {Number(tx.amount || 0).toLocaleString()}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      {/* Financial Clearance Ledger */}
+                      {feeCalc && (
+                        <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4 text-left">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
+                              <Coins size={15} className="text-[#c9a84c]" />
+                              <span>Student Fee Account Statement</span>
+                            </div>
+                            <Badge className={
+                              feeCalc.totalBalance <= 0 
+                                ? "bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-[10.5px]"
+                                : "bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[10.5px]"
+                            }>
+                              {feeCalc.totalBalance <= 0 ? "100% Fully Cleared" : `${clearedPercent}% Paid • Active Dues`}
+                            </Badge>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                              <span className="text-[10.5px] font-bold !text-slate-500 uppercase block tracking-wider">Total Package</span>
+                              <span className="font-mono font-black !text-slate-950 text-sm sm:text-base">
+                                Rs. {(feeCalc.totalPackage || 0).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="p-3 rounded-xl bg-emerald-50/80 border border-emerald-200">
+                              <span className="text-[10.5px] font-bold text-emerald-800 uppercase block tracking-wider">Paid So Far</span>
+                              <span className="font-mono font-black text-emerald-900 text-sm sm:text-base">
+                                Rs. {(feeCalc.feeReceived || 0).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="p-3 rounded-xl bg-rose-50/80 border border-rose-200">
+                              <span className="text-[10.5px] font-bold text-rose-800 uppercase block tracking-wider">Current Due</span>
+                              <span className="font-mono font-black text-rose-900 text-sm sm:text-base">
+                                Rs. {(feeCalc.currentInstallmentDue || 0).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="p-3 rounded-xl bg-slate-100 border border-slate-300">
+                              <span className="text-[10.5px] font-bold !text-slate-600 uppercase block tracking-wider">Total Balance</span>
+                              <span className="font-mono font-black !text-slate-950 text-sm sm:text-base">
+                                Rs. {(feeCalc.totalBalance || 0).toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5 pt-1">
+                            <div className="flex items-center justify-between text-xs font-bold">
+                              <span className="!text-slate-600">Package Clearance Meter</span>
+                              <span className="font-mono font-black text-[#085a4e]">{clearedPercent}%</span>
+                            </div>
+                            <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                              <div 
+                                className="h-full bg-gradient-to-r from-[#085a4e] to-emerald-500 rounded-full transition-all duration-500"
+                                style={{ width: `${clearedPercent}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between text-[10.5px] !text-slate-500 pt-0.5">
+                              <span>Payment Plan: <strong>{student.paymentPlan || 'Installments'} ({student.totalInstallments || 10} Installments)</strong></span>
+                              {student.monthlyFee > 0 && <span>Monthly: <strong>Rs. {student.monthlyFee.toLocaleString()}/mo</strong></span>}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Verified Transactions Table */}
+                      <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3.5 text-left">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
+                            <Receipt size={15} className="text-[#085a4e]" />
+                            <span>Payment History & Official Receipts</span>
+                          </div>
+                          <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            Verified Ledger
+                          </span>
+                        </div>
+
+                        {data.transactions && data.transactions.length > 0 ? (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs text-left">
+                              <thead className="bg-slate-50 text-slate-500 font-black uppercase tracking-wider text-[9.5px]">
+                                <tr>
+                                  <th className="p-2.5 rounded-l-lg">Receipt ID</th>
+                                  <th className="p-2.5">Payment Date</th>
+                                  <th className="p-2.5">Mode</th>
+                                  <th className="p-2.5 text-right rounded-r-lg">Amount Deposited</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {data.transactions.map((tx, idx) => (
+                                  <tr key={idx} className="hover:bg-slate-50/50">
+                                    <td className="p-2.5 font-mono font-bold text-[#085a4e]">{tx.receipt_id || `REC-${idx + 1}`}</td>
+                                    <td className="p-2.5 text-slate-600 font-medium">
+                                      {tx.date ? new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                                    </td>
+                                    <td className="p-2.5 text-slate-600 capitalize">{tx.payment_method || 'Cash / Bank'}</td>
+                                    <td className="p-2.5 text-right font-mono font-black text-emerald-700 text-sm">
+                                      Rs. {Number(tx.amount || 0).toLocaleString()}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center text-xs text-slate-500">
+                            Initial fee deposit recorded at admission: <strong>Rs. {(student.feeReceived || 0).toLocaleString()}</strong>
+                          </div>
+                        )}
                       </div>
                     </div>
+                  ) : data.type === 'admission' ? (
+                    /* ======================================================== */
+                    /* VIEW 3: DEDICATED ADMISSION CONFIRMATION SLIP (v=admission) */
+                    /* ======================================================== */
+                    <div className="space-y-4">
+                      {/* Official Enrolment Slip Container */}
+                      <div className="!bg-white rounded-2xl p-5 sm:p-7 border border-slate-200 shadow-sm space-y-5 text-left">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
+                            <FileText size={16} className="text-[#085a4e]" />
+                            <span>Official Admission & Enrolment Slip</span>
+                          </div>
+                          <Badge className="bg-[#085a4e] !text-white border-none font-bold text-[10.5px] px-2.5 py-0.5 shadow-xs">
+                            Confirmed Enrolment
+                          </Badge>
+                        </div>
+
+                        {/* Particulars Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3.5 text-xs">
+                          <div>
+                            <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Student Full Name:</span>
+                            <span className="font-black !text-slate-950 text-base">{student.fullName}</span>
+                          </div>
+                          <div>
+                            <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Father Name:</span>
+                            <span className="font-black !text-slate-900 text-base">{student.fatherName}</span>
+                          </div>
+                          <div>
+                            <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Roll No / College No:</span>
+                            <span className="font-mono font-black text-[#085a4e] text-base">{student.rollNo || student.id}</span>
+                          </div>
+                          <div>
+                            <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Student ID:</span>
+                            <span className="font-mono font-bold text-slate-800">{student.studentId || student.id}</span>
+                          </div>
+                          <div>
+                            <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Class & Program:</span>
+                            <span className="font-black text-slate-900 text-sm">
+                              {student.group || student.category} {student.section ? `(Section ${student.section})` : ''}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Academic Session:</span>
+                            <span className="font-bold text-slate-800 text-sm">{student.session || '2026-28'}</span>
+                          </div>
+                          <div>
+                            <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Campus:</span>
+                            <span className="font-bold text-slate-800">{student.campusDisplay || 'Superior College Jahanian'}</span>
+                          </div>
+                          <div>
+                            <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Admission Date:</span>
+                            <span className="font-bold text-slate-800">{student.admissionDate || data.verifiedAt.split(',')[0]}</span>
+                          </div>
+                          {student.contact && (
+                            <div>
+                              <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Student Contact:</span>
+                              <span className="font-mono font-bold text-slate-900">{student.contact}</span>
+                            </div>
+                          )}
+                          {student.fatherContact && (
+                            <div>
+                              <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Father / Guardian Contact:</span>
+                              <span className="font-mono font-bold text-slate-900">{student.fatherContact}</span>
+                            </div>
+                          )}
+                          {student.bayFormNo && (
+                            <div>
+                              <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">B-Form / CNIC:</span>
+                              <span className="font-mono font-bold text-slate-900">{student.bayFormNo}</span>
+                            </div>
+                          )}
+                          {student.address && (
+                            <div className="sm:col-span-2">
+                              <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Residential Address:</span>
+                              <span className="font-bold text-slate-800">{student.address}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Enrolled Subjects */}
+                        {student.subjects && student.subjects.length > 0 && (
+                          <div className="pt-3 border-t border-slate-100">
+                            <span className="text-slate-500 font-bold block text-[10.5px] uppercase tracking-wider mb-2 flex items-center gap-1">
+                              <BookOpen size={12} className="text-[#085a4e]" />
+                              <span>Enrolled Subject Curriculum:</span>
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {student.subjects.map((sub: string, idx: number) => (
+                                <span key={idx} className="px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 font-bold text-[11px]">
+                                  {sub}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Fee Agreement Summary at Admission */}
+                        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-3 gap-3 text-center">
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase block">Agreed Package</span>
+                            <span className="font-mono font-black text-slate-900 text-xs sm:text-sm">
+                              Rs. {(student.totalPackage || 0).toLocaleString()}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold text-emerald-800 uppercase block">Fee Deposited</span>
+                            <span className="font-mono font-black text-emerald-900 text-xs sm:text-sm">
+                              Rs. {(student.feeReceived || 0).toLocaleString()}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-600 uppercase block">Remaining Balance</span>
+                            <span className="font-mono font-black text-slate-950 text-xs sm:text-sm">
+                              Rs. {Math.max(0, (student.totalPackage || 0) - (student.feeReceived || 0)).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Official Directorate Seal */}
+                        <div className="pt-2 flex items-center justify-between border-t border-slate-100 text-xs text-slate-500">
+                          <div>
+                            <span className="font-bold text-slate-800 block">Office of Admissions</span>
+                            <span>Superior Group of Colleges Jahanian</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-bold text-slate-800 block">Prof. Muhammad Azam</span>
+                            <span>Principal, SGC Jahanian</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : data.type === 'result' ? (
+                    /* ======================================================== */
+                    /* VIEW 4: DEDICATED ACADEMIC RESULT CARD (v=result) */
+                    /* ======================================================== */
+                    (() => {
+                      const totalObtainedMarks = data.academicRecords?.reduce((acc: number, r: any) => acc + Number(r.obtained_marks || 0), 0) || 0;
+                      const totalMaxMarks = data.academicRecords?.reduce((acc: number, r: any) => acc + Number(r.total_marks || 100), 0) || 0;
+                      const resultPercentage = totalMaxMarks > 0 ? Math.round((totalObtainedMarks / totalMaxMarks) * 100) : 0;
+                      const isPassed = resultPercentage >= 50;
+
+                      return (
+                        <div className="space-y-4">
+                          {/* Compact Student Header */}
+                          <div className="!bg-white rounded-2xl p-4 border border-slate-200 shadow-sm text-left">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                              <div>
+                                <span className="text-slate-500 font-bold block text-[10.5px] uppercase">Student:</span>
+                                <span className="font-black text-slate-900">{student.fullName}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-500 font-bold block text-[10.5px] uppercase">Roll No / ID:</span>
+                                <span className="font-mono font-black text-[#085a4e]">{student.rollNo || student.id}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-500 font-bold block text-[10.5px] uppercase">Class & Section:</span>
+                                <span className="font-bold text-slate-800">{student.group} {student.section ? `(Sec ${student.section})` : ''}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-500 font-bold block text-[10.5px] uppercase">Assessment Term:</span>
+                                <span className="font-bold text-slate-800">{data.month || 'Current Academic Term'}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Academic Examination Result Card */}
+                          <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4 text-left">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
+                                <Award size={16} className="text-[#c9a84c]" />
+                                <span>Official Academic Assessment Report</span>
+                              </div>
+                              <Badge className={isPassed ? "bg-emerald-100 text-emerald-900 border-none font-bold text-[10.5px]" : "bg-rose-100 text-rose-900 border-none font-bold text-[10.5px]"}>
+                                {isPassed ? "PASSED / REGULAR" : "NEEDS ATTENTION"}
+                              </Badge>
+                            </div>
+
+                            {data.academicRecords && data.academicRecords.length > 0 ? (
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs text-left">
+                                  <thead className="bg-slate-50 text-slate-500 font-black uppercase tracking-wider text-[9.5px]">
+                                    <tr>
+                                      <th className="p-2.5 rounded-l-lg">Assessment Title</th>
+                                      <th className="p-2.5">Subject</th>
+                                      <th className="p-2.5 text-center">Marks Obtained</th>
+                                      <th className="p-2.5 text-center">Percentage</th>
+                                      <th className="p-2.5 rounded-r-lg text-right">Date</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100">
+                                    {data.academicRecords.map((rec, idx) => {
+                                      const pct = rec.total_marks > 0 ? Math.round((rec.obtained_marks / rec.total_marks) * 100) : 0;
+                                      return (
+                                        <tr key={idx} className="hover:bg-slate-50/50">
+                                          <td className="p-2.5 font-bold text-slate-900">{rec.test_name || 'Class Test'}</td>
+                                          <td className="p-2.5 font-medium text-slate-600">{rec.subject}</td>
+                                          <td className="p-2.5 text-center font-mono font-bold text-slate-800">
+                                            {rec.obtained_marks} / {rec.total_marks}
+                                          </td>
+                                          <td className="p-2.5 text-center">
+                                            <span className={`px-2 py-0.5 rounded font-mono font-bold text-[10.5px] ${pct >= 70 ? 'bg-emerald-100 text-emerald-800' : pct >= 50 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}`}>
+                                              {pct}%
+                                            </span>
+                                          </td>
+                                          <td className="p-2.5 text-right font-mono text-[10px] text-slate-400">
+                                            {rec.date ? new Date(rec.date).toLocaleDateString('en-GB') : '-'}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 leading-relaxed text-center">
+                                Student is enrolled in active session {student.session || '2026-28'}. Monthly examination results are uploaded on the central portal upon evaluation.
+                              </div>
+                            )}
+
+                            {/* Overall Marks Aggregate Box */}
+                            {totalMaxMarks > 0 && (
+                              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-3 gap-2 text-center">
+                                <div>
+                                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Total Marks</span>
+                                  <span className="font-mono font-black text-slate-900 text-sm sm:text-base">
+                                    {totalObtainedMarks} / {totalMaxMarks}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] font-bold text-emerald-800 uppercase block">Percentage</span>
+                                  <span className="font-mono font-black text-emerald-900 text-sm sm:text-base">
+                                    {resultPercentage}%
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] font-bold text-slate-600 uppercase block">Overall Status</span>
+                                  <span className="font-bold text-slate-950 text-xs sm:text-sm">
+                                    {isPassed ? '✓ Passed' : 'Needs Improvement'}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Controller of Examinations Seal */}
+                            <div className="pt-2 flex items-center justify-between border-t border-slate-100 text-xs text-slate-500">
+                              <div>
+                                <span className="font-bold text-slate-800 block">Office of the Controller of Examinations</span>
+                                <span>Superior Group of Colleges Jahanian</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-mono text-[10px] text-slate-400">Ref: {verificationRef}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : data.type === 'attendance' ? (
+                    /* ======================================================== */
+                    /* VIEW 5: DEDICATED ATTENDANCE DOSSIER (v=attendance) */
+                    /* ======================================================== */
+                    <div className="space-y-4">
+                      {/* Compact Student Header */}
+                      <div className="!bg-white rounded-2xl p-4 border border-slate-200 shadow-sm text-left">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                          <div>
+                            <span className="text-slate-500 font-bold block text-[10.5px] uppercase">Student:</span>
+                            <span className="font-black text-slate-900">{student.fullName}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 font-bold block text-[10.5px] uppercase">Roll No / ID:</span>
+                            <span className="font-mono font-black text-[#085a4e]">{student.rollNo || student.id}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 font-bold block text-[10.5px] uppercase">Class & Section:</span>
+                            <span className="font-bold text-slate-800">{student.group} {student.section ? `(Sec ${student.section})` : ''}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 font-bold block text-[10.5px] uppercase">Session:</span>
+                            <span className="font-bold text-slate-800">{student.session || '2026-28'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Live Attendance Standing Card */}
+                      <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4 text-left">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
+                            <Calendar size={15} className="text-[#085a4e]" />
+                            <span>Classroom Attendance Standing</span>
+                          </div>
+                          <Badge className={
+                            (data.attendanceStats?.attendancePercent ?? 100) >= 75
+                              ? "bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-[10.5px]"
+                              : "bg-rose-100 text-rose-900 border border-rose-300 font-bold text-[10.5px]"
+                          }>
+                            {(data.attendanceStats?.attendancePercent ?? 100) >= 75 
+                              ? "✓ Board Exam Eligible (75%+)" 
+                              : "⚠ Low Attendance Warning"}
+                          </Badge>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                            <span className="text-[10px] font-bold !text-slate-500 uppercase block tracking-wider">Days Present</span>
+                            <span className="font-mono font-black text-emerald-700 text-lg sm:text-xl">
+                              {data.attendanceStats?.presentDays ?? 0}
+                            </span>
+                          </div>
+                          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                            <span className="text-[10px] font-bold !text-slate-500 uppercase block tracking-wider">Days Absent</span>
+                            <span className="font-mono font-black text-rose-700 text-lg sm:text-xl">
+                              {data.attendanceStats?.absentDays ?? 0}
+                            </span>
+                          </div>
+                          <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                            <span className="text-[10px] font-bold text-emerald-800 uppercase block tracking-wider">Attendance %</span>
+                            <span className="font-mono font-black text-emerald-950 text-lg sm:text-xl">
+                              {data.attendanceStats?.attendancePercent ?? 100}%
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 leading-relaxed">
+                          <p className="font-bold text-slate-800 mb-0.5">
+                            Board Eligibility Notice:
+                          </p>
+                          <span>Under BISE regulations, a minimum of 75% attendance is compulsory to be eligible for board examinations. Parents are advised to monitor punctuality regularly.</span>
+                        </div>
+
+                        {/* Vice Principal Discipline Seal */}
+                        <div className="pt-2 flex items-center justify-between border-t border-slate-100 text-xs text-slate-500">
+                          <div>
+                            <span className="font-bold text-slate-800 block">Office of the Vice Principal (Discipline)</span>
+                            <span>Superior Group of Colleges Jahanian</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-mono text-[10px] text-slate-400">Ref: {verificationRef}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* ======================================================== */
+                    /* VIEW 6: COMPREHENSIVE 360 STUDENT DOSSIER (general/card) */
+                    /* ======================================================== */
+                    <>
+                      {/* Comprehensive Student & Academic Particulars Card */}
+                      <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4 text-left">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
+                            <User size={15} className="text-[#085a4e]" />
+                            <span>Enrolled Student Particulars</span>
+                          </div>
+                          <Badge className="bg-[#085a4e] !text-white border-none font-bold text-[10.5px] px-2.5 py-0.5 shadow-xs">
+                            Active Scholar
+                          </Badge>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3.5 text-xs">
+                          <div className="border-b sm:border-b-0 border-slate-100 pb-2 sm:pb-0">
+                            <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Student Full Name:</span>
+                            <span className="font-black !text-slate-950 text-base">{student.fullName}</span>
+                          </div>
+
+                          <div className="border-b sm:border-b-0 border-slate-100 pb-2 sm:pb-0">
+                            <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Father Name:</span>
+                            <span className="font-black !text-slate-900 text-base">{student.fatherName}</span>
+                          </div>
+
+                          <div>
+                            <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Roll No / Student ID:</span>
+                            <span className="font-mono font-black text-[#085a4e] text-sm sm:text-base">
+                              {student.rollNo || student.id}
+                            </span>
+                          </div>
+
+                          <div>
+                            <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Class & Group:</span>
+                            <span className="font-black !text-slate-900 text-sm">
+                              {student.group || student.category} {student.section ? `(Section ${student.section})` : ''}
+                            </span>
+                          </div>
+
+                          <div>
+                            <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Campus & Gender:</span>
+                            <span className="font-bold !text-slate-800 text-xs sm:text-sm">
+                              {student.campusDisplay || `Superior College Jahanian (${student.gender})`}
+                            </span>
+                          </div>
+
+                          <div>
+                            <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Academic Session:</span>
+                            <span className="font-bold !text-slate-800 text-xs sm:text-sm">
+                              {student.session || '2026-28'} • {student.academicPart || 'Part-1'}
+                            </span>
+                          </div>
+
+                          <div>
+                            <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Registered Student Contact:</span>
+                            <span className="font-mono font-bold !text-slate-900 text-xs sm:text-sm">
+                              {student.contact || 'N/A'}
+                            </span>
+                          </div>
+
+                          {student.fatherContact && (
+                            <div>
+                              <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Father / Guardian Contact:</span>
+                              <span className="font-mono font-bold !text-slate-900 text-xs sm:text-sm">
+                                {student.fatherContact}
+                              </span>
+                            </div>
+                          )}
+
+                          {student.bayFormNo && (
+                            <div>
+                              <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">B-Form / CNIC:</span>
+                              <span className="font-mono font-bold !text-slate-900">
+                                {student.bayFormNo}
+                              </span>
+                            </div>
+                          )}
+
+                          {student.admissionDate && (
+                            <div>
+                              <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Admission Confirmed Date:</span>
+                              <span className="font-bold !text-slate-800">
+                                {student.admissionDate}
+                              </span>
+                            </div>
+                          )}
+
+                          {student.address && (
+                            <div className="sm:col-span-2">
+                              <span className="!text-slate-500 font-bold block text-[11px] uppercase tracking-wider">Residential Address:</span>
+                              <span className="font-bold !text-slate-800 flex items-center gap-1 mt-0.5">
+                                <MapPin size={12} className="text-slate-400 shrink-0" />
+                                <span>{student.address}</span>
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Enrolled Subjects Badges */}
+                        {student.subjects && student.subjects.length > 0 && (
+                          <div className="pt-2 border-t border-slate-100">
+                            <span className="!text-slate-500 font-bold block text-[10.5px] uppercase tracking-wider mb-2 flex items-center gap-1">
+                              <BookOpen size={12} className="text-[#085a4e]" />
+                              <span>Enrolled Subject Curriculum:</span>
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {student.subjects.map((sub: string, idx: number) => (
+                                <span 
+                                  key={idx} 
+                                  className="px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 !text-slate-800 font-bold text-[11px]"
+                                >
+                                  {sub}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Financial & Fee Clearance Summary */}
+                      {feeCalc && (
+                        <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4 text-left">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
+                              <Coins size={15} className="text-[#c9a84c]" />
+                              <span>Financial Clearance Ledger</span>
+                            </div>
+                            <Badge className={
+                              feeCalc.totalBalance <= 0 
+                                ? "bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-[10.5px]"
+                                : "bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[10.5px]"
+                            }>
+                              {feeCalc.totalBalance <= 0 ? "100% Fully Cleared" : `${clearedPercent}% Paid • Active Dues`}
+                            </Badge>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                              <span className="text-[10.5px] font-bold !text-slate-500 uppercase block tracking-wider">Total Package</span>
+                              <span className="font-mono font-black !text-slate-950 text-sm sm:text-base">
+                                Rs. {(feeCalc.totalPackage || 0).toLocaleString()}
+                              </span>
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-emerald-50/80 border border-emerald-200">
+                              <span className="text-[10.5px] font-bold text-emerald-800 uppercase block tracking-wider">Paid So Far</span>
+                              <span className="font-mono font-black text-emerald-900 text-sm sm:text-base">
+                                Rs. {(feeCalc.feeReceived || 0).toLocaleString()}
+                              </span>
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-rose-50/80 border border-rose-200">
+                              <span className="text-[10.5px] font-bold text-rose-800 uppercase block tracking-wider">Current Due</span>
+                              <span className="font-mono font-black text-rose-900 text-sm sm:text-base">
+                                Rs. {(feeCalc.currentInstallmentDue || 0).toLocaleString()}
+                              </span>
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-slate-100 border border-slate-300">
+                              <span className="text-[10.5px] font-bold !text-slate-600 uppercase block tracking-wider">Total Balance</span>
+                              <span className="font-mono font-black !text-slate-950 text-sm sm:text-base">
+                                Rs. {(feeCalc.totalBalance || 0).toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5 pt-1">
+                            <div className="flex items-center justify-between text-xs font-bold">
+                              <span className="!text-slate-600">Package Clearance Meter</span>
+                              <span className="font-mono font-black text-[#085a4e]">{clearedPercent}%</span>
+                            </div>
+                            <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                              <div 
+                                className="h-full bg-gradient-to-r from-[#085a4e] to-emerald-500 rounded-full transition-all duration-500"
+                                style={{ width: `${clearedPercent}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between text-[10.5px] !text-slate-500 pt-0.5">
+                              <span>Payment Plan: <strong>{student.paymentPlan || 'Installments'} ({student.totalInstallments || 10} Installments)</strong></span>
+                              {student.monthlyFee > 0 && <span>Monthly: <strong>Rs. {student.monthlyFee.toLocaleString()}/mo</strong></span>}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Live Attendance Standing Card */}
+                      <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3.5 text-left">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
+                            <Calendar size={15} className="text-[#085a4e]" />
+                            <span>Classroom Attendance Standing</span>
+                          </div>
+                          <Badge className={
+                            (data.attendanceStats?.attendancePercent ?? 100) >= 75
+                              ? "bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-[10.5px]"
+                              : "bg-rose-100 text-rose-900 border border-rose-300 font-bold text-[10.5px]"
+                          }>
+                            {(data.attendanceStats?.attendancePercent ?? 100) >= 75 
+                              ? "✓ Board Exam Eligible (75%+)" 
+                              : "⚠ Low Attendance Warning"}
+                          </Badge>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                            <span className="text-[10px] font-bold !text-slate-500 uppercase block tracking-wider">Days Present</span>
+                            <span className="font-mono font-black text-emerald-700 text-base sm:text-lg">
+                              {data.attendanceStats?.presentDays ?? 0}
+                            </span>
+                          </div>
+                          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                            <span className="text-[10px] font-bold !text-slate-500 uppercase block tracking-wider">Days Absent</span>
+                            <span className="font-mono font-black text-rose-700 text-base sm:text-lg">
+                              {data.attendanceStats?.absentDays ?? 0}
+                            </span>
+                          </div>
+                          <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                            <span className="text-[10px] font-bold text-emerald-800 uppercase block tracking-wider">Attendance %</span>
+                            <span className="font-mono font-black text-emerald-950 text-base sm:text-lg">
+                              {data.attendanceStats?.attendancePercent ?? 100}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Live Academic & Examination Dossier */}
+                      <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3.5 text-left">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
+                            <Award size={15} className="text-[#c9a84c]" />
+                            <span>Academic Assessments & Exam Marks</span>
+                          </div>
+                          <Badge className="bg-slate-100 text-slate-800 border border-slate-200 font-bold text-[10.5px]">
+                            {data.academicRecords && data.academicRecords.length > 0 ? `${data.academicRecords.length} Tests Logged` : 'Active Session'}
+                          </Badge>
+                        </div>
+
+                        {data.academicRecords && data.academicRecords.length > 0 ? (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs text-left">
+                              <thead className="bg-slate-50 text-slate-500 font-black uppercase tracking-wider text-[9.5px]">
+                                <tr>
+                                  <th className="p-2.5 rounded-l-lg">Test Title</th>
+                                  <th className="p-2.5">Subject</th>
+                                  <th className="p-2.5 text-center">Marks</th>
+                                  <th className="p-2.5 text-center">Percentage</th>
+                                  <th className="p-2.5 rounded-r-lg text-right">Date</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {data.academicRecords.map((rec, idx) => {
+                                  const pct = rec.total_marks > 0 ? Math.round((rec.obtained_marks / rec.total_marks) * 100) : 0;
+                                  return (
+                                    <tr key={idx} className="hover:bg-slate-50/50">
+                                      <td className="p-2.5 font-bold text-slate-900">{rec.test_name || 'Class Test'}</td>
+                                      <td className="p-2.5 font-medium text-slate-600">{rec.subject}</td>
+                                      <td className="p-2.5 text-center font-mono font-bold text-slate-800">
+                                        {rec.obtained_marks} / {rec.total_marks}
+                                      </td>
+                                      <td className="p-2.5 text-center">
+                                        <span className={`px-2 py-0.5 rounded font-mono font-bold text-[10.5px] ${pct >= 70 ? 'bg-emerald-100 text-emerald-800' : pct >= 50 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}`}>
+                                          {pct}%
+                                        </span>
+                                      </td>
+                                      <td className="p-2.5 text-right font-mono text-[10px] text-slate-400">
+                                        {rec.date ? new Date(rec.date).toLocaleDateString('en-GB') : '-'}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 leading-relaxed">
+                            <p className="font-bold text-slate-800 flex items-center gap-1.5 mb-0.5">
+                              <GraduationCap size={14} className="text-[#085a4e]" />
+                              <span>Academic Session 2026-28 Enrolled & Verified</span>
+                            </p>
+                            <span>Student is actively enrolled in current academic term. Internal test scores and mock examinations are logged in real time directly from campus teaching faculties.</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Live Fee Payment Transactions */}
+                      {data.transactions && data.transactions.length > 0 && (
+                        <div className="!bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3.5 text-left">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider !text-slate-900">
+                              <Receipt size={15} className="text-[#085a4e]" />
+                              <span>Verified Fee Payment Transactions ({data.transactions.length})</span>
+                            </div>
+                            <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              Live Central Receipts
+                            </span>
+                          </div>
+
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs text-left">
+                              <thead className="bg-slate-50 text-slate-500 font-black uppercase tracking-wider text-[9.5px]">
+                                <tr>
+                                  <th className="p-2.5 rounded-l-lg">Receipt ID</th>
+                                  <th className="p-2.5">Payment Date</th>
+                                  <th className="p-2.5">Mode</th>
+                                  <th className="p-2.5 text-right rounded-r-lg">Amount Deposited</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {data.transactions.map((tx, idx) => (
+                                  <tr key={idx} className="hover:bg-slate-50/50">
+                                    <td className="p-2.5 font-mono font-bold text-[#085a4e]">{tx.receipt_id || `REC-${idx + 1}`}</td>
+                                    <td className="p-2.5 text-slate-600 font-medium">
+                                      {tx.date ? new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                                    </td>
+                                    <td className="p-2.5 text-slate-600 capitalize">{tx.payment_method || 'Cash / Bank'}</td>
+                                    <td className="p-2.5 text-right font-mono font-black text-emerald-700 text-sm">
+                                      Rs. {Number(tx.amount || 0).toLocaleString()}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </>
               )}
