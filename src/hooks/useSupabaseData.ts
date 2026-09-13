@@ -270,6 +270,87 @@ export function useSupabaseData(user: any) {
           feeHistory: s.fee_history || []
         };
         });
+
+        // Self-healing: if any admitted admission is missing from students table, synthesize and include it
+        if (admissionsData) {
+          const existingAdmIds = new Set(studentsData.map(s => s.admission_id).filter(Boolean));
+          const existingStudentIds = new Set(studentsData.map(s => s.id));
+          
+          admissionsData.forEach(a => {
+            const isConfirmed = a.is_admitted === true || 
+                                a.status === "Admitted/Confirmed" || 
+                                a.status === "Admitted" || 
+                                a.status === "Confirmed" || 
+                                Number(a.fee_received) > 0;
+            if (isConfirmed && !existingAdmIds.has(a.id) && !existingStudentIds.has(a.student_id)) {
+              let derivedGender = a.gender;
+              if (!derivedGender) {
+                const identifier = (`${a.category || ''} ${a.group || ''}`).toLowerCase();
+                derivedGender = (identifier.includes('girl') || identifier.includes('female')) ? 'Female' : 'Male';
+              }
+              const studentId = a.student_id || a.id;
+              const remaining = Math.max(0, (a.total_package || 0) - (a.fee_received || 0));
+              const installments = a.total_installments || 12;
+              const calculatedMonthlyFee = installments > 0 ? Math.ceil(remaining / installments) : 0;
+              
+              mappedStudents.push({
+                id: studentId,
+                admissionId: a.id,
+                fullName: a.full_name,
+                fatherName: a.father_name,
+                collegeNo: a.college_no,
+                bayFormNo: a.bay_form_no,
+                dob: a.dob,
+                previousClass: a.previous_class,
+                boardRollNo: a.board_roll_no,
+                previousMarks: a.previous_marks ?? 0,
+                contact: a.contact_number,
+                fatherContact: a.father_contact,
+                secondaryContact: a.secondary_contact,
+                email: a.email || '',
+                bloodGroup: a.blood_group || '',
+                concessionReason: a.concession_reason || (a.reference && a.reference.startsWith('Concession:') ? a.reference.replace('Concession:', '').trim() : undefined),
+                address: a.address || '',
+                gender: derivedGender,
+                category: a.category || 'N/A',
+                group: a.group || 'N/A',
+                section: a.section || 'A',
+                photo: a.photo_url || a.photo || '',
+                attendance: { present: 0, absent: 0 },
+                feeHistory: a.fee_history || [],
+                feeLedger: a.fee_ledger || {
+                  totalPackage: a.total_package || 0,
+                  totalReceived: a.fee_received || 0,
+                  remainingBalance: remaining,
+                  installments: [],
+                  transactions: (a.fee_received || 0) > 0 ? [{
+                    id: `tx-adm-${a.id}`,
+                    date: a.date || new Date().toISOString().split('T')[0],
+                    amount: a.fee_received,
+                    description: 'Initial Admission Payment',
+                    paymentMethod: 'Cash',
+                    receiptId: `REC-${a.id.slice(-6)}`
+                  }] : []
+                },
+                subjects: safeParseArray(a.subjects),
+                admissionFee: a.admission_fee || 0,
+                miscFunds: a.misc_funds || 0,
+                totalFeeFinalized: a.total_fee_finalized || a.total_package || 0,
+                totalInstallments: installments,
+                monthlyFee: calculatedMonthlyFee,
+                totalPackage: a.total_package || 0,
+                feeReceived: a.fee_received || 0,
+                session: a.session || defaultSession,
+                sessionStartDate: a.session_start_date,
+                sessionEndDate: a.session_end_date,
+                academicPart: a.academic_part || 'Part-1',
+                programType: a.program_type || 'Yearly',
+                currentSemester: a.current_semester || 0
+              } as any);
+            }
+          });
+        }
+
         setStudents(mappedStudents);
         // Run promotion check
         autoPromoteStudents(mappedStudents);

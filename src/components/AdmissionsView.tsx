@@ -145,15 +145,16 @@ export default function AdmissionsView({
   const filteredAdmissions = useMemo(() => {
     return data.admissions
       .filter((a: Admission) => {
+        const searchClean = (debouncedSearch || "").trim().toLowerCase();
         const matchesSearch =
-          (a.fullName || "")
-            .toLowerCase()
-            .includes(debouncedSearch.toLowerCase()) ||
-          (a.fatherName || "")
-            .toLowerCase()
-            .includes(debouncedSearch.toLowerCase()) ||
-          (a.studentId &&
-            a.studentId.toLowerCase().includes(debouncedSearch.toLowerCase()));
+          !searchClean ||
+          (a.fullName || "").toLowerCase().includes(searchClean) ||
+          (a.fatherName || "").toLowerCase().includes(searchClean) ||
+          (a.studentId && a.studentId.toLowerCase().includes(searchClean)) ||
+          (String((a as any).collegeNo || a.college_no || "").toLowerCase().includes(searchClean)) ||
+          (String(a.contactNumber || (a as any).contact || "").includes(searchClean)) ||
+          (String(a.fatherContact || "").includes(searchClean)) ||
+          (String(a.bayFormNo || (a as any).bay_form_no || "").includes(searchClean));
         const received = Number(a.feeReceived || 0);
         const total = Number(a.totalPackage || 0);
         let calcFeeStatus = "";
@@ -169,7 +170,8 @@ export default function AdmissionsView({
           genderFilter === "all" || a.gender === genderFilter;
 
         let matchesProgram = true;
-        if (localProgram && localProgram !== "all") {
+        // When searching by query, search across all programs so results are never hidden by active tab
+        if (!searchClean && localProgram && localProgram !== "all") {
           const groupLower = (a.group || "").toLowerCase();
           const categoryLower = (a.category || "").toLowerCase();
           

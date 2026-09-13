@@ -1057,7 +1057,7 @@ export default function App() {
           allowedSections[0];
 
         const defaultPages: Record<string, Page> = {
-          admissions: "admissions-fsc",
+          admissions: "admissions",
           students: "students-boys",
           fee: "fee-boys",
           accounts: "accounts",
@@ -2356,7 +2356,7 @@ export default function App() {
                           : undefined
                     }
                     program={
-                      activePage.includes("-") ? (activePage === "students-boys" || activePage === "students-girls" ? "fsc" : activePage.replace("students-", "")) : undefined
+                      activePage.includes("-") ? (activePage === "students-boys" || activePage === "students-girls" ? undefined : activePage.replace("students-", "")) : undefined
                     }
                   />
                 )}

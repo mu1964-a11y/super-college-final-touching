@@ -99,6 +99,14 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
   const [payConfig, setPayConfig] = useState<{ month?: string, year?: number }>({});
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
+  React.useEffect(() => {
+    setGenderFilter(gender || 'all');
+  }, [gender]);
+
+  React.useEffect(() => {
+    setProgramFilter(program || 'all');
+  }, [program]);
+
   const mergedStudents = React.useMemo(() => {
     console.log("Students data preview:", data.students.slice(0, 3).map((s: any) => ({ name: s.fullName, subjects: s.subjects })));
     const rawStudents = [...data.students].map(s => {
@@ -195,12 +203,14 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
     });
 
     // Filter by Gender and Program
+    const searchClean = (debouncedSearch || '').trim().toLowerCase();
     return rawStudents.filter((s: any) => {
       let matchesGender = true;
       if (genderFilter !== 'all') matchesGender = s.gender === genderFilter;
       
       let matchesProgram = true;
-      if (programFilter !== 'all') {
+      // When searching by text, allow cross-program match so student isn't hidden by active group tab
+      if (!searchClean && programFilter !== 'all') {
         const sGroup = (s.group || '').toLowerCase();
         const sCategory = (s.category || '').toLowerCase();
         const identifier = `${sGroup} ${sCategory}`;
@@ -224,7 +234,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
       }
       return matchesGender && matchesProgram;
     });
-  }, [data.students, data.admissions, genderFilter, programFilter]);
+  }, [data.students, data.admissions, genderFilter, programFilter, debouncedSearch]);
 
   const sectionOptions = React.useMemo(() => {
     let sections = data?.settings?.predefinedSections || [];
@@ -261,9 +271,17 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
   }, [data?.settings?.predefinedSections, programFilter, genderFilter]);
 
   const filteredStudents = React.useMemo(() => {
+    const searchClean = (debouncedSearch || '').trim().toLowerCase();
     return mergedStudents.filter((s: any) => {
-      const matchesSearch = s.fullName.toLowerCase().includes(debouncedSearch.toLowerCase()) || 
-                           s.id.toLowerCase().includes(debouncedSearch.toLowerCase());
+      const matchesSearch =
+        !searchClean ||
+        (s.fullName || '').toLowerCase().includes(searchClean) || 
+        (s.id || '').toLowerCase().includes(searchClean) ||
+        (s.fatherName || '').toLowerCase().includes(searchClean) ||
+        String(s.collegeNo || s.college_no || '').toLowerCase().includes(searchClean) ||
+        String(s.contact || s.contactNumber || '').includes(searchClean) ||
+        String(s.fatherContact || '').includes(searchClean) ||
+        String(s.bayFormNo || '').includes(searchClean);
       
       // Monthly fee status for current month (March 2026 for demo)
       const currentMonthPayment = s.feeHistory.find((f: any) => f.month === 'March' && f.year === 2026);

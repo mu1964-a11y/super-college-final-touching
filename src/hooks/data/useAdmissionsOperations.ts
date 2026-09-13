@@ -5,7 +5,7 @@ import { diffObjects, ADMISSION_FIELD_LABELS } from '../../utils/changeTracker';
 import { sendAutoAdmissionNotice } from '../../lib/whatsappAutomation';
 
 export function useAdmissionsOperations(ctx: any) {
-  const { user, generateStudentId, admissions, setAdmissions, students, settings, isBulkOperatingRef, logActivity, fetchData } = ctx;
+  const { user, generateStudentId, admissions, setAdmissions, students, setStudents, settings, isBulkOperatingRef, logActivity, fetchData } = ctx;
   const addAdmission = async (admission: Omit<Admission, 'id'>) => {
     const optimisticId = `temp-adm-${Date.now()}`;
     const optimisticAdmission: Admission = {
@@ -68,6 +68,8 @@ export function useAdmissionsOperations(ctx: any) {
         });
       }
 
+      const finalStudentId = admission.studentId || ((admission.feeReceived && admission.feeReceived > 0) || admission.isAdmitted || admission.status === 'Admitted/Confirmed' ? generateStudentId(admission.group) : null);
+
       const { data, error } = await supabase.from('admissions').insert({
         full_name: admission.fullName,
         father_name: admission.fatherName,
@@ -99,7 +101,7 @@ export function useAdmissionsOperations(ctx: any) {
           : admission.reference,
         gender: admission.gender,
         photo_url: admission.photo,
-        student_id: admission.studentId || (admission.feeReceived > 0 ? generateStudentId(admission.group) : null),
+        student_id: finalStudentId,
         status: admission.status,
         is_admitted: admission.isAdmitted,
         session: admission.session || settings?.academicSession,
@@ -109,8 +111,84 @@ export function useAdmissionsOperations(ctx: any) {
       }).select().single();
       if (error) throw error;
       
-      setAdmissions(prev => prev.map(a => a.id === optimisticId ? { ...a, id: data.id, dateApplied: data.date_applied } : a));
+      // Auto-sync to Students Table if student is admitted/confirmed or has fee paid
+      const isConfirmedStudent = admission.isAdmitted === true || 
+        admission.status === 'Admitted/Confirmed' || 
+        admission.status === 'Admitted' || 
+        admission.status === 'Confirmed' || 
+        Number(admission.feeReceived) > 0;
+
+      if (isConfirmedStudent && finalStudentId) {
+        let derivedGender = admission.gender;
+        if (!derivedGender) {
+          const identifier = (`${admission.category || ''} ${admission.group || ''}`).toLowerCase();
+          derivedGender = (identifier.includes('girl') || identifier.includes('female')) ? 'Female' : 'Male';
+        }
+
+        const remaining = Math.max(0, (admission.totalPackage || 0) - (admission.feeReceived || 0));
+        const installments = admission.totalInstallments || 12;
+        const calculatedMonthlyFee = installments > 0 ? Math.ceil(remaining / installments) : 0;
+
+        try {
+          await supabase.from('students').upsert({
+            id: finalStudentId,
+            admission_id: data.id,
+            full_name: admission.fullName,
+            father_name: admission.fatherName,
+            college_no: admission.collegeNo || null,
+            bay_form_no: admission.bayFormNo || null,
+            dob: admission.dob || null,
+            previous_class: admission.previousClass || null,
+            board_roll_no: admission.boardRollNo || null,
+            previous_marks: admission.previousMarks ?? 0,
+            category: admission.category || 'N/A',
+            group: admission.group || 'N/A',
+            section: admission.section || 'A',
+            subjects: admission.subjects || [],
+            contact: admission.contactNumber || 'N/A',
+            address: admission.address || '',
+            gender: derivedGender,
+            admission_fee: admission.admissionFee || 0,
+            misc_funds: admission.miscFunds || 0,
+            total_fee_finalized: admission.totalFeeFinalized || admission.totalPackage || 0,
+            total_package: admission.totalPackage || 0,
+            fee_received: admission.feeReceived || 0,
+            fee_ledger: initialLedger || {
+              totalPackage: admission.totalPackage || 0,
+              totalReceived: admission.feeReceived || 0,
+              remainingBalance: remaining,
+              installments: [],
+              transactions: (admission.feeReceived || 0) > 0 ? [{
+                id: `tx-adm-${Date.now()}`,
+                date: new Date().toISOString().split('T')[0],
+                amount: admission.feeReceived,
+                description: 'Initial Admission Payment',
+                paymentMethod: 'Cash',
+                receiptId: `REC-${data.id.slice(-6)}`
+              }] : []
+            },
+            monthly_fee: calculatedMonthlyFee,
+            total_installments: installments,
+            session: admission.session || settings?.academicSession,
+            session_start_date: admission.sessionStartDate || null,
+            session_end_date: admission.sessionEndDate || null,
+            academic_part: admission.academicPart || 'Part-1',
+            fee_history: initialHistory || [],
+            photo: admission.photo || null,
+            photo_url: admission.photo || null,
+            email: admission.email || '',
+            blood_group: admission.bloodGroup || null
+          });
+        } catch (stErr) {
+          console.error("Auto-sync student creation error:", stErr);
+        }
+      }
+
+      setAdmissions(prev => prev.map(a => a.id === optimisticId ? { ...a, id: data.id, studentId: finalStudentId || a.studentId, dateApplied: data.created_at || data.date } : a));
       
+      // Crucial: Refresh app state so counters (305) and directories are immediately up-to-date
+      fetchData(true);
+
       logActivity("Admission Recorded", {
         summary: `${admission.fullName} application added`,
         action: "add",
@@ -124,7 +202,7 @@ export function useAdmissionsOperations(ctx: any) {
         sendAutoAdmissionNotice({
           ...admission,
           id: data.id,
-          studentId: data.student_id || admission.studentId,
+          studentId: data.student_id || finalStudentId || admission.studentId,
         }, settings);
       }
     } catch (e: any) {
@@ -526,7 +604,7 @@ export function useAdmissionsOperations(ctx: any) {
 
     const syncAdmissionsToStudents = async () => {
       try {
-        const admitted = admissions.filter(a => a.isAdmitted || a.status === 'Admitted/Confirmed');
+        const admitted = admissions.filter(a => a.isAdmitted || a.status === 'Admitted/Confirmed' || Number(a.feeReceived) > 0);
         const existingIds = new Set(students?.map((s: any) => s.id) || []);
         const toInsert = admitted.filter(a => !existingIds.has(a.studentId || a.id)).map(a => {
           let derivedGender = a.gender;
@@ -539,30 +617,58 @@ export function useAdmissionsOperations(ctx: any) {
              }
           }
 
+          const remaining = Math.max(0, (a.totalPackage || 0) - (a.feeReceived || 0));
+          const installments = a.totalInstallments || 12;
+          const calculatedMonthlyFee = installments > 0 ? Math.ceil(remaining / installments) : 0;
+
           return {
             id: a.studentId || a.id,
             admission_id: a.id,
             full_name: a.fullName,
             father_name: a.fatherName,
+            college_no: a.collegeNo || (a as any).college_no || null,
+            bay_form_no: a.bayFormNo || (a as any).bay_form_no || null,
+            dob: a.dob || null,
+            previous_class: a.previousClass || (a as any).previous_class || null,
+            board_roll_no: a.boardRollNo || (a as any).board_roll_no || null,
+            previous_marks: a.previousMarks ?? (a as any).previous_marks ?? 0,
             category: a.category || 'N/A',
             group: a.group || 'N/A',
             section: a.section || 'Unassigned',
             subjects: a.subjects || [],
-            contact: a.contactNumber || 'N/A',
-            address: a.address || 'N/A',
+            contact: a.contactNumber || a.contact || 'N/A',
+            address: a.address || '',
             gender: derivedGender,
             admission_fee: a.admissionFee || 0,
             misc_funds: a.miscFunds || 0,
+            total_fee_finalized: a.totalFeeFinalized || a.totalPackage || 0,
             total_package: a.totalPackage || 0,
             fee_received: a.feeReceived || 0,
-            fee_ledger: a.feeLedger || {},
-            monthly_fee: Math.round((a.totalPackage || 0) / 12),
-            total_installments: 12,
+            fee_ledger: a.feeLedger || {
+              totalPackage: a.totalPackage || 0,
+              totalReceived: a.feeReceived || 0,
+              remainingBalance: remaining,
+              installments: [],
+              transactions: (a.feeReceived || 0) > 0 ? [{
+                id: `tx-sync-${Date.now()}`,
+                date: (a.date || new Date().toISOString()).split('T')[0],
+                amount: a.feeReceived,
+                description: 'Initial Admission Payment',
+                paymentMethod: 'Cash',
+                receiptId: `REC-${a.id.slice(-6)}`
+              }] : []
+            },
+            monthly_fee: calculatedMonthlyFee,
+            total_installments: installments,
             session: a.session,
-            session_start_date: a.sessionStartDate,
-            session_end_date: a.sessionEndDate,
+            session_start_date: a.sessionStartDate || null,
+            session_end_date: a.sessionEndDate || null,
             academic_part: a.academicPart || 'Part-1',
-            fee_history: a.feeHistory || []
+            fee_history: a.feeHistory || [],
+            photo: a.photo || (a as any).photo_url || null,
+            photo_url: a.photo || (a as any).photo_url || null,
+            email: a.email || '',
+            blood_group: a.bloodGroup || null
           };
         });
 
