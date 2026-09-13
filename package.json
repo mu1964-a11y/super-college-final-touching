@@ -5,7 +5,7 @@
   "description": "Superior College Jahanian ERP Management System & LMS",
   "author": "Superior College Jahanian",
   "type": "module",
-  "main": "electron/main.cjs",
+  "main": "server.js",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --platform=node --format=esm --packages=external --outfile=server.js",
@@ -84,6 +84,9 @@
     "wait-on": "^9.1.0"
   },
   "build": {
+    "extraMetadata": {
+      "main": "electron/main.cjs"
+    },
     "appId": "pk.edu.superiorjahanian.erp",
     "productName": "Superior College Jahanian ERP",
     "copyright": "Copyright © 2026 Superior Group of Colleges Jahanian",

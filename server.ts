@@ -85,7 +85,7 @@ async function generateContentWithFallback(ai: GoogleGenAI, options: { model: st
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Add JSON body parsing with increased limit for images
   app.use(express.json({ limit: '50mb' }));
@@ -969,6 +969,14 @@ Return strictly the raw JSON without markdown code fences.`;
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
+
+process.on("uncaughtException", (err) => {
+  console.error("[SCJ Server Uncaught Exception]:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[SCJ Server Unhandled Rejection]:", reason);
+});
 
 startServer().catch((err) => {
   console.error("Failed to start server:", err);

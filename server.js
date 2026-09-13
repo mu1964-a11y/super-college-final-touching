@@ -63,7 +63,7 @@ async function generateContentWithFallback(ai, options) {
 }
 async function startServer() {
   const app = express();
-  const PORT = 3e3;
+  const PORT = Number(process.env.PORT) || 3e3;
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.get("/api/health", (req, res) => {
@@ -790,6 +790,12 @@ Return strictly the raw JSON without markdown code fences.`;
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
+process.on("uncaughtException", (err) => {
+  console.error("[SCJ Server Uncaught Exception]:", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[SCJ Server Unhandled Rejection]:", reason);
+});
 startServer().catch((err) => {
   console.error("Failed to start server:", err);
   process.exit(1);

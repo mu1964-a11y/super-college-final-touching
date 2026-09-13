@@ -1519,7 +1519,6 @@ ${marksBrief}
 📞 Campus Helpdesk: 0301-4455891
 _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
   }
-  }
 
   public async disconnect(): Promise<void> {
     try {

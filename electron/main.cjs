@@ -1,11 +1,22 @@
-const { app, BrowserWindow, shell, ipcMain, Menu, globalShortcut } = require('electron');
+const electron = require('electron');
+
+// Headless server fallback: If started via plain Node on Linux / Hostinger / cPanel
+if (typeof electron === 'string' || !electron || !electron.app) {
+  console.log('[SCJ Server] Headless Node.js environment detected on server. Booting web server.js...');
+  import('../server.js').catch((err) => {
+    console.error('[SCJ Server] Failed to start server.js:', err);
+  });
+  return;
+}
+
+const { app, BrowserWindow, shell, ipcMain, Menu, globalShortcut } = electron;
 const path = require('path');
 const express = require('express');
 const fs = require('fs');
 
 let mainWindow = null;
 let httpServer = null;
-const DEFAULT_PORT = 3000;
+const DEFAULT_PORT = process.env.PORT || 3000;
 const distPath = path.join(__dirname, '../dist');
 
 // Enforce single instance lock
