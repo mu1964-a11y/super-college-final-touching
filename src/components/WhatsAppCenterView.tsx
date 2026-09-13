@@ -668,7 +668,7 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
         return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
 📄 *OFFICIAL FEE REMINDER NOTICE*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Walid/Guardian ({{father}}),
+Dear Parent/Guardian ({{father}}),
 
 • *Student Name:* {{name}}
 • *Class / Group:* {{class}}
@@ -681,7 +681,7 @@ _Accounts & Finance Department, SGC Jahanian_`;
         return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
 📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Walid/Guardian ({{father}}),
+Dear Parent/Guardian ({{father}}),
 
 • *Student Name:* {{name}}
 • *Class / Group:* {{class}}
@@ -717,7 +717,7 @@ _Office of the Vice Principal, SGC Jahanian_`;
       return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
 📌 *OFFICIAL CAMPUS NOTIFICATION*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Walid/Guardian ({{father}}),
+Dear Parent/Guardian ({{father}}),
 
 • *Student Name:* {{name}}
 • *Class / Group:* {{class}}

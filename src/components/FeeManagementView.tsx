@@ -131,7 +131,7 @@ export default function FeeManagementView({
 `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
 📄 *OFFICIAL FEE REMINDER & ACCOUNT STATEMENT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Walid/Guardian (${student.fatherName || 'Sahib'}),
+Dear Parent/Guardian (${student.fatherName || 'Guardian'}),
 
 Aapke bache ka fee ledger baqaya darj zail hai:
 

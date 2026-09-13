@@ -456,7 +456,7 @@ export default function AcademicView({ data }: { data: any }) {
 `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
 📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Walid/Guardian (${selectedStudent.fatherName || 'Sahib'}),
+Dear Parent/Guardian (${selectedStudent.fatherName || 'Guardian'}),
 
 • *Student Name:* ${selectedStudent.fullName}
 • *Roll Number:* ${studentRef}

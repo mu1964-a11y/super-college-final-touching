@@ -824,7 +824,7 @@ Return strictly the raw JSON without markdown code fences.`;
             const rawPhone = s.fatherPhone || s.phone || s.guardianPhone || s.contact || "";
             const resolvedMsg = parsed.messageTemplate
               .replace(/{{studentName}}/g, s.fullName || s.name || "Student")
-              .replace(/{{fatherName}}/g, s.fatherName || "Mohtaram Walid")
+              .replace(/{{fatherName}}/g, s.fatherName || "Parent/Guardian")
               .replace(/{{rollNo}}/g, s.rollNumber || s.rollNo || "N/A")
               .replace(/{{className}}/g, `${s.className || s.class || ""} ${s.section || ""}`.trim() || "College Class")
               .replace(/{{date}}/g, todayStr);
@@ -847,7 +847,7 @@ Return strictly the raw JSON without markdown code fences.`;
             const rawPhone = s.fatherPhone || s.phone || s.guardianPhone || s.contact || "";
             const resolvedMsg = parsed.messageTemplate
               .replace(/{{studentName}}/g, s.fullName || s.name || "Student")
-              .replace(/{{fatherName}}/g, s.fatherName || "Mohtaram Walid")
+              .replace(/{{fatherName}}/g, s.fatherName || "Parent/Guardian")
               .replace(/{{rollNo}}/g, s.rollNumber || s.rollNo || "N/A")
               .replace(/{{className}}/g, `${s.className || s.class || ""} ${s.section || ""}`.trim() || "College Class")
               .replace(/{{balance}}/g, `Rs. ${Number(balance).toLocaleString()}`)
@@ -870,7 +870,7 @@ Return strictly the raw JSON without markdown code fences.`;
           const rawPhone = s.fatherPhone || s.phone || s.guardianPhone || s.contact || "";
           const resolvedMsg = parsed.messageTemplate
             .replace(/{{studentName}}/g, s.fullName || s.name || "Student")
-            .replace(/{{fatherName}}/g, s.fatherName || "Mohtaram Walid")
+            .replace(/{{fatherName}}/g, s.fatherName || "Parent/Guardian")
             .replace(/{{rollNo}}/g, s.rollNumber || s.rollNo || "N/A")
             .replace(/{{className}}/g, `${s.className || s.class || ""} ${s.section || ""}`.trim() || "College Class")
             .replace(/{{date}}/g, todayStr);

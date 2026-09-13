@@ -675,7 +675,7 @@ Return strictly the raw JSON without markdown code fences.`;
           const isAbsent = absentStudentIds.has(sid) || sRoll && absentStudentIds.has(sRoll) || attendanceRecords.length === 0 && (s.attendanceStatus === "Absent" || s.status === "Absent");
           if (isAbsent) {
             const rawPhone = s.fatherPhone || s.phone || s.guardianPhone || s.contact || "";
-            const resolvedMsg = parsed.messageTemplate.replace(/{{studentName}}/g, s.fullName || s.name || "Student").replace(/{{fatherName}}/g, s.fatherName || "Mohtaram Walid").replace(/{{rollNo}}/g, s.rollNumber || s.rollNo || "N/A").replace(/{{className}}/g, `${s.className || s.class || ""} ${s.section || ""}`.trim() || "College Class").replace(/{{date}}/g, todayStr);
+            const resolvedMsg = parsed.messageTemplate.replace(/{{studentName}}/g, s.fullName || s.name || "Student").replace(/{{fatherName}}/g, s.fatherName || "Parent/Guardian").replace(/{{rollNo}}/g, s.rollNumber || s.rollNo || "N/A").replace(/{{className}}/g, `${s.className || s.class || ""} ${s.section || ""}`.trim() || "College Class").replace(/{{date}}/g, todayStr);
             matchingRecipients.push({
               id: s.id,
               name: s.fullName || s.name || "Student",
@@ -692,7 +692,7 @@ Return strictly the raw JSON without markdown code fences.`;
           const balance = s.feeLedger?.remainingBalance || s.remainingBalance || s.balance || 0;
           if (balance > 0) {
             const rawPhone = s.fatherPhone || s.phone || s.guardianPhone || s.contact || "";
-            const resolvedMsg = parsed.messageTemplate.replace(/{{studentName}}/g, s.fullName || s.name || "Student").replace(/{{fatherName}}/g, s.fatherName || "Mohtaram Walid").replace(/{{rollNo}}/g, s.rollNumber || s.rollNo || "N/A").replace(/{{className}}/g, `${s.className || s.class || ""} ${s.section || ""}`.trim() || "College Class").replace(/{{balance}}/g, `Rs. ${Number(balance).toLocaleString()}`).replace(/{{date}}/g, todayStr);
+            const resolvedMsg = parsed.messageTemplate.replace(/{{studentName}}/g, s.fullName || s.name || "Student").replace(/{{fatherName}}/g, s.fatherName || "Parent/Guardian").replace(/{{rollNo}}/g, s.rollNumber || s.rollNo || "N/A").replace(/{{className}}/g, `${s.className || s.class || ""} ${s.section || ""}`.trim() || "College Class").replace(/{{balance}}/g, `Rs. ${Number(balance).toLocaleString()}`).replace(/{{date}}/g, todayStr);
             matchingRecipients.push({
               id: s.id,
               name: s.fullName || s.name || "Student",
@@ -707,7 +707,7 @@ Return strictly the raw JSON without markdown code fences.`;
       } else {
         students.slice(0, 50).forEach((s) => {
           const rawPhone = s.fatherPhone || s.phone || s.guardianPhone || s.contact || "";
-          const resolvedMsg = parsed.messageTemplate.replace(/{{studentName}}/g, s.fullName || s.name || "Student").replace(/{{fatherName}}/g, s.fatherName || "Mohtaram Walid").replace(/{{rollNo}}/g, s.rollNumber || s.rollNo || "N/A").replace(/{{className}}/g, `${s.className || s.class || ""} ${s.section || ""}`.trim() || "College Class").replace(/{{date}}/g, todayStr);
+          const resolvedMsg = parsed.messageTemplate.replace(/{{studentName}}/g, s.fullName || s.name || "Student").replace(/{{fatherName}}/g, s.fatherName || "Parent/Guardian").replace(/{{rollNo}}/g, s.rollNumber || s.rollNo || "N/A").replace(/{{className}}/g, `${s.className || s.class || ""} ${s.section || ""}`.trim() || "College Class").replace(/{{date}}/g, todayStr);
           matchingRecipients.push({
             id: s.id,
             name: s.fullName || s.name || "Student",

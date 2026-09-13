@@ -175,7 +175,7 @@ export async function sendAutoAdmissionNotice(
 `🏛️ *${collegeName.toUpperCase()}*
 🎓 *OFFICIAL ADMISSION CONFIRMATION NOTICE*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Walid/Guardian (${fatherName}),
+Dear Parent/Guardian (${fatherName}),
 
 Mubarak ho! *${studentName.toUpperCase()}* ka dakhla Superior College Jahanian mein kamyabi se confirm ho chuka hai.
 
@@ -312,7 +312,7 @@ export async function sendAutoFeeReceiptNotice(
 `🏛️ *${collegeName.toUpperCase()}*
 🧾 *OFFICIAL FEE PAYMENT RECEIPT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Walid/Guardian (${fatherName}),
+Dear Parent/Guardian (${fatherName}),
 
 Aapke bache ki fee payment kamyabi se record ho chuki hai.
 
@@ -416,7 +416,7 @@ export async function sendAutoFeeReminderNotice(
 `🏛️ *${collegeName.toUpperCase()}*
 📄 *OFFICIAL FEE REMINDER & ACCOUNT STATEMENT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Walid/Guardian (${fatherName}),
+Dear Parent/Guardian (${fatherName}),
 
 Aapke bache ka fee ledger baqaya darj zail hai:
 
@@ -525,7 +525,7 @@ export async function sendAutoResultNotice(
 `🏛️ *${collegeName.toUpperCase()}*
 📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Walid/Guardian (${fatherName}),
+Dear Parent/Guardian (${fatherName}),
 
 • *Student Name:* ${studentName}
 • *Roll Number:* ${rollNo}

@@ -53,6 +53,9 @@ class WhatsAppBridgeService {
       pendingIntent?: "fee" | "marks" | "attendance" | "general";
       lastActive: number;
       history?: Array<{ role: "user" | "model"; text: string }>;
+      salamSent?: boolean;
+      targetStudentQuery?: string;
+      failedVerificationAttempts?: number;
       accumulatedMatches?: {
         name?: boolean;
         father?: boolean;
@@ -453,6 +456,15 @@ class WhatsAppBridgeService {
     }
   }
 
+  // Set of common Pakistani titles, surnames, and generic names that cannot satisfy verification alone
+  private static readonly COMMON_NAMES_AND_SURNAMES = new Set([
+    "muhammad", "mohammad", "mohd", "md", "syed", "mian", "rana", 
+    "choudhary", "chaudhary", "choudhry", "ch", "malik", "sheikh", 
+    "khan", "ahmad", "ahmed", "ali", "shah", "butt", "bhatti", 
+    "gujjar", "jutt", "jat", "bajwa", "cheema", "warraich", "qureshi", 
+    "ansari", "rehman", "hassan", "hussain", "zia", "deen", "din", "khanum", "bibi"
+  ]);
+
   private async generateAiConversationalReply(
     userMessage: string,
     history: Array<{ role: "user" | "model"; text: string }>,
@@ -462,26 +474,33 @@ class WhatsAppBridgeService {
     if (!ai) return fallbackResponse;
 
     try {
-      const systemInstruction = `You are an elite, highly professional Executive Academic Assistant at Superior Group of Colleges Jahanian (SGC-J).
-Target Audience: Pakistani parents, students, and prospective applicants chatting on WhatsApp.
-Tone & Persona: Dignified, courteous, refined, concise (maximum 2-3 sentences), and strictly to the point. Always address the user respectfully as 'Mohtaram Janab' or 'Sir/Madam'. You are an executive representative of the Principal Office.
-Language: High-quality, polite Roman Urdu (or formal English if the user messages in English).
+      const systemInstruction = `You are Superior Nexus, the official female AI Virtual Assistant of Superior Group of Colleges Jahanian (SGC-J).
+Identity & Persona:
+- Name: Superior Nexus.
+- Gender / Persona: Female AI Assistant.
+- When speaking in Roman Urdu / Hinglish, ALWAYS use female grammatical forms: say "karti hoon", "bata sakti hoon", "dekh sakti hoon", "hazir hoon", "meri koshish hai" (NEVER male forms like "karta hoon").
+- Strictly DO NOT use archaic or overly formal royal court words like "Mohtaram", "Janab", "Janab-e-Aali", or "Binte/Farzand". Speak respectfully, warmly, modernly, and naturally (e.g. "Aap", "Dear", or address them directly).
+- Salam Rule: ONLY include a Salam greeting (like "Assalam-o-Alaikum" or "Walaikum Assalam") if the user explicitly greeted you with Salam in their current message. Otherwise, jump directly to answering helpfully.
+- ChatGPT Intelligence: You can answer ANY question intelligently, accurately, and helpfully, just like ChatGPT:
+  * College information (admissions 2026-28, programs, fee policies, timetable, transport, campus address).
+  * Academic subjects: physics, chemistry, biology, mathematics, computer science, English grammar, essays.
+  * Writing requests: applications for leave/concession, study plans, essays, apology letters.
+  * General knowledge, career guidance, motivation, everyday questions.
+- Even if a question is NOT related to college, give a smart, crisp, polite answer directly, just like ChatGPT.
+- Tone: Crisp, helpful, articulate, professional, concise (2-4 sentences or short neat bullet points when needed).
+- Language: Reply in the language the user messages in (Roman Urdu / Hinglish or English).
 
-College Information:
+College Key Info:
 - Institution: Superior Group of Colleges Jahanian (SGC-J).
-- Programs: Intermediate Admissions 2026-28 (FSc Pre-Medical, FSc Pre-Engineering, ICS, I.Com, FA IT).
-- Timings: Monday to Saturday: 08:00 AM to 01:30 PM (Office open till 02:00 PM). Sunday: Closed.
-- Official Helpline: 0301-4455891.
-- Campuses: Purpose-built separate Boys & Girls campuses on Khanewal Road, Jahanian.
-- Student Privacy: If a user asks for sensitive records (fees, marks, attendance), concisely ask them for the student's Full Name or Roll Number so we can verify and retrieve the official record.
-
-Guidelines:
-1. Always keep responses brief, crisp, and to the point (no long rambling paragraphs).
-2. Answer queries with immediate clarity, precision, and respectful warmth.
-3. Never use slang, casual filler words, or excessive emojis.`;
+- Programs: Intermediate 2026-28 (FSc Pre-Medical, FSc Pre-Engineering, ICS, I.Com, FA IT).
+- Location: Khanewal Road, Jahanian.
+- Helpline / Inquiries: 0301-4455891.
+- Timings: Mon-Sat 08:00 AM - 02:00 PM.
+- Separate purpose-built campuses for Boys and Girls.
+- Student Privacy: If sensitive personal student records (dues, marks, attendance) are requested, remind them that verification (Student Name + Father Name, or Roll Number) is required.`;
 
       const contents: any[] = [];
-      for (const h of history.slice(-4)) {
+      for (const h of history.slice(-6)) {
         contents.push({
           role: h.role,
           parts: [{ text: h.text }],
@@ -512,16 +531,28 @@ Guidelines:
   // Helper to extract candidate keywords (names, identifiers) from text
   private extractCandidateKeywords(text: string): string[] {
     const stopWords = new Set([
-      "fee", "fees", "dues", "status", "baqaya", "paisa", "paise", "rupay", "installment",
-      "marks", "mark", "result", "test", "exam", "exams", "paper", "number", "score",
-      "attendance", "attend", "hazri", "hazir", "ghair", "absent", "chutti", "din",
-      "chahiye", "batao", "bata", "dein", "batayein", "bataen", "sunao", "kya", "kia", "hai", "hain", "hoon", "tha",
+      // Fees & financial terms
+      "fee", "fees", "dues", "status", "baqaya", "paisa", "paise", "rupay", "installment", "ledger", "challan", "package", "balance",
+      // Academic terms
+      "marks", "mark", "result", "test", "exam", "exams", "paper", "number", "score", "grades",
+      "attendance", "attend", "hazri", "hazir", "ghair", "absent", "chutti", "din", "leave",
+      // Common conversational verbs & filler words in Roman Urdu
+      "chahiye", "chahye", "batao", "bata", "dein", "den", "batayein", "bataen", "sunao", "kya", "kia", "hai", "hain", "hay", "hoon", "hun", "tha", "thi", "the",
       "salam", "assalam", "walaikum", "aoa", "slam", "slm", "hi", "hello", "hey",
-      "student", "bacha", "bache", "larka", "larki", "beti", "beta", "roll", "number", "id", "admission",
-      "ka", "ki", "ke", "ko", "se", "par", "pe", "mein", "main", "mera", "meri", "mere", "apna", "apni",
+      // Student & identity generic terms
+      "student", "bacha", "bache", "larka", "larki", "beti", "beta", "roll", "number", "id", "admission", "dakhla",
+      // Pronouns, prepositions & conjunctions (Roman Urdu variations)
+      "ka", "ki", "ke", "ko", "se", "par", "pe", "mein", "main", "me", "men",
+      "mera", "meri", "mere", "meray", "apna", "apni", "apne", "apnay",
+      "mujhe", "mjhe", "mujay", "mujhy", "mje", "humein", "humain", "hamain", "hum", "ham", "hamara", "hamari",
+      "aap", "ap", "aapka", "aapki", "aapke", "tum", "tumhara",
+      "uska", "uski", "uske", "uskay", "unka", "unki", "unke", "is", "iss", "us", "uss",
+      "karna", "karo", "karein", "karen", "kar", "krna", "kro", "janna", "janni", "jan'na", "jan", "jana",
+      "dekhna", "dekhni", "dekho", "check", "details", "info", "information", "record",
+      "bhejo", "bhejna", "bhej", "send", "give", "share",
       "naam", "name", "walid", "father", "section", "sec", "class", "group", "college", "superior", "jahanian",
-      "please", "plz", "sir", "madam", "bhai", "admin", "desk", "information", "record", "karo", "karna",
-      "check", "details", "info", "mujhe", "humein", "hum", "aap", "tum"
+      "please", "plz", "sir", "madam", "bhai", "admin", "desk", "zara", "kitni", "kitna", "kitne", "kab", "kahan", "kaise", "kese",
+      "bhi", "to", "toh", "aur", "or", "kuch", "koi", "ye", "yeh", "wo", "woh"
     ]);
 
     const clean = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
@@ -630,8 +661,56 @@ Guidelines:
     // 4. Search by Candidate Keywords (Student Name / Father Name / Section)
     const keywords = this.extractCandidateKeywords(text);
     if (keywords.length > 0) {
+      // Step 4A: If user supplied multiple words (e.g. "ahmad khattak"), search for ALL keywords in full_name
+      if (keywords.length >= 2) {
+        let multiQuery = supabase.from("students").select("*");
+        for (const kw of keywords) {
+          multiQuery = multiQuery.ilike("full_name", `%${kw}%`);
+        }
+        const { data: byAllKw } = await multiQuery.limit(5);
+        if (byAllKw && byAllKw.length === 1) {
+          return { candidate: byAllKw[0], matchedBy: "all_name_keywords" };
+        }
+        if (byAllKw && byAllKw.length > 1) {
+          return { multipleMatches: byAllKw, matchedBy: "multiple_full_name" };
+        }
+
+        // Check admissions table for all keywords
+        let multiAdmQuery = supabase.from("admissions").select("*");
+        for (const kw of keywords) {
+          multiAdmQuery = multiAdmQuery.ilike("full_name", `%${kw}%`);
+        }
+        const { data: byAllAdmKw } = await multiAdmQuery.limit(5);
+        if (byAllAdmKw && byAllAdmKw.length === 1) {
+          return { candidate: this.formatAdmissionAsStudent(byAllAdmKw[0]), matchedBy: "admission_all_keywords" };
+        }
+        if (byAllAdmKw && byAllAdmKw.length > 1) {
+          return { 
+            multipleMatches: byAllAdmKw.map((a: any) => this.formatAdmissionAsStudent(a)), 
+            matchedBy: "multiple_admission_matches" 
+          };
+        }
+
+        // Step 4B: Cross search - Check if one keyword matches full_name and another matches father_name
+        for (let i = 0; i < keywords.length; i++) {
+          const nameKw = keywords[i];
+          const otherKws = keywords.filter((_, idx) => idx !== i);
+          for (const otherKw of otherKws) {
+            const { data: crossMatch } = await supabase
+              .from("students")
+              .select("*")
+              .ilike("full_name", `%${nameKw}%`)
+              .ilike("father_name", `%${otherKw}%`)
+              .limit(3);
+            if (crossMatch && crossMatch.length === 1) {
+              return { candidate: crossMatch[0], matchedBy: "name_and_father_cross" };
+            }
+          }
+        }
+      }
+
+      // Step 4C: Combined full query check
       const queryStr = keywords.join(" ");
-      // Try full query on full_name first
       const { data: byFullName } = await supabase
         .from("students")
         .select("*")
@@ -645,9 +724,9 @@ Guidelines:
         return { multipleMatches: byFullName, matchedBy: "multiple_full_name" };
       }
 
-      // Try searching with individual keywords across full_name and father_name
+      // Step 4D: Search with distinctive individual keywords (exclude generic names & common surnames)
       for (const kw of keywords) {
-        if (["muhammad", "mohammad", "syed", "rana", "mian", "ch"].includes(kw)) continue;
+        if (WhatsAppBridgeService.COMMON_NAMES_AND_SURNAMES.has(kw)) continue;
         const { data: byKw } = await supabase
           .from("students")
           .select("*")
@@ -670,9 +749,9 @@ Guidelines:
         }
       }
 
-      // Check admissions table if not found in active students
+      // Check admissions table if not found in active students with distinctive keywords
       for (const kw of keywords) {
-        if (["muhammad", "mohammad", "syed", "rana", "mian", "ch"].includes(kw)) continue;
+        if (WhatsAppBridgeService.COMMON_NAMES_AND_SURNAMES.has(kw)) continue;
         const { data: byAdmKw } = await supabase
           .from("admissions")
           .select("*")
@@ -737,18 +816,37 @@ Guidelines:
     const phoneMatched = isSenderPhoneMatch || isPhoneInTextMatch;
     const isPhoneVerified = isSenderPhoneMatch;
 
-    // 2. Name Match (check non-generic name tokens)
-    const titles = ["muhammad", "mohammad", "syed", "mian", "rana", "choudhary", "malik", "sheikh"];
+    // 2. Student Name Match (check non-generic name tokens)
     const nameTokens = expName.split(/\s+/).filter(t => t.length >= 2);
-    const distinctNameTokens = nameTokens.filter(t => !titles.includes(t));
-    const nameTokensToCheck = distinctNameTokens.length > 0 ? distinctNameTokens : nameTokens;
-    const nameMatched = nameTokensToCheck.some(t => inputWords.includes(t) || cleanInput.includes(t)) || (expName.length > 2 && cleanInput.includes(expName));
+    const distinctNameTokens = nameTokens.filter(t => !WhatsAppBridgeService.COMMON_NAMES_AND_SURNAMES.has(t));
+    let nameMatched = false;
+    if (distinctNameTokens.length > 0) {
+      nameMatched = distinctNameTokens.some(t => inputWords.includes(t) || cleanInput.includes(t));
+    } else {
+      if (cleanInput.includes(expName) || expName.includes(cleanInput)) {
+        nameMatched = true;
+      } else {
+        const matchedTokens = nameTokens.filter(t => inputWords.includes(t));
+        if (matchedTokens.length >= 2) nameMatched = true;
+      }
+    }
 
-    // 3. Father Name Match
+    // 3. Father Name Match (Strict: common surnames alone NEVER match!)
     const fatherTokens = expFather.split(/\s+/).filter(t => t.length >= 2);
-    const distinctFatherTokens = fatherTokens.filter(t => !titles.includes(t));
-    const fatherTokensToCheck = distinctFatherTokens.length > 0 ? distinctFatherTokens : fatherTokens;
-    const fatherMatched = fatherTokensToCheck.some(t => inputWords.includes(t) || cleanInput.includes(t)) || (expFather.length > 3 && cleanInput.includes(expFather));
+    const distinctFatherTokens = fatherTokens.filter(t => !WhatsAppBridgeService.COMMON_NAMES_AND_SURNAMES.has(t));
+    let fatherMatched = false;
+    if (distinctFatherTokens.length > 0) {
+      // Must match at least one distinctive father token (e.g. "Pervez" in "Pervez Khan")
+      fatherMatched = distinctFatherTokens.some(t => inputWords.includes(t) || cleanInput.includes(t));
+    } else {
+      // Only common names exist (e.g. "Muhammad Ali Khan"): must match full name or at least 2 tokens
+      if (cleanInput.includes(expFather) || expFather.includes(cleanInput)) {
+        fatherMatched = true;
+      } else {
+        const matchedTokens = fatherTokens.filter(t => inputWords.includes(t));
+        if (matchedTokens.length >= 2) fatherMatched = true;
+      }
+    }
 
     // 4. Section / Group Match
     let sectionMatched = false;
@@ -807,14 +905,13 @@ Guidelines:
       }
     } else {
       // Unverified SIM / Unknown Number:
-      // Requires rigorous satisfaction to protect privacy:
+      // STRICT VERIFICATION to protect student privacy:
       // - Roll Number + Name/Father/Section
       // - OR Name + Father Name
       // - OR Name + Section
       // - OR Father Name + Section
       // - OR Registered Mobile Number + Name/Father/Section
       // - OR B-Form / CNIC
-      // - OR Score >= 2
       if (rollMatched && (nameMatched || fatherMatched || sectionMatched)) {
         isSatisfied = true;
       } else if (nameMatched && fatherMatched) {
@@ -826,8 +923,6 @@ Guidelines:
       } else if (isPhoneInTextMatch && (nameMatched || fatherMatched || sectionMatched)) {
         isSatisfied = true;
       } else if (bayMatched) {
-        isSatisfied = true;
-      } else if (score >= 2) {
         isSatisfied = true;
       }
     }
@@ -905,9 +1000,30 @@ Guidelines:
 
     // Helper to send and log a reply
     const sendReply = async (replyText: string, logType: string, verifiedStudentName?: string) => {
+      let finalReply = replyText;
+
+      const userSaidSalam = 
+        cleanQuery.includes("salam") || 
+        cleanQuery.includes("assalam") || 
+        cleanQuery.includes("aoa") || 
+        cleanQuery === "slam" || 
+        cleanQuery === "slm";
+
+      // Salam Rule: Only send Salam on the 1st message of a session, OR if user explicitly greeted with Salam now.
+      if (session!.salamSent && !userSaidSalam) {
+        // Strip any leading Salam greeting
+        finalReply = finalReply
+          .replace(/^(Assalam-o-Alaikum[!.,\s🌸🏛️]*\n*|Walaikum Assalam[!.,\s🌸🏛️]*\n*)/i, "")
+          .trim();
+      }
+
+      if (!session!.salamSent) {
+        session!.salamSent = true;
+      }
+
       this.logBotActivity(rawNumber, text, logType);
       session!.history?.push({ role: "user", text });
-      session!.history?.push({ role: "model", text: replyText });
+      session!.history?.push({ role: "model", text: finalReply });
       if (session!.history && session!.history.length > 10) {
         session!.history = session!.history.slice(-10);
       }
@@ -915,13 +1031,13 @@ Guidelines:
       this.saveChatLog({
         phone: rawNumber,
         direction: "outgoing",
-        text: replyText,
+        text: finalReply,
         verifiedStudent: verifiedStudentName || (session!.verifiedStudent ? session!.verifiedStudent.full_name : undefined),
       });
       if (this.sock) {
-        await this.sock.sendMessage(senderJid, { text: replyText });
+        await this.sock.sendMessage(senderJid, { text: finalReply });
       }
-      return replyText;
+      return finalReply;
     };
 
     // 1. Reset / Restart Session
@@ -932,8 +1048,10 @@ Guidelines:
       session.accumulatedMatches = undefined;
       session.verifiedStudent = undefined;
       session.pendingIntent = undefined;
+      session.failedVerificationAttempts = 0;
+      session.targetStudentQuery = undefined;
       session.history = [];
-      const resetMsg = "🔄 Session reset ho chuki hai. Kahiye, main aapki kya madad kar sakta hoon? Aap kisi student ka Naam, Walid ka Naam, Class Section (maslan: MEPB), ya Roll Number likh sakte hain, ya *menu* type kar ke mukammal options dekh sakte hain.";
+      const resetMsg = "🔄 Session reset ho chuki hai. Main *Superior Nexus* hoon. Kahiye, main aapki kya madad kar sakti hoon? Aap kisi student ka Naam, Walid ka Naam, Class Section (maslan: MEPB), ya Roll Number likh sakte hain, ya koi bhi general sawal pooch sakte hain.";
       return await sendReply(resetMsg, "Session Reset");
     }
 
@@ -952,7 +1070,7 @@ Guidelines:
       return await sendReply(menuText, "Main Menu Displayed");
     }
 
-    // 3. Natural Human Greetings Detection (Emulates real, authentic human conversation)
+    // 3. Natural Human Greetings Detection (Emulates authentic, intelligent conversation)
     const isHiGreeting = 
       /^(hi+|hey+|hy|hlo)(\s+.*)?$/i.test(cleanQuery) || 
       cleanQuery === "hi" || 
@@ -992,13 +1110,13 @@ Guidelines:
     if (isHiGreeting || isHelloGreeting || isSalamGreeting || isHalAhwalGreeting || isGoodTimeGreeting) {
       let baseGreetingReply = "";
       if (isSalamGreeting) {
-        baseGreetingReply = "Walaikum Assalam Mohtaram Janab. 🏛️\n\nSuperior Group of Colleges Jahanian mein khush-amdeed. Main Principal Office ka Executive Assistant hoon. Kahiye, admissions, fee status, exam results ya attendance ke silsilay mein main aapki kya madad kar sakta hoon?";
+        baseGreetingReply = "Walaikum Assalam! Main *Superior Nexus* hoon, Superior Group of Colleges Jahanian ki official AI Virtual Assistant. 🌸 Kahiye, admissions, fees, exam results, attendance ya kisi bhi academic sawal ke silsilay mein main aapki kya madad kar sakti hoon?";
       } else if (isHiGreeting || isHelloGreeting) {
-        baseGreetingReply = "Greetings Mohtaram Janab. 🏛️\n\nWelcome to Superior Group of Colleges Jahanian Executive Helpdesk. How may I assist you today regarding admissions, student fees, exam results, or attendance records?";
+        baseGreetingReply = "Hello! Welcome to Superior Group of Colleges Jahanian. I am *Superior Nexus*, your official AI Assistant. 🌸 How may I assist you today regarding admissions, fee records, exam results, or academic queries?";
       } else if (isHalAhwalGreeting) {
-        baseGreetingReply = "Alhamdolillah, shukriya. 🏛️ Superior College Jahanian Helpdesk par khush-amdeed. Kahiye aaj academic ya administrative silsilay mein aapko kya maloomat darkaar hain?";
+        baseGreetingReply = "Alhamdolillah, main theek hoon, shukriya! 🌸 Main Superior Nexus hoon. Kahiye aaj academic ya administrative silsilay mein aapko kya maloomat darkaar hain?";
       } else {
-        baseGreetingReply = "Good day Mohtaram Janab. 🏛️\n\nSuperior Group of Colleges Jahanian Information Desk par khush-amdeed. Kahiye aaj main aapki kya madad kar sakta hoon?";
+        baseGreetingReply = "Good day! Superior Group of Colleges Jahanian mein khush-amdeed. Main *Superior Nexus* hoon. 🌸 Kahiye aaj main aapki kya madad kar sakti hoon?";
       }
 
       const reply = await this.generateAiConversationalReply(text, session.history || [], baseGreetingReply);
@@ -1010,12 +1128,13 @@ Guidelines:
       cleanQuery.includes("who are you") || 
       cleanQuery.includes("kon ho") || 
       cleanQuery.includes("kaun ho") || 
+      cleanQuery.includes("naam kya") ||
       cleanQuery.includes("kis ka number") || 
       cleanQuery.includes("kia krte ho") || 
       cleanQuery.includes("kya karte ho");
 
     if (isIntroQuery) {
-      const baseIntro = "Ji, main Superior Group of Colleges Jahanian (Principal Office) ka official Virtual Assistant hoon. Main aapko admissions, fee balance, imtehani nataij (results), aur rozana ki haziri (attendance) ke baray mein verified maloomat faraham karta hoon. Kahiye aapko kis hawalay se rehnumai darkaar hai?";
+      const baseIntro = "Main *Superior Nexus* hoon, Superior Group of Colleges Jahanian ki official AI Virtual Assistant. 🌸 Main aapko admissions, fee balance, imtehani results, attendance aur kisi bhi general ya academic sawal ka fori aur verified jawab dene ke liye hazir hoon. Kahiye aapko kis hawalay se rehnumai darkaar hai?";
       const reply = await this.generateAiConversationalReply(text, session.history || [], baseIntro);
       return await sendReply(reply, "Intro Inquiry");
     }
@@ -1037,8 +1156,6 @@ Guidelines:
 `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
 📢 *Admissions Open — Session 2026-28*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Janab,
-
 Intermediate ke darj zail programs mein admissions jari hain:
 • *FSc:* Pre-Medical & Pre-Engineering
 • *ICS:* Computer Science (Physics / Stats)
@@ -1125,10 +1242,11 @@ _Directorate of Admissions, SGC Jahanian_`;
           session.verifiedStudent = narrowed[0];
           session.candidateStudent = undefined;
           session.candidateStudents = undefined;
+          session.failedVerificationAttempts = 0;
 
           const successGreeting = 
 `Shukriya! Aapki tasdeeq (Verification) kamyab ho chuki hai. ✅ (Student Name + Section/Father)
-Hum *${session.verifiedStudent.full_name}* (Farzand/Binte: ${session.verifiedStudent.father_name}, Sec: ${session.verifiedStudent.section || "A"}) ka official record share kar rahe hain:`;
+Hum *${session.verifiedStudent.full_name}* (Walid: ${session.verifiedStudent.father_name}, Sec: ${session.verifiedStudent.section || "A"}) ka official record share kar rahe hain:`;
 
           const detailsMsg = await this.buildStudentReply(supabase, session.verifiedStudent, session.pendingIntent || "general");
           const combined = `${successGreeting}\n\n${detailsMsg}`;
@@ -1140,6 +1258,18 @@ Hum *${session.verifiedStudent.full_name}* (Farzand/Binte: ${session.verifiedStu
 Baraye meherbani student ka Class Section (maslan: MEPB ya ICS) ya College mein register Mobile Number likh kar reply karein:`;
           return await sendReply(multiplePrompt, "Multiple Matches Narrowing Prompt");
         } else {
+          session.failedVerificationAttempts = (session.failedVerificationAttempts || 0) + 1;
+          if (session.failedVerificationAttempts >= 2) {
+            session.stage = "IDLE";
+            session.candidateStudent = undefined;
+            session.candidateStudents = undefined;
+            session.failedVerificationAttempts = 0;
+            const stopMsg = 
+`Maazrat! Faraham karda maloomat database record se match nahi ho saki. 🔒
+Student privacy aur security policy ke tehat yeh verification stop kar di gayi hai. Agar aapko mazeed maloomat darkaar hon to college helpline *0301-4455891* par rabta karein ya naye sawal ke liye *menu* likhein.`;
+            return await sendReply(stopMsg, "Verification Aborted (Multiple Failed)");
+          }
+
           const tryAgainPrompt = 
 `Aapka faraham karda record pichlay student name se match nahi ho saka. ⚠️
 Baraye meherbani student ke Walid ka Naam (Father Name) ya Class Section (maslan: MEPB ya ICS) dobara likh kar reply farmayein:`;
@@ -1183,6 +1313,7 @@ Baraye meherbani student ke Walid ka Naam (Father Name) ya Class Section (maslan
           session.candidateStudent = undefined;
           session.candidateStudents = undefined;
           session.accumulatedMatches = undefined;
+          session.failedVerificationAttempts = 0;
 
           const matchedLabels: string[] = [];
           if (acc.name) matchedLabels.push("Student Name");
@@ -1195,17 +1326,35 @@ Baraye meherbani student ke Walid ka Naam (Father Name) ya Class Section (maslan
 
           const successGreeting = 
 `Shukriya! Aapki tasdeeq (Verification) kamyab ho chuki hai. ✅${verificationReasonStr}
-Hum *${session.verifiedStudent.full_name}* (Farzand/Binte: ${session.verifiedStudent.father_name}, Sec: ${session.verifiedStudent.section || "A"}) ka official record share kar rahe hain:`;
+Hum *${session.verifiedStudent.full_name}* (Walid: ${session.verifiedStudent.father_name}, Sec: ${session.verifiedStudent.section || "A"}) ka official record share kar rahe hain:`;
 
           const detailsMsg = await this.buildStudentReply(supabase, session.verifiedStudent, session.pendingIntent || "general");
           const combined = `${successGreeting}\n\n${detailsMsg}`;
           return await sendReply(combined, `Verified Reply (${session.pendingIntent || "general"})`, session.verifiedStudent.full_name);
         } else {
-          // Verification needs more satisfaction / failed
+          // Verification did NOT match the candidate student!
+          session.failedVerificationAttempts = (session.failedVerificationAttempts || 0) + 1;
+
+          // Strict Security Check: If user enters mismatched data 2 times, stop conversation without leaking anything!
+          if (session.failedVerificationAttempts >= 2) {
+            session.stage = "IDLE";
+            session.candidateStudent = undefined;
+            session.candidateStudents = undefined;
+            session.accumulatedMatches = undefined;
+            session.failedVerificationAttempts = 0;
+            const stopMsg = 
+`Maazrat! Faraham karda maloomat student ke record se mutabiqat nahi rakhti. 🔒
+Security aur privacy policies ke tehat hum kisi ghair-tasdeeq shuda fard ka data share nahi kar sakte.
+
+Yeh verification session stop kar di gayi hai. Agar aapko koi maloomat darkaar hon to college office (*0301-4455891*) par rabta karein ya dobara shuru karne ke liye *reset* ya *menu* likhein.`;
+            return await sendReply(stopMsg, "Verification Aborted (Security Stop)");
+          }
+
+          // Single friendly prompt on 1st failure
           if (evalResult.nameMatched || acc.name) {
             const needFatherOrSecMsg = 
 `Shukriya! Student ka naam (*${candidate.full_name}*) hamare pas darj hai.
-Student privacy aur security policy ke tehat, mukammal tasdeeq ke liye baraye meherbani in mein se koi aik cheez darj farmayein:
+Student privacy policy ke tehat, mukammal tasdeeq ke liye baraye meherbani in mein se koi aik cheez darj farmayein:
 • Walid ka Naam (Father Name)
 • Class Section (maslan: MEPB ya ICS)
 • College mein register Mobile Number`;
@@ -1215,23 +1364,11 @@ Student privacy aur security policy ke tehat, mukammal tasdeeq ke liye baraye me
 `Shukriya! Walid ka naam mil gaya hai.
 Tasdeeq mukammal karne ke liye baraye meherbani *Student ka Mukammal Naam* ya *Class Section (maslan: MEPB)* likh kar reply farmayein:`;
             return await sendReply(needNameMsg, "Verification Partial - Need Student Name");
-          } else if (evalResult.sectionMatched || acc.section) {
-            const needNameOrFatherMsg = 
-`Shukriya! Class Section darj ho gaya hai.
-Mukammal tasdeeq ke liye baraye meherbani *Student ka Mukammal Naam* ya *Walid ka Naam* likh kar reply farmayein:`;
-            return await sendReply(needNameOrFatherMsg, "Verification Partial - Need Name/Father");
           } else {
             const failMsg = 
-`Mohtaram Walidain / Student,
-Aapka faraham karda record hamare database se match nahi ho saka. ⚠️
-
-Student ki privacy aur hifazat ke liye, baraye meherbani in mein se koi maloomat darj karein:
-• Student ka Mukammal Naam
-• Walid ka Naam (Father's Name)
-• Class Section (maslan: MEPB, ICS, FSc)
-• College mein register shuda Mobile Number
-• Roll Number ya Student ID (agar maloom ho)`;
-            return await sendReply(failMsg, "Verification Failed");
+`Faraham karda maloomat student (*${candidate.full_name}*) ke record se match nahi ho saki. ⚠️
+Student ki privacy aur security ke pesh-e-nazar, baraye meherbani sahi Walid ka Naam (Father's Name) ya Class Section (maslan: MEPB) likh kar reply karein:`;
+            return await sendReply(failMsg, "Verification Mismatch Prompt");
           }
         }
       }
@@ -1240,10 +1377,11 @@ Student ki privacy aur hifazat ke liye, baraye meherbani in mein se koi maloomat
     // 12. Candidate Lookup: Search by Roll, Phone in text, Sender Phone, or Student/Father Name
     const lookup = await this.findStudentCandidate(supabase, text, rawNumber, explicitRoll);
 
-    // 13. If Multiple Candidates Match a generic keyword (e.g. "Ali")
+    // 13. If Multiple Candidates Match a generic keyword
     if (lookup.multipleMatches && lookup.multipleMatches.length > 1) {
       session.stage = "AWAITING_VERIFICATION";
       session.candidateStudents = lookup.multipleMatches;
+      session.failedVerificationAttempts = 0;
       const multiMatchMsg = 
 `Record mein is naam ke 1 se zyada students darj hain. ⚠️
 Baraye meherbani student ke *Walid ka Naam (Father Name)* ya *Class Section (maslan: MEPB / ICS)* batayein taake sahi student ka record dhoondha ja sake:`;
@@ -1262,6 +1400,7 @@ Baraye meherbani student ke *Walid ka Naam (Father Name)* ya *Class Section (mas
         session.candidateStudent = undefined;
         session.candidateStudents = undefined;
         session.accumulatedMatches = undefined;
+        session.failedVerificationAttempts = 0;
 
         const verificationReasonStr = evalResult.matchedReasons.length > 0 
           ? ` (${evalResult.matchedReasons.join(" + ")})` 
@@ -1269,7 +1408,7 @@ Baraye meherbani student ke *Walid ka Naam (Father Name)* ya *Class Section (mas
 
         const successGreeting = 
 `Shukriya! Aapki tasdeeq (Verification) kamyab ho chuki hai. ✅${verificationReasonStr}
-Hum *${candidate.full_name}* (Farzand/Binte: ${candidate.father_name}, Sec: ${candidate.section || "A"}) ka official record share kar rahe hain:`;
+Hum *${candidate.full_name}* (Walid: ${candidate.father_name}, Sec: ${candidate.section || "A"}) ka official record share kar rahe hain:`;
 
         const detailsMsg = await this.buildStudentReply(supabase, candidate, session.pendingIntent || "general");
         const combined = `${successGreeting}\n\n${detailsMsg}`;
@@ -1279,6 +1418,7 @@ Hum *${candidate.full_name}* (Farzand/Binte: ${candidate.father_name}, Sec: ${ca
       // If not yet fully satisfied, enter AWAITING_VERIFICATION stage:
       session.candidateStudent = candidate;
       session.stage = "AWAITING_VERIFICATION";
+      session.failedVerificationAttempts = 0;
       session.accumulatedMatches = {
         name: evalResult.nameMatched,
         father: evalResult.fatherMatched,
@@ -1291,8 +1431,7 @@ Hum *${candidate.full_name}* (Farzand/Binte: ${candidate.father_name}, Sec: ${ca
       if (evalResult.isPhoneVerified) {
         // WhatsApp message originates from the registered contact number in database!
         const challengeMsg = 
-`Assalam-o-Alaikum! 🌸
-Superior Group of Colleges Jahanian mein khush-amdeed.
+`Superior Group of Colleges Jahanian mein khush-amdeed. 🌸
 
 Aapka number hamare college record mein register shuda hai.
 Student privacy aur security policy ke tehat, record dekhne ke liye tasdeeq zaroori hai.
@@ -1307,8 +1446,7 @@ Baraye meherbani in mein se koi aik cheez likh kar reply farmayein:
       } else {
         // Third-party SIM or unknown phone:
         const challengeMsg = 
-`Assalam-o-Alaikum! 🌸
-Superior Group of Colleges Jahanian Information Desk.
+`Superior Group of Colleges Jahanian Information Desk. 🏛️
 
 Student (*${candidate.full_name}*) ka record dhoondh liya gaya hai.
 Student privacy aur hifazat ke pesh-e-nazar, tasdeeq mukammal karne ke liye baraye meherbani in mein se koi cheez darj farmayein:
@@ -1320,29 +1458,27 @@ Student privacy aur hifazat ke pesh-e-nazar, tasdeeq mukammal karne ke liye bara
       }
     }
 
-    // 15. If user asked for student record (fee, marks, attendance, all) but no candidate matched yet:
-    if (isFeeQuery || isMarksQuery || isAttendanceQuery || isAllQuery) {
+    // 15. If user asked explicitly for student record (fee, marks, attendance) but no student candidate matched yet:
+    if (isFeeQuery || isMarksQuery || isAttendanceQuery || (isAllQuery && text.split(/\s+/).length <= 4)) {
       const intentName = isFeeQuery ? "Fee Status" : isMarksQuery ? "Exam Result" : isAttendanceQuery ? "Attendance" : "Record";
       const askForStudent = 
 `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
-🔒 *STUDENT VERIFICATION REQUIRED*
+🔒 *STUDENT RECORD INQUIRY*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Janab,
-
-Student ka *${intentName}* hasil karne ke liye, baraye meherbani darj zail mein se koi aik maloomat irsal farmayein:
+Student ka *${intentName}* maloom karne ke liye, baraye meherbani darj zail mein se koi maloomat likhein:
 
 • Student ka Mukammal Naam (Full Name)
 • Roll Number ya Student ID
 • Class Section (maslan: MEPB / ICS)
 • Registered Mobile Number
 
-_System tasdeeq ke foran baad official record faraham karega._`;
+_Verification ke foran baad official record faraham kar diya jayega._`;
       return await sendReply(askForStudent, "Ask Student Info For Query");
     }
 
-    // 15. Default Fallback: Conversational AI response or Warm Human Inquirer (NEVER dump cold menu)
+    // 16. Default Fallback: Intelligent AI conversational response (Superior Nexus acts like ChatGPT for any question!)
     const fallbackMessage = 
-      "Superior Group of Colleges Jahanian mein khush-amdeed! Main Principal Office ka Executive Assistant hoon. Admissions, student fees, exam results, attendance ya timings ke silsilay mein aap direct pooch sakte hain, ya *menu* likh kar tamam options dekh sakte hain.";
+      "Main *Superior Nexus* hoon, Superior Group of Colleges Jahanian ki AI Assistant. 🌸 Main admissions, fee records, results, timetables aur har qisam ke academic sawalat me aapki rehnumai ke liye hazir hoon. Kahiye, main aapki kya madad kar sakti hoon?";
     const conversationalReply = await this.generateAiConversationalReply(text, session.history || [], fallbackMessage);
     return await sendReply(conversationalReply, "Conversational AI Fallback");
   }
@@ -1354,9 +1490,9 @@ _System tasdeeq ke foran baad official record faraham karega._`;
       : "";
 
     return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
-🏢 *Executive Student & Parent Helpdesk*
+🏢 *Student & Parent Helpdesk*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-${verifiedHeader}Mohtaram Janab, matlooba service ke liye number likh kar reply karein:
+${verifiedHeader}Matlooba service ke liye number likh kar reply karein:
 
 1️⃣ *Fee Status & Outstanding Balance* 💰
 2️⃣ *Monthly Examination Marks & Results* 📊
@@ -1364,7 +1500,7 @@ ${verifiedHeader}Mohtaram Janab, matlooba service ke liye number likh kar reply 
 4️⃣ *Campus Information & Schedule* 📍
 5️⃣ *Principal Office & Contact Desk* 📞
 
-_Tip: Aap kisi bhi student ka Naam ya Roll Number direct likh kar bhi bhej sakte hain._`;
+_Tip: Aap kisi bhi student ka Naam ya Roll Number direct likh kar bhi bhej sakte hain, ya koi bhi general sawal pooch sakte hain._`;
   }
 
   // Helper: Campus Info (Option 4)

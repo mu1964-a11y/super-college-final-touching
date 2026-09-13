@@ -230,7 +230,7 @@ export default function BatchMarksEntry({
 `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
 📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Walid/Guardian (${student.fatherName || 'Sahib'}),
+Dear Parent/Guardian (${student.fatherName || 'Guardian'}),
 
 • *Student Name:* ${student.fullName}
 • *Roll Number:* ${studentRef}

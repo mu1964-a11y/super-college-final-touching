@@ -76,7 +76,7 @@ export default function StudentDossier360({
 `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
 📄 *OFFICIAL FEE REMINDER & ACCOUNT STATEMENT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Walid/Guardian (${student.fatherName || 'Sahib'}),
+Dear Parent/Guardian (${student.fatherName || 'Guardian'}),
 
 Aapke bache ka fee ledger baqaya darj zail hai:
 
@@ -99,7 +99,7 @@ _Accounts & Finance Department, SGC Jahanian_`;
 `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
 📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Walid/Guardian (${student.fatherName || 'Sahib'}),
+Dear Parent/Guardian (${student.fatherName || 'Guardian'}),
 
 • *Student Name:* ${student.fullName}
 • *Roll Number:* ${studentRef}
@@ -120,7 +120,7 @@ _Office of the Controller of Examinations, SGC Jahanian_`;
 `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
 📋 *STUDENT PROGRESS UPDATE*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Walid/Guardian (${student.fatherName || 'Sahib'}),
+Dear Parent/Guardian (${student.fatherName || 'Guardian'}),
 
 • *Student Name:* ${student.fullName}
 • *Roll Number:* ${studentRef}
@@ -583,7 +583,7 @@ _Office of the Principal, SGC Jahanian_`;
                       </div>
                     </div>
                     <p className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-900 p-2.5 rounded-xl font-mono leading-relaxed">
-                      "Mohtaram Walid! {student.fullName} ki baqaya fees Rs. {remainingBalance.toLocaleString()} jama karwayen..."
+                      "Dear Parent! {student.fullName} ki baqaya fees Rs. {remainingBalance.toLocaleString()} jama karwayen..."
                     </p>
                     <Button
                       onClick={() => handleQuickWhatsAppNotice('fee')}
@@ -605,7 +605,7 @@ _Office of the Principal, SGC Jahanian_`;
                       </div>
                     </div>
                     <p className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-900 p-2.5 rounded-xl font-mono leading-relaxed">
-                      "Mohtaram Walid! {student.fullName} ki latest test performance report..."
+                      "Dear Parent! {student.fullName} ki latest test performance report..."
                     </p>
                     <Button
                       onClick={() => handleQuickWhatsAppNotice('results')}
