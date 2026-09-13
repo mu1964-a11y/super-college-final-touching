@@ -1393,23 +1393,23 @@ function DailyCashClosingTab({
           : `CASH SHORTAGE (-Rs. ${Math.abs(closingDiscrepancy).toLocaleString()}) ⚠️`;
 
     const briefingMsg = 
-`🎓 *SUPERIOR GROUP OF COLLEGES JAHANIAN*
-📊 *Daily Financial Closing Briefing (Roznamcha)*
-📅 *Date:* ${closingDate}
+`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📊 *DAILY FINANCIAL CLOSING EXECUTIVE BRIEFING*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-🏦 *Opening Safe Balance (Carry Fwd):* Rs. ${openingSafeBalance.toLocaleString()}
-💰 *Today's Cash Inflow:* Rs. ${dailyInflowCash.toLocaleString()}
-💳 *Online / Bank Transfers:* Rs. ${dailyInflowBank.toLocaleString()}
-📉 *Daily Operational Expenses:* Rs. ${dailyOutflowOperational.toLocaleString()}
-🏛️ *Cash Deposited to Bank (Contra):* Rs. ${dailyBankDeposits.toLocaleString()}
+📅 *Closing Date:* ${closingDate}
+• *Opening Safe Balance:* Rs. ${openingSafeBalance.toLocaleString()}
+• *Daily Cash Inflow:* Rs. ${dailyInflowCash.toLocaleString()}
+• *Bank / Online Transfers:* Rs. ${dailyInflowBank.toLocaleString()}
+• *Operational Expenses:* Rs. ${dailyOutflowOperational.toLocaleString()}
+• *Bank Deposits (Contra):* Rs. ${dailyBankDeposits.toLocaleString()}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-💵 *Expected Net Cash In Safe:* Rs. ${expectedClosingCashInSafe.toLocaleString()}
-🪙 *Physical Cash Counted:* Rs. ${physicalCashTotal.toLocaleString()}
-⚖️ *Reconciliation Status:* ${varianceText}
+• *Net Expected Safe Cash:* Rs. ${expectedClosingCashInSafe.toLocaleString()}
+• *Physical Cash Counted:* Rs. ${physicalCashTotal.toLocaleString()}
+• *Reconciliation Audit:* ${varianceText}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-📝 *Daily Activity:* ${todayIncomes.length} Inflows Processed | ${todayExpenses.length} Outflows
-${closingRemarks ? `📌 *Closing Notes:* ${closingRemarks}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n` : ""}
-Accounts Department • Superior College Jahanian`;
+📊 *Activity Volume:* ${todayIncomes.length} Inflows | ${todayExpenses.length} Outflows processed
+${closingRemarks ? `📌 *Closing Notes:* ${closingRemarks}\n` : ""}📞 Accounts Directorate: 0301-4455891
+_Accounts & Finance Department, SGC Jahanian_`;
 
     try {
       setIsSendingDailyBriefing(true);

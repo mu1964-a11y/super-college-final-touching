@@ -442,35 +442,33 @@ export default function AdmissionsView({
       formattedPhone = '92' + formattedPhone;
     }
 
-    const collegeName = data?.settings?.collegeName || "Superior Group of Colleges";
-    const campusName = data?.settings?.campusName || "Jahanian Campus";
+    const collegeName = data?.settings?.collegeName || "Superior Group of Colleges Jahanian";
     const session = admission.session || data?.settings?.academicSession || "2026-28";
     const totalPkg = Number(admission.totalPackage || 0).toLocaleString();
     const paid = Number(admission.feeReceived || 0).toLocaleString();
     const balance = Math.max(0, Number(admission.totalPackage || 0) - Number(admission.feeReceived || 0)).toLocaleString();
 
     const message = 
-`*${collegeName.toUpperCase()} (${campusName.toUpperCase()})* 🎓
-*OFFICIAL ADMISSION CONFIRMATION NOTICE*
+`🏛️ *${collegeName.toUpperCase()}*
+🎓 *OFFICIAL ADMISSION CONFIRMATION NOTICE*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mohtaram Walid/Guardian (${admission.fatherName || 'Sahib'}),
 
-Dear Guardian,
-Admission for *${admission.fullName.toUpperCase()}* has been confirmed!
+Mubarak ho! *${admission.fullName.toUpperCase()}* ka dakhla Superior College Jahanian mein kamyabi se confirm ho gaya hai.
 
-📋 *Enrollment Details:*
-• *Roll Number:* ${admission.collegeNo || admission.studentId || 'To be allotted on orientation'}
+• *Roll Number:* ${admission.collegeNo || admission.studentId || 'Allotted on Orientation'}
 • *Class / Group:* ${admission.group || admission.category || 'Intermediate'}
 • *Section:* Section ${admission.section || 'A'}
-• *Session:* ${session}
-${admission.concessionReason ? `• *Scholarship Category:* ${admission.concessionReason}\n` : ''}
-💰 *Fee Structure:*
-• *Total Package:* Rs. ${totalPkg}
-• *Fee Paid:* Rs. ${paid}
+• *Academic Session:* ${session}
+${admission.concessionReason ? `• *Scholarship Category:* ${admission.concessionReason}\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━
+💰 *Fee Ledger Details:*
+• *Agreed Package:* Rs. ${totalPkg}
+• *Fee Deposited:* Rs. ${paid}
 • *Remaining Balance:* Rs. ${balance}
-
-📍 *Campus Address:* ${data?.settings?.address || 'Superior College, Multan Road, Jahanian'}
-📞 *Helpline / Query:* ${data?.settings?.contactNumber || 'Campus Office'}
-
-_Welcome to the Superior Family!_`;
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📍 *Campus Address:* ${data?.settings?.address || 'Superior College, Khanewal Road, Jahanian'}
+📞 *Helpline:* ${data?.settings?.contactNumber || '0301-4455891'}
+_Office of the Principal, SGC Jahanian_`;
 
     const encoded = encodeURIComponent(message);
     window.open(`https://wa.me/${formattedPhone}?text=${encoded}`, '_blank');

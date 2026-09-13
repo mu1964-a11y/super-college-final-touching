@@ -123,22 +123,22 @@ export default function FeeManagementView({
 
     const cleanPhone = rawPhone.replace(/\D/g, "");
     const msg = 
-`🎓 *SUPERIOR GROUP OF COLLEGES JAHANIAN*
-📢 *Official Fee Reminder Notice*
+`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📄 *OFFICIAL FEE REMINDER NOTICE*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Mohtaram Walid/Guardian (${student.fatherName || 'Sahib'}),
 
-Aapke farzand/dukhtar *${student.fullName}* (Roll No: ${student.id || student.collegeNo || 'N/A'}, Class: ${student.group || student.category || 'Intermediate'}) ki fee baqaya hai:
-
-💵 *Total Fee Package:* Rs. ${Number(student.totalPackage || 0).toLocaleString()}
-✅ *Fee Deposited:* Rs. ${Number(student.feeReceived || 0).toLocaleString()}
-⚠️ *Outstanding Balance (Wajib-ul-Ada):* Rs. ${Number(balance).toLocaleString()}
-
-Baraye meherbani aakhri tareekh se qabal accounts office mein fee jama karwa kar official computerised receipt hasil karein.
-
-📍 Khanewal Road, Jahanian
-📞 Accounts Helpline: 0301-4455891
-━━━━━━━━━━━━━━━━━━━━━━━━━`;
+• *Student Name:* ${student.fullName}
+• *Roll Number:* ${student.id || student.collegeNo || 'N/A'}
+• *Class / Group:* ${student.group || student.category || 'Intermediate'}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Agreed Package:* Rs. ${Number(student.totalPackage || 0).toLocaleString()}
+• *Fee Deposited:* Rs. ${Number(student.feeReceived || 0).toLocaleString()}
+• *Outstanding Balance:* *Rs. ${Number(balance).toLocaleString()}*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ *Instruction:* Baraye meherbani aakhri tareekh se qabal accounts desk par baqaya fee jama karwa kar computerised receipt hasil karein.
+📞 Accounts Desk: 0301-4455891
+_Accounts & Finance Department, SGC Jahanian_`;
 
     try {
       setSendingNoticeId(student.id);
@@ -2102,7 +2102,21 @@ Baraye meherbani aakhri tareekh se qabal accounts office mein fee jama karwa kar
                       </Button>
                       <Button
                         onClick={() => {
-                          const msg = `SCJ Receipt: Received Rs. ${h.amount} from ${selectedStudent.fullName} on ${new Date(h.date).toLocaleDateString()}. Balance: Rs. ${selectedStudent.feeLedger?.remainingBalance || selectedStudent.totalPackage - (selectedStudent.feeReceived || 0)}`;
+                          const remainingBal = selectedStudent.feeLedger?.remainingBalance ?? ((selectedStudent.totalPackage || 0) - (selectedStudent.feeReceived || 0));
+                          const msg = 
+`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+🧾 *OFFICIAL FEE PAYMENT RECEIPT*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Student Name:* ${selectedStudent.fullName}
+• *Roll Number:* ${selectedStudent.id || selectedStudent.collegeNo || 'N/A'}
+• *Amount Received:* *Rs. ${Number(h.amount).toLocaleString()}*
+• *Payment Date:* ${new Date(h.date).toLocaleDateString('en-GB')}
+• *Payment Head:* ${h.description || 'College Fee Deposit'}
+• *Remaining Balance:* Rs. ${Number(remainingBal).toLocaleString()}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Payment verified and recorded in college accounts ledger.
+📞 Accounts Desk: 0301-4455891
+_Accounts & Finance Department, SGC Jahanian_`;
                           window.open(
                             `https://wa.me/?text=${encodeURIComponent(msg)}`,
                           );

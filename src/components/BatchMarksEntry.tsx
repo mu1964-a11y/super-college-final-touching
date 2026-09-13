@@ -223,26 +223,25 @@ export default function BatchMarksEntry({
       const status = (student.pct ?? 0) >= 50 ? 'PASSED (Kamyab) ✅' : 'NEEDS ATTENTION (Mehnat Darkar) ⚠️';
 
       const message = 
-`🎓 *SUPERIOR GROUP OF COLLEGES JAHANIAN*
-📊 *Official Examination Result Notification*
+`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📊 *OFFICIAL EXAMINATION RESULT NOTIFICATION*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Mohtaram Walid/Guardian (${student.fatherName || 'Sahib'}),
 
-Aapke bache ka imtehani result darj zail hai:
-
-👤 *Student Name:* ${student.fullName}
-🆔 *Roll Number:* ${student.id || student.rollNo || 'N/A'}
-🏫 *Class & Section:* ${student.group} (Sec: ${student.section || 'A'})
-📖 *Subject:* ${activeSubject}
-📝 *Exam / Test:* ${testType} (${testDate})
+• *Student Name:* ${student.fullName}
+• *Roll Number:* ${student.id || student.rollNo || 'N/A'}
+• *Class & Section:* ${student.group} (Sec: ${student.section || 'A'})
+• *Subject:* ${activeSubject}
+• *Exam / Test:* ${testType} (${testDate})
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-📈 *Obtained Marks:* ${student.obtained} / ${totalMarks} (${pctStr})
-🏆 *Grade:* ${student.grade || 'N/A'}
-🎖️ *Class Rank:* ${rankBadge}
-✅ *Status:* ${status}
+• *Obtained Marks:* ${student.obtained} / ${totalMarks} (${pctStr})
+• *Grade:* ${student.grade || 'N/A'}
+• *Class Position:* ${rankBadge}
+• *Result Status:* ${status}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-College Helpdesk: 0301-4455891
-Superior Group of Colleges Jahanian`;
+🎯 *Instruction:* Board imtehanat ki behtareen tayari ke liye regular revision par tawajjah dein.
+📞 Academic Helpdesk: 0301-4455891
+_Office of the Controller of Examinations, SGC Jahanian_`;
 
       try {
         await fetch('/api/whatsapp/send', {

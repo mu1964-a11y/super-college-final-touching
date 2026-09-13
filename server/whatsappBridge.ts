@@ -462,24 +462,23 @@ class WhatsAppBridgeService {
     if (!ai) return fallbackResponse;
 
     try {
-      const systemInstruction = `You are a warm, courteous, and authentic human representative / academic counselor at Superior Group of Colleges Jahanian (SGC-J).
-Target Audience: Pakistani students, parents, and applicants chatting on WhatsApp.
-Language: Friendly, fluent, conversational Roman Urdu (or English if the user messages in English).
-Persona: Authentic, polite college front desk staff. You are NOT an automated IVR bot or computer script. Never sound robotic. Never dump numbered lists or menus unless explicitly asked.
+      const systemInstruction = `You are an elite, highly professional Executive Academic Assistant at Superior Group of Colleges Jahanian (SGC-J).
+Target Audience: Pakistani parents, students, and prospective applicants chatting on WhatsApp.
+Tone & Persona: Dignified, courteous, refined, concise (maximum 2-3 sentences), and strictly to the point. Always address the user respectfully as 'Mohtaram Janab' or 'Sir/Madam'. You are an executive representative of the Principal Office.
+Language: High-quality, polite Roman Urdu (or formal English if the user messages in English).
 
 College Information:
-- College: Superior Group of Colleges Jahanian (SGC-J).
-- Campuses: Separate Boys and Girls campuses on Khanewal/Multan Road, Jahanian.
-- Programs: Intermediate admissions (FSc Pre-Medical, FSc Pre-Engineering, ICS Computer Science, I.Com, FA IT). Session: 2026-28.
-- Timings: Monday to Saturday, 8:00 AM to 1:30 PM (Office open till 2:00 PM). Sunday is closed.
-- Official Helpline / WhatsApp: 0301-4455891.
-- Facilities: Modern science laboratories, high-tech air-conditioned computer labs, transport pick and drop, experienced faculty, merit & need scholarships.
-- Student Data Privacy: Sensitive student records (fees, exams, marks, attendance) cannot be shared freely. If a user asks for fees, marks, or attendance, warmly ask them for the student's full name or roll number so we can look it up securely in the records.
+- Institution: Superior Group of Colleges Jahanian (SGC-J).
+- Programs: Intermediate Admissions 2026-28 (FSc Pre-Medical, FSc Pre-Engineering, ICS, I.Com, FA IT).
+- Timings: Monday to Saturday: 08:00 AM to 01:30 PM (Office open till 02:00 PM). Sunday: Closed.
+- Official Helpline: 0301-4455891.
+- Campuses: Purpose-built separate Boys & Girls campuses on Khanewal Road, Jahanian.
+- Student Privacy: If a user asks for sensitive records (fees, marks, attendance), concisely ask them for the student's Full Name or Roll Number so we can verify and retrieve the official record.
 
-Rules:
-1. If the user greets (Hi, Hello, Salam, etc.): Greet them back with the SAME greeting and ask warmly why they reached out and what information they are looking for (e.g. admissions, fees, result, timings, etc.).
-2. Answer direct queries politely, warmly, and concisely (2 to 4 sentences).
-3. Do not output excessive formatting, asterisks, or robotic menus. Keep it looking like a real, helpful WhatsApp message from a friendly college official.`;
+Guidelines:
+1. Always keep responses brief, crisp, and to the point (no long rambling paragraphs).
+2. Answer queries with immediate clarity, precision, and respectful warmth.
+3. Never use slang, casual filler words, or excessive emojis.`;
 
       const contents: any[] = [];
       for (const h of history.slice(-4)) {
@@ -993,15 +992,13 @@ Rules:
     if (isHiGreeting || isHelloGreeting || isSalamGreeting || isHalAhwalGreeting || isGoodTimeGreeting) {
       let baseGreetingReply = "";
       if (isSalamGreeting) {
-        baseGreetingReply = "Walaikum Assalam! 🌸 Superior College Jahanian mein khush-amdeed. Kheriyat se hain aap? Kahiye kis hawalay se rabta farmaya aap ne, main aapko kya maloomat faraham kar sakta hoon? (Admissions, fees, exam result, attendance ya timings ke baray mein janna chahte hain?)";
-      } else if (isHiGreeting) {
-        baseGreetingReply = "Hi! 👋 Superior Group of Colleges Jahanian se rabta karne ka shukriya. Kahiye, main aapki kya madad kar sakta hoon? Kis hawalay se rabta farmaya aap ne — admissions, fee details, results, attendance ya kisi student ke record ke baray mein janna chahte hain?";
-      } else if (isHelloGreeting) {
-        baseGreetingReply = "Hello! Superior Group of Colleges Jahanian Information Desk par khush-amdeed. Kahiye main aapki kya madad kar sakta hoon? Kis cheez ke baray mein janna chahte hain aap?";
+        baseGreetingReply = "Walaikum Assalam Mohtaram Janab. 🏛️\n\nSuperior Group of Colleges Jahanian mein khush-amdeed. Main Principal Office ka Executive Assistant hoon. Kahiye, admissions, fee status, exam results ya attendance ke silsilay mein main aapki kya madad kar sakta hoon?";
+      } else if (isHiGreeting || isHelloGreeting) {
+        baseGreetingReply = "Greetings Mohtaram Janab. 🏛️\n\nWelcome to Superior Group of Colleges Jahanian Executive Helpdesk. How may I assist you today regarding admissions, student fees, exam results, or attendance records?";
       } else if (isHalAhwalGreeting) {
-        baseGreetingReply = "Alhamdolillah main bilkul theek hoon! Aap sunayein kheriyat se hain? Superior College ke hawalay se main aapki kis tarah rehnumai kar sakta hoon? Kahiye kya janna chahte hain?";
+        baseGreetingReply = "Alhamdolillah, shukriya. 🏛️ Superior College Jahanian Helpdesk par khush-amdeed. Kahiye aaj academic ya administrative silsilay mein aapko kya maloomat darkaar hain?";
       } else {
-        baseGreetingReply = "Good day! ☀️ Superior Group of Colleges Jahanian Information Desk par khush-amdeed. Kahiye aaj main aapki kya madad kar sakta hoon? Kis silsilay mein maloomat darkaar hain?";
+        baseGreetingReply = "Good day Mohtaram Janab. 🏛️\n\nSuperior Group of Colleges Jahanian Information Desk par khush-amdeed. Kahiye aaj main aapki kya madad kar sakta hoon?";
       }
 
       const reply = await this.generateAiConversationalReply(text, session.history || [], baseGreetingReply);
@@ -1018,7 +1015,7 @@ Rules:
       cleanQuery.includes("kya karte ho");
 
     if (isIntroQuery) {
-      const baseIntro = "Ji main Superior Group of Colleges Jahanian ka representative hoon. Ye hamara official WhatsApp helpdesk hai jahan se aap college admissions, intermediate programs, student fees, exam results, attendance aur timings ke hawalay se maloomat le sakte hain. Kahiye aapko kis hawalay se rehnumai chahiye?";
+      const baseIntro = "Ji, main Superior Group of Colleges Jahanian (Principal Office) ka official Virtual Assistant hoon. Main aapko admissions, fee balance, imtehani nataij (results), aur rozana ki haziri (attendance) ke baray mein verified maloomat faraham karta hoon. Kahiye aapko kis hawalay se rehnumai darkaar hai?";
       const reply = await this.generateAiConversationalReply(text, session.history || [], baseIntro);
       return await sendReply(reply, "Intro Inquiry");
     }
@@ -1036,7 +1033,26 @@ Rules:
       cleanQuery.includes("scholarship");
 
     if (isAdmissionQuery) {
-      const baseAdmission = "Superior Group of Colleges Jahanian mein Session 2026-28 ke liye Intermediate (FSc Pre-Medical, FSc Pre-Engineering, ICS, I.Com, FA IT) ke admissions open hain! ✨\n\nCollege mein high-tech modern labs, separate boys aur girls campuses, qualified faculty aur special merit & need-based scholarships dastiyab hain.\n\nAdmission form aur fee concession ki maloomat ke liye aap campus office tashreef layen ya helpline 0301-4455891 par rabta karein.";
+      const baseAdmission = 
+`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📢 *Admissions Open — Session 2026-28*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mohtaram Janab,
+
+Intermediate ke darj zail programs mein admissions jari hain:
+• *FSc:* Pre-Medical & Pre-Engineering
+• *ICS:* Computer Science (Physics / Stats)
+• *Commerce & Arts:* I.Com & FA IT
+
+✨ *Key Highlights:*
+• Separate Purpose-built Boys & Girls Campuses
+• State-of-the-art Science & IT Computer Labs
+• Special Merit & Need-based Scholarships (Up to 100%)
+• Safe College Transport Pick & Drop
+
+📍 *Campus Address:* Khanewal Road, Jahanian
+📞 *Admissions Helpline:* 0301-4455891
+_Directorate of Admissions, SGC Jahanian_`;
       const reply = await this.generateAiConversationalReply(text, session.history || [], baseAdmission);
       return await sendReply(reply, "Admission Inquiry");
     }
@@ -1306,23 +1322,27 @@ Student privacy aur hifazat ke pesh-e-nazar, tasdeeq mukammal karne ke liye bara
 
     // 15. If user asked for student record (fee, marks, attendance, all) but no candidate matched yet:
     if (isFeeQuery || isMarksQuery || isAttendanceQuery || isAllQuery) {
-      const intentName = isFeeQuery ? "Fees & Dues" : isMarksQuery ? "Exam Marks" : isAttendanceQuery ? "Attendance" : "Record";
+      const intentName = isFeeQuery ? "Fee Status" : isMarksQuery ? "Exam Result" : isAttendanceQuery ? "Attendance" : "Record";
       const askForStudent = 
-`Ji zaroor! Student ki *${intentName}* maloom karne ke liye, baraye meherbani in mein se koi bhi maloomat likh kar bhejiye:
+`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+🔒 *STUDENT VERIFICATION REQUIRED*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mohtaram Janab,
 
-• Student ka Mukammal Naam (maslan: Hamza Tariq)
-• Walid ka Naam (maslan: Tariq Mehmood)
-• Class Section (maslan: MEPB ya ICS)
-• College mein register Mobile Number
-• Roll Number ya Student ID (agar yaad ho)
+Student ka *${intentName}* hasil karne ke liye, baraye meherbani darj zail mein se koi aik maloomat irsal farmayein:
 
-System foran record dhoondh kar aapki rehnumai karega.`;
+• Student ka Mukammal Naam (Full Name)
+• Roll Number ya Student ID
+• Class Section (maslan: MEPB / ICS)
+• Registered Mobile Number
+
+_System tasdeeq ke foran baad official record faraham karega._`;
       return await sendReply(askForStudent, "Ask Student Info For Query");
     }
 
     // 15. Default Fallback: Conversational AI response or Warm Human Inquirer (NEVER dump cold menu)
     const fallbackMessage = 
-      "Superior Group of Colleges Jahanian mein khush-amdeed! Kahiye main aapki kya madad kar sakta hoon? Aap mujh se admissions, student fees, exam results, attendance ya college timings ke baray mein pooch sakte hain. Ya agar aap poora menu dekhna chahein to *menu* likh kar bhej sakte hain.";
+      "Superior Group of Colleges Jahanian mein khush-amdeed! Main Principal Office ka Executive Assistant hoon. Admissions, student fees, exam results, attendance ya timings ke silsilay mein aap direct pooch sakte hain, ya *menu* likh kar tamam options dekh sakte hain.";
     const conversationalReply = await this.generateAiConversationalReply(text, session.history || [], fallbackMessage);
     return await sendReply(conversationalReply, "Conversational AI Fallback");
   }
@@ -1330,55 +1350,54 @@ System foran record dhoondh kar aapki rehnumai karega.`;
   // Helper: Interactive Main Menu
   public getMainMenuText(verifiedStudentName?: string): string {
     const verifiedHeader = verifiedStudentName
-      ? `👤 *Tasdeeq Shuda Student:* ${verifiedStudentName}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n`
+      ? `👤 *Verified Student:* ${verifiedStudentName}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n`
       : "";
 
-    return `Assalam-o-Alaikum! 🌸
-*SUPERIOR GROUP OF COLLEGES JAHANIAN*
-Automated Parent & Student Service Desk
+    return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+🏢 *Executive Student & Parent Helpdesk*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-${verifiedHeader}Baraye meherbani number chun kar reply karein:
+${verifiedHeader}Mohtaram Janab, matlooba service ke liye number likh kar reply karein:
 
-1️⃣ *Fee Status & Outstanding Dues* 💰
-2️⃣ *Monthly Exam Marks & Results* 📊
-3️⃣ *Today's Attendance Status* 📅
-4️⃣ *Campus Address, Timings & Info* 📍
-5️⃣ *Principal Office & Helpline Rabta* 📞
+1️⃣ *Fee Status & Outstanding Balance* 💰
+2️⃣ *Monthly Examination Marks & Results* 📊
+3️⃣ *Daily Attendance & Punctuality* 📅
+4️⃣ *Campus Information & Schedule* 📍
+5️⃣ *Principal Office & Contact Desk* 📞
 
-_Tip: Aap kisi student ka Mukammal Naam, Walid ka Naam, Class Section (maslan: MEPB), Mobile Number ya Roll Number bhi direct likh kar bhej sakte hain._`;
+_Tip: Aap kisi bhi student ka Naam ya Roll Number direct likh kar bhi bhej sakte hain._`;
   }
 
   // Helper: Campus Info (Option 4)
   public getCampusInfoText(): string {
-    return `🎓 *SUPERIOR GROUP OF COLLEGES JAHANIAN*
-📍 *Campus Address & Information*
+    return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📍 *Campus Information & Schedule*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-🏫 *Location:* Khanewal Road, Jahanian
-🕒 *Office Timings:* 08:00 AM ta 02:00 PM (Monday ta Saturday)
-📞 *Helpdesk / Principal Office:* +92 301 4455891
-🌐 *Campuses:* Separate modern Boys & Girls campuses with high-tech science & IT computer laboratories.
+• *Location:* Khanewal Road, Jahanian
+• *Office Timings:* 08:00 AM – 02:00 PM (Monday – Saturday)
+• *Academic Setup:* Separate Purpose-Built Boys & Girls Campuses
+• *Helpline:* 0301-4455891
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-🔢 *Main Menu:* Type *0* ya *menu* likh kar wapis jayein.`;
+🔢 Main Menu ke liye *0* likh kar reply karein.`;
   }
 
   // Helper: Helpline & Admin Support (Option 5)
   public getHelplineText(): string {
-    return `🎓 *SUPERIOR GROUP OF COLLEGES JAHANIAN*
-📞 *Helpline & Administration Contacts*
+    return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📞 *Administration & Executive Contacts*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 *Principal Desk / General Inquiries:* +92 301 4455891
-💳 *Accounts & Fee Department:* +92 301 4455891
-🕒 *Visiting Hours:* 08:00 AM se 02:00 PM (Monday ta Saturday)
+• *Principal Office / Inquiries:* 0301-4455891
+• *Accounts & Fee Section:* 0301-4455891
+• *Visiting Hours:* 08:00 AM – 02:00 PM (Mon – Sat)
+• *Address:* Khanewal Road, Jahanian
 
-Admissions, fee concessions, ya student guidance ke liye baraye meherbani upar diye gaye number par rabta karein ya campus office tashreef layen.
-
+Admissions, fee concessions ya academic guidance ke liye campus office tashreef layen.
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-🔢 *Main Menu:* Type *0* ya *menu* likh kar wapis jayein.`;
+🔢 Main Menu ke liye *0* likh kar reply karein.`;
   }
 
   private getMenuFooter(): string {
-    return `\n━━━━━━━━━━━━━━━━━━━━━━━━━\n🔢 *Mazeed Tafseelat ke liye:*\n• Type *1* ➔ Fee Status 💰\n• Type *2* ➔ Exam Marks 📊\n• Type *3* ➔ Attendance 📅\n• Type *0* ➔ Main Menu 📋`;
+    return `\n━━━━━━━━━━━━━━━━━━━━━━━━━\n🔢 *Direct Quick Actions:*\n• Type *1* ➔ Fee Status 💰\n• Type *2* ➔ Exam Marks 📊\n• Type *3* ➔ Attendance 📅\n• Type *0* ➔ Main Menu 📋`;
   }
 
   // Helper to compile verified student data into a warm, polite human-like message
@@ -1388,22 +1407,22 @@ Admissions, fee concessions, ya student guidance ke liye baraye meherbani upar d
     const dues = Math.max(0, totalPkg - received);
 
     if (intent === "fee") {
-      return `🎓 *SUPERIOR GROUP OF COLLEGES JAHANIAN*
-💰 *Student Fee Status Summary*
+      return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+💰 *OFFICIAL FEE LEDGER SUMMARY*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 *Student:* ${student.full_name}
-👨‍💼 *Father Name:* ${student.father_name}
-🆔 *Roll Number:* ${student.college_no || student.id}
-🏫 *Class:* ${student.group || "Intermediate"} (Sec: ${student.section || "A"})
-📅 *Session:* ${student.session || "2026-28"}
+• *Student Name:* ${student.full_name}
+• *Father Name:* ${student.father_name}
+• *Roll Number:* ${student.college_no || student.id}
+• *Class / Group:* ${student.group || "Intermediate"} (Sec: ${student.section || "A"})
+• *Session:* ${student.session || "2026-28"}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-💵 *Total Agreed Fee Package:* Rs. ${totalPkg.toLocaleString()}
-✅ *Total Paid / Received:* Rs. ${received.toLocaleString()}
-${dues > 0 
-  ? `⚠️ *Outstanding Balance (Baqaya):* Rs. ${dues.toLocaleString()}\n📌 *Status:* Pending Dues` 
-  : `🎉 *Status:* Alhamdolillah, Tamam Dues Mukammal Tor Par Clear Hain!`}
+• *Total Agreed Package:* Rs. ${totalPkg.toLocaleString()}
+• *Total Fee Deposited:* Rs. ${received.toLocaleString()}
+• *Outstanding Balance:* *Rs. ${dues.toLocaleString()}*
+• *Account Status:* ${dues > 0 ? "⚠️ PENDING DUES" : "✅ ALL CLEARED"}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Agar aapne haal hi mein fee jama karwai hai to receipt tasdeeq ke liye Accounts Office se rabta karein: *0301-4455891*.${this.getMenuFooter()}`;
+${dues > 0 ? "⚠️ *Note:* Baraye meherbani aakhri tareekh se qabal accounts desk par baqaya fee jama karwa kar computerised receipt hasil karein.\n" : "🎉 Alhamdolillah, tamam dues mukammal tor par clear hain.\n"}📞 Accounts Desk: 0301-4455891
+_Accounts & Finance Department, SGC Jahanian_${this.getMenuFooter()}`;
     }
 
     if (intent === "marks") {
@@ -1417,24 +1436,25 @@ Agar aapne haal hi mein fee jama karwai hai to receipt tasdeeq ke liye Accounts 
       let marksText = "";
       if (records && records.length > 0) {
         marksText = records.map((r: any) => 
-          `• *${r.test_name || "Exam"}* (${r.subject}): ${r.obtained_marks || 0}/${r.total_marks || 100} (${Math.round(((r.obtained_marks || 0) / (r.total_marks || 100)) * 100)}%)`
+          `• *${r.subject}* (${r.test_name || "Assessment"}): ${r.obtained_marks || 0} / ${r.total_marks || 100} (${Math.round(((r.obtained_marks || 0) / (r.total_marks || 100)) * 100)}%)`
         ).join("\n");
       } else {
-        marksText = "Koi naya test record abhi tak portal par upload nahi hua.";
+        marksText = "• Koi naya test record abhi tak portal par upload nahi hua.";
       }
 
-      return `🎓 *SUPERIOR GROUP OF COLLEGES JAHANIAN*
-📊 *Academic Examination Performance*
+      return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 *Student:* ${student.full_name}
-👨‍💼 *Father Name:* ${student.father_name}
-🆔 *Roll Number:* ${student.college_no || student.id}
-🏫 *Class:* ${student.group || "Intermediate"} (Sec: ${student.section || "A"})
+• *Student:* ${student.full_name} (${student.college_no || student.id})
+• *Class:* ${student.group || "Intermediate"} (Sec: ${student.section || "A"})
+• *Father:* ${student.father_name}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-📝 *Recent Tests & Assessments:*
+📝 *Recent Examination Results:*
 ${marksText}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 _Bache ki behtareen tayari ke liye rozana ghar par revision aur homework zaroori hai._${this.getMenuFooter()}`;
+🎯 *Instruction:* Behtareen board results ke liye regular homework aur class revision par tawajjah dein.
+📞 Academic Helpdesk: 0301-4455891
+_Office of the Controller of Examinations, SGC Jahanian_${this.getMenuFooter()}`;
     }
 
     if (intent === "attendance") {
@@ -1448,21 +1468,20 @@ ${marksText}
 
       const todayStatus = todayAtt?.status ? todayAtt.status.toUpperCase() : "Marked in Progress";
 
-      return `🎓 *SUPERIOR GROUP OF COLLEGES JAHANIAN*
-📅 *Student Attendance & Punctuality*
+      return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📅 *ATTENDANCE & PUNCTUALITY NOTIFICATION*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 *Student:* ${student.full_name}
-👨‍💼 *Father Name:* ${student.father_name}
-🆔 *Roll Number:* ${student.college_no || student.id}
-🏫 *Class:* ${student.group || "Intermediate"} (Sec: ${student.section || "A"})
+• *Student:* ${student.full_name} (${student.college_no || student.id})
+• *Class:* ${student.group || "Intermediate"} (Sec: ${student.section || "A"})
+• *Father:* ${student.father_name}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-📌 *Today's Status (${todayStr}):* ${todayStatus === "PRESENT" ? "✅ PRESENT (Hazir)" : todayStatus === "ABSENT" ? "🚨 ABSENT (Ghair Hazir)" : "🕒 " + todayStatus}
-
-📊 *Total Attendance Summary:*
-• Present Days: ${student.attendance_present || 0}
-• Absent Days: ${student.attendance_absent || 0}
+• *Today's Status (${todayStr}):* ${todayStatus === "PRESENT" ? "✅ PRESENT (Hazir)" : todayStatus === "ABSENT" ? "🚨 ABSENT (Ghair Hazir)" : "🕒 " + todayStatus}
+• *Total Present Days:* ${student.attendance_present || 0}
+• *Total Absent Days:* ${student.attendance_absent || 0}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ _Board ke kanoon ke mutabiq 80% haziri imtehanat mein baithne ke liye lazmi hai._${this.getMenuFooter()}`;
+⚠️ _Board requirements ke mutabiq 80% haziri imtehanat mein shamil hone ke liye lazmi hai._
+📞 Attendance Desk: 0301-4455891
+_Office of the Vice Principal (Discipline), SGC Jahanian_${this.getMenuFooter()}`;
     }
 
     // Default: Complete 360 Progress Summary
@@ -1473,24 +1492,23 @@ ${marksText}
       .order("date", { ascending: false })
       .limit(3);
 
-    let marksBrief = "Koi test record darj nahi hai.";
+    let marksBrief = "• Koi test record darj nahi hai.";
     if (records && records.length > 0) {
       marksBrief = records.map((r: any) => `• ${r.subject} (${r.test_name}): ${r.obtained_marks}/${r.total_marks}`).join("\n");
     }
 
-    return `🎓 *SUPERIOR GROUP OF COLLEGES JAHANIAN*
-📋 *Student 360° Comprehensive Progress Summary*
+    return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📋 *STUDENT 360° EXECUTIVE PROGRESS SUMMARY*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 *Student:* ${student.full_name}
-👨‍💼 *Father Name:* ${student.father_name}
-🆔 *Roll Number:* ${student.college_no || student.id}
-🏫 *Class:* ${student.group || "Intermediate"} (Sec: ${student.section || "A"})
-📅 *Session:* ${student.session || "2026-28"}
+• *Student Name:* ${student.full_name} (${student.college_no || student.id})
+• *Class / Group:* ${student.group || "Intermediate"} (Sec: ${student.section || "A"})
+• *Father Name:* ${student.father_name}
+• *Session:* ${student.session || "2026-28"}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-💰 *FEE STATUS:*
-• Total Package: Rs. ${totalPkg.toLocaleString()}
+💰 *FEE LEDGER:*
+• Agreed Package: Rs. ${totalPkg.toLocaleString()}
 • Paid Amount: Rs. ${received.toLocaleString()}
-• Outstanding Dues: Rs. ${dues.toLocaleString()} (${dues === 0 ? "CLEAR ✅" : "PENDING ⚠️"})
+• Outstanding Balance: *Rs. ${dues.toLocaleString()}* (${dues === 0 ? "CLEAR ✅" : "PENDING ⚠️"})
 
 📊 *LATEST TEST SCORES:*
 ${marksBrief}
@@ -1498,7 +1516,9 @@ ${marksBrief}
 📅 *ATTENDANCE RECORD:*
 • Present: ${student.attendance_present || 0} din | Absent: ${student.attendance_absent || 0} din
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-📞 *College Office:* 0301-4455891${this.getMenuFooter()}`;
+📞 Campus Helpdesk: 0301-4455891
+_Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
+  }
   }
 
   public async disconnect(): Promise<void> {

@@ -133,7 +133,22 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
     const fatherName = lead.fatherName ? `Mr. ${lead.fatherName}` : 'Respected Parent';
     const currentClass = lead.currentClass || 'College Admission';
 
-    const message = `Assalam-o-Alaikum ${fatherName} sb!\n\nThis message is from *Superior Group of Colleges Jahanian* regarding *${studentName}*'s inquiry for *${currentClass}*.\n\nWe would be honored to assist you with course details, fee concessions, and our digital prospectus.\n\nKindly reply to this message or visit our admission office anytime.\n\n*Superior College Jahanian*\nMain By-Pass Road, Jahanian\nHelpline: 0300-1234567`;
+    const message = 
+`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+🎓 *ADMISSION INQUIRY & INFORMATION DESK*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum ${fatherName} sb,
+
+Yeh rasmi rabta *Superior College Jahanian* ki janib se *${studentName}* ke dakhlay (*${currentClass}*) ki maloomat ke silsilay mein hai.
+
+• *Programs:* FSc (Pre-Med / Pre-Eng), ICS, I.Com, FA IT
+• *Campuses:* Dedicated Boys & Girls Campuses with Modern Labs
+• *Scholarships:* Special fee concessions available on matric marks
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Prospectus aur admission guidance ke liye hamare admission office tashreef layen ya is number par rabta karein.
+📍 Khanewal Road, Jahanian
+📞 Admission Helpline: 0301-4455891
+_Admissions Directorate, SGC Jahanian_`;
 
     const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');

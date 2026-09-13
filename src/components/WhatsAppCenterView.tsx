@@ -647,13 +647,13 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
     let promptInstruction = customAiPrompt.trim();
     
     if (prebuiltStyle === "fee_dues") {
-      promptInstruction = "Write an outstanding fee dues reminder template in polite Roman Urdu (Hinglish). Use placeholders {{name}}, {{father}}, {{class}}, and {{dues}}. Make it brief but urging them to submit it soon to Superior College Jahanian office.";
+      promptInstruction = "Write an outstanding fee dues reminder template in polite Roman Urdu (Hinglish). Use the exact header '🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*', line divider '━━━━━━━━━━━━━━━━━━━━━━━━━', bullet points with placeholders {{name}}, {{father}}, {{class}}, and {{dues}}. Keep it strictly to the point, dignified, and signed off by '_Accounts & Finance Department, SGC Jahanian_' with phone '0301-4455891'. No rambling or conversational filler.";
     } else if (prebuiltStyle === "announcement") {
-      promptInstruction = "Write an official holiday notice or schedule reminder template for Superior Group of Colleges Jahanian. Use placeholders {{name}} and {{class}}. Keep it highly professional and write in literary bilingual Hinglish/English.";
+      promptInstruction = "Write an official campus circular/holiday notice template for Superior Group of Colleges Jahanian. Use header '🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*', divider '━━━━━━━━━━━━━━━━━━━━━━━━━', placeholders {{name}} and {{class}}. Keep it strictly concise, executive, bilingual English/Roman Urdu, signed off by '_Office of the Principal, SGC Jahanian_'.";
     } else if (prebuiltStyle === "marks") {
-      promptInstruction = "Write a proud congratulatory parent report notification with the latest academic test results of the students. Emphasize placeholders {{name}}, {{class}}, and their detailed score log list: {{marks}}. Direct them to meet the coordinator in case of arrears.";
+      promptInstruction = "Write a concise executive academic assessment report notification. Use header '🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*', divider '━━━━━━━━━━━━━━━━━━━━━━━━━', placeholders {{name}}, {{father}}, {{class}}, and {{marks}}. Keep it strictly to the point, signed off by '_Office of the Controller of Examinations, SGC Jahanian_'.";
     } else if (prebuiltStyle === "absent_staff") {
-      promptInstruction = "Write an administrative notice template for academic staff reminding them of punctual attendance, timetable alignments, and late llegada warning policies of Jahanian Girls/Boys campus.";
+      promptInstruction = "Write a concise administrative faculty notice regarding punctual attendance and lecture timetables. Use header '🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*', divider '━━━━━━━━━━━━━━━━━━━━━━━━━', signed off by '_Office of the Vice Principal, SGC Jahanian_'.";
     }
 
     if (!promptInstruction) {
@@ -665,15 +665,67 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
     // Built-in intelligent template generator (works offline or when API key is missing)
     const getOfflineTemplate = (style?: string) => {
       if (style === "fee_dues") {
-        return "Mohtaram Walidain {{father}}, apka beta/beti {{name}} (Class: {{class}}) ki Superior Group of Colleges Jahanian mein baqaya fees {{dues}} pending hai. Baraye meherbani aakhri tareekh se qabal accounts office mein jama karwayen. Shukriya! - SCJ Jahanian";
+        return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📄 *OFFICIAL FEE REMINDER NOTICE*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mohtaram Walid/Guardian ({{father}}),
+
+• *Student Name:* {{name}}
+• *Class / Group:* {{class}}
+• *Outstanding Dues:* *{{dues}}*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ *Instruction:* Baraye meherbani aakhri tareekh se qabal accounts desk par baqaya fee jama karwa kar computerised receipt hasil karein.
+📞 Accounts Desk: 0301-4455891
+_Accounts & Finance Department, SGC Jahanian_`;
       } else if (style === "marks") {
-        return "Assalam-o-Alaikum Mohtaram {{father}}! Aapke bache {{name}} (Class: {{class}}) ki Superior College Jahanian preparatory test report:\nLatest Results: {{marks}}\nKisi bhi rehnumai ya feedback ke lye college campus tashreef layen. - SCJ Academic Cell";
+        return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mohtaram Walid/Guardian ({{father}}),
+
+• *Student Name:* {{name}}
+• *Class / Group:* {{class}}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 *Test Performance:*
+{{marks}}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 *Instruction:* Board imtehanat ki behtareen tayari ke liye regular revision aur attendance yaqeeni banayein.
+📞 Academic Helpdesk: 0301-4455891
+_Office of the Controller of Examinations, SGC Jahanian_`;
       } else if (style === "announcement") {
-        return "Respected Parents / Students, Superior Group of Colleges Jahanian ki janib se ahem itlaa: Schedule / Holiday updates ke mutabiq tamam classes barwaqt munaqid hongi. For any query, contact College Helpline. - Administration SCJ";
+        return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📢 *OFFICIAL CAMPUS CIRCULAR*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Respected Parents & Students,
+
+Ahem itlaa baraye {{name}} ({{class}}):
+College academic schedule aur official directives ke mutabiq tamam classes aur institutional activities barwaqt munaqid hongi.
+
+📞 Campus Helpdesk: 0301-4455891
+_Office of the Principal, SGC Jahanian_`;
       } else if (style === "absent_staff") {
-        return "Respected Faculty Member, this is an administrative reminder from SGC Jahanian regarding timely arrival and timetable adherence. Please ensure strict compliance with daily lecture schedules. - Principal Office";
+        return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+⚠️ *FACULTY ATTENDANCE & PUNCTUALITY NOTICE*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Respected Faculty Member,
+
+This is an administrative reminder regarding daily biometric reporting and strict adherence to class timetables. Punctuality is essential for academic excellence.
+
+📞 Administration Office: 0301-4455891
+_Office of the Vice Principal, SGC Jahanian_`;
       }
-      return `Assalam-o-Alaikum! Superior Group of Colleges Jahanian updates for {{name}} (Class: {{class}}): Outstanding Dues: {{dues}}. Contact Accounts Office for verification.`;
+      return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📌 *OFFICIAL CAMPUS NOTIFICATION*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mohtaram Walid/Guardian ({{father}}),
+
+• *Student Name:* {{name}}
+• *Class / Group:* {{class}}
+• *Status / Dues:* {{dues}}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Kisi bhi tasdeeq ya rehnumai ke liye campus office se rabta karein.
+📞 Campus Helpdesk: 0301-4455891
+_Administration Directorate, SGC Jahanian_`;
     };
 
     try {

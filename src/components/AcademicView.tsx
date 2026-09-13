@@ -449,29 +449,25 @@ export default function AcademicView({ data }: { data: any }) {
     }).join("\n");
 
     const message = 
-`🎓 *SUPERIOR GROUP OF COLLEGES JAHANIAN*
-📊 *Official Academic Examination Result Card*
+`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Mohtaram Walid/Guardian (${selectedStudent.fatherName || 'Sahib'}),
 
-Aapke bache *${selectedStudent.fullName}* ka official imtehani result darj zail hai:
-
-👤 *Student Name:* ${selectedStudent.fullName}
-🆔 *Roll Number:* ${selectedStudent.id || selectedStudent.collegeNo || 'N/A'}
-🏫 *Class & Section:* ${selectedStudent.group} (Sec: ${selectedStudent.section})
-📅 *Exam Month:* ${getMonthName(selectedMonth)}
+• *Student Name:* ${selectedStudent.fullName}
+• *Roll Number:* ${selectedStudent.id || selectedStudent.collegeNo || 'N/A'}
+• *Class & Section:* ${selectedStudent.group} (Sec: ${selectedStudent.section})
+• *Assessment Month:* ${getMonthName(selectedMonth)}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-📝 *Subject-wise Marks:*
+📝 *Subject-wise Examination Scores:*
 ${marksTableText}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-📈 *Total Marks:* ${totalObtained} / ${totalMax} (${percentNum}%)
-🏆 *Result Status:* ${statusText}
-
-Hamara maqsad aapke bache ka roshan mustaqbil aur behtareen taleem hai. Kisi bhi rehnumai ya mushawarat ke liye college office rabta karein.
-
-📍 Khanewal Road, Jahanian
-📞 College Helpdesk: 0301-4455891
-━━━━━━━━━━━━━━━━━━━━━━━━━`;
+• *Grand Total:* ${totalObtained} / ${totalMax} (${percentNum}%)
+• *Result Status:* ${statusText}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 *Instruction:* Board imtehanat mein aala position ke liye rozana revision aur regular attendance yaqeeni banayein.
+📞 Academic Helpdesk: 0301-4455891
+_Office of the Controller of Examinations, SGC Jahanian_`;
 
     try {
       setIsSendingWhatsApp(true);

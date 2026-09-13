@@ -69,12 +69,55 @@ export default function StudentDossier360({
     let text = '';
 
     if (type === 'fee') {
-      text = `Assalam-o-Alaikum Mohtaram ${student.fatherName || 'Walid'}! Superior College Jahanian se itlaa: Aapke bache ${student.fullName} (Class: ${student.group || student.category || 'N/A'}, Roll No: ${student.collegeNo || student.id}) ki baqaya fees Rs. ${remainingBalance.toLocaleString()} wajib-ul-ada hai. Baraye meherbani accounts office mein jama karwayen. Shukriya!`;
+      text = 
+`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📄 *OFFICIAL FEE REMINDER NOTICE*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mohtaram Walid/Guardian (${student.fatherName || 'Sahib'}),
+
+• *Student Name:* ${student.fullName}
+• *Roll Number:* ${student.collegeNo || student.id}
+• *Class / Group:* ${student.group || student.category || 'Intermediate'}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Outstanding Balance:* *Rs. ${remainingBalance.toLocaleString()}*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ *Instruction:* Baraye meherbani aakhri tareekh se qabal accounts desk par baqaya fee jama karwa kar computerised receipt hasil karein.
+📞 Accounts Desk: 0301-4455891
+_Accounts & Finance Department, SGC Jahanian_`;
     } else if (type === 'results') {
-      const marksList = academicRecords.map((r: any) => `${r.subject || r.testName}: ${r.obtainedMarks}/${r.totalMarks}`).join(', ') || 'Records in process';
-      text = `Assalam-o-Alaikum Mohtaram ${student.fatherName || 'Walid'}! Superior College Jahanian se ${student.fullName} ki test report:\n${marksList}\nFeedback ya rehnumai k lye campus office tashreef layen.`;
+      const marksList = academicRecords.map((r: any) => `• *${r.subject || 'Assessment'}:* ${r.obtainedMarks}/${r.totalMarks}`).join('\n') || '• Academic records are being updated';
+      text = 
+`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mohtaram Walid/Guardian (${student.fatherName || 'Sahib'}),
+
+• *Student Name:* ${student.fullName}
+• *Roll Number:* ${student.collegeNo || student.id}
+• *Class / Group:* ${student.group || student.category || 'Intermediate'}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 *Latest Examination Scores:*
+${marksList}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 *Instruction:* Board imtehanat ki aala tayari ke liye regular revision yaqeeni banayein.
+📞 Academic Helpdesk: 0301-4455891
+_Office of the Controller of Examinations, SGC Jahanian_`;
     } else {
-      text = `Assalam-o-Alaikum Mohtaram ${student.fatherName || 'Walid'}! Superior College Jahanian updates regarding ${student.fullName} (Roll No: ${student.collegeNo || student.id}).`;
+      text = 
+`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+📋 *STUDENT PROGRESS UPDATE*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mohtaram Walid/Guardian (${student.fatherName || 'Sahib'}),
+
+• *Student Name:* ${student.fullName}
+• *Roll Number:* ${student.collegeNo || student.id}
+• *Class / Group:* ${student.group || student.category || 'Intermediate'}
+• *Attendance:* ${attendancePercentage}% (${presentDays} Days Present / ${absentDays} Absent)
+• *Fee Balance:* Rs. ${remainingBalance.toLocaleString()}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Kisi bhi rehnumai ya feedback ke liye college office se rabta karein.
+📞 Campus Helpdesk: 0301-4455891
+_Office of the Principal, SGC Jahanian_`;
     }
 
     try {
