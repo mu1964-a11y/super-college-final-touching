@@ -417,10 +417,21 @@ class WhatsAppBridgeService {
   }
 
   public getBotStats() {
+    let verifiedCount = 0;
+    for (const session of this.sessionState.values()) {
+      if (session.stage === "VERIFIED") verifiedCount++;
+    }
+
     return {
       enabled: this.isBotEnabled,
+      persona: "Superior Nexus",
+      gender: "Female AI Assistant",
+      model: "Gemini 2.5 Flash",
       totalQueriesProcessed: this.botQueriesProcessed,
-      recentLogs: this.botActivityLogs.slice(-20),
+      activeSessions: this.sessionState.size,
+      verifiedSessions: verifiedCount,
+      recentLogs: this.botActivityLogs.slice(-100),
+      timestamp: new Date().toISOString(),
     };
   }
 

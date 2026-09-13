@@ -548,6 +548,13 @@ ${statsText}`,
       res.status(500).json({ error: err.message });
     }
   });
+  app.get("/api/whatsapp/bot-stats", (req, res) => {
+    try {
+      res.json(whatsappBridge.getBotStats());
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
   app.post("/api/whatsapp/bot-settings", (req, res) => {
     try {
       const { enabled } = req.body;
