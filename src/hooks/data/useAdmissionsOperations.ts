@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
 import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus } from '../../types';
 import { diffObjects, ADMISSION_FIELD_LABELS } from '../../utils/changeTracker';
+import { sendAutoAdmissionNotice } from '../../lib/whatsappAutomation';
 
 export function useAdmissionsOperations(ctx: any) {
   const { user, generateStudentId, admissions, setAdmissions, students, settings, isBulkOperatingRef, logActivity, fetchData } = ctx;
@@ -118,6 +119,14 @@ export function useAdmissionsOperations(ctx: any) {
         fullRecord: admission
       }, 'success');
       toast.success("Admission added successfully");
+
+      if (!isBulkOperatingRef.current) {
+        sendAutoAdmissionNotice({
+          ...admission,
+          id: data.id,
+          studentId: data.student_id || admission.studentId,
+        }, settings);
+      }
     } catch (e: any) {
       setAdmissions(prev => prev.filter(a => a.id !== optimisticId));
       console.error("Add Admission Error:", e);
@@ -431,6 +440,15 @@ export function useAdmissionsOperations(ctx: any) {
         if (studentError) throw studentError;
         fetchData(true);
         toast.success("Student confirmed and moved to Management!");
+
+        if (!isBulkOperatingRef.current) {
+          sendAutoAdmissionNotice({
+            ...admission,
+            studentId,
+            isAdmitted: true,
+            status: 'Admitted/Confirmed',
+          }, settings);
+        }
       } catch (e: any) {
         console.error("confirmAdmission error:", e);
         toast.error("Failed to confirm admission");

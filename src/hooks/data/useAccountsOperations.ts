@@ -2,9 +2,10 @@ import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
 import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus } from '../../types';
 import { calculateStudentFeeBreakdown } from '../../lib/feeCalculations';
+import { sendAutoFeeReceiptNotice } from '../../lib/whatsappAutomation';
 
 export function useAccountsOperations(ctx: any) {
-  const { generateStudentId, user, admissions, students, staff, expenses, setExpenses, fetchData, logActivity } = ctx;
+  const { generateStudentId, user, admissions, students, staff, expenses, setExpenses, fetchData, logActivity, settings } = ctx;
   const addIncome = async (inc: Omit<Income, 'id'>) => {
     try {
       const { error } = await supabase.from('income').insert({
@@ -328,6 +329,28 @@ export function useAccountsOperations(ctx: any) {
       logActivity("Fee Collected", `Received Rs. ${safePayment.amountPaid.toLocaleString()} for ${targetName} (${syncReceiptId})`, "info");
       toast.success(`Fee payment recorded! Receipt: ${syncReceiptId}`);
       if (fetchData) fetchData(true);
+
+      // Automated WhatsApp Receipt Dispatch
+      const targetRecord = student || admission;
+      const isInitialAdmissionPayment = safePayment.feeType === 'Admission / Initial Fee' || safePayment.feeType === 'Admission Fee / Initial Payment';
+      if (targetRecord && !isInitialAdmissionPayment && !(safePayment as any).skipWhatsApp) {
+        const remainingBal = student 
+          ? Math.max(0, (student.totalPackage || 0) - ((student.feeReceived || 0) + safePayment.amountPaid))
+          : Math.max(0, (admission?.totalPackage || 0) - ((admission?.feeReceived || 0) + safePayment.amountPaid));
+
+        sendAutoFeeReceiptNotice(
+          targetRecord,
+          {
+            receiptId: syncReceiptId,
+            amountPaid: safePayment.amountPaid,
+            datePaid: safePayment.datePaid,
+            feeType: safePayment.feeType,
+            remainingBalance: remainingBal,
+            collectedBy: safePayment.collectedBy || user?.email || 'System'
+          },
+          settings
+        );
+      }
     } catch (e: any) {
       console.error("Record Fee Error:", e);
       toast.error(`Failed to record fee: ${e.message}`);

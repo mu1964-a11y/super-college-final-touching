@@ -76,5 +76,7 @@ export const INITIAL_SETTINGS: AppSettings = {
   defaulterAlertThreshold: 0,
   academicSession: '2026-28',
   allowQuickNav: true,
-  enableHighlighting: true
+  enableHighlighting: true,
+  autoWhatsAppAdmission: true,
+  autoWhatsAppFeePayment: true
 };

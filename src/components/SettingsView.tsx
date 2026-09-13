@@ -578,6 +578,20 @@ export default function SettingsView({ data }: { data: any }) {
                   </div>
                   <Checkbox checked={!!formData.enableHighlighting} onCheckedChange={(v) => handleCheckboxChange('enableHighlighting', !!v)} />
                 </div>
+                <div className="flex items-center justify-between p-4 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-2xl border border-emerald-200/80 dark:border-emerald-800/40">
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-black uppercase tracking-widest text-emerald-900 dark:text-emerald-300">Auto WhatsApp on Admission</p>
+                    <p className="text-[9px] font-bold text-slate-500 dark:text-slate-400">Dispatches full student ID, roll no, subjects, and package to parent upon enrollment.</p>
+                  </div>
+                  <Checkbox checked={formData.autoWhatsAppAdmission !== false} onCheckedChange={(v) => handleCheckboxChange('autoWhatsAppAdmission', !!v)} />
+                </div>
+                <div className="flex items-center justify-between p-4 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-2xl border border-emerald-200/80 dark:border-emerald-800/40">
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-black uppercase tracking-widest text-emerald-900 dark:text-emerald-300">Auto WhatsApp on Fee Submission</p>
+                    <p className="text-[9px] font-bold text-slate-500 dark:text-slate-400">Dispatches official computerized receipt slip to parent whenever fee payment is recorded.</p>
+                  </div>
+                  <Checkbox checked={formData.autoWhatsAppFeePayment !== false} onCheckedChange={(v) => handleCheckboxChange('autoWhatsAppFeePayment', !!v)} />
+                </div>
                 <div className="space-y-2 pt-2">
                   <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Fee Alert Threshold (Months)</Label>
                   <Input 

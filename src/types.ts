@@ -245,6 +245,8 @@ export interface AppSettings {
   academicSession?: string;
   allowQuickNav?: boolean;
   enableHighlighting?: boolean;
+  autoWhatsAppAdmission?: boolean;
+  autoWhatsAppFeePayment?: boolean;
 }
 
 export interface Staff {

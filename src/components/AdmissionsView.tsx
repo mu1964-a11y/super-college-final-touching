@@ -88,6 +88,7 @@ import * as XLSX from "xlsx";
 import FeeReceipt from "./FeeReceipt";
 import AdmissionSlip from "./AdmissionSlip";
 import { compressImage } from "../lib/imageUtils";
+import { sendAutoAdmissionNotice } from "../lib/whatsappAutomation";
 
 export default function AdmissionsView({
   data,
@@ -427,52 +428,8 @@ export default function AdmissionsView({
     }
   };
 
-  const sendWhatsAppConfirmationNotice = (admission: Admission) => {
-    const rawPhone = admission.fatherContact || admission.contactNumber || '';
-    const cleanPhone = rawPhone.replace(/\D/g, '');
-    if (!cleanPhone) {
-      toast.error("No valid phone number found for this applicant!");
-      return;
-    }
-
-    let formattedPhone = cleanPhone;
-    if (formattedPhone.startsWith('03') && formattedPhone.length === 11) {
-      formattedPhone = '92' + formattedPhone.slice(1);
-    } else if (formattedPhone.startsWith('3') && formattedPhone.length === 10) {
-      formattedPhone = '92' + formattedPhone;
-    }
-
-    const collegeName = data?.settings?.collegeName || "Superior Group of Colleges Jahanian";
-    const session = admission.session || data?.settings?.academicSession || "2026-28";
-    const totalPkg = Number(admission.totalPackage || 0).toLocaleString();
-    const paid = Number(admission.feeReceived || 0).toLocaleString();
-    const balance = Math.max(0, Number(admission.totalPackage || 0) - Number(admission.feeReceived || 0)).toLocaleString();
-
-    const message = 
-`🏛️ *${collegeName.toUpperCase()}*
-🎓 *OFFICIAL ADMISSION CONFIRMATION NOTICE*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Mohtaram Walid/Guardian (${admission.fatherName || 'Sahib'}),
-
-Mubarak ho! *${admission.fullName.toUpperCase()}* ka dakhla Superior College Jahanian mein kamyabi se confirm ho gaya hai.
-
-• *Roll Number:* ${admission.collegeNo || admission.studentId || 'Allotted on Orientation'}
-• *Class / Group:* ${admission.group || admission.category || 'Intermediate'}
-• *Section:* Section ${admission.section || 'A'}
-• *Academic Session:* ${session}
-${admission.concessionReason ? `• *Scholarship Category:* ${admission.concessionReason}\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━
-💰 *Fee Ledger Details:*
-• *Agreed Package:* Rs. ${totalPkg}
-• *Fee Deposited:* Rs. ${paid}
-• *Remaining Balance:* Rs. ${balance}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📍 *Campus Address:* ${data?.settings?.address || 'Superior College, Khanewal Road, Jahanian'}
-📞 *Helpline:* ${data?.settings?.contactNumber || '0301-4455891'}
-_Office of the Principal, SGC Jahanian_`;
-
-    const encoded = encodeURIComponent(message);
-    window.open(`https://wa.me/${formattedPhone}?text=${encoded}`, '_blank');
-    toast.success("WhatsApp Admission Notice opened!");
+  const sendWhatsAppConfirmationNotice = async (admission: Admission) => {
+    await sendAutoAdmissionNotice(admission, data?.settings, { manualTrigger: true });
   };
 
   const handleConfirm = (id: string) => {

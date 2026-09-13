@@ -73,6 +73,7 @@ import * as XLSX from "xlsx";
 import { safeLocalStorage } from "../utils/safeStorage";
 
 import { getUnifiedTransactions } from "../utils/fee";
+import { sendAutoFeeReceiptNotice } from "../lib/whatsappAutomation";
 import { useDebounce } from "../hooks/useDebounce";
 import { calculateStudentFeeBreakdown } from "../lib/feeCalculations";
 
@@ -337,17 +338,19 @@ _Accounts & Finance Department, SGC Jahanian_`;
       "December",
     ];
 
+    const receiptNo = `REC-${Math.floor(100000 + Math.random() * 900000)}`;
+    const currentBalance = (selectedStudent.totalPackage || 0) - (selectedStudent.feeReceived || 0);
+    const newRemainingBalance = Math.max(0, currentBalance - amount);
+
     await data.recordFeePayment(selectedStudent.id, {
       id: `pay-${Date.now()}`,
       month: monthNames[payDate.getMonth()],
       year: payDate.getFullYear(),
-      amountDue:
-        (selectedStudent.totalPackage || 0) -
-        (selectedStudent.feeReceived || 0),
+      amountDue: currentBalance,
       amountPaid: amount,
       status: "Paid",
       datePaid: payDate.toISOString(),
-      receiptId: `REC-${Math.floor(100000 + Math.random() * 900000)}`,
+      receiptId: receiptNo,
       feeType: paymentType,
       collectedBy: collectedByName.trim() || undefined,
     });
