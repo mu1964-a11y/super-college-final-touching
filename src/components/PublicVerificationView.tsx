@@ -199,6 +199,38 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
   const [isDownloadingImage, setIsDownloadingImage] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  const [zoomMode, setZoomMode] = useState<'fit' | 'actual'>('fit');
+  const [viewportWidth, setViewportWidth] = useState<number>(() => typeof window !== 'undefined' ? window.innerWidth : 1024);
+  const [canvasHeight, setCanvasHeight] = useState<number>(0);
+
+  // Auto-measure viewport width & canvas height for perfect mobile fit scaling
+  useEffect(() => {
+    const handleResize = () => {
+      setViewportWidth(window.innerWidth);
+      if (documentRef.current) {
+        setCanvasHeight(documentRef.current.offsetHeight);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && documentRef.current) {
+      ro = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.target === documentRef.current) {
+            setCanvasHeight(entry.target.clientHeight);
+          }
+        }
+      });
+      ro.observe(documentRef.current);
+    }
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (ro) ro.disconnect();
+    };
+  }, [data.status, data.type]);
 
   // Force light mode on document root while verification view is active
   useEffect(() => {
@@ -570,7 +602,13 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
     if (!documentRef.current) return;
     setIsDownloadingImage(true);
     const toastId = toast.loading('Generating ultra-high-resolution PNG image slip...');
+    const originalTransform = documentRef.current.style.transform;
+    const originalTransformOrigin = documentRef.current.style.transformOrigin;
     try {
+      // Temporarily remove CSS scale transform so export captures full 680px * 3 resolution
+      documentRef.current.style.transform = 'none';
+      documentRef.current.style.transformOrigin = 'initial';
+
       const filename = cleanDocFilename();
       await exportElementToImage(documentRef.current, filename, {
         pixelRatio: 3,
@@ -583,6 +621,10 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
       toast.dismiss(toastId);
       toast.error('Failed to generate image slip. You can also use Print / Save PDF.');
     } finally {
+      if (documentRef.current) {
+        documentRef.current.style.transform = originalTransform;
+        documentRef.current.style.transformOrigin = originalTransformOrigin;
+      }
       setIsDownloadingImage(false);
     }
   };
@@ -592,7 +634,12 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
     if (!documentRef.current) return;
     setIsDownloadingPdf(true);
     const toastId = toast.loading('Generating official PDF document...');
+    const originalTransform = documentRef.current.style.transform;
+    const originalTransformOrigin = documentRef.current.style.transformOrigin;
     try {
+      documentRef.current.style.transform = 'none';
+      documentRef.current.style.transformOrigin = 'initial';
+
       const filename = cleanDocFilename();
       await exportElementToPdf(documentRef.current, {
         filename,
@@ -609,6 +656,10 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
       toast.dismiss(toastId);
       toast.error('Failed to generate PDF.');
     } finally {
+      if (documentRef.current) {
+        documentRef.current.style.transform = originalTransform;
+        documentRef.current.style.transformOrigin = originalTransformOrigin;
+      }
       setIsDownloadingPdf(false);
     }
   };
@@ -628,6 +679,19 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
   const feeReceivedAmount = Number(feeCalc?.feeReceived || student?.feeReceived || 0);
   const remainingBalanceAmount = Math.max(0, totalPackageAmount - feeReceivedAmount);
   const clearedPercent = totalPackageAmount > 0 ? Math.min(100, Math.round((feeReceivedAmount / totalPackageAmount) * 100)) : 0;
+
+  const matchedTx = data.transactions?.find((t: any) => data.receiptNo && t.receipt_id === data.receiptNo) || data.transactions?.[0];
+  const receiptAmount = matchedTx ? Number(matchedTx.amount || 0) : (student?.feeReceived || 0);
+  const receiptDisplayId = data.receiptNo || matchedTx?.receipt_id || `REC-${(student?.rollNo || student?.id || '101').replace(/[^a-zA-Z0-9]/g, '')}`;
+  const receiptMethod = matchedTx?.payment_method || 'Official Cash / Online Deposit';
+
+  // Responsive Document Scale Dimensions (Base width: 680px matching authentic PC view)
+  const DOC_CANVAS_WIDTH = 680;
+  const isMobile = viewportWidth < 720;
+  const scale = isMobile && zoomMode === 'fit'
+    ? Math.min(1, Math.max(0.35, (viewportWidth - 24) / DOC_CANVAS_WIDTH))
+    : 1;
+  const scaledHeight = Math.ceil(canvasHeight * scale);
 
   return (
     <div 
@@ -650,6 +714,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
             margin: 0 !important;
             width: 100% !important;
             max-width: 100% !important;
+            transform: none !important;
           }
         }
 
@@ -663,7 +728,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
         }
 
         .doc-label {
-          color: #1e293b !important;
+          color: #334155 !important;
           font-weight: 700 !important;
           font-size: 11px !important;
           text-transform: uppercase !important;
@@ -695,51 +760,84 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
       `}} />
 
       {/* ======================================================== */}
-      {/* STICKY TOP ACTION TOOLBAR (PNG DOWNLOAD, PDF, PRINT) */}
+      {/* STICKY TOP ACTION TOOLBAR (PNG DOWNLOAD, PDF, PRINT, ZOOM) */}
       {/* ======================================================== */}
-      <div className="sticky top-2 z-50 w-full max-w-2xl px-2 mb-4 print-hide">
-        <div className="bg-white/95 backdrop-blur-md rounded-2xl p-2.5 shadow-[0_12px_36px_rgba(0,0,0,0.35)] border-2 border-slate-200 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+      <div className="sticky top-2 z-50 w-full max-w-2xl px-2 mb-3 print-hide">
+        <div 
+          className="rounded-2xl p-2 sm:p-2.5 shadow-[0_12px_36px_rgba(0,0,0,0.35)] border-2 border-slate-200 flex items-center justify-between gap-2"
+          style={{ backgroundColor: 'rgba(255, 255, 255, 0.96)', backdropFilter: 'blur(12px)' }}
+        >
+          <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 no-scrollbar">
             <Button
               onClick={handleDownloadPNG}
               disabled={isDownloadingImage || data.status !== 'verified'}
-              className="rounded-xl !bg-[#085a4e] hover:!bg-[#06483e] !text-white font-black text-xs h-10 px-3.5 shadow-md flex items-center gap-1.5 shrink-0 cursor-pointer"
+              className="rounded-xl !bg-[#085a4e] hover:!bg-[#06483e] !text-white font-black text-xs h-10 px-3 sm:px-3.5 shadow-md flex items-center gap-1.5 shrink-0 cursor-pointer"
             >
               {isDownloadingImage ? (
                 <RefreshCw size={15} className="animate-spin" />
               ) : (
                 <Download size={15} className="text-emerald-200" />
               )}
-              <span>Download Image (PNG)</span>
+              <span>Download Image</span>
             </Button>
 
             <Button
               onClick={handleDownloadPDF}
               disabled={isDownloadingPdf || data.status !== 'verified'}
               variant="outline"
-              className="rounded-xl !border-slate-300 hover:!bg-slate-100 !text-slate-800 font-black text-xs h-10 px-3 shrink-0 cursor-pointer flex items-center gap-1.5"
+              className="rounded-xl !border-slate-300 hover:!bg-slate-100 !text-slate-800 font-black text-xs h-10 px-2.5 sm:px-3 shrink-0 cursor-pointer flex items-center gap-1.5"
             >
               {isDownloadingPdf ? (
                 <RefreshCw size={15} className="animate-spin" />
               ) : (
                 <FileDown size={15} className="text-[#085a4e]" />
               )}
-              <span>Download PDF</span>
+              <span>PDF</span>
             </Button>
 
             <Button
               onClick={handlePrint}
               variant="ghost"
-              className="rounded-xl hover:!bg-slate-100 !text-slate-700 font-bold text-xs h-10 px-2.5 shrink-0 cursor-pointer flex items-center gap-1.5"
+              className="rounded-xl hover:!bg-slate-100 !text-slate-700 font-bold text-xs h-10 px-2.5 shrink-0 cursor-pointer hidden sm:flex items-center gap-1.5"
             >
               <Printer size={15} className="text-slate-500" />
-              <span className="hidden sm:inline">Print</span>
+              <span>Print</span>
             </Button>
+
+            {/* Mobile View Mode Toggle: Fit to Screen vs 100% Zoom */}
+            {isMobile && data.status === 'verified' && (
+              <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-300 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setZoomMode('fit')}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black transition-all ${
+                    zoomMode === 'fit'
+                      ? '!bg-[#085a4e] !text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="Fit whole document to mobile screen"
+                >
+                  📱 Fit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setZoomMode('actual')}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black transition-all ${
+                    zoomMode === 'actual'
+                      ? '!bg-[#085a4e] !text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="View at 100% actual size (pan/scroll)"
+                >
+                  🔍 100%
+                </button>
+              </div>
+            )}
           </div>
 
           <Button
             onClick={handleWhatsAppSupport}
-            className="rounded-xl !bg-emerald-600 hover:!bg-emerald-700 !text-white font-bold text-xs h-10 px-3 shrink-0 cursor-pointer flex items-center gap-1.5 shadow-sm"
+            className="rounded-xl !bg-emerald-600 hover:!bg-emerald-700 !text-white font-bold text-xs h-10 px-2.5 sm:px-3 shrink-0 cursor-pointer flex items-center gap-1.5 shadow-sm"
           >
             <Phone size={14} />
             <span className="hidden sm:inline">Helpline</span>
@@ -825,197 +923,382 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
       )}
 
       {/* ======================================================== */}
-      {/* STATE 3: VERIFIED OFFICIAL PHYSICAL SLIP / VOUCHER CANVAS */}
+      {/* MOBILE QUICK-VIEW DOSSIER CARD (sm:hidden) */}
+      {/* Instant high-readability overview on mobile screens */}
       {/* ======================================================== */}
-      {data.status === 'verified' && (
-        <div
-          ref={documentRef}
-          id="official-document-canvas"
-          className="w-full max-w-2xl bg-white rounded-2xl shadow-[0_25px_70px_rgba(0,0,0,0.5)] border-[3px] border-[#085a4e] p-5 sm:p-8 relative overflow-hidden official-slip-root mb-8"
-          style={{
-            backgroundColor: '#ffffff',
-            color: '#000000',
-            colorScheme: 'light',
-            boxSizing: 'border-box',
-            outline: '1px solid #c9a84c',
-            outlineOffset: '-5px'
-          }}
+      {data.status === 'verified' && student && (
+        <div 
+          className="sm:hidden w-full max-w-[680px] px-2 mb-3 print-hide"
+          style={{ colorScheme: 'light' }}
         >
-          {/* Subtle Security Watermark in the background */}
           <div 
-            className="absolute inset-0 pointer-events-none opacity-[0.03] flex items-center justify-center select-none"
-            style={{ backgroundImage: 'radial-gradient(#085a4e 1px, transparent 1px)', backgroundSize: '24px 24px' }}
-          />
-
-          {/* ======================================================== */}
-          {/* SLIP HEADER: INSTITUTIONAL CREST & REGAL EMBLEM */}
-          {/* ======================================================== */}
-          <div className="relative z-10 text-center pb-3 border-b-2 border-[#085a4e]/30">
-            <div className="flex flex-col items-center">
-              {/* Authentic Circular Superior College Logo */}
-              <div 
-                className="w-20 h-20 sm:w-22 sm:h-22 rounded-full bg-white p-1 shadow-md border-2 border-[#c9a84c] flex items-center justify-center mb-2.5 relative overflow-hidden shrink-0"
-                style={{ clipPath: 'circle(49.5% at 50% 50%)', backgroundColor: '#ffffff' }}
-              >
-                {collegeLogo ? (
-                  <img 
-                    src={collegeLogo} 
-                    alt={collegeName} 
-                    className="w-full h-full object-contain rounded-full select-none"
-                    onError={(e) => {
-                      (e.target as any).style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <School size={40} className="text-[#085a4e]" />
-                )}
+            className="rounded-2xl p-4 shadow-xl border-2 border-[#085a4e]/40 overflow-hidden relative"
+            style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
+          >
+            {/* Header banner */}
+            <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-[#085a4e]/10 border border-[#085a4e]/30 flex items-center justify-center shrink-0">
+                  <ShieldCheck size={18} className="text-[#085a4e]" />
+                </div>
+                <div>
+                  <div className="text-[10px] font-black text-[#085a4e] uppercase tracking-wider">
+                    {collegeName || "Superior College Jahanian"}
+                  </div>
+                  <div className="text-xs font-black text-slate-900 leading-tight">
+                    {data.type === 'receipt' ? 'Fee Payment Receipt' :
+                     data.type === 'statement' ? 'Fee Account Statement' :
+                     data.type === 'admission' ? 'Admission Confirmation' :
+                     data.type === 'result' ? 'Academic Result Card' :
+                     data.type === 'attendance' ? 'Attendance Dossier' : 'Official Document Verification'}
+                  </div>
+                </div>
               </div>
-
-              {/* College Institutional Title */}
-              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#085a4e] uppercase leading-tight font-serif" style={{ color: '#085a4e' }}>
-                {collegeName || "Superior Group of Colleges"}
-              </h1>
-              
-              <p className="text-[11.5px] font-bold text-slate-700 tracking-wide mt-0.5" style={{ color: '#334155' }}>
-                Jahanian Campus • Directorate of Admissions & Accounts Registry
-              </p>
-              
-              <p className="text-[9.5px] font-bold text-[#c9a84c] uppercase tracking-[0.18em] mt-0.5" style={{ color: '#927218' }}>
-                Government Registered & Affiliated with BISE Multan • College Code: 3014
-              </p>
-            </div>
-
-            {/* Regal Document Ribbon Banner */}
-            <div 
-              className="mt-3.5 py-1.5 px-4 rounded-lg text-center shadow-xs"
-              style={{ backgroundColor: '#085a4e', color: '#ffffff' }}
-            >
-              <span className="text-xs sm:text-[13px] font-black uppercase tracking-[0.15em] text-white">
-                ★ {docTitle} ★
+              <span className="inline-flex items-center gap-1 text-[10.5px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 px-2 py-1 rounded-full border border-emerald-300 shrink-0">
+                <Check size={12} className="text-emerald-700 stroke-[3]" /> Verified
               </span>
             </div>
 
-            {/* Top Metadata Strip */}
-            <div className="mt-3 grid grid-cols-3 items-center text-xs py-1 border-t border-b border-slate-200 gap-2 bg-slate-50/70 px-2 rounded">
-              <div className="text-left">
-                <span className="text-[10px] doc-label block">Slip / Ref #:</span>
-                <span className="font-mono font-black text-[#085a4e] text-xs sm:text-sm" style={{ color: '#085a4e' }}>
-                  {data.receiptNo || (student?.rollNo ? `REC-${student.rollNo}` : verificationRef)}
-                </span>
-              </div>
-              <div className="text-center">
-                <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-full border border-emerald-300">
-                  <Check size={11} className="text-emerald-700 stroke-[3]" />
-                  <span>Verified Original</span>
-                </span>
+            {/* Student identity quick pill */}
+            <div className="py-2.5 grid grid-cols-2 gap-2 text-xs border-b border-slate-100">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Student</span>
+                <span className="font-black text-slate-950 text-sm block leading-tight">{student.fullName}</span>
+                <span className="text-[11px] text-slate-600 block">S/O {student.fatherName}</span>
               </div>
               <div className="text-right">
-                <span className="text-[10px] doc-label block">Issue / Print Date:</span>
-                <span className="font-mono font-bold text-slate-900 text-[11px]" style={{ color: '#0f172a' }}>
-                  {data.verifiedAt.split(',')[0]}
-                </span>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Roll No / ID</span>
+                <span className="font-mono font-black text-[#085a4e] text-sm block leading-tight">{student.rollNo || student.id}</span>
+                <span className="text-[11px] font-bold text-slate-700 block">{student.group || student.category} {student.section ? `(Sec ${student.section})` : ''}</span>
               </div>
             </div>
-          </div>
 
-          {/* ======================================================== */}
-          {/* STUDENT PARTICULARS STRUCTURED TABLE */}
-          {/* ======================================================== */}
-          {student && (
-            <div className="mt-4 mb-4">
-              <div className="border-2 border-[#085a4e]/40 rounded-xl overflow-hidden bg-white shadow-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
-                  {/* Column 1 */}
-                  <div className="divide-y divide-slate-200">
-                    <div className="flex items-center px-3.5 py-2 bg-white">
-                      <span className="w-32 shrink-0 doc-label">Student Full Name:</span>
-                      <span className="doc-value text-slate-950 font-black text-sm">{student.fullName}</span>
-                    </div>
-                    <div className="flex items-center px-3.5 py-2 bg-slate-50/80">
-                      <span className="w-32 shrink-0 doc-label">Father's Name:</span>
-                      <span className="doc-value text-slate-950 font-black text-sm">{student.fatherName}</span>
-                    </div>
-                    <div className="flex items-center px-3.5 py-2 bg-white">
-                      <span className="w-32 shrink-0 doc-label">Roll No / ID:</span>
-                      <span className="font-mono font-black text-[#085a4e] text-sm" style={{ color: '#085a4e' }}>
-                        {student.rollNo || student.id}
-                      </span>
-                    </div>
-                    <div className="flex items-center px-3.5 py-2 bg-slate-50/80">
-                      <span className="w-32 shrink-0 doc-label">Class & Program:</span>
-                      <span className="doc-value text-slate-950 font-black">
-                        {student.group || student.category} {student.section ? `(Sec ${student.section})` : ''}
-                      </span>
-                    </div>
+            {/* Key financial or academic numbers */}
+            {data.type === 'receipt' && (
+              <div className="pt-2.5">
+                <div 
+                  className="rounded-xl p-3 text-center border-2 border-emerald-300"
+                  style={{ backgroundColor: '#ecfdf5' }}
+                >
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-900 block">
+                    Amount Received / Paid
+                  </span>
+                  <span className="font-mono font-black text-emerald-950 text-2xl block mt-0.5" style={{ color: '#047857' }}>
+                    Rs. {receiptAmount.toLocaleString()}
+                  </span>
+                  <span className="text-[10.5px] font-bold text-emerald-800 block mt-0.5">
+                    Receipt #{receiptDisplayId} • {receiptMethod}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-2 text-center text-xs">
+                  <div className="p-2 rounded-lg border border-slate-200" style={{ backgroundColor: '#f8fafc' }}>
+                    <span className="text-[9.5px] font-bold text-slate-600 uppercase block">Total Package</span>
+                    <span className="font-mono font-black text-slate-900 text-xs block">Rs. {totalPackageAmount.toLocaleString()}</span>
                   </div>
+                  <div className="p-2 rounded-lg border border-rose-200" style={{ backgroundColor: '#fff1f2' }}>
+                    <span className="text-[9.5px] font-bold text-rose-800 uppercase block">Remaining Balance</span>
+                    <span className="font-mono font-black text-rose-950 text-xs block" style={{ color: '#9f1239' }}>Rs. {remainingBalanceAmount.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
-                  {/* Column 2 */}
-                  <div className="divide-y divide-slate-200">
-                    <div className="flex items-center px-3.5 py-2 bg-white">
-                      <span className="w-32 shrink-0 doc-label">Academic Session:</span>
-                      <span className="doc-value text-slate-950 font-black">
-                        {student.session || '2026-28'} • {student.academicPart || 'Part-1'}
-                      </span>
+            {(data.type === 'statement' || data.type === 'challan') && (
+              <div className="pt-2.5 grid grid-cols-3 gap-1.5 text-center text-xs">
+                <div className="p-2 rounded-lg border border-slate-200" style={{ backgroundColor: '#f8fafc' }}>
+                  <span className="text-[9px] font-bold text-slate-600 uppercase block">Package</span>
+                  <span className="font-mono font-black text-slate-900 text-xs block">Rs. {totalPackageAmount.toLocaleString()}</span>
+                </div>
+                <div className="p-2 rounded-lg border border-emerald-200" style={{ backgroundColor: '#ecfdf5' }}>
+                  <span className="text-[9px] font-bold text-emerald-800 uppercase block">Paid</span>
+                  <span className="font-mono font-black text-emerald-950 text-xs block" style={{ color: '#047857' }}>Rs. {feeReceivedAmount.toLocaleString()}</span>
+                </div>
+                <div className="p-2 rounded-lg border border-rose-200" style={{ backgroundColor: '#fff1f2' }}>
+                  <span className="text-[9px] font-bold text-rose-800 uppercase block">Balance</span>
+                  <span className="font-mono font-black text-rose-950 text-xs block" style={{ color: '#9f1239' }}>Rs. {remainingBalanceAmount.toLocaleString()}</span>
+                </div>
+              </div>
+            )}
+
+            {data.type === 'admission' && (
+              <div className="pt-2.5 grid grid-cols-3 gap-1.5 text-center text-xs">
+                <div className="p-2 rounded-lg border border-slate-200" style={{ backgroundColor: '#f8fafc' }}>
+                  <span className="text-[9px] font-bold text-slate-600 uppercase block">Agreed Pkg</span>
+                  <span className="font-mono font-black text-slate-900 text-xs block">Rs. {totalPackageAmount.toLocaleString()}</span>
+                </div>
+                <div className="p-2 rounded-lg border border-emerald-200" style={{ backgroundColor: '#ecfdf5' }}>
+                  <span className="text-[9px] font-bold text-emerald-800 uppercase block">Deposited</span>
+                  <span className="font-mono font-black text-emerald-950 text-xs block" style={{ color: '#047857' }}>Rs. {feeReceivedAmount.toLocaleString()}</span>
+                </div>
+                <div className="p-2 rounded-lg border border-slate-200" style={{ backgroundColor: '#f8fafc' }}>
+                  <span className="text-[9px] font-bold text-slate-800 uppercase block">Session</span>
+                  <span className="font-mono font-black text-slate-950 text-xs block">{student.session || '2026-28'}</span>
+                </div>
+              </div>
+            )}
+
+            {data.type === 'result' && (
+              <div className="pt-2.5 grid grid-cols-3 gap-1.5 text-center text-xs">
+                <div className="p-2 rounded-lg border border-slate-200" style={{ backgroundColor: '#f8fafc' }}>
+                  <span className="text-[9px] font-bold text-slate-600 uppercase block">Tests</span>
+                  <span className="font-mono font-black text-slate-900 text-xs block">{data.academicRecords?.length || 0} Recorded</span>
+                </div>
+                <div className="p-2 rounded-lg border border-emerald-200" style={{ backgroundColor: '#ecfdf5' }}>
+                  <span className="text-[9px] font-bold text-emerald-800 uppercase block">Standing</span>
+                  <span className="font-mono font-black text-emerald-950 text-xs block" style={{ color: '#047857' }}>Active</span>
+                </div>
+                <div className="p-2 rounded-lg border border-slate-200" style={{ backgroundColor: '#f8fafc' }}>
+                  <span className="text-[9px] font-bold text-slate-800 uppercase block">Session</span>
+                  <span className="font-mono font-black text-slate-950 text-xs block">{student.session || '2026-28'}</span>
+                </div>
+              </div>
+            )}
+
+            {data.type === 'attendance' && (
+              <div className="pt-2.5 grid grid-cols-3 gap-1.5 text-center text-xs">
+                <div className="p-2 rounded-lg border border-slate-200" style={{ backgroundColor: '#f8fafc' }}>
+                  <span className="text-[9px] font-bold text-slate-600 uppercase block">Present</span>
+                  <span className="font-mono font-black text-emerald-800 text-xs block">{data.attendanceStats?.presentDays ?? 0} Days</span>
+                </div>
+                <div className="p-2 rounded-lg border border-rose-200" style={{ backgroundColor: '#fff1f2' }}>
+                  <span className="text-[9px] font-bold text-rose-800 uppercase block">Absent</span>
+                  <span className="font-mono font-black text-rose-900 text-xs block">{data.attendanceStats?.absentDays ?? 0} Days</span>
+                </div>
+                <div className="p-2 rounded-lg border border-emerald-200" style={{ backgroundColor: '#ecfdf5' }}>
+                  <span className="text-[9px] font-bold text-emerald-800 uppercase block">Rate</span>
+                  <span className="font-mono font-black text-emerald-950 text-xs block">{data.attendanceStats?.attendancePercent ?? 100}%</span>
+                </div>
+              </div>
+            )}
+
+            {/* Note pointing to official voucher below */}
+            <div className="mt-2.5 pt-2 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-500 font-medium">
+              <span>Official Physical Voucher below:</span>
+              <span className="text-[#085a4e] font-bold">Tap Download to save Image / PDF ➔</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* STATE 3: VERIFIED OFFICIAL PHYSICAL SLIP / VOUCHER CANVAS */}
+      {/* Responsive Scaling Wrapper maintaining exact PC proportions */}
+      {/* ======================================================== */}
+      {data.status === 'verified' && (
+        <div 
+          className={`w-full flex justify-center ${zoomMode === 'actual' ? 'overflow-x-auto pb-8' : 'overflow-hidden'}`}
+          style={{
+            height: (isMobile && zoomMode === 'fit' && scale < 1 && scaledHeight > 0) ? `${scaledHeight}px` : 'auto',
+            minHeight: (isMobile && zoomMode === 'fit' && scale < 1 && scaledHeight > 0) ? `${scaledHeight}px` : 'auto',
+            marginBottom: (isMobile && zoomMode === 'fit' && scale < 1) ? '1.5rem' : '2rem'
+          }}
+        >
+          <div
+            ref={documentRef}
+            id="official-document-canvas"
+            className="rounded-2xl shadow-[0_25px_70px_rgba(0,0,0,0.5)] border-[3px] border-[#085a4e] p-6 sm:p-8 relative overflow-hidden official-slip-root shrink-0"
+            style={{
+              width: `${DOC_CANVAS_WIDTH}px`,
+              minWidth: `${DOC_CANVAS_WIDTH}px`,
+              maxWidth: `${DOC_CANVAS_WIDTH}px`,
+              backgroundColor: '#ffffff',
+              color: '#000000',
+              colorScheme: 'light',
+              boxSizing: 'border-box',
+              outline: '1px solid #c9a84c',
+              outlineOffset: '-5px',
+              transform: (isMobile && zoomMode === 'fit' && scale < 1) ? `scale(${scale})` : 'none',
+              transformOrigin: 'top center'
+            }}
+          >
+            {/* Subtle Security Watermark in the background */}
+            <div 
+              className="absolute inset-0 pointer-events-none opacity-[0.03] flex items-center justify-center select-none"
+              style={{ backgroundImage: 'radial-gradient(#085a4e 1px, transparent 1px)', backgroundSize: '24px 24px' }}
+            />
+
+            {/* ======================================================== */}
+            {/* SLIP HEADER: INSTITUTIONAL CREST & REGAL EMBLEM */}
+            {/* ======================================================== */}
+            <div className="relative z-10 text-center pb-3 border-b-2 border-[#085a4e]/30">
+              <div className="flex flex-col items-center">
+                {/* Authentic Circular Superior College Logo */}
+                <div 
+                  className="w-20 h-20 sm:w-22 sm:h-22 rounded-full bg-white p-1 shadow-md border-2 border-[#c9a84c] flex items-center justify-center mb-2.5 relative overflow-hidden shrink-0"
+                  style={{ clipPath: 'circle(49.5% at 50% 50%)', backgroundColor: '#ffffff' }}
+                >
+                  {collegeLogo ? (
+                    <img 
+                      src={collegeLogo} 
+                      alt={collegeName} 
+                      className="w-full h-full object-contain rounded-full select-none"
+                      onError={(e) => {
+                        (e.target as any).style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <School size={40} className="text-[#085a4e]" />
+                  )}
+                </div>
+
+                {/* College Institutional Title */}
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight uppercase leading-tight font-serif" style={{ color: '#085a4e' }}>
+                  {collegeName || "Superior Group of Colleges"}
+                </h1>
+                
+                <p className="text-[11.5px] font-bold tracking-wide mt-0.5" style={{ color: '#334155' }}>
+                  Jahanian Campus • Directorate of Admissions & Accounts Registry
+                </p>
+                
+                <p className="text-[9.5px] font-bold uppercase tracking-[0.18em] mt-0.5" style={{ color: '#927218' }}>
+                  Government Registered & Affiliated with BISE Multan • College Code: 3014
+                </p>
+              </div>
+
+              {/* Regal Document Ribbon Banner */}
+              <div 
+                className="mt-3.5 py-1.5 px-4 rounded-lg text-center shadow-xs"
+                style={{ backgroundColor: '#085a4e', color: '#ffffff' }}
+              >
+                <span className="text-xs sm:text-[13px] font-black uppercase tracking-[0.15em] text-white">
+                  ★ {docTitle} ★
+                </span>
+              </div>
+
+              {/* Top Metadata Strip */}
+              <div 
+                className="mt-3 grid grid-cols-3 items-center text-xs py-1 border-t border-b gap-2 px-2 rounded"
+                style={{ backgroundColor: '#f8fafc', borderColor: '#e2e8f0' }}
+              >
+                <div className="text-left">
+                  <span className="text-[10px] doc-label block" style={{ color: '#334155' }}>Slip / Ref #:</span>
+                  <span className="font-mono font-black text-xs sm:text-sm" style={{ color: '#085a4e' }}>
+                    {data.receiptNo || (student?.rollNo ? `REC-${student.rollNo}` : verificationRef)}
+                  </span>
+                </div>
+                <div className="text-center">
+                  <span 
+                    className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border"
+                    style={{ backgroundColor: '#d1fae5', color: '#064e3b', borderColor: '#6ee7b7' }}
+                  >
+                    <Check size={11} className="text-emerald-700 stroke-[3]" />
+                    <span>Verified Original</span>
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] doc-label block" style={{ color: '#334155' }}>Issue / Print Date:</span>
+                  <span className="font-mono font-bold text-[11px]" style={{ color: '#0f172a' }}>
+                    {data.verifiedAt.split(',')[0]}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* ======================================================== */}
+            {/* STUDENT PARTICULARS STRUCTURED TABLE */}
+            {/* Fixed 2-column tabular grid matching authentic PC view */}
+            {/* ======================================================== */}
+            {student && (
+              <div className="mt-4 mb-4">
+                <div 
+                  className="border-2 rounded-xl overflow-hidden shadow-xs"
+                  style={{ backgroundColor: '#ffffff', borderColor: 'rgba(8, 90, 78, 0.4)' }}
+                >
+                  <div className="grid grid-cols-2 divide-x" style={{ borderColor: '#e2e8f0' }}>
+                    {/* Column 1 */}
+                    <div className="divide-y" style={{ borderColor: '#e2e8f0' }}>
+                      <div className="flex items-center px-3.5 py-2" style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0' }}>
+                        <span className="w-32 shrink-0 doc-label" style={{ color: '#334155' }}>Student Full Name:</span>
+                        <span className="doc-value font-black text-sm" style={{ color: '#000000' }}>{student.fullName}</span>
+                      </div>
+                      <div className="flex items-center px-3.5 py-2" style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                        <span className="w-32 shrink-0 doc-label" style={{ color: '#334155' }}>Father's Name:</span>
+                        <span className="doc-value font-black text-sm" style={{ color: '#000000' }}>{student.fatherName}</span>
+                      </div>
+                      <div className="flex items-center px-3.5 py-2" style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0' }}>
+                        <span className="w-32 shrink-0 doc-label" style={{ color: '#334155' }}>Roll No / ID:</span>
+                        <span className="font-mono font-black text-sm" style={{ color: '#085a4e' }}>
+                          {student.rollNo || student.id}
+                        </span>
+                      </div>
+                      <div className="flex items-center px-3.5 py-2" style={{ backgroundColor: '#f8fafc' }}>
+                        <span className="w-32 shrink-0 doc-label" style={{ color: '#334155' }}>Class & Program:</span>
+                        <span className="doc-value font-black" style={{ color: '#000000' }}>
+                          {student.group || student.category} {student.section ? `(Sec ${student.section})` : ''}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center px-3.5 py-2 bg-slate-50/80">
-                      <span className="w-32 shrink-0 doc-label">Campus Branch:</span>
-                      <span className="doc-value text-slate-950 font-black">
-                        {student.campusDisplay || 'Superior College Jahanian'}
-                      </span>
-                    </div>
-                    <div className="flex items-center px-3.5 py-2 bg-white">
-                      <span className="w-32 shrink-0 doc-label">Registered Phone:</span>
-                      <span className="doc-value font-mono text-slate-950">
-                        {student.contact || student.fatherContact || 'N/A'}
-                      </span>
-                    </div>
-                    <div className="flex items-center px-3.5 py-2 bg-slate-50/80">
-                      <span className="w-32 shrink-0 doc-label">B-Form / CNIC:</span>
-                      <span className="doc-value font-mono text-slate-950">
-                        {student.bayFormNo || 'Registered / On File'}
-                      </span>
+
+                    {/* Column 2 */}
+                    <div className="divide-y" style={{ borderColor: '#e2e8f0' }}>
+                      <div className="flex items-center px-3.5 py-2" style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0' }}>
+                        <span className="w-32 shrink-0 doc-label" style={{ color: '#334155' }}>Academic Session:</span>
+                        <span className="doc-value font-black" style={{ color: '#000000' }}>
+                          {student.session || '2026-28'} • {student.academicPart || 'Part-1'}
+                        </span>
+                      </div>
+                      <div className="flex items-center px-3.5 py-2" style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                        <span className="w-32 shrink-0 doc-label" style={{ color: '#334155' }}>Campus Branch:</span>
+                        <span className="doc-value font-black" style={{ color: '#000000' }}>
+                          {student.campusDisplay || 'Superior College Jahanian'}
+                        </span>
+                      </div>
+                      <div className="flex items-center px-3.5 py-2" style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0' }}>
+                        <span className="w-32 shrink-0 doc-label" style={{ color: '#334155' }}>Registered Phone:</span>
+                        <span className="doc-value font-mono" style={{ color: '#000000' }}>
+                          {student.contact || student.fatherContact || 'N/A'}
+                        </span>
+                      </div>
+                      <div className="flex items-center px-3.5 py-2" style={{ backgroundColor: '#f8fafc' }}>
+                        <span className="w-32 shrink-0 doc-label" style={{ color: '#334155' }}>B-Form / CNIC:</span>
+                        <span className="doc-value font-mono" style={{ color: '#000000' }}>
+                          {student.bayFormNo || 'Registered / On File'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* ======================================================== */}
-          {/* VIEW 1: COMPUTERIZED FEE RECEIPT (v=receipt) */}
-          {/* ======================================================== */}
-          {data.type === 'receipt' && student && (() => {
-            const matchedTx = data.transactions?.find((t: any) => data.receiptNo && t.receipt_id === data.receiptNo) || data.transactions?.[0];
-            const receiptAmount = matchedTx ? Number(matchedTx.amount || 0) : (student.feeReceived || 0);
-            const receiptDisplayId = data.receiptNo || matchedTx?.receipt_id || `REC-${(student.rollNo || student.id || '101').replace(/[^a-zA-Z0-9]/g, '')}`;
-            const receiptMethod = matchedTx?.payment_method || 'Official Cash / Online Deposit';
-
-            return (
+            {/* ======================================================== */}
+            {/* VIEW 1: COMPUTERIZED FEE RECEIPT (v=receipt) */}
+            {/* ======================================================== */}
+            {data.type === 'receipt' && student && (
               <div className="space-y-4 my-2">
                 {/* Itemized Accounts Table */}
-                <div className="border border-slate-300 rounded-xl overflow-hidden shadow-xs">
-                  <table className="w-full text-left border-collapse">
+                <div className="border rounded-xl overflow-hidden shadow-xs" style={{ borderColor: '#cbd5e1', backgroundColor: '#ffffff' }}>
+                  <table className="w-full text-left border-collapse" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
                     <thead>
-                      <tr>
-                        <th className="doc-header-th">Payment Particulars / Head</th>
-                        <th className="doc-header-th">Mode</th>
-                        <th className="doc-header-th">Receipt ID</th>
-                        <th className="doc-header-th text-right">Amount Received</th>
+                      <tr style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>
+                        <th className="doc-header-th" style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>Payment Particulars / Head</th>
+                        <th className="doc-header-th" style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>Mode</th>
+                        <th className="doc-header-th" style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>Receipt ID</th>
+                        <th className="doc-header-th text-right" style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>Amount Received</th>
                       </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-slate-200">
-                      <tr>
-                        <td className="doc-table-td">
-                          <strong className="text-slate-950 font-bold block">College Tuition & Academic Installment</strong>
-                          <span className="text-[10px] text-slate-600 block">Registration, Science Labs & Library Fee</span>
+                    <tbody style={{ backgroundColor: '#ffffff', color: '#000000' }}>
+                      <tr style={{ backgroundColor: '#ffffff', color: '#000000', borderBottom: '1px solid #e2e8f0' }}>
+                        <td className="doc-table-td" style={{ backgroundColor: '#ffffff', color: '#0f172a' }}>
+                          <strong className="font-bold block" style={{ color: '#0f172a' }}>College Tuition & Academic Installment</strong>
+                          <span className="text-[10px] block" style={{ color: '#475569' }}>Registration, Science Labs & Library Fee</span>
                         </td>
-                        <td className="doc-table-td capitalize text-slate-800 font-medium">
+                        <td className="doc-table-td capitalize font-medium" style={{ backgroundColor: '#ffffff', color: '#334155' }}>
                           {receiptMethod}
                         </td>
-                        <td className="doc-table-td font-mono font-bold text-[#085a4e]" style={{ color: '#085a4e' }}>
+                        <td className="doc-table-td font-mono font-bold" style={{ backgroundColor: '#ffffff', color: '#085a4e' }}>
                           {receiptDisplayId}
                         </td>
-                        <td className="doc-table-td text-right font-mono font-black text-emerald-800 text-base" style={{ color: '#047857' }}>
+                        <td className="doc-table-td text-right font-mono font-black text-base" style={{ backgroundColor: '#ffffff', color: '#047857' }}>
+                          Rs. {receiptAmount.toLocaleString()}
+                        </td>
+                      </tr>
+                      {/* Total Highlight Row */}
+                      <tr style={{ backgroundColor: '#f0fdf4', borderTop: '2px solid #085a4e' }}>
+                        <td colSpan={3} className="doc-table-td font-black text-xs uppercase" style={{ backgroundColor: '#f0fdf4', color: '#065f46' }}>
+                          Total Amount Paid / Received
+                        </td>
+                        <td className="doc-table-td text-right font-mono font-black text-base" style={{ backgroundColor: '#f0fdf4', color: '#047857' }}>
                           Rs. {receiptAmount.toLocaleString()}
                         </td>
                       </tr>
@@ -1024,48 +1307,51 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
                 </div>
 
                 {/* Amount in words banner */}
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-                  <span className="doc-label mr-2">Amount in Words:</span>
-                  <span className="font-serif italic font-black text-slate-900 text-sm" style={{ color: '#0f172a' }}>
+                <div className="p-3 rounded-xl border text-xs" style={{ backgroundColor: '#f8fafc', borderColor: '#cbd5e1' }}>
+                  <span className="doc-label mr-2" style={{ color: '#334155' }}>Amount in Words:</span>
+                  <span className="font-serif italic font-black text-sm" style={{ color: '#0f172a' }}>
                     {convertNumberToWords(receiptAmount)}
                   </span>
                 </div>
 
                 {/* 3 Metric Ledger Summary Boxes */}
                 <div className="grid grid-cols-3 gap-3 text-center">
-                  <div className="p-3 rounded-xl bg-slate-50 border-2 border-slate-300">
-                    <span className="text-[10px] font-black text-slate-700 uppercase block tracking-wider">Total Package</span>
-                    <span className="font-mono font-black text-slate-950 text-sm sm:text-base block mt-0.5" style={{ color: '#000000' }}>
+                  <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#f8fafc', borderColor: '#cbd5e1' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#475569' }}>Total Package</span>
+                    <span className="font-mono font-black text-base block mt-0.5" style={{ color: '#000000' }}>
                       Rs. {totalPackageAmount.toLocaleString()}
                     </span>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-emerald-50 border-2 border-emerald-300">
-                    <span className="text-[10px] font-black text-emerald-900 uppercase block tracking-wider">Total Paid</span>
-                    <span className="font-mono font-black text-emerald-900 text-sm sm:text-base block mt-0.5" style={{ color: '#064e3b' }}>
+                  <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#ecfdf5', borderColor: '#6ee7b7' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#065f46' }}>Total Paid</span>
+                    <span className="font-mono font-black text-base block mt-0.5" style={{ color: '#047857' }}>
                       Rs. {feeReceivedAmount.toLocaleString()}
                     </span>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-rose-50 border-2 border-rose-300">
-                    <span className="text-[10px] font-black text-rose-900 uppercase block tracking-wider">Remaining Balance</span>
-                    <span className="font-mono font-black text-rose-950 text-sm sm:text-base block mt-0.5" style={{ color: '#881337' }}>
+                  <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#fff1f2', borderColor: '#fca5a5' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#9f1239' }}>Remaining Balance</span>
+                    <span className="font-mono font-black text-base block mt-0.5" style={{ color: '#881337' }}>
                       Rs. {remainingBalanceAmount.toLocaleString()}
                     </span>
                   </div>
                 </div>
 
-                {/* Dual Official Stamp & Signature Block */}
-                <div className="pt-4 border-t-2 border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-6">
+                {/* Dual Official Stamp & Signature Block (Side-by-side) */}
+                <div className="pt-4 border-t-2 flex flex-row items-center justify-between gap-6" style={{ borderColor: '#e2e8f0' }}>
                   {/* Authentic Rubber Paid Stamp */}
-                  <div className="border-[2.5px] border-emerald-700 rounded-xl px-4 py-2 text-center rotate-[-2deg] bg-emerald-50/80 shadow-xs">
-                    <span className="text-xs font-black text-emerald-800 uppercase tracking-widest flex items-center justify-center gap-1.5" style={{ color: '#065f46' }}>
+                  <div 
+                    className="border-[2.5px] rounded-xl px-4 py-2 text-center rotate-[-2deg] shadow-xs shrink-0"
+                    style={{ backgroundColor: '#f0fdf4', borderColor: '#047857' }}
+                  >
+                    <span className="text-xs font-black uppercase tracking-widest flex items-center justify-center gap-1.5" style={{ color: '#065f46' }}>
                       <CheckCircle2 size={15} /> PAID & VERIFIED
                     </span>
-                    <span className="text-[9.5px] font-black text-emerald-700 block mt-0.5 uppercase tracking-wider" style={{ color: '#047857' }}>
+                    <span className="text-[9.5px] font-black block mt-0.5 uppercase tracking-wider" style={{ color: '#047857' }}>
                       SUPERIOR COLLEGE JAHANIAN
                     </span>
-                    <span className="text-[8.5px] font-bold text-slate-600 block mt-0.5 font-mono">
+                    <span className="text-[8.5px] font-bold block mt-0.5 font-mono" style={{ color: '#475569' }}>
                       ACCOUNTS DESK • {data.verifiedAt.split(',')[0]}
                     </span>
                   </div>
@@ -1073,153 +1359,301 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
                   {/* Signatures */}
                   <div className="flex items-center gap-8 text-center text-xs">
                     <div>
-                      <div className="w-28 border-b-2 border-slate-400 mb-1" />
-                      <span className="doc-label text-[10px] block">Accounts Officer</span>
+                      <div className="w-28 border-b-2 mb-1" style={{ borderColor: '#94a3b8' }} />
+                      <span className="doc-label text-[10px] block" style={{ color: '#334155' }}>Accounts Officer</span>
                     </div>
                     <div>
-                      <div className="w-28 border-b-2 border-slate-400 mb-1" />
-                      <span className="doc-label text-[10px] block">Principal / In-Charge</span>
+                      <div className="w-28 border-b-2 mb-1" style={{ borderColor: '#94a3b8' }} />
+                      <span className="doc-label text-[10px] block" style={{ color: '#334155' }}>Principal / In-Charge</span>
                     </div>
                   </div>
                 </div>
               </div>
-            );
-          })()}
+            )}
 
-          {/* ======================================================== */}
-          {/* VIEW 2: ADMISSION CONFIRMATION SLIP (v=admission) */}
-          {/* ======================================================== */}
-          {data.type === 'admission' && student && (
-            <div className="space-y-4 my-2">
-              {/* Enrolment confirmation alert */}
-              <div className="p-3.5 rounded-xl bg-emerald-50 border-2 border-emerald-300 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs font-black uppercase text-emerald-950">
-                  <Sparkles size={16} className="text-emerald-700" />
-                  <span>Official Admission Confirmed & Enrolled</span>
-                </div>
-                <span className="text-[10.5px] font-mono font-bold text-emerald-900 bg-white px-2.5 py-0.5 rounded border border-emerald-300">
-                  Session {student.session || '2026-28'}
-                </span>
-              </div>
-
-              {/* Curriculum Subjects Badges */}
-              {student.subjects && student.subjects.length > 0 && (
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-left">
-                  <span className="doc-label block mb-2 flex items-center gap-1.5">
-                    <BookOpen size={13} className="text-[#085a4e]" />
-                    <span>Registered Course Curriculum:</span>
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {student.subjects.map((sub: string, idx: number) => (
-                      <span 
-                        key={idx} 
-                        className="px-3 py-1 rounded-lg bg-white border border-slate-300 text-slate-950 font-black text-xs shadow-2xs"
-                        style={{ color: '#000000' }}
-                      >
-                        {sub}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Agreed Fee Structure */}
-              <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="p-3 rounded-xl bg-slate-50 border-2 border-slate-300">
-                  <span className="text-[10px] font-black text-slate-700 uppercase block tracking-wider">Agreed Package</span>
-                  <span className="font-mono font-black text-slate-950 text-sm sm:text-base block mt-0.5" style={{ color: '#000000' }}>
-                    Rs. {totalPackageAmount.toLocaleString()}
-                  </span>
-                </div>
-
-                <div className="p-3 rounded-xl bg-emerald-50 border-2 border-emerald-300">
-                  <span className="text-[10px] font-black text-emerald-900 uppercase block tracking-wider">Fee Deposited</span>
-                  <span className="font-mono font-black text-emerald-900 text-sm sm:text-base block mt-0.5" style={{ color: '#064e3b' }}>
-                    Rs. {feeReceivedAmount.toLocaleString()}
-                  </span>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-100 border-2 border-slate-300">
-                  <span className="text-[10px] font-black text-slate-800 uppercase block tracking-wider">Remaining Dues</span>
-                  <span className="font-mono font-black text-slate-950 text-sm sm:text-base block mt-0.5" style={{ color: '#000000' }}>
-                    Rs. {remainingBalanceAmount.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              {/* Admissions Directorate Stamp & Signatures */}
-              <div className="pt-4 border-t-2 border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-6">
-                <div className="border-[2.5px] border-[#085a4e] rounded-xl px-4 py-2 text-center rotate-[-1deg] bg-slate-50">
-                  <span className="text-xs font-black text-[#085a4e] uppercase tracking-widest flex items-center justify-center gap-1.5" style={{ color: '#085a4e' }}>
-                    <ShieldCheck size={15} /> ADMISSION APPROVED
-                  </span>
-                  <span className="text-[9px] font-black text-slate-800 block mt-0.5 uppercase tracking-wider">
-                    OFFICE OF ADMISSIONS & STUDENT AFFAIRS
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-8 text-center text-xs">
-                  <div>
-                    <div className="w-28 border-b-2 border-slate-400 mb-1" />
-                    <span className="doc-label text-[10px] block">Admission Incharge</span>
-                  </div>
-                  <div>
-                    <div className="w-28 border-b-2 border-slate-400 mb-1" />
-                    <span className="doc-label text-[10px] block">Principal, SGC Jahanian</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ======================================================== */}
-          {/* VIEW 3: ACADEMIC RESULT CARD (v=result) */}
-          {/* ======================================================== */}
-          {data.type === 'result' && student && (() => {
-            const totalObtainedMarks = data.academicRecords?.reduce((acc: number, r: any) => acc + Number(r.obtained_marks || 0), 0) || 0;
-            const totalMaxMarks = data.academicRecords?.reduce((acc: number, r: any) => acc + Number(r.total_marks || 100), 0) || 0;
-            const resultPercentage = totalMaxMarks > 0 ? Math.round((totalObtainedMarks / totalMaxMarks) * 100) : 0;
-            const isPassed = resultPercentage >= 50;
-
-            return (
+            {/* ======================================================== */}
+            {/* VIEW 2: ADMISSION CONFIRMATION SLIP (v=admission) */}
+            {/* ======================================================== */}
+            {data.type === 'admission' && student && (
               <div className="space-y-4 my-2">
-                <div className="border border-slate-300 rounded-xl overflow-hidden shadow-xs">
-                  <table className="w-full text-left border-collapse">
+                {/* Enrolment confirmation alert */}
+                <div className="p-3.5 rounded-xl border-2 flex items-center justify-between" style={{ backgroundColor: '#ecfdf5', borderColor: '#6ee7b7' }}>
+                  <div className="flex items-center gap-2 text-xs font-black uppercase" style={{ color: '#064e3b' }}>
+                    <Sparkles size={16} className="text-emerald-700" />
+                    <span>Official Admission Confirmed & Enrolled</span>
+                  </div>
+                  <span className="text-[10.5px] font-mono font-bold px-2.5 py-0.5 rounded border" style={{ backgroundColor: '#ffffff', color: '#064e3b', borderColor: '#6ee7b7' }}>
+                    Session {student.session || '2026-28'}
+                  </span>
+                </div>
+
+                {/* Curriculum Subjects Badges */}
+                {student.subjects && student.subjects.length > 0 && (
+                  <div className="p-3.5 rounded-xl border text-left" style={{ backgroundColor: '#f8fafc', borderColor: '#e2e8f0' }}>
+                    <span className="doc-label block mb-2 flex items-center gap-1.5" style={{ color: '#334155' }}>
+                      <BookOpen size={13} className="text-[#085a4e]" />
+                      <span>Registered Course Curriculum:</span>
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {student.subjects.map((sub: string, idx: number) => (
+                        <span 
+                          key={idx} 
+                          className="px-3 py-1 rounded-lg border font-black text-xs shadow-2xs"
+                          style={{ backgroundColor: '#ffffff', borderColor: '#cbd5e1', color: '#0f172a' }}
+                        >
+                          {sub}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Agreed Fee Structure */}
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#f8fafc', borderColor: '#cbd5e1' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#475569' }}>Agreed Package</span>
+                    <span className="font-mono font-black text-base block mt-0.5" style={{ color: '#000000' }}>
+                      Rs. {totalPackageAmount.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#ecfdf5', borderColor: '#6ee7b7' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#065f46' }}>Fee Deposited</span>
+                    <span className="font-mono font-black text-base block mt-0.5" style={{ color: '#047857' }}>
+                      Rs. {feeReceivedAmount.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#f8fafc', borderColor: '#cbd5e1' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#475569' }}>Remaining Dues</span>
+                    <span className="font-mono font-black text-base block mt-0.5" style={{ color: '#000000' }}>
+                      Rs. {remainingBalanceAmount.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Admissions Directorate Stamp & Signatures */}
+                <div className="pt-4 border-t-2 flex flex-row items-center justify-between gap-6" style={{ borderColor: '#e2e8f0' }}>
+                  <div className="border-[2.5px] rounded-xl px-4 py-2 text-center rotate-[-1deg] shrink-0" style={{ backgroundColor: '#f8fafc', borderColor: '#085a4e' }}>
+                    <span className="text-xs font-black uppercase tracking-widest flex items-center justify-center gap-1.5" style={{ color: '#085a4e' }}>
+                      <ShieldCheck size={15} /> ADMISSION APPROVED
+                    </span>
+                    <span className="text-[9px] font-black block mt-0.5 uppercase tracking-wider" style={{ color: '#334155' }}>
+                      OFFICE OF ADMISSIONS & STUDENT AFFAIRS
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-8 text-center text-xs">
+                    <div>
+                      <div className="w-28 border-b-2 mb-1" style={{ borderColor: '#94a3b8' }} />
+                      <span className="doc-label text-[10px] block" style={{ color: '#334155' }}>Admission Incharge</span>
+                    </div>
+                    <div>
+                      <div className="w-28 border-b-2 mb-1" style={{ borderColor: '#94a3b8' }} />
+                      <span className="doc-label text-[10px] block" style={{ color: '#334155' }}>Principal, SGC Jahanian</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ======================================================== */}
+            {/* VIEW 3: ACADEMIC RESULT CARD (v=result) */}
+            {/* ======================================================== */}
+            {data.type === 'result' && student && (() => {
+              const totalObtainedMarks = data.academicRecords?.reduce((acc: number, r: any) => acc + Number(r.obtained_marks || 0), 0) || 0;
+              const totalMaxMarks = data.academicRecords?.reduce((acc: number, r: any) => acc + Number(r.total_marks || 100), 0) || 0;
+              const resultPercentage = totalMaxMarks > 0 ? Math.round((totalObtainedMarks / totalMaxMarks) * 100) : 0;
+              const isPassed = resultPercentage >= 50;
+
+              return (
+                <div className="space-y-4 my-2">
+                  <div className="border rounded-xl overflow-hidden shadow-xs" style={{ borderColor: '#cbd5e1', backgroundColor: '#ffffff' }}>
+                    <table className="w-full text-left border-collapse" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
+                      <thead>
+                        <tr style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>
+                          <th className="doc-header-th" style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>Assessment / Test</th>
+                          <th className="doc-header-th" style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>Subject</th>
+                          <th className="doc-header-th text-center" style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>Marks Obtained</th>
+                          <th className="doc-header-th text-center" style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>Percentage</th>
+                          <th className="doc-header-th text-right" style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>Date</th>
+                        </tr>
+                      </thead>
+                      <tbody style={{ backgroundColor: '#ffffff', color: '#000000' }}>
+                        {data.academicRecords && data.academicRecords.length > 0 ? (
+                          data.academicRecords.map((rec, idx) => {
+                            const pct = rec.total_marks > 0 ? Math.round((rec.obtained_marks / rec.total_marks) * 100) : 0;
+                            return (
+                              <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                <td className="doc-table-td font-bold" style={{ color: '#0f172a', backgroundColor: '#ffffff' }}>{rec.test_name || 'Class Test'}</td>
+                                <td className="doc-table-td font-medium" style={{ color: '#334155', backgroundColor: '#ffffff' }}>{rec.subject}</td>
+                                <td className="doc-table-td text-center font-mono font-black" style={{ color: '#000000', backgroundColor: '#ffffff' }}>
+                                  {rec.obtained_marks} / {rec.total_marks}
+                                </td>
+                                <td className="doc-table-td text-center" style={{ backgroundColor: '#ffffff' }}>
+                                  <span 
+                                    className="px-2 py-0.5 rounded font-mono font-bold text-xs"
+                                    style={{
+                                      backgroundColor: pct >= 70 ? '#d1fae5' : pct >= 50 ? '#fef3c7' : '#fee2e2',
+                                      color: pct >= 70 ? '#065f46' : pct >= 50 ? '#92400e' : '#991b1b'
+                                    }}
+                                  >
+                                    {pct}%
+                                  </span>
+                                </td>
+                                <td className="doc-table-td text-right font-mono text-[11px]" style={{ color: '#64748b', backgroundColor: '#ffffff' }}>
+                                  {rec.date ? new Date(rec.date).toLocaleDateString('en-GB') : '-'}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="p-4 text-center text-xs font-medium" style={{ color: '#475569', backgroundColor: '#ffffff' }}>
+                              Student is actively enrolled in session {student.session || '2026-28'}. Monthly examination results are uploaded on the central portal upon evaluation.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {totalMaxMarks > 0 && (
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                      <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#f8fafc', borderColor: '#cbd5e1' }}>
+                        <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#475569' }}>Total Marks</span>
+                        <span className="font-mono font-black text-base block mt-0.5" style={{ color: '#000000' }}>
+                          {totalObtainedMarks} / {totalMaxMarks}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#ecfdf5', borderColor: '#6ee7b7' }}>
+                        <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#065f46' }}>Aggregate %</span>
+                        <span className="font-mono font-black text-base block mt-0.5" style={{ color: '#047857' }}>
+                          {resultPercentage}%
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#f8fafc', borderColor: '#cbd5e1' }}>
+                        <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#475569' }}>Standing</span>
+                        <span className="font-black text-base block mt-0.5" style={{ color: isPassed ? '#047857' : '#be123c' }}>
+                          {isPassed ? '✓ Passed' : 'Needs Attention'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Controller of Examinations Seal */}
+                  <div className="pt-4 border-t-2 flex flex-row items-center justify-between gap-6" style={{ borderColor: '#e2e8f0' }}>
+                    <div className="border-[2.5px] rounded-xl px-4 py-2 text-center rotate-[-1deg] shrink-0" style={{ backgroundColor: '#fffbeb', borderColor: '#d97706' }}>
+                      <span className="text-xs font-black uppercase tracking-widest flex items-center justify-center gap-1.5" style={{ color: '#78350f' }}>
+                        <Award size={15} className="text-[#c9a84c]" /> EXAMINATION OFFICE VERIFIED
+                      </span>
+                      <span className="text-[9px] font-black block mt-0.5 uppercase tracking-wider" style={{ color: '#334155' }}>
+                        SUPERIOR GROUP OF COLLEGES JAHANIAN
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-8 text-center text-xs">
+                      <div>
+                        <div className="w-28 border-b-2 mb-1" style={{ borderColor: '#94a3b8' }} />
+                        <span className="doc-label text-[10px] block" style={{ color: '#334155' }}>Tabulator</span>
+                      </div>
+                      <div>
+                        <div className="w-28 border-b-2 mb-1" style={{ borderColor: '#94a3b8' }} />
+                        <span className="doc-label text-[10px] block" style={{ color: '#334155' }}>Controller of Exams</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ======================================================== */}
+            {/* VIEW 4: FEE ACCOUNT STATEMENT / LEDGER (v=statement) */}
+            {/* ======================================================== */}
+            {(data.type === 'statement' || data.type === 'challan') && student && (
+              <div className="space-y-4 my-2">
+                <div className="grid grid-cols-4 gap-3 text-center">
+                  <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#f8fafc', borderColor: '#cbd5e1' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#475569' }}>Total Package</span>
+                    <span className="font-mono font-black text-base block mt-0.5" style={{ color: '#000000' }}>
+                      Rs. {totalPackageAmount.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#ecfdf5', borderColor: '#6ee7b7' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#065f46' }}>Paid So Far</span>
+                    <span className="font-mono font-black text-base block mt-0.5" style={{ color: '#047857' }}>
+                      Rs. {feeReceivedAmount.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#fff1f2', borderColor: '#fca5a5' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#9f1239' }}>Current Due</span>
+                    <span className="font-mono font-black text-base block mt-0.5" style={{ color: '#881337' }}>
+                      Rs. {(feeCalc?.currentInstallmentDue || 0).toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#f1f5f9', borderColor: '#cbd5e1' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#334155' }}>Total Balance</span>
+                    <span className="font-mono font-black text-base block mt-0.5" style={{ color: '#000000' }}>
+                      Rs. {remainingBalanceAmount.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="p-3.5 rounded-xl border space-y-1.5 text-left" style={{ backgroundColor: '#f8fafc', borderColor: '#e2e8f0' }}>
+                  <div className="flex items-center justify-between text-xs font-black" style={{ color: '#0f172a' }}>
+                    <span>Package Clearance Status</span>
+                    <span className="font-mono" style={{ color: '#085a4e' }}>{clearedPercent}% Cleared</span>
+                  </div>
+                  <div className="w-full h-2.5 rounded-full overflow-hidden border" style={{ backgroundColor: '#e2e8f0', borderColor: '#cbd5e1' }}>
+                    <div 
+                      className="h-full rounded-full"
+                      style={{ 
+                        width: `${clearedPercent}%`,
+                        backgroundImage: 'linear-gradient(to right, #085a4e, #10b981)'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Verified Transactions Table */}
+                <div className="border rounded-xl overflow-hidden shadow-xs" style={{ borderColor: '#cbd5e1', backgroundColor: '#ffffff' }}>
+                  <table className="w-full text-left border-collapse" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
                     <thead>
-                      <tr>
-                        <th className="doc-header-th">Assessment / Test</th>
-                        <th className="doc-header-th">Subject</th>
-                        <th className="doc-header-th text-center">Marks Obtained</th>
-                        <th className="doc-header-th text-center">Percentage</th>
-                        <th className="doc-header-th text-right">Date</th>
+                      <tr style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>
+                        <th className="doc-header-th" style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>Receipt ID</th>
+                        <th className="doc-header-th" style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>Payment Date</th>
+                        <th className="doc-header-th" style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>Mode</th>
+                        <th className="doc-header-th text-right" style={{ backgroundColor: '#085a4e', color: '#ffffff' }}>Amount Deposited</th>
                       </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-slate-200">
-                      {data.academicRecords && data.academicRecords.length > 0 ? (
-                        data.academicRecords.map((rec, idx) => {
-                          const pct = rec.total_marks > 0 ? Math.round((rec.obtained_marks / rec.total_marks) * 100) : 0;
-                          return (
-                            <tr key={idx}>
-                              <td className="doc-table-td font-bold text-slate-950">{rec.test_name || 'Class Test'}</td>
-                              <td className="doc-table-td font-medium text-slate-800">{rec.subject}</td>
-                              <td className="doc-table-td text-center font-mono font-black text-slate-950">
-                                {rec.obtained_marks} / {rec.total_marks}
-                              </td>
-                              <td className="doc-table-td text-center">
-                                <span className={`px-2 py-0.5 rounded font-mono font-bold text-xs ${pct >= 70 ? 'bg-emerald-100 text-emerald-900' : pct >= 50 ? 'bg-amber-100 text-amber-900' : 'bg-rose-100 text-rose-900'}`}>
-                                  {pct}%
-                                </span>
-                              </td>
-                              <td className="doc-table-td text-right font-mono text-[11px] text-slate-600">
-                                {rec.date ? new Date(rec.date).toLocaleDateString('en-GB') : '-'}
-                              </td>
-                            </tr>
-                          );
-                        })
+                    <tbody style={{ backgroundColor: '#ffffff', color: '#000000' }}>
+                      {data.transactions && data.transactions.length > 0 ? (
+                        data.transactions.map((tx, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                            <td className="doc-table-td font-mono font-black" style={{ color: '#085a4e', backgroundColor: '#ffffff' }}>
+                              {tx.receipt_id || `REC-${idx + 1}`}
+                            </td>
+                            <td className="doc-table-td font-medium" style={{ color: '#334155', backgroundColor: '#ffffff' }}>
+                              {tx.date ? new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                            </td>
+                            <td className="doc-table-td capitalize font-medium" style={{ color: '#334155', backgroundColor: '#ffffff' }}>
+                              {tx.payment_method || 'Cash / Bank'}
+                            </td>
+                            <td className="doc-table-td text-right font-mono font-black text-sm" style={{ color: '#047857', backgroundColor: '#ffffff' }}>
+                              Rs. {Number(tx.amount || 0).toLocaleString()}
+                            </td>
+                          </tr>
+                        ))
                       ) : (
                         <tr>
-                          <td colSpan={5} className="p-4 text-center text-xs text-slate-600 font-medium">
-                            Student is actively enrolled in session {student.session || '2026-28'}. Monthly examination results are uploaded on the central portal upon evaluation.
+                          <td colSpan={4} className="p-4 text-center text-xs" style={{ color: '#475569', backgroundColor: '#ffffff' }}>
+                            Initial fee deposit recorded at admission: <strong style={{ color: '#0f172a' }}>Rs. {feeReceivedAmount.toLocaleString()}</strong>
                           </td>
                         </tr>
                       )}
@@ -1227,338 +1661,203 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
                   </table>
                 </div>
 
-                {totalMaxMarks > 0 && (
-                  <div className="grid grid-cols-3 gap-3 text-center">
-                    <div className="p-3 rounded-xl bg-slate-50 border-2 border-slate-300">
-                      <span className="text-[10px] font-black text-slate-700 uppercase block tracking-wider">Total Marks</span>
-                      <span className="font-mono font-black text-slate-950 text-sm sm:text-base block mt-0.5">
-                        {totalObtainedMarks} / {totalMaxMarks}
-                      </span>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-emerald-50 border-2 border-emerald-300">
-                      <span className="text-[10px] font-black text-emerald-900 uppercase block tracking-wider">Aggregate %</span>
-                      <span className="font-mono font-black text-emerald-900 text-sm sm:text-base block mt-0.5">
-                        {resultPercentage}%
-                      </span>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-slate-100 border-2 border-slate-300">
-                      <span className="text-[10px] font-black text-slate-800 uppercase block tracking-wider">Standing</span>
-                      <span className="font-black text-slate-950 text-sm sm:text-base block mt-0.5">
-                        {isPassed ? '✓ Passed' : 'Needs Attention'}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Controller of Examinations Seal */}
-                <div className="pt-4 border-t-2 border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-6">
-                  <div className="border-[2.5px] border-[#c9a84c] rounded-xl px-4 py-2 text-center rotate-[-1deg] bg-amber-50/70">
-                    <span className="text-xs font-black text-amber-950 uppercase tracking-widest flex items-center justify-center gap-1.5">
-                      <Award size={15} className="text-[#c9a84c]" /> EXAMINATION OFFICE VERIFIED
+                {/* Accounts Directorate Stamp */}
+                <div className="pt-4 border-t-2 flex flex-row items-center justify-between gap-6" style={{ borderColor: '#e2e8f0' }}>
+                  <div className="border-[2.5px] rounded-xl px-4 py-2 text-center rotate-[-1deg] shrink-0" style={{ backgroundColor: '#f8fafc', borderColor: '#085a4e' }}>
+                    <span className="text-xs font-black uppercase tracking-widest flex items-center justify-center gap-1.5" style={{ color: '#085a4e' }}>
+                      <Receipt size={15} /> OFFICIAL FINANCIAL LEDGER
                     </span>
-                    <span className="text-[9px] font-black text-slate-800 block mt-0.5 uppercase tracking-wider">
-                      SUPERIOR GROUP OF COLLEGES JAHANIAN
+                    <span className="text-[9px] font-black block mt-0.5 uppercase tracking-wider" style={{ color: '#334155' }}>
+                      DIRECTORATE OF ACCOUNTS & FINANCE
                     </span>
                   </div>
 
                   <div className="flex items-center gap-8 text-center text-xs">
                     <div>
-                      <div className="w-28 border-b-2 border-slate-400 mb-1" />
-                      <span className="doc-label text-[10px] block">Tabulator</span>
+                      <div className="w-28 border-b-2 mb-1" style={{ borderColor: '#94a3b8' }} />
+                      <span className="doc-label text-[10px] block" style={{ color: '#334155' }}>Ledger Officer</span>
                     </div>
                     <div>
-                      <div className="w-28 border-b-2 border-slate-400 mb-1" />
-                      <span className="doc-label text-[10px] block">Controller of Exams</span>
+                      <div className="w-28 border-b-2 mb-1" style={{ borderColor: '#94a3b8' }} />
+                      <span className="doc-label text-[10px] block" style={{ color: '#334155' }}>Director Finance</span>
                     </div>
                   </div>
                 </div>
               </div>
-            );
-          })()}
+            )}
 
-          {/* ======================================================== */}
-          {/* VIEW 4: FEE ACCOUNT STATEMENT / LEDGER (v=statement) */}
-          {/* ======================================================== */}
-          {(data.type === 'statement' || data.type === 'challan') && student && (
-            <div className="space-y-4 my-2">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                <div className="p-3 rounded-xl bg-slate-50 border-2 border-slate-300">
-                  <span className="text-[10px] font-black text-slate-700 uppercase block tracking-wider">Total Package</span>
-                  <span className="font-mono font-black text-slate-950 text-sm sm:text-base block mt-0.5">
-                    Rs. {totalPackageAmount.toLocaleString()}
-                  </span>
+            {/* ======================================================== */}
+            {/* VIEW 5: ATTENDANCE DOSSIER (v=attendance) */}
+            {/* ======================================================== */}
+            {data.type === 'attendance' && student && (
+              <div className="space-y-4 my-2">
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="p-3.5 rounded-xl border-2" style={{ backgroundColor: '#f8fafc', borderColor: '#cbd5e1' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#475569' }}>Days Present</span>
+                    <span className="font-mono font-black text-xl block mt-0.5" style={{ color: '#047857' }}>
+                      {data.attendanceStats?.presentDays ?? 0}
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl border-2" style={{ backgroundColor: '#f8fafc', borderColor: '#cbd5e1' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#475569' }}>Days Absent</span>
+                    <span className="font-mono font-black text-xl block mt-0.5" style={{ color: '#9f1239' }}>
+                      {data.attendanceStats?.absentDays ?? 0}
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl border-2" style={{ backgroundColor: '#ecfdf5', borderColor: '#6ee7b7' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#065f46' }}>Attendance %</span>
+                    <span className="font-mono font-black text-xl block mt-0.5" style={{ color: '#047857' }}>
+                      {data.attendanceStats?.attendancePercent ?? 100}%
+                    </span>
+                  </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-emerald-50 border-2 border-emerald-300">
-                  <span className="text-[10px] font-black text-emerald-900 uppercase block tracking-wider">Paid So Far</span>
-                  <span className="font-mono font-black text-emerald-900 text-sm sm:text-base block mt-0.5">
-                    Rs. {feeReceivedAmount.toLocaleString()}
-                  </span>
+                <div className="p-3.5 rounded-xl border text-xs leading-relaxed text-left" style={{ backgroundColor: '#f8fafc', borderColor: '#e2e8f0', color: '#1e293b' }}>
+                  <strong className="font-black block mb-0.5" style={{ color: '#0f172a' }}>BISE Board Exam Eligibility Rule:</strong>
+                  <span style={{ color: '#334155' }}>Under BISE regulations, a minimum of 75% classroom attendance is mandatory to be eligible for annual board examinations. Regular attendance is strongly advised.</span>
                 </div>
 
-                <div className="p-3 rounded-xl bg-rose-50 border-2 border-rose-300">
-                  <span className="text-[10px] font-black text-rose-900 uppercase block tracking-wider">Current Due</span>
-                  <span className="font-mono font-black text-rose-950 text-sm sm:text-base block mt-0.5">
-                    Rs. {(feeCalc?.currentInstallmentDue || 0).toLocaleString()}
-                  </span>
-                </div>
+                {/* Discipline Officer Seal */}
+                <div className="pt-4 border-t-2 flex flex-row items-center justify-between gap-6" style={{ borderColor: '#e2e8f0' }}>
+                  <div className="border-[2.5px] rounded-xl px-4 py-2 text-center rotate-[-1deg] shrink-0" style={{ backgroundColor: '#f8fafc', borderColor: '#085a4e' }}>
+                    <span className="text-xs font-black uppercase tracking-widest flex items-center justify-center gap-1.5" style={{ color: '#085a4e' }}>
+                      <Calendar size={15} /> ATTENDANCE RECORD VERIFIED
+                    </span>
+                    <span className="text-[9px] font-black block mt-0.5 uppercase tracking-wider" style={{ color: '#334155' }}>
+                      OFFICE OF VICE PRINCIPAL (DISCIPLINE)
+                    </span>
+                  </div>
 
-                <div className="p-3 rounded-xl bg-slate-100 border-2 border-slate-300">
-                  <span className="text-[10px] font-black text-slate-800 uppercase block tracking-wider">Total Balance</span>
-                  <span className="font-mono font-black text-slate-950 text-sm sm:text-base block mt-0.5">
-                    Rs. {remainingBalanceAmount.toLocaleString()}
-                  </span>
+                  <div className="text-center text-xs">
+                    <div className="w-32 border-b-2 mb-1" style={{ borderColor: '#94a3b8' }} />
+                    <span className="doc-label text-[10px] block" style={{ color: '#334155' }}>Vice Principal (Discipline)</span>
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* Progress Bar */}
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-left">
-                <div className="flex items-center justify-between text-xs font-black text-slate-900">
-                  <span>Package Clearance Status</span>
-                  <span className="font-mono text-[#085a4e]">{clearedPercent}% Cleared</span>
+            {/* ======================================================== */}
+            {/* VIEW 6: GENERAL 360 DOSSIER (v=general / default) */}
+            {/* ======================================================== */}
+            {(data.type === 'general' || data.type === 'card' || data.type === 'student') && student && (
+              <div className="space-y-4 my-2">
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#f8fafc', borderColor: '#cbd5e1' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#475569' }}>Total Package</span>
+                    <span className="font-mono font-black text-sm block mt-0.5" style={{ color: '#000000' }}>
+                      Rs. {totalPackageAmount.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#ecfdf5', borderColor: '#6ee7b7' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#065f46' }}>Paid Fee</span>
+                    <span className="font-mono font-black text-sm block mt-0.5" style={{ color: '#047857' }}>
+                      Rs. {feeReceivedAmount.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl border-2" style={{ backgroundColor: '#fff1f2', borderColor: '#fca5a5' }}>
+                    <span className="text-[10px] font-black uppercase block tracking-wider" style={{ color: '#9f1239' }}>Remaining</span>
+                    <span className="font-mono font-black text-sm block mt-0.5" style={{ color: '#881337' }}>
+                      Rs. {remainingBalanceAmount.toLocaleString()}
+                    </span>
+                  </div>
                 </div>
-                <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden border border-slate-300">
-                  <div 
-                    className="h-full bg-gradient-to-r from-[#085a4e] to-emerald-500 rounded-full"
-                    style={{ width: `${clearedPercent}%` }}
-                  />
+
+                {student.subjects && student.subjects.length > 0 && (
+                  <div className="p-3 rounded-xl border text-left" style={{ backgroundColor: '#f8fafc', borderColor: '#e2e8f0' }}>
+                    <span className="doc-label block mb-1.5" style={{ color: '#334155' }}>Enrolled Subjects:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {student.subjects.map((sub: string, idx: number) => (
+                        <span key={idx} className="px-2.5 py-0.5 rounded border font-bold text-[11px]" style={{ backgroundColor: '#ffffff', borderColor: '#cbd5e1', color: '#0f172a' }}>
+                          {sub}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ======================================================== */}
+            {/* IF STAFF RECORD */}
+            {/* ======================================================== */}
+            {staff && (
+              <div className="space-y-4 my-2">
+                <div 
+                  className="border-2 rounded-xl overflow-hidden shadow-xs"
+                  style={{ backgroundColor: '#ffffff', borderColor: 'rgba(8, 90, 78, 0.4)' }}
+                >
+                  <div className="grid grid-cols-2 divide-x" style={{ borderColor: '#e2e8f0' }}>
+                    <div className="divide-y" style={{ borderColor: '#e2e8f0' }}>
+                      <div className="flex items-center px-3.5 py-2" style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0' }}>
+                        <span className="w-32 shrink-0 doc-label" style={{ color: '#334155' }}>Faculty Member:</span>
+                        <span className="doc-value font-black text-sm" style={{ color: '#000000' }}>{staff.fullName}</span>
+                      </div>
+                      <div className="flex items-center px-3.5 py-2" style={{ backgroundColor: '#f8fafc' }}>
+                        <span className="w-32 shrink-0 doc-label" style={{ color: '#334155' }}>Designation / Role:</span>
+                        <span className="doc-value font-black" style={{ color: '#000000' }}>{staff.role || 'Professor'}</span>
+                      </div>
+                    </div>
+                    <div className="divide-y" style={{ borderColor: '#e2e8f0' }}>
+                      <div className="flex items-center px-3.5 py-2" style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0' }}>
+                        <span className="w-32 shrink-0 doc-label" style={{ color: '#334155' }}>Faculty Staff ID:</span>
+                        <span className="font-mono font-black text-sm" style={{ color: '#085a4e' }}>{staff.id}</span>
+                      </div>
+                      <div className="flex items-center px-3.5 py-2" style={{ backgroundColor: '#f8fafc' }}>
+                        <span className="w-32 shrink-0 doc-label" style={{ color: '#334155' }}>Campus Branch:</span>
+                        <span className="doc-value font-black" style={{ color: '#000000' }}>Superior College Jahanian</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* Verified Transactions Table */}
-              <div className="border border-slate-300 rounded-xl overflow-hidden shadow-xs">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="doc-header-th">Receipt ID</th>
-                      <th className="doc-header-th">Payment Date</th>
-                      <th className="doc-header-th">Mode</th>
-                      <th className="doc-header-th text-right">Amount Deposited</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-slate-200">
-                    {data.transactions && data.transactions.length > 0 ? (
-                      data.transactions.map((tx, idx) => (
-                        <tr key={idx}>
-                          <td className="doc-table-td font-mono font-black text-[#085a4e]" style={{ color: '#085a4e' }}>
-                            {tx.receipt_id || `REC-${idx + 1}`}
-                          </td>
-                          <td className="doc-table-td font-medium text-slate-800">
-                            {tx.date ? new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
-                          </td>
-                          <td className="doc-table-td capitalize text-slate-800 font-medium">
-                            {tx.payment_method || 'Cash / Bank'}
-                          </td>
-                          <td className="doc-table-td text-right font-mono font-black text-emerald-800 text-sm" style={{ color: '#047857' }}>
-                            Rs. {Number(tx.amount || 0).toLocaleString()}
-                          </td>
-                        </tr>
-                      ))
+            {/* ======================================================== */}
+            {/* SLIP FOOTER: BARCODE, LIVE QR, AND LEGAL AUTHENTICITY */}
+            {/* 3 columns side-by-side matching authentic PC view */}
+            {/* ======================================================== */}
+            <div className="mt-5 pt-4 border-t-2 p-3.5 rounded-xl" style={{ backgroundColor: '#f8fafc', borderColor: 'rgba(8, 90, 78, 0.3)' }}>
+              <div className="grid grid-cols-3 items-center gap-4 text-left">
+                {/* Left: Scannable QR Code */}
+                <div className="flex items-center justify-start gap-2.5">
+                  <div className="w-16 h-16 p-1 rounded-lg border shrink-0 shadow-2xs" style={{ backgroundColor: '#ffffff', borderColor: '#cbd5e1' }}>
+                    {qrCodeDataUrl ? (
+                      <img src={qrCodeDataUrl} alt="QR Code" className="w-full h-full object-contain" />
                     ) : (
-                      <tr>
-                        <td colSpan={4} className="p-4 text-center text-xs text-slate-600">
-                          Initial fee deposit recorded at admission: <strong>Rs. {feeReceivedAmount.toLocaleString()}</strong>
-                        </td>
-                      </tr>
+                      <div className="w-full h-full flex items-center justify-center text-[8px] font-mono" style={{ backgroundColor: '#f1f5f9', color: '#94a3b8' }}>
+                        QR CODE
+                      </div>
                     )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Accounts Directorate Stamp */}
-              <div className="pt-4 border-t-2 border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-6">
-                <div className="border-[2.5px] border-[#085a4e] rounded-xl px-4 py-2 text-center rotate-[-1deg] bg-slate-50">
-                  <span className="text-xs font-black text-[#085a4e] uppercase tracking-widest flex items-center justify-center gap-1.5">
-                    <Receipt size={15} /> OFFICIAL FINANCIAL LEDGER
-                  </span>
-                  <span className="text-[9px] font-black text-slate-800 block mt-0.5 uppercase tracking-wider">
-                    DIRECTORATE OF ACCOUNTS & FINANCE
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-8 text-center text-xs">
-                  <div>
-                    <div className="w-28 border-b-2 border-slate-400 mb-1" />
-                    <span className="doc-label text-[10px] block">Ledger Officer</span>
                   </div>
-                  <div>
-                    <div className="w-28 border-b-2 border-slate-400 mb-1" />
-                    <span className="doc-label text-[10px] block">Director Finance</span>
+                  <div className="text-left">
+                    <span className="doc-label text-[9.5px] block" style={{ color: '#334155' }}>Live Verification</span>
+                    <span className="text-[9px] block leading-tight font-medium" style={{ color: '#475569' }}>
+                      Scan with camera to verify live from central server.
+                    </span>
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
 
-          {/* ======================================================== */}
-          {/* VIEW 5: ATTENDANCE DOSSIER (v=attendance) */}
-          {/* ======================================================== */}
-          {data.type === 'attendance' && student && (
-            <div className="space-y-4 my-2">
-              <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="p-3.5 rounded-xl bg-slate-50 border-2 border-slate-300">
-                  <span className="text-[10px] font-black text-slate-700 uppercase block tracking-wider">Days Present</span>
-                  <span className="font-mono font-black text-emerald-800 text-xl block mt-0.5">
-                    {data.attendanceStats?.presentDays ?? 0}
-                  </span>
+                {/* Center: Computerized Security Barcode */}
+                <div className="flex justify-center" style={{ backgroundColor: '#ffffff', padding: '4px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <BarcodeSvg value={verificationRef} />
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-slate-50 border-2 border-slate-300">
-                  <span className="text-[10px] font-black text-slate-700 uppercase block tracking-wider">Days Absent</span>
-                  <span className="font-mono font-black text-rose-800 text-xl block mt-0.5">
-                    {data.attendanceStats?.absentDays ?? 0}
-                  </span>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-emerald-50 border-2 border-emerald-300">
-                  <span className="text-[10px] font-black text-emerald-900 uppercase block tracking-wider">Attendance %</span>
-                  <span className="font-mono font-black text-emerald-950 text-xl block mt-0.5">
-                    {data.attendanceStats?.attendancePercent ?? 100}%
-                  </span>
+                {/* Right: College Contact & Registry */}
+                <div className="text-right text-[10px]" style={{ color: '#475569' }}>
+                  <strong className="block font-black uppercase text-[10px]" style={{ color: '#0f172a' }}>Superior Group of Colleges</strong>
+                  <span>Old Multan Road, Jahanian</span>
+                  <span className="block font-mono font-bold" style={{ color: '#085a4e' }}>Helpline: 0301-4455891</span>
                 </div>
               </div>
 
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-800 leading-relaxed text-left">
-                <strong className="text-slate-950 font-black block mb-0.5">BISE Board Exam Eligibility Rule:</strong>
-                <span>Under BISE regulations, a minimum of 75% classroom attendance is mandatory to be eligible for annual board examinations. Regular attendance is strongly advised.</span>
+              {/* Micro Legal Disclaimer */}
+              <div className="mt-2.5 pt-2 border-t text-[9px] text-center leading-tight" style={{ borderColor: '#e2e8f0', color: '#64748b' }}>
+                Notice: This computerized official document is digitally issued by Superior College Jahanian. Any unauthorized tampering, manual erasure, or forgery is strictly illegal.
               </div>
-
-              {/* Discipline Officer Seal */}
-              <div className="pt-4 border-t-2 border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-6">
-                <div className="border-[2.5px] border-[#085a4e] rounded-xl px-4 py-2 text-center rotate-[-1deg] bg-slate-50">
-                  <span className="text-xs font-black text-[#085a4e] uppercase tracking-widest flex items-center justify-center gap-1.5">
-                    <Calendar size={15} /> ATTENDANCE RECORD VERIFIED
-                  </span>
-                  <span className="text-[9px] font-black text-slate-800 block mt-0.5 uppercase tracking-wider">
-                    OFFICE OF VICE PRINCIPAL (DISCIPLINE)
-                  </span>
-                </div>
-
-                <div className="text-center text-xs">
-                  <div className="w-32 border-b-2 border-slate-400 mb-1" />
-                  <span className="doc-label text-[10px] block">Vice Principal (Discipline)</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ======================================================== */}
-          {/* VIEW 6: GENERAL 360 DOSSIER (v=general / default) */}
-          {/* ======================================================== */}
-          {(data.type === 'general' || data.type === 'card' || data.type === 'student') && student && (
-            <div className="space-y-4 my-2">
-              <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="p-3 rounded-xl bg-slate-50 border-2 border-slate-300">
-                  <span className="text-[10px] font-black text-slate-700 uppercase block tracking-wider">Total Package</span>
-                  <span className="font-mono font-black text-slate-950 text-sm block mt-0.5">
-                    Rs. {totalPackageAmount.toLocaleString()}
-                  </span>
-                </div>
-
-                <div className="p-3 rounded-xl bg-emerald-50 border-2 border-emerald-300">
-                  <span className="text-[10px] font-black text-emerald-900 uppercase block tracking-wider">Paid Fee</span>
-                  <span className="font-mono font-black text-emerald-900 text-sm block mt-0.5">
-                    Rs. {feeReceivedAmount.toLocaleString()}
-                  </span>
-                </div>
-
-                <div className="p-3 rounded-xl bg-rose-50 border-2 border-rose-300">
-                  <span className="text-[10px] font-black text-rose-900 uppercase block tracking-wider">Remaining</span>
-                  <span className="font-mono font-black text-rose-950 text-sm block mt-0.5">
-                    Rs. {remainingBalanceAmount.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              {student.subjects && student.subjects.length > 0 && (
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-left">
-                  <span className="doc-label block mb-1.5">Enrolled Subjects:</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {student.subjects.map((sub: string, idx: number) => (
-                      <span key={idx} className="px-2.5 py-0.5 rounded bg-white border border-slate-300 text-slate-900 font-bold text-[11px]">
-                        {sub}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ======================================================== */}
-          {/* IF STAFF RECORD */}
-          {/* ======================================================== */}
-          {staff && (
-            <div className="space-y-4 my-2">
-              <div className="border-2 border-[#085a4e]/40 rounded-xl overflow-hidden bg-white shadow-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
-                  <div className="divide-y divide-slate-200">
-                    <div className="flex items-center px-3.5 py-2 bg-white">
-                      <span className="w-32 shrink-0 doc-label">Faculty Member:</span>
-                      <span className="doc-value text-slate-950 font-black text-sm">{staff.fullName}</span>
-                    </div>
-                    <div className="flex items-center px-3.5 py-2 bg-slate-50/80">
-                      <span className="w-32 shrink-0 doc-label">Designation / Role:</span>
-                      <span className="doc-value text-slate-950 font-black">{staff.role || 'Professor'}</span>
-                    </div>
-                  </div>
-                  <div className="divide-y divide-slate-200">
-                    <div className="flex items-center px-3.5 py-2 bg-white">
-                      <span className="w-32 shrink-0 doc-label">Faculty Staff ID:</span>
-                      <span className="font-mono font-black text-[#085a4e] text-sm">{staff.id}</span>
-                    </div>
-                    <div className="flex items-center px-3.5 py-2 bg-slate-50/80">
-                      <span className="w-32 shrink-0 doc-label">Campus Branch:</span>
-                      <span className="doc-value text-slate-950 font-black">Superior College Jahanian</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ======================================================== */}
-          {/* SLIP FOOTER: BARCODE, LIVE QR, AND LEGAL AUTHENTICITY */}
-          {/* ======================================================== */}
-          <div className="mt-5 pt-4 border-t-2 border-[#085a4e]/30 bg-slate-50/60 p-3.5 rounded-xl">
-            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-4 text-center sm:text-left">
-              {/* Left: Scannable QR Code */}
-              <div className="flex items-center justify-center sm:justify-start gap-2.5">
-                <div className="w-16 h-16 bg-white p-1 rounded-lg border border-slate-300 shrink-0 shadow-2xs">
-                  {qrCodeDataUrl ? (
-                    <img src={qrCodeDataUrl} alt="QR Code" className="w-full h-full object-contain" />
-                  ) : (
-                    <div className="w-full h-full bg-slate-100 flex items-center justify-center text-[8px] text-slate-400 font-mono">
-                      QR CODE
-                    </div>
-                  )}
-                </div>
-                <div className="text-left">
-                  <span className="doc-label text-[9.5px] block">Live Verification</span>
-                  <span className="text-[9px] text-slate-600 block leading-tight font-medium">
-                    Scan with camera to verify live from central server.
-                  </span>
-                </div>
-              </div>
-
-              {/* Center: Computerized Security Barcode */}
-              <div className="flex justify-center">
-                <BarcodeSvg value={verificationRef} />
-              </div>
-
-              {/* Right: College Contact & Registry */}
-              <div className="text-center sm:text-right text-[10px] text-slate-600">
-                <strong className="text-slate-900 block font-black uppercase text-[10px]">Superior Group of Colleges</strong>
-                <span>Old Multan Road, Jahanian</span>
-                <span className="block font-mono text-[#085a4e] font-bold">Helpline: 0301-4455891</span>
-              </div>
-            </div>
-
-            {/* Micro Legal Disclaimer */}
-            <div className="mt-2.5 pt-2 border-t border-slate-200 text-[9px] text-slate-500 text-center leading-tight">
-              Notice: This computerized official document is digitally issued by Superior College Jahanian. Any unauthorized tampering, manual erasure, or forgery is strictly illegal.
             </div>
           </div>
         </div>

@@ -303,8 +303,19 @@ export default function App() {
 
 
 
-  // Dark mode init
+  // Dark mode init (Skip for public verification documents to guarantee 100% official white paper rendering)
   React.useEffect(() => {
+    const isVerify = typeof window !== 'undefined' && (
+      new URLSearchParams(window.location.search).has('verify') ||
+      new URLSearchParams(window.location.search).has('v') ||
+      window.location.pathname.startsWith('/verify')
+    );
+
+    if (isVerify) {
+      document.documentElement.classList.remove("dark");
+      return;
+    }
+
     const savedTheme = safeLocalStorage.getItem("theme");
 
     if (savedTheme === "dark" || (!savedTheme && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
@@ -316,7 +327,7 @@ export default function App() {
     }
     
     // Listen for custom themechange event
-    const handleThemeChange = () => {}; // Dummy to keep state updated, actually we don't need react state since we read DOM directly, but could trigger a re-render if we used state.
+    const handleThemeChange = () => {};
     window.addEventListener('themechange', handleThemeChange);
     return () => window.removeEventListener('themechange', handleThemeChange);
   }, []);

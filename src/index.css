@@ -310,10 +310,62 @@
 }
 
 /* Global Dark Mode Overrides for Hardcoded Light Classes */
-.dark .bg-white {
+.dark :not(.official-slip-root):not(.official-slip-root *):not(#official-document-canvas):not(#official-document-canvas *).bg-white {
   background-color: var(--card) !important;
   color: var(--card-foreground);
   border-color: var(--border);
+}
+
+/* Official Slips & Documents are 100% immune from Dark Mode Inversion */
+.official-slip-root,
+.official-slip-root *,
+#official-document-canvas,
+#official-document-canvas * {
+  color-scheme: light !important;
+  forced-color-adjust: none !important;
+}
+
+.dark .official-slip-root .bg-white,
+.dark #official-document-canvas .bg-white,
+.official-slip-root .bg-white,
+#official-document-canvas .bg-white {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+.dark .official-slip-root .bg-slate-50,
+.dark #official-document-canvas .bg-slate-50,
+.dark .official-slip-root [class*='bg-slate-50'],
+.dark #official-document-canvas [class*='bg-slate-50'] {
+  background-color: #f8fafc !important;
+}
+
+.dark .official-slip-root table thead th,
+.dark #official-document-canvas table thead th,
+.official-slip-root .doc-header-th,
+#official-document-canvas .doc-header-th {
+  background-color: #085a4e !important;
+  color: #ffffff !important;
+  border-bottom-color: #064e43 !important;
+}
+
+.dark .official-slip-root table tbody,
+.dark #official-document-canvas table tbody,
+.dark .official-slip-root table tbody tr,
+.dark #official-document-canvas table tbody tr {
+  background-color: #ffffff !important;
+  border-bottom-color: #e2e8f0 !important;
+}
+
+.dark .official-slip-root .doc-label,
+.dark #official-document-canvas .doc-label {
+  color: #475569 !important;
+}
+
+.dark .official-slip-root .doc-value,
+.dark #official-document-canvas .doc-value {
+  color: #0f172a !important;
 }
 
 .dark .text-slate-800,
