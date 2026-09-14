@@ -105,6 +105,22 @@ export function useStudentsOperations(ctx: any) {
         await supabase.from('fee_payments').delete().eq('student_id', id);
         await supabase.from('installments').delete().eq('student_id', id);
         await supabase.from('student_attendance').delete().eq('student_id', id);
+
+        // Clean up associated income records completely (Audit-proof Cascade)
+        const idsToClean = [id];
+        if (targetStudent?.admissionId) idsToClean.push(targetStudent.admissionId);
+        if (targetStudent?.rollNumber) idsToClean.push(targetStudent.rollNumber);
+
+        try {
+          await supabase.from('income').delete().in('student_id', idsToClean);
+          if (targetStudent?.fullName) {
+            await supabase.from('income').delete()
+              .eq('student_name', targetStudent.fullName)
+              .in('fee_type', ['Admission / Initial Fee', 'Admission Fee / Initial Payment']);
+          }
+        } catch (delIncErr) {
+          console.warn("Could not delete associated income records on student delete:", delIncErr);
+        }
       } catch (childErr) {
         console.warn("Child records cleanup warning:", childErr);
       }
@@ -146,6 +162,24 @@ export function useStudentsOperations(ctx: any) {
             await supabase.from('fee_payments').delete().in('student_id', chunk);
             await supabase.from('installments').delete().in('student_id', chunk);
             await supabase.from('student_attendance').delete().in('student_id', chunk);
+
+            // Clean up associated income records completely (Audit-proof Cascade)
+            const targetStudentsInChunk = students.filter(s => chunk.includes(s.id));
+            const allIdsInChunk = Array.from(new Set([
+              ...chunk,
+              ...targetStudentsInChunk.map(s => s.admissionId).filter(Boolean),
+              ...targetStudentsInChunk.map(s => s.rollNumber).filter(Boolean)
+            ]));
+
+            if (allIdsInChunk.length > 0) {
+              await supabase.from('income').delete().in('student_id', allIdsInChunk);
+            }
+            const chunkNames = targetStudentsInChunk.map(s => s.fullName).filter(Boolean);
+            if (chunkNames.length > 0) {
+              await supabase.from('income').delete()
+                .in('student_name', chunkNames)
+                .in('fee_type', ['Admission / Initial Fee', 'Admission Fee / Initial Payment']);
+            }
           } catch (childErr) {
             console.warn("Child records cleanup in bulk warning:", childErr);
           }

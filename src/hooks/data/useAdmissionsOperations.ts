@@ -21,9 +21,10 @@ export function useAdmissionsOperations(ctx: any) {
       
       let initialHistory: FeePayment[] = [];
       let initialLedger: any = null;
+      let paymentRecord: FeePayment | null = null;
 
       if (admission.feeReceived && admission.feeReceived > 0) {
-        const payment: FeePayment = {
+        paymentRecord = {
           id: `pay-${Date.now()}`,
           month: monthNames[today.getMonth()],
           year: today.getFullYear(),
@@ -35,7 +36,7 @@ export function useAdmissionsOperations(ctx: any) {
           feeType: 'Admission Fee / Initial Payment'
         };
 
-        initialHistory = [payment];
+        initialHistory = [paymentRecord];
 
         const transaction: FeeTransaction = {
           id: `tx-${Date.now()}`,
@@ -43,7 +44,7 @@ export function useAdmissionsOperations(ctx: any) {
           amount: admission.feeReceived,
           description: `Initial Admission Fee Payment`,
           paymentMethod: 'Cash',
-          receiptId: payment.receiptId || '',
+          receiptId: paymentRecord.receiptId || '',
           recordedBy: user?.email || 'System'
         };
 
@@ -54,18 +55,6 @@ export function useAdmissionsOperations(ctx: any) {
           installments: [],
           transactions: [transaction]
         };
-
-        // Also add to income table
-        await supabase.from('income').insert({
-          student_name: admission.fullName, 
-          fee_type: payment.feeType,
-          amount: payment.amountPaid,
-          month: payment.month,
-          year: payment.year,
-          date: payment.datePaid,
-          status: payment.status,
-          recorded_by: payment.collectedBy || user?.email || 'System'
-        });
       }
 
       const finalStudentId = admission.studentId || ((admission.feeReceived && admission.feeReceived > 0) || admission.isAdmitted || admission.status === 'Admitted/Confirmed' ? generateStudentId(admission.group) : null);
@@ -110,6 +99,26 @@ export function useAdmissionsOperations(ctx: any) {
         academic_part: admission.academicPart || 'Part-1'
       }).select().single();
       if (error) throw error;
+
+      // Synchronized Income Record with confirmed Student/Admission ID (Single Source of Truth)
+      if (admission.feeReceived && admission.feeReceived > 0 && paymentRecord) {
+        try {
+          await supabase.from('income').insert({
+            student_id: finalStudentId || data.id,
+            student_name: admission.fullName, 
+            fee_type: paymentRecord.feeType || 'Admission Fee / Initial Payment',
+            amount: paymentRecord.amountPaid,
+            month: paymentRecord.month,
+            year: paymentRecord.year,
+            date: paymentRecord.datePaid,
+            status: paymentRecord.status,
+            payment_method: 'Cash',
+            recorded_by: user?.email || 'System'
+          });
+        } catch (incErr) {
+          console.warn("Could not insert initial admission income:", incErr);
+        }
+      }
       
       // Auto-sync to Students Table if student is admitted/confirmed or has fee paid
       const isConfirmedStudent = admission.isAdmitted === true || 
@@ -410,6 +419,32 @@ export function useAdmissionsOperations(ctx: any) {
         setStudents((prev: any[]) => prev.filter((s: any) => !linkedStudentIds.includes(s.id)));
       }
 
+      // 3.5. Clean up associated income records completely (Audit-proof Cascade)
+      const allRelatedIds = Array.from(new Set([
+        id,
+        ...(studentId ? [studentId] : []),
+        ...linkedStudentIds
+      ].filter(Boolean)));
+
+      if (allRelatedIds.length > 0) {
+        try {
+          await supabase.from('income').delete().in('student_id', allRelatedIds);
+        } catch (delIncErr) {
+          console.warn("Could not delete linked income records by ID:", delIncErr);
+        }
+      }
+
+      // Also clean up any unlinked or legacy admission initial fees with this student's exact name
+      if (targetAdmission?.fullName) {
+        try {
+          await supabase.from('income').delete()
+            .eq('student_name', targetAdmission.fullName)
+            .in('fee_type', ['Admission / Initial Fee', 'Admission Fee / Initial Payment']);
+        } catch (delLegacyIncErr) {
+          console.warn("Could not delete legacy admission income records by name:", delLegacyIncErr);
+        }
+      }
+
       // 4. Delete the admission record safely
       const { error, count } = await supabase.from('admissions').delete({ count: 'exact' }).eq('id', id);
       if (error) throw error;
@@ -482,6 +517,28 @@ export function useAdmissionsOperations(ctx: any) {
           }
         }
 
+        // 3.5. Clean up linked income records completely (Audit-proof Cascade)
+        const targetAdmissionsInChunk = admissions.filter((a: any) => chunk.includes(a.id));
+        const allIdsInChunk = Array.from(new Set([
+          ...chunk,
+          ...linkedStudentIds,
+          ...targetAdmissionsInChunk.map((a: any) => a.studentId).filter(Boolean)
+        ]));
+
+        try {
+          if (allIdsInChunk.length > 0) {
+            await supabase.from('income').delete().in('student_id', allIdsInChunk);
+          }
+          const chunkNames = targetAdmissionsInChunk.map((a: any) => a.fullName).filter(Boolean);
+          if (chunkNames.length > 0) {
+            await supabase.from('income').delete()
+              .in('student_name', chunkNames)
+              .in('fee_type', ['Admission / Initial Fee', 'Admission Fee / Initial Payment']);
+          }
+        } catch (delIncErr) {
+          console.warn("Error cleaning up income in bulk delete admissions:", delIncErr);
+        }
+
         // 4. Delete the admissions in this chunk
         const { error, count } = await supabase.from('admissions').delete({ count: 'exact' }).in('id', chunk);
         if (error) throw error;
@@ -527,6 +584,13 @@ export function useAdmissionsOperations(ctx: any) {
           student_id: studentId
         }).eq('id', admissionId);
         if (updateError) throw updateError;
+
+        // Sync existing income records from admissionId to studentId
+        try {
+          await supabase.from('income').update({ student_id: studentId }).eq('student_id', admissionId);
+        } catch (syncIncErr) {
+          console.warn("Could not sync income student_id on confirmation:", syncIncErr);
+        }
 
         const remaining = (admission.totalPackage || 0) - (admission.feeReceived || 0);
         const installments = admission.totalInstallments || 12;

@@ -3864,22 +3864,6 @@ function AdmissionForm({
 
     data.addAdmission(newAdmission);
 
-    if (received > 0) {
-      data.recordFeePayment(newAdmission.id, {
-        id: `pay-${Date.now()}`,
-        month: new Date().toLocaleString('en-US', { month: 'long' }),
-        year: new Date().getFullYear(),
-        amountDue: totalPkg,
-        amountPaid: received,
-        status: 'Paid',
-        datePaid: new Date().toISOString(),
-        receiptId: `REC-${Math.floor(100000 + Math.random() * 900000)}`,
-        feeType: 'Admission / Initial Fee',
-        paymentMethod: 'Cash',
-        collectedBy: 'System'
-      }, formData.fullName || 'New Student');
-    }
-
     toast.success("Admission form submitted successfully!");
     onClose();
   };

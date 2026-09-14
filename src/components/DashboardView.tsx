@@ -235,7 +235,9 @@ export default function DashboardView({
 
     const activeIds = new Set([
       ...activeStudentIds,
+      ...activeAdmissionIdsForStudents,
       ...validAdmissions.map((a: any) => a.id),
+      ...validAdmissions.map((a: any) => a.studentId).filter(Boolean),
     ]);
     const activeNames = new Set([
       ...activeStudentNames,
@@ -245,12 +247,28 @@ export default function DashboardView({
     ]);
 
     return data.incomes.filter((inc: any) => {
+      // 1. If it has a studentId, it MUST belong to an active student or admission
       if (inc.studentId && inc.studentId.trim() !== "") {
         return activeIds.has(inc.studentId);
       }
-      if (inc.studentName && inc.studentName.trim() !== "") {
-        return activeNames.has(inc.studentName.toLowerCase().trim());
+
+      // 2. If it's a student fee (Admission, Tuition, Installment, etc.), verify active match
+      const feeTypeStr = (inc.feeType || "").toLowerCase();
+      const isStudentFee =
+        feeTypeStr.includes("admission") ||
+        feeTypeStr.includes("tuition") ||
+        feeTypeStr.includes("installment") ||
+        feeTypeStr.includes("semester") ||
+        feeTypeStr.includes("exam fee");
+
+      if (isStudentFee) {
+        if (inc.studentName && inc.studentName.trim() !== "") {
+          return activeNames.has(inc.studentName.toLowerCase().trim());
+        }
+        return false;
       }
+
+      // 3. General non-student income (e.g. Canteen, Donation, Misc)
       return true;
     });
   }, [data.incomes, data.students, data.admissions]);
