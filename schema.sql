@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS admissions (
 -- 4. STUDENTS
 CREATE TABLE IF NOT EXISTS students (
   id TEXT PRIMARY KEY, -- SGC-J-2026-XXXX (Custom ID)
-  admission_id UUID REFERENCES admissions(id),
+  admission_id UUID REFERENCES admissions(id) ON DELETE CASCADE,
   full_name TEXT NOT NULL,
   father_name TEXT,
   category TEXT,

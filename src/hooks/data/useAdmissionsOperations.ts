@@ -364,67 +364,144 @@ export function useAdmissionsOperations(ctx: any) {
     };
 
   const deleteAdmission = async (id: string) => {
+    try {
+      const targetAdmission = admissions.find((a: any) => a.id === id);
+      const studentId = targetAdmission?.studentId;
+
+      // 1. Identify any student records associated with this admission
+      let linkedStudentIds: string[] = [];
       try {
-        const targetAdmission = admissions.find(a => a.id === id);
-        const { error, count } = await supabase.from('admissions').delete({ count: 'exact' }).eq('id', id);
-        if (error) throw error;
-        if (count === 0) {
-          toast.error("Admission record not found or delete restricted.");
-          return;
+        const { data: stdByAdm } = await supabase.from('students').select('id').eq('admission_id', id);
+        if (stdByAdm && stdByAdm.length > 0) {
+          linkedStudentIds.push(...stdByAdm.map((s: any) => s.id));
         }
-        fetchData(true);
-        logActivity("Admission Deleted", {
-          summary: `Admission ${targetAdmission?.fullName || id} record removed`,
-          action: "delete",
-          module: "Admission",
-          targetName: targetAdmission?.fullName || id,
-          deletedRecord: targetAdmission || { id }
-        }, 'alert');
-        toast.success("Admission record deleted successfully");
-      } catch (e: any) {
-        console.error("Delete Admission Error:", e);
-        toast.error(`Delete Failed: ${e.message}`);
+        if (studentId) {
+          const { data: stdByStdId } = await supabase.from('students').select('id').eq('id', studentId);
+          if (stdByStdId && stdByStdId.length > 0) {
+            linkedStudentIds.push(...stdByStdId.map((s: any) => s.id));
+          }
+        }
+        linkedStudentIds = Array.from(new Set(linkedStudentIds));
+      } catch (findErr) {
+        console.warn("Could not query linked students:", findErr);
       }
-    };
+
+      // 2. Unlink foreign key in students table first so PostgreSQL constraint 'students_admission_id_fkey' is never violated
+      try {
+        await supabase.from('students').update({ admission_id: null }).eq('admission_id', id);
+      } catch (unlinkErr) {
+        console.warn("Unlink admission_id failed:", unlinkErr);
+      }
+
+      // 3. Clean up the linked student record and its child relations (cascading delete)
+      if (linkedStudentIds.length > 0) {
+        for (const sId of linkedStudentIds) {
+          try {
+            await supabase.from('academic_records').delete().eq('student_id', sId);
+            await supabase.from('fee_transactions').delete().eq('student_id', sId);
+            await supabase.from('fee_payments').delete().eq('student_id', sId);
+            await supabase.from('installments').delete().eq('student_id', sId);
+            await supabase.from('student_attendance').delete().eq('student_id', sId);
+            await supabase.from('students').delete().eq('id', sId);
+          } catch (delStdErr) {
+            console.warn(`Error cleaning up student ${sId}:`, delStdErr);
+          }
+        }
+        setStudents((prev: any[]) => prev.filter((s: any) => !linkedStudentIds.includes(s.id)));
+      }
+
+      // 4. Delete the admission record safely
+      const { error, count } = await supabase.from('admissions').delete({ count: 'exact' }).eq('id', id);
+      if (error) throw error;
+      if (count === 0) {
+        toast.error("Admission record not found or delete restricted.");
+        return;
+      }
+
+      setAdmissions((prev: any[]) => prev.filter((a: any) => a.id !== id));
+      fetchData(true);
+      logActivity("Admission Deleted", {
+        summary: `Admission ${targetAdmission?.fullName || id} record removed`,
+        action: "delete",
+        module: "Admission",
+        targetName: targetAdmission?.fullName || id,
+        deletedRecord: targetAdmission || { id }
+      }, 'alert');
+      toast.success("Admission record deleted successfully");
+    } catch (e: any) {
+      console.error("Delete Admission Error:", e);
+      toast.error(`Delete Failed: ${e.message}`);
+    }
+  };
 
   const bulkDeleteAdmissions = async (ids: string[]) => {
-      if (!ids.length) return;
-      
-      isBulkOperatingRef.current = true;
-      // Optimistic update
-      setAdmissions(prev => prev.filter(a => !ids.includes(a.id)));
-      const toastId = toast.loading(`Deleting ${ids.length} admissions...`);
+    if (!ids.length) return;
+    
+    isBulkOperatingRef.current = true;
+    // Optimistic update
+    setAdmissions((prev: any[]) => prev.filter((a: any) => !ids.includes(a.id)));
+    const toastId = toast.loading(`Deleting ${ids.length} admissions...`);
 
-      try {
-        const batchSize = 100;
-        let totalDeleted = 0;
+    try {
+      const batchSize = 50;
+      let totalDeleted = 0;
 
-        for (let i = 0; i < ids.length; i += batchSize) {
-          const chunk = ids.slice(i, i + batchSize);
-          const { error, count } = await supabase.from('admissions').delete({ count: 'exact' }).in('id', chunk);
-          if (error) {
-            if (error.code === '23503') {
-              throw new Error("Some admissions are already fully enrolled and converted to students. Please delete the associated student records first.");
-            }
-            throw error;
+      for (let i = 0; i < ids.length; i += batchSize) {
+        const chunk = ids.slice(i, i + batchSize);
+
+        // 1. Find linked students
+        let linkedStudentIds: string[] = [];
+        try {
+          const { data: stdByAdm } = await supabase.from('students').select('id').in('admission_id', chunk);
+          if (stdByAdm && stdByAdm.length > 0) {
+            linkedStudentIds = stdByAdm.map((s: any) => s.id);
           }
-          totalDeleted += (count || 0);
+        } catch (findErr) {
+          console.warn("Could not query linked students for bulk delete:", findErr);
+        }
 
-          if (i + batchSize < ids.length) {
-            await new Promise(resolve => setTimeout(resolve, 100));
+        // 2. Unlink foreign key in students table
+        try {
+          await supabase.from('students').update({ admission_id: null }).in('admission_id', chunk);
+        } catch (unlinkErr) {
+          console.warn("Unlink in bulk delete failed:", unlinkErr);
+        }
+
+        // 3. Clean up linked students and child records
+        if (linkedStudentIds.length > 0) {
+          try {
+            await supabase.from('academic_records').delete().in('student_id', linkedStudentIds);
+            await supabase.from('fee_transactions').delete().in('student_id', linkedStudentIds);
+            await supabase.from('fee_payments').delete().in('student_id', linkedStudentIds);
+            await supabase.from('installments').delete().in('student_id', linkedStudentIds);
+            await supabase.from('student_attendance').delete().in('student_id', linkedStudentIds);
+            await supabase.from('students').delete().in('id', linkedStudentIds);
+            setStudents((prev: any[]) => prev.filter((s: any) => !linkedStudentIds.includes(s.id)));
+          } catch (delStdErr) {
+            console.warn("Error cleaning up students in bulk delete:", delStdErr);
           }
         }
 
-        logActivity("Bulk Delete", `Removed ${totalDeleted} admission records`, 'alert');
-        toast.success(`${totalDeleted} admissions deleted successfully`, { id: toastId });
-      } catch (e: any) {
-        console.error("Bulk Delete Admissions Error:", e);
-        toast.error(`Bulk Delete Failed: ${e.message}`, { id: toastId });
-      } finally {
-        isBulkOperatingRef.current = false;
-        fetchData(true);
+        // 4. Delete the admissions in this chunk
+        const { error, count } = await supabase.from('admissions').delete({ count: 'exact' }).in('id', chunk);
+        if (error) throw error;
+        totalDeleted += (count || 0);
+
+        if (i + batchSize < ids.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
-    };
+
+      logActivity("Bulk Delete", `Removed ${totalDeleted} admission records`, 'alert');
+      toast.success(`${totalDeleted} admissions deleted successfully`, { id: toastId });
+    } catch (e: any) {
+      console.error("Bulk Delete Admissions Error:", e);
+      toast.error(`Bulk Delete Failed: ${e.message}`, { id: toastId });
+    } finally {
+      isBulkOperatingRef.current = false;
+      fetchData(true);
+    }
+  };
 
   const confirmAdmission = async (admissionId: string, _operatorEmail?: string) => {
       try {

@@ -98,6 +98,18 @@ export function useStudentsOperations(ctx: any) {
     setStudents(prev => prev.filter(s => s.id !== id));
 
     try {
+      // 1. Delete associated child records first to ensure no foreign key violation
+      try {
+        await supabase.from('academic_records').delete().eq('student_id', id);
+        await supabase.from('fee_transactions').delete().eq('student_id', id);
+        await supabase.from('fee_payments').delete().eq('student_id', id);
+        await supabase.from('installments').delete().eq('student_id', id);
+        await supabase.from('student_attendance').delete().eq('student_id', id);
+      } catch (childErr) {
+        console.warn("Child records cleanup warning:", childErr);
+      }
+
+      // 2. Delete student record
       const { error } = await supabase.from('students').delete().eq('id', id);
       if (error) throw error;
       fetchData(true);
@@ -109,9 +121,10 @@ export function useStudentsOperations(ctx: any) {
         deletedRecord: targetStudent || { id }
       }, 'alert');
       toast.success("Student removed");
-    } catch (e) {
+    } catch (e: any) {
       setStudents(backupStudents);
-      toast.error("Failed to delete student");
+      console.error("Delete Student Error:", e);
+      toast.error(`Failed to delete student: ${e?.message || 'Foreign key conflict'}`);
     }
   };
 
@@ -126,13 +139,19 @@ export function useStudentsOperations(ctx: any) {
         const batchSize = 100;
         for (let i = 0; i < ids.length; i += batchSize) {
           const chunk = ids.slice(i, i + batchSize);
-          const { error } = await supabase.from('students').delete().in('id', chunk);
-          if (error) {
-            if (error.code === '23503') {
-              throw new Error("Some students have linked financial records or attendance that prevent deletion. Please contact support.");
-            }
-            throw error;
+
+          try {
+            await supabase.from('academic_records').delete().in('student_id', chunk);
+            await supabase.from('fee_transactions').delete().in('student_id', chunk);
+            await supabase.from('fee_payments').delete().in('student_id', chunk);
+            await supabase.from('installments').delete().in('student_id', chunk);
+            await supabase.from('student_attendance').delete().in('student_id', chunk);
+          } catch (childErr) {
+            console.warn("Child records cleanup in bulk warning:", childErr);
           }
+
+          const { error } = await supabase.from('students').delete().in('id', chunk);
+          if (error) throw error;
 
           if (i + batchSize < ids.length) {
             await new Promise(resolve => setTimeout(resolve, 100));
