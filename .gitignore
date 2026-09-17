@@ -8,6 +8,7 @@ coverage/
 !.env.example
 .whatsapp_auth/
 .whatsapp_chat_logs.json
+.whatsapp_verified_users.json
 *.zip
 release/
 public/downloads/*.exe

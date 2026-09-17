@@ -701,6 +701,30 @@ College Metrics Data:
     }
   });
 
+  // 3f. Get Verified Faculty & Admin Users
+  app.get("/api/whatsapp/verified-users", (req, res) => {
+    try {
+      const users = whatsappBridge.getVerifiedUsersList();
+      res.json({ success: true, users });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 3g. Unlink a Verified User
+  app.post("/api/whatsapp/unlink-user", async (req, res) => {
+    try {
+      const { phone } = req.body;
+      if (!phone) {
+        return res.status(400).json({ error: "Phone number is required." });
+      }
+      const success = await whatsappBridge.unlinkVerifiedUser(phone);
+      res.json({ success });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // 4. Send Single Direct WhatsApp Message
   app.post("/api/whatsapp/send", async (req, res) => {
     try {

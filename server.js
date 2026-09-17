@@ -591,6 +591,26 @@ ${statsText}`,
       res.status(500).json({ error: err.message });
     }
   });
+  app.get("/api/whatsapp/verified-users", (req, res) => {
+    try {
+      const users = whatsappBridge.getVerifiedUsersList();
+      res.json({ success: true, users });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/unlink-user", async (req, res) => {
+    try {
+      const { phone } = req.body;
+      if (!phone) {
+        return res.status(400).json({ error: "Phone number is required." });
+      }
+      const success = await whatsappBridge.unlinkVerifiedUser(phone);
+      res.json({ success });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
   app.post("/api/whatsapp/send", async (req, res) => {
     try {
       const { phone, message } = req.body;
