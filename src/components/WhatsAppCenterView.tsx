@@ -8,7 +8,8 @@ import {
   User, ArrowLeft, Trash2, ExternalLink, Smile, Paperclip, MoreVertical,
   Reply, X, BarChart3, Activity, Download, Eye, DollarSign, Calendar,
   BookOpen, ShieldAlert, PieChart, Lock, Filter, Smartphone, HelpCircle,
-  CheckCircle, Info, ChevronDown, Plus, CalendarCheck, TrendingUp, Bell
+  CheckCircle, Info, ChevronDown, Plus, CalendarCheck, TrendingUp, Bell,
+  Coffee, ChevronLeft, ArrowRight, Shield
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
@@ -56,14 +57,25 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
   // Audience selector states (Used inside Tab 2: Broadcaster)
   const [targetGroup, setTargetGroup] = useState("All Students");
   const [selectedClass, setSelectedClass] = useState("All Classes");
+  const [selectedSection, setSelectedSection] = useState("All Sections");
   const [selectedGender, setSelectedGender] = useState("All");
   const [customNumbers, setCustomNumbers] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
 
+  // Interactive Live Preview & Anti-Ban States
+  const [selectedPreviewStudentId, setSelectedPreviewStudentId] = useState<string | null>(null);
+  const [isSendingTestPreview, setIsSendingTestPreview] = useState(false);
+  const [enableAntiBanHash, setEnableAntiBanHash] = useState(true);
+  const [enableBatchPause, setEnableBatchPause] = useState(true);
+  const [batchPauseInterval, setBatchPauseInterval] = useState(15);
+  const [batchPauseDuration, setBatchPauseDuration] = useState(25);
+  const [isBatchPausing, setIsBatchPausing] = useState(false);
+  const [batchPauseCountdown, setBatchPauseCountdown] = useState(0);
+
   // Message template state
   const [messageText, setMessageText] = useState(
-    "Assalam o Alaikum {{father}}, apka beta/beti {{name}} (Class: {{class}}, Roll No: {{rollNo}}) ki Superior College Jahanian se updates: Baqaya Fees: {{dues}}."
+    "Assalam o Alaikum {{father}}, apka beta/beti {{name}} (Class: {{class}}, Roll No: {{rollNo}}, Sec: {{section}}) ki Superior College Jahanian se updates: Baqaya Fees: {{dues}}."
   );
 
   // Real Baileys Server Connection states
@@ -582,6 +594,17 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
     return Array.from(new Set(students.map(s => s.group).filter(Boolean))).sort();
   }, [students]);
 
+  // Unique sections from students roster (dynamically updated if a class is picked)
+  const sections = useMemo(() => {
+    if (!students) return [];
+    let list = students;
+    if (selectedClass !== "All Classes") {
+      list = list.filter(s => s.group === selectedClass);
+    }
+    const rawSections = list.map(s => (s.section || "").trim()).filter(Boolean);
+    return Array.from(new Set(rawSections)).sort();
+  }, [students, selectedClass]);
+
   // Students missing photo
   const missingPhotosCount = useMemo(() => {
     return (students || []).filter(s => !s.photo || String(s.photo).trim().length < 50).length;
@@ -609,6 +632,8 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
           phone: contactNo,
           type: 'Staff',
           rollNo: s.id || 'STAFF',
+          section: 'Staff',
+          classGroup: s.role || 'Employee',
           detail: s.role || 'Employee',
           dues: 0,
           marks: "-",
@@ -627,6 +652,8 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
         phone: phone,
         type: 'Custom',
         rollNo: `CUST-${i + 1}`,
+        section: 'Manual',
+        classGroup: 'Manual Entry',
         detail: 'Manual Entry',
         dues: 0,
         marks: "-",
@@ -638,6 +665,10 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
 
     if (targetGroup === "Class Wise" && selectedClass !== "All Classes") {
       List = List.filter(s => s.group === selectedClass);
+    }
+
+    if (selectedSection !== "All Sections") {
+      List = List.filter(s => (s.section || "").trim().toLowerCase() === selectedSection.trim().toLowerCase());
     }
 
     if (selectedGender !== "All") {
@@ -666,6 +697,7 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
         (s.fullName || '').toLowerCase().includes(query) ||
         (s.fatherName || '').toLowerCase().includes(query) ||
         (s.contact || '').includes(query) ||
+        (s.section || '').toLowerCase().includes(query) ||
         (s.collegeNo || '').toLowerCase().includes(query)
       );
     }
@@ -684,13 +716,40 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
         phone: contactNo,
         type: 'Student',
         rollNo: s.collegeNo || s.id || "N/A",
-        detail: `${s.group || ''} ${s.section || ''}`.trim() || 'Class',
+        section: s.section || "A",
+        classGroup: s.group || "Intermediate",
+        detail: `${s.group || ''} (Sec: ${s.section || 'A'})`.trim(),
         dues,
+        photo: s.photo,
+        gender: s.gender,
         marks: "Available in report",
         attendance: `${s.attendancePresent || 0} Present / ${s.attendanceAbsent || 0} Absent`,
       };
     }).filter(s => s.phone);
-  }, [targetGroup, students, staff, selectedClass, selectedGender, customNumbers, searchQuery, selectedStudentIds]);
+  }, [targetGroup, students, staff, selectedClass, selectedSection, selectedGender, customNumbers, searchQuery, selectedStudentIds]);
+
+  // Active recipient currently selected for live real-time WhatsApp preview
+  const activePreviewRecipient = useMemo(() => {
+    if (selectedPreviewStudentId) {
+      const found = filteredRecipients.find(r => r.id === selectedPreviewStudentId);
+      if (found) return found;
+    }
+    return filteredRecipients[0] || null;
+  }, [selectedPreviewStudentId, filteredRecipients]);
+
+  const handlePrevPreviewRecipient = () => {
+    if (!activePreviewRecipient || filteredRecipients.length === 0) return;
+    const currentIndex = filteredRecipients.findIndex(r => r.id === activePreviewRecipient.id);
+    const prevIndex = (currentIndex - 1 + filteredRecipients.length) % filteredRecipients.length;
+    setSelectedPreviewStudentId(filteredRecipients[prevIndex].id);
+  };
+
+  const handleNextPreviewRecipient = () => {
+    if (!activePreviewRecipient || filteredRecipients.length === 0) return;
+    const currentIndex = filteredRecipients.findIndex(r => r.id === activePreviewRecipient.id);
+    const nextIndex = (currentIndex + 1) % filteredRecipients.length;
+    setSelectedPreviewStudentId(filteredRecipients[nextIndex].id);
+  };
 
   const formatPhoneNumber = (phone: string) => {
     if (!phone) return "";
@@ -701,26 +760,41 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
     return cleaned;
   };
 
+  // Anti-Ban Message Content Signature: Injects unique reference and micro-spaces
+  // so WhatsApp spam filters never see identical byte strings across 100s of messages!
+  const applyAntiBanHash = (message: string, recipientId: string): string => {
+    if (!enableAntiBanHash) return message;
+    const shortRef = recipientId ? recipientId.slice(-4).toUpperCase() : Math.random().toString(36).slice(2, 6).toUpperCase();
+    const cleanRef = `\n\n_Ref: #SGCJ-${shortRef}_`;
+    const zeroWidthPadding = "\u200B".repeat(((recipientId.charCodeAt(recipientId.length - 1) || 1) % 5) + 1);
+    return `${message}${zeroWidthPadding}${cleanRef}`;
+  };
+
   const getPersonalizedMessage = (template: string, recipient: any) => {
+    if (!recipient) return template;
     let text = template;
     const name = recipient.name || "Student/Staff";
     const detail = recipient.detail || "";
     const phone = recipient.phone || "";
-    
+    const rollNo = recipient.rollNo || "N/A";
+    const section = recipient.section || "A";
+    const father = recipient.father || "Guardian";
+    const classGroup = recipient.classGroup || detail;
+    const dues = Number(recipient.dues || 0);
+
     text = text.replace(/{{name}}/g, name);
     text = text.replace(/{{phone}}/g, phone);
-    text = text.replace(/{{class}}/g, detail);
+    text = text.replace(/{{class}}/g, classGroup);
+    text = text.replace(/{{section}}/g, section);
+    text = text.replace(/{{rollNo}}/g, rollNo);
+    text = text.replace(/{{roll}}/g, rollNo);
+    text = text.replace(/{{father}}/g, father);
+    text = text.replace(/{{dues}}/g, `Rs. ${dues.toLocaleString()}`);
+    text = text.replace(/{{attendance}}/g, recipient.attendance || "Active");
+    text = text.replace(/{{college}}/g, "Superior College Jahanian");
     
     const studentMatch = students.find(s => s.id === recipient.id || s.fullName === recipient.name);
     if (studentMatch) {
-      const father = studentMatch.fatherName || "Guardian";
-      const totalPkg = studentMatch.totalPackage || 0;
-      const paid = studentMatch.feeReceived || 0;
-      const dues = Math.max(0, totalPkg - paid);
-      
-      text = text.replace(/{{father}}/g, father);
-      text = text.replace(/{{dues}}/g, `Rs. ${dues.toLocaleString()}`);
-      
       const results = academicRecords.filter((r: any) => 
         r.studentId === studentMatch.id || 
         (r.studentName && r.studentName.toLowerCase() === name.toLowerCase())
@@ -737,16 +811,14 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
         text = text.replace(/{{latest_total}}/g, String(latest.totalMarks || latest.total || 100));
         text = text.replace(/{{latest_test}}/g, latest.testName || "Exam");
       } else {
-        text = text.replace(/{{marks}}/g, "No outstanding preparatory exam records loaded.");
+        text = text.replace(/{{marks}}/g, "Available on portal");
         text = text.replace(/{{latest_subject}}/g, "N/A");
         text = text.replace(/{{latest_obtained}}/g, "0");
         text = text.replace(/{{latest_total}}/g, "100");
         text = text.replace(/{{latest_test}}/g, "N/A");
       }
     } else {
-      text = text.replace(/{{father}}/g, "Guardian");
-      text = text.replace(/{{dues}}/g, "Rs. 0");
-      text = text.replace(/{{marks}}/g, "No entries found.");
+      text = text.replace(/{{marks}}/g, "N/A");
       text = text.replace(/{{latest_subject}}/g, "N/A");
       text = text.replace(/{{latest_obtained}}/g, "0");
       text = text.replace(/{{latest_total}}/g, "100");
@@ -754,6 +826,55 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
     }
     
     return text;
+  };
+
+  const handleInsertVariable = (varStr: string) => {
+    setMessageText(prev => `${prev} ${varStr}`);
+    toast.success(`Added ${varStr}`);
+  };
+
+  // Send Single Live Test Message to the Currently Previewed Student via College WhatsApp
+  const handleSendTestToPreviewStudent = async () => {
+    if (!activePreviewRecipient) {
+      toast.error("No student selected for preview.");
+      return;
+    }
+    if (!activePreviewRecipient.phone) {
+      toast.error("This student has no valid phone number recorded.");
+      return;
+    }
+    if (connectionState !== "connected") {
+      toast.warning("College WhatsApp is not connected. Please scan the QR code first!");
+      setIsQRModalOpen(true);
+      return;
+    }
+
+    setIsSendingTestPreview(true);
+    try {
+      const rawMsg = getPersonalizedMessage(messageText, activePreviewRecipient);
+      const safeMsg = applyAntiBanHash(rawMsg, activePreviewRecipient.id);
+
+      const res = await fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: activePreviewRecipient.phone,
+          message: safeMsg,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(`Test message delivered to ${activePreviewRecipient.name} (${activePreviewRecipient.phone})!`);
+        addLog(`[Single Test] Sent live WhatsApp message to ${activePreviewRecipient.name} (${activePreviewRecipient.phone}) from College WhatsApp.`);
+        fetchChatLogs();
+      } else {
+        toast.error(data.error || "Failed to deliver message via WhatsApp socket.");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Network error while sending test message.");
+    } finally {
+      setIsSendingTestPreview(false);
+    }
   };
 
   const addLog = (message: string) => {
@@ -1058,7 +1179,7 @@ _Administration Directorate, SGC Jahanian_`;
       id: recipient.id,
       name: recipient.name,
       phone: recipient.phone,
-      resolvedMessage: getPersonalizedMessage(messageText, recipient),
+      resolvedMessage: applyAntiBanHash(getPersonalizedMessage(messageText, recipient), recipient.id),
       status: "queued" as const,
       detail: recipient.detail
     }));
@@ -1066,7 +1187,8 @@ _Administration Directorate, SGC Jahanian_`;
     setQueueList(items);
     setTelemetryLogs([]);
     setBulkCurrentIndex(-1);
-    addLog(`Compiled & Loaded ${items.length} personalized messages into the Hybrid Transmission Queue.`);
+    setIsBatchPausing(false);
+    addLog(`Compiled & Loaded ${items.length} personalized messages into the College WhatsApp Dispatch Queue.`);
     toast.success(`Loaded ${items.length} recipients into Send Queue!`);
   };
 
@@ -1078,9 +1200,37 @@ _Administration Directorate, SGC Jahanian_`;
       
       if (nextIndex >= queueList.length) {
         setIsBulkRunning(false);
+        setIsBulkPaused(false);
+        setIsBatchPausing(false);
         setBulkCurrentIndex(-1);
-        addLog("🏁 BROADCAST SEQUENCE COMPLETED! All filtered payloads compiled & processed.");
+        addLog("🏁 BROADCAST SEQUENCE COMPLETED! All queued messages processed through College WhatsApp.");
         toast.success("Bulk Broadcast Campaign Finished!");
+        return;
+      }
+
+      // Check for Anti-Ban Batch Cooldown (Simulate natural human pause after every batchPauseInterval)
+      if (enableBatchPause && nextIndex > 0 && nextIndex % batchPauseInterval === 0 && !isBatchPausing) {
+        setIsBatchPausing(true);
+        addLog(`☕ [Anti-Ban Cooldown] Batch milestone reached (${nextIndex} sent). Pausing for ${batchPauseDuration}s to protect College SIM from Meta detection...`);
+        toast.info(`Anti-Ban Cooldown: Pausing for ${batchPauseDuration}s...`);
+
+        let remaining = batchPauseDuration;
+        setBatchPauseCountdown(remaining);
+
+        const iv = setInterval(() => {
+          remaining -= 1;
+          setBatchPauseCountdown(remaining);
+          if (remaining <= 0) {
+            clearInterval(iv);
+            setIsBatchPausing(false);
+            addLog(`✅ Anti-Ban Cooldown completed. Resuming broadcast transmission...`);
+            toast.success("Resuming broadcast sequence...");
+          }
+        }, 1000);
+        return;
+      }
+
+      if (isBatchPausing) {
         return;
       }
 
@@ -1089,24 +1239,43 @@ _Administration Directorate, SGC Jahanian_`;
       const target = queueList[nextIndex];
       const formattedPhone = formatPhoneNumber(target.phone);
       
-      addLog(`Initializing dispatch to ${target.name} (${formattedPhone})...`);
-
-      const randomVariance = (Math.random() * 3 - 1.5);
-      const actualDelayMs = Math.max(2000, (averageDelay + randomVariance) * 1000);
+      // Smart human jitter: base delay + random variance between -1.5s and +2.5s
+      const randomJitter = (Math.random() * 4 - 1.5);
+      const actualDelayMs = Math.max(3000, Math.round((averageDelay + randomJitter) * 1000));
       
-      addLog(`[Anti-Spam Delay] Waiting ${((actualDelayMs)/1000).toFixed(1)}s before launching payload...`);
+      addLog(`[Queue #${nextIndex + 1}/${queueList.length}] Preparing payload for ${target.name} (${formattedPhone})...`);
+      addLog(`[Anti-Ban Jitter] Waiting ${(actualDelayMs / 1000).toFixed(1)}s before launching payload...`);
 
-      timerRef.current = setTimeout(() => {
-        if (dispatchMode === "supervised") {
-          const url = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(target.resolvedMessage)}`;
-          window.open(url, "_blank");
-          addLog(`[Success] Launched WhatsApp tab payload for ${target.name}.`);
-        } else {
-          addLog(`[Bridge Gateway] Pushed automated API payload securely.`);
-          addLog(`[Success] Delivered payload to ${target.phone} - Status: double tick online.`);
+      timerRef.current = setTimeout(async () => {
+        try {
+          if (dispatchMode === "supervised") {
+            const url = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(target.resolvedMessage)}`;
+            window.open(url, "_blank");
+            addLog(`[Supervised Web Tab] Launched WhatsApp dialogue for ${target.name}.`);
+            setQueueList(prev => prev.map((item, id) => id === nextIndex ? { ...item, status: "sent" } : item));
+          } else {
+            // REAL TRANSMISSION VIA CONNECTED COLLEGE WHATSAPP QR SOCKET
+            const res = await fetch("/api/whatsapp/send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                phone: target.phone,
+                message: target.resolvedMessage,
+              }),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              addLog(`✅ [College QR Socket Delivered] Sent to ${target.name} (${formattedPhone}) - ID: ${data.messageId || "OK"}`);
+              setQueueList(prev => prev.map((item, id) => id === nextIndex ? { ...item, status: "sent" } : item));
+            } else {
+              addLog(`❌ [Failed] Could not deliver to ${target.name} (${formattedPhone}): ${data.error || "Socket error"}`);
+              setQueueList(prev => prev.map((item, id) => id === nextIndex ? { ...item, status: "failed", error: data.error } : item));
+            }
+          }
+        } catch (err: any) {
+          addLog(`❌ [Network Error] Target ${target.name}: ${err.message}`);
+          setQueueList(prev => prev.map((item, id) => id === nextIndex ? { ...item, status: "failed", error: err.message } : item));
         }
-
-        setQueueList(prev => prev.map((item, id) => id === nextIndex ? { ...item, status: "sent" } : item));
       }, actualDelayMs);
     };
 
@@ -1115,29 +1284,31 @@ _Administration Directorate, SGC Jahanian_`;
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [isBulkRunning, isBulkPaused, bulkCurrentIndex, queueList, averageDelay, dispatchMode]);
+  }, [isBulkRunning, isBulkPaused, isBatchPausing, bulkCurrentIndex, queueList, averageDelay, dispatchMode, enableBatchPause, batchPauseInterval, batchPauseDuration]);
 
   const handleStartBulk = () => {
     if (queueList.length === 0) {
-      toast.error("Queue is empty. Load targets first.");
+      toast.error("Queue is empty. Click 'Link All to Send Queue' first.");
       return;
     }
     
     if (connectionState !== "connected" && dispatchMode === "simulated") {
-      toast.warning("Simulated auto-transmission requires an active device link! Connect your device QR code or switch to Supervised browser-tab dispatcher.");
+      toast.warning("College WhatsApp is not connected. Please scan the QR code first!");
+      setIsQRModalOpen(true);
       return;
     }
 
     setIsBulkPaused(false);
+    setIsBatchPausing(false);
     setIsBulkRunning(true);
-    addLog(`🚀 Broadcast Engine Initialized! Dispatching in ${dispatchMode.toUpperCase()} mode.`);
+    addLog(`🚀 Broadcast Engine Initialized! Transmitting via ${dispatchMode === "simulated" ? "COLLEGE QR SOCKET" : "SUPERVISED WEB TAB"}.`);
     toast.success("Broadcast Engine is Running...");
   };
 
   const handlePauseBulk = () => {
     setIsBulkPaused(true);
     setIsBulkRunning(false);
-    addLog("⏸ BROADCAST PAUSED by supervisor command.");
+    addLog("⏸ BROADCAST PAUSED by user.");
     toast.info("Broadcast Engine Paused.");
   };
 
@@ -2132,7 +2303,7 @@ _Administration Directorate, SGC Jahanian_`;
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 2: BROADCAST & AI COMPOSER (AUDIENCE SELECTOR SHIFTED HERE)           */}
+        {/* TAB 2: BROADCAST & AI COMPOSER (SIMPLE YET ADVANCED REAL-TIME WORKSPACE) */}
         {/* ========================================================================= */}
         {activeTab === "broadcaster" && (
           <motion.div
@@ -2141,470 +2312,348 @@ _Administration Directorate, SGC Jahanian_`;
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.15 }}
-            className="grid grid-cols-1 lg:grid-cols-12 gap-6"
+            className="space-y-6"
           >
-            {/* LEFT COLUMN: AUDIENCE SELECTOR (SHIFTED HERE FROM GLOBAL SIDEBAR) */}
-            <div className="lg:col-span-4 space-y-6">
-              
-              {/* Target Filter Card */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5 rounded-2xl space-y-4">
-                <div className="flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
-                  <Sliders className="w-5 h-5 text-[#064e43] dark:text-emerald-400" />
-                  <div>
-                    <h2 className="font-black text-slate-800 dark:text-white text-sm uppercase tracking-wider">Audience Selector</h2>
-                    <p className="text-[10px] text-slate-400">Configure Broadcast Recipients Target</p>
-                  </div>
+            {/* TOP IDENTITY & ANTI-BAN STATUS STRIP */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold shrink-0 transition-all ${
+                  connectionState === "connected" 
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-inner" 
+                    : "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                }`}>
+                  {connectionState === "connected" ? <Wifi size={24} /> : <WifiOff size={24} />}
                 </div>
-                
                 <div>
-                  <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">
-                    Target Group
-                  </label>
-                  <select
-                    value={targetGroup}
-                    onChange={(e) => {
-                      setTargetGroup(e.target.value as any);
-                      setSearchQuery("");
-                    }}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl h-11 px-3 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-[#064e43] outline-none transition-all"
-                  >
-                    <option value="All Students">All Students (Full Roster)</option>
-                    <option value="Missing Photos">📸 Missing Photos / ID Card Prep ({missingPhotosCount} Students)</option>
-                    <option value="Class Wise">Class & Campus Wise</option>
-                    <option value="Fee Defaulters">Fee Defaulters (Pending Dues Only)</option>
-                    <option value="Selective Students">Selective Students (Pick from List)</option>
-                    <option value="Staff">College Staff / Faculty</option>
-                    <option value="Custom Numbers">Custom Phone Numbers</option>
-                  </select>
-                </div>
-
-                {(targetGroup === "All Students" || targetGroup === "Class Wise" || targetGroup === "Fee Defaulters" || targetGroup === "Missing Photos") && (
-                  <div className="grid grid-cols-1 gap-3 pt-1">
-                    <div>
-                      <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">
-                        Academic Class
-                      </label>
-                      <select
-                        value={selectedClass}
-                        onChange={(e) => setSelectedClass(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl h-10 px-3 text-xs text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-[#064e43] outline-none"
-                      >
-                        <option value="All Classes">All Classes</option>
-                        {classes.map(c => (
-                          <option key={c} value={c}>{c}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">
-                        Gender Segment
-                      </label>
-                      <select
-                        value={selectedGender}
-                        onChange={(e) => setSelectedGender(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl h-10 px-3 text-xs text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-[#064e43] outline-none"
-                      >
-                        <option value="All">All Campuses</option>
-                        <option value="Male">Boys Campus Only</option>
-                        <option value="Female">Girls Campus Only</option>
-                      </select>
-                    </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                      {connectionState === "connected" ? (
+                        <>College WhatsApp: <span className="font-mono text-emerald-600 dark:text-emerald-400">+{connectedPhone || "Connected"}</span></>
+                      ) : (
+                        <>College WhatsApp Disconnected</>
+                      )}
+                    </h3>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${
+                      connectionState === "connected" 
+                        ? "bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800" 
+                        : "bg-amber-50 text-amber-800 border border-amber-200"
+                    }`}>
+                      <span className={`w-2 h-2 rounded-full ${connectionState === "connected" ? "bg-emerald-500 animate-ping" : "bg-amber-500"}`} />
+                      {connectionState === "connected" ? "QR Socket Ready (Real Dispatch)" : "Scan QR Code"}
+                    </span>
                   </div>
-                )}
-
-                {/* Selective Students Checkbox List */}
-                {targetGroup === "Selective Students" && (
-                  <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-600 dark:text-slate-300">
-                        Selected: <b className="text-emerald-700 dark:text-emerald-400 font-mono">{selectedStudentIds.size}</b> students
-                      </span>
-                      <div className="flex items-center gap-2 text-[10px] font-bold">
-                        <button onClick={selectAllVisibleStudents} className="text-emerald-700 dark:text-emerald-400 hover:underline">Select All</button>
-                        <span>|</span>
-                        <button onClick={deselectAllStudents} className="text-red-500 hover:underline">Clear</button>
-                      </div>
-                    </div>
-
-                    <div className="max-h-52 overflow-y-auto space-y-1 p-1 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl">
-                      {(students || [])
-                        .filter(s => {
-                          if (!searchQuery.trim()) return true;
-                          const q = searchQuery.toLowerCase();
-                          return (s.fullName || '').toLowerCase().includes(q) || (s.collegeNo || '').toLowerCase().includes(q);
-                        })
-                        .map(s => {
-                          const isChecked = selectedStudentIds.has(s.id);
-                          return (
-                            <div
-                              key={s.id}
-                              onClick={() => toggleStudentSelection(s.id)}
-                              className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition ${
-                                isChecked ? "bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 font-bold" : "hover:bg-white dark:hover:bg-slate-800"
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                {isChecked ? (
-                                  <CheckSquare className="w-3.5 h-3.5 text-[#064e43] dark:text-emerald-400" />
-                                ) : (
-                                  <Square className="w-3.5 h-3.5 text-slate-400" />
-                                )}
-                                <div>
-                                  <p className="text-slate-800 dark:text-slate-200 leading-tight">{s.fullName}</p>
-                                  <p className="text-[10px] text-slate-400">Roll: {s.collegeNo || s.id} • {s.group}</p>
-                                </div>
-                              </div>
-                              <span className="text-[10px] font-mono text-slate-500">{s.contact || 'No phone'}</span>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </div>
-                )}
-
-                {targetGroup === "Custom Numbers" && (
-                  <div className="pt-2">
-                    <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">
-                      Formatted Mobile Numbers (One Per Line)
-                    </label>
-                    <textarea
-                      value={customNumbers}
-                      onChange={(e) => setCustomNumbers(e.target.value)}
-                      placeholder="e.g.&#10;03014455891&#10;03120000000"
-                      className="w-full h-32 resize-none bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs font-mono tracking-wider outline-none focus:ring-2 focus:ring-[#064e43] transition-all text-slate-700 dark:text-slate-200"
-                    />
-                  </div>
-                )}
-
-                {/* Quick search input */}
-                <div className="relative pt-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search name, phone, roll no..."
-                    className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#064e43] transition-all text-slate-700 dark:text-slate-200"
-                  />
-                </div>
-
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center text-xs">
-                  <span className="text-slate-500">Filtered Recipients:</span>
-                  <span className="font-mono font-black text-[#064e43] dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
-                    {filteredRecipients.length} READY
-                  </span>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {connectionState === "connected" 
+                      ? "All messages will be dispatched directly through the college's authenticated WhatsApp number." 
+                      : "Please scan the QR code to link college WhatsApp before launching broadcasts."}
+                  </p>
                 </div>
               </div>
 
+              <div className="flex flex-wrap items-center gap-3">
+                {connectionState !== "connected" && (
+                  <button
+                    onClick={() => handleConnectWhatsApp()}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow active:scale-95"
+                  >
+                    <QrCode size={15} /> Scan QR Code
+                  </button>
+                )}
+
+                {/* Anti-Ban Shield Active Badge */}
+                <div className="flex items-center gap-2.5 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-3.5 py-2 rounded-2xl shadow-sm">
+                  <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <div>
+                    <div className="text-[10px] font-black text-emerald-800 dark:text-emerald-300 uppercase tracking-widest flex items-center gap-1">
+                      <span>Anti-Ban Shield</span>
+                      <span className="bg-emerald-600 text-white text-[8px] font-black px-1.5 py-0.2 rounded">ACTIVE</span>
+                    </div>
+                    <div className="text-[9px] text-emerald-700/80 dark:text-emerald-400/80 font-medium">
+                      Smart Jitter (±2s) • Auto-Cooldown ({batchPauseDuration}s / {batchPauseInterval} msgs) • Unique Hash
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* RIGHT COLUMN: WORKSPACE, AI TEMPLATE WRITER, ROSTER & TELEMETRY */}
-            <div className="lg:col-span-8 space-y-6">
-              
-              {/* AI Prompt Auto-writer Card */}
-              <div className="bg-gradient-to-br from-slate-900 to-[#042822] text-white p-5 rounded-2xl relative border border-emerald-900/40 shadow-md">
-                <div className="absolute top-4 right-4 text-emerald-400">
-                  <Sparkles className="w-5 h-5 animate-pulse" />
-                </div>
+            {/* QUICK PRESET CHIPS BAR */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap mr-1 flex items-center gap-1">
+                <Sparkles size={13} className="text-amber-500" /> Presets:
+              </span>
+              <button
+                onClick={() => handleAiCompose("fee_dues")}
+                disabled={isAiComposing}
+                className="px-3 py-1.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 transition flex items-center gap-1.5 shadow-sm whitespace-nowrap active:scale-95"
+              >
+                <DollarSign size={13} className="text-emerald-500" /> Fee Dues Notice
+              </button>
+              <button
+                onClick={() => handleAiCompose("marks")}
+                disabled={isAiComposing}
+                className="px-3 py-1.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 transition flex items-center gap-1.5 shadow-sm whitespace-nowrap active:scale-95"
+              >
+                <GraduationCap size={13} className="text-blue-500" /> Exam Results
+              </button>
+              <button
+                onClick={() => handleAiCompose("announcement")}
+                disabled={isAiComposing}
+                className="px-3 py-1.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 transition flex items-center gap-1.5 shadow-sm whitespace-nowrap active:scale-95"
+              >
+                <Clock size={13} className="text-cyan-500" /> Campus Circular
+              </button>
+              <button
+                onClick={() => handleAiCompose("missing_photos")}
+                disabled={isAiComposing}
+                className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-200 dark:border-amber-800 rounded-xl text-xs font-bold text-amber-800 dark:text-amber-200 transition flex items-center gap-1.5 shadow-sm whitespace-nowrap active:scale-95"
+              >
+                <CameraIcon size={13} className="text-amber-600" /> 📸 Request Missing Photos ({missingPhotosCount})
+              </button>
+              <button
+                onClick={() => handleAiCompose("absent_staff")}
+                disabled={isAiComposing}
+                className="px-3 py-1.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 transition flex items-center gap-1.5 shadow-sm whitespace-nowrap active:scale-95"
+              >
+                <AlertTriangle size={13} className="text-purple-500" /> Faculty Notice
+              </button>
+            </div>
+
+            {/* MAIN TWO-COLUMN WORKSPACE: LEFT = FILTERS + INTERACTIVE ROSTER, RIGHT = COMPOSER + LIVE PREVIEW + ENGINE */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+              {/* ─── LEFT COLUMN (5 COLS): AUDIENCE FILTERS & INTERACTIVE CLICK-TO-PREVIEW ROSTER ─── */}
+              <div className="lg:col-span-5 space-y-5">
                 
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <p className="text-xs font-black tracking-widest text-emerald-400 uppercase">Nexus AI Template Writer</p>
-                    <h3 className="text-sm font-bold">What would you like the college broadcast message to convey?</h3>
-                  </div>
-
-                  {/* Pre-built Prompt tags */}
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <button
-                      onClick={() => handleAiCompose("fee_dues")}
-                      disabled={isAiComposing}
-                      className="px-2.5 py-1.5 bg-white/10 hover:bg-white/15 text-white border border-white/10 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
-                    >
-                      <Database size={12} className="text-emerald-400" /> Roman Urdu Fee Dues
-                    </button>
-                    <button
-                      onClick={() => handleAiCompose("marks")}
-                      disabled={isAiComposing}
-                      className="px-2.5 py-1.5 bg-white/10 hover:bg-white/15 text-white border border-white/10 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
-                    >
-                      <GraduationCap size={12} className="text-emerald-400" /> Student Score Cards
-                    </button>
-                    <button
-                      onClick={() => handleAiCompose("announcement")}
-                      disabled={isAiComposing}
-                      className="px-2.5 py-1.5 bg-white/10 hover:bg-white/15 text-white border border-white/10 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
-                    >
-                      <Clock size={12} className="text-emerald-400" /> SGCJ Holiday Circular
-                    </button>
-                    <button
-                      onClick={() => handleAiCompose("absent_staff")}
-                      disabled={isAiComposing}
-                      className="px-2.5 py-1.5 bg-white/10 hover:bg-white/15 text-white border border-white/10 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
-                    >
-                      <AlertTriangle size={12} className="text-emerald-400" /> Faculty Attendance Policy
-                    </button>
-                    <button
-                      onClick={() => handleAiCompose("missing_photos")}
-                      disabled={isAiComposing}
-                      className="px-2.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/30 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
-                    >
-                      <Sparkles size={12} className="text-amber-400" /> 📸 Request Student Photos ({missingPhotosCount})
-                    </button>
-                  </div>
-
-                  <p className="text-[10px] text-emerald-300 italic">
-                    💡 Dynamic Placeholders supported: {"{{name}}"}, {"{{father}}"}, {"{{class}}"}, {"{{dues}}"}, and {"{{marks}}"}.
-                  </p>
-
-                  <div className="flex gap-2 pt-1">
-                    <textarea
-                      value={customAiPrompt}
-                      onChange={(e) => setCustomAiPrompt(e.target.value)}
-                      placeholder="Or customize: Compose a warm reminder notice for girls campus defaulters with dues > 40k..."
-                      className="flex-1 bg-white/5 border border-white/10 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 outline-none h-11 resize-none focus:ring-1 focus:ring-emerald-500"
-                    />
-                    <button
-                      onClick={() => handleAiCompose()}
-                      disabled={isAiComposing}
-                      className="h-11 px-4 bg-emerald-400 hover:bg-emerald-300 text-slate-950 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shrink-0 disabled:opacity-50 shadow-md"
-                    >
-                      {isAiComposing ? (
-                        <>
-                          <RefreshCw size={14} className="animate-spin" /> Drafting...
-                        </>
-                      ) : (
-                        <>
-                          <Wand2 size={14} /> Ask Nexus AI
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Main Message Board & Live Roster */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5 rounded-2xl space-y-4">
-                <div>
-                  <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">
-                    Message Pattern Template Workspace
-                  </label>
-                  <textarea
-                    value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
-                    placeholder="Write message template. Inject dynamic variables like {{name}} or {{dues}} safely."
-                    className="w-full h-32 resize-none bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm focus:ring-2 focus:ring-[#064e43] outline-none leading-relaxed text-slate-700 dark:text-slate-200 tracking-wide font-sans shadow-inner"
-                  />
-                </div>
-
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-                  <span className="text-[11px] text-slate-400">
-                    Loaded Target Audience: <b>{filteredRecipients.length} Recipient records ready.</b>
-                  </span>
-                  <button
-                    onClick={handleLoadQueueActive}
-                    className="h-10 px-5 bg-[#064e43] hover:bg-[#053d34] text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95 text-center shrink-0 self-start sm:self-center"
-                  >
-                    <Layers size={14} /> Link All to Automation Engine ({filteredRecipients.length})
-                  </button>
-                </div>
-
-                {/* Roster Directory matching filters */}
-                <div className="pt-2">
-                  <h3 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 p-2.5 rounded-t-xl border border-b-0 border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                    <span>Roster Directory Matching Filters</span>
-                    <span className="bg-white dark:bg-slate-900 text-[#064e43] dark:text-emerald-400 px-2 py-0.5 rounded-md text-[10px] font-black border border-slate-200 dark:border-slate-700 shadow-sm">
-                      {filteredRecipients.length} MATCHED
-                    </span>
-                  </h3>
-
-                  <div className="max-h-[260px] overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-b-xl bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800">
-                    {filteredRecipients.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center p-10 text-slate-400 text-center">
-                        <Users size={32} className="mb-2 opacity-50" />
-                        <p className="text-xs font-bold">No contacts match the active filter criteria.</p>
-                        <p className="text-[10px] mt-1">Refine target selections on the left audience panel.</p>
+                {/* 1. AUDIENCE & SECTION FILTER CARD */}
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5 rounded-3xl space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-[#064e43]/10 text-[#064e43] dark:text-emerald-400 flex items-center justify-center font-bold">
+                        <Sliders size={16} />
                       </div>
-                    ) : (
-                      filteredRecipients.map((recipient, i) => (
-                        <div key={recipient.id || i} className="flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-slate-150 dark:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-center font-bold text-xs shrink-0 border border-slate-200 dark:border-slate-700">
-                              {recipient.name ? recipient.name[0].toUpperCase() : <Phone size={13} />}
-                            </div>
-                            <div className="space-y-0.5 truncate">
-                              <p className="text-xs font-extrabold text-slate-800 dark:text-slate-100 line-clamp-1 truncate">{recipient.name}</p>
-                              <p className="text-[10px] text-slate-500 font-mono">
-                                {recipient.phone} • <span className="font-sans text-[9px] text-slate-400 uppercase tracking-wider">{recipient.detail || recipient.type}</span>
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => handleSendSingle(recipient.phone, recipient.name)}
-                            className="px-3 h-8 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-extrabold flex items-center gap-1 transition-all active:scale-95 shrink-0 shadow-sm"
-                          >
-                            <Send size={11} /> Manual Open
-                          </button>
+                      <div>
+                        <h2 className="font-black text-slate-800 dark:text-white text-sm uppercase tracking-wider">Audience & Section Filter</h2>
+                        <p className="text-[10px] text-slate-400">Target Specific Classes, Sections, or Defaulters</p>
+                      </div>
+                    </div>
+
+                    <span className="font-mono font-black text-xs text-[#064e43] dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800 shadow-sm">
+                      {filteredRecipients.length} READY
+                    </span>
+                  </div>
+
+                  {/* Target Group Selector */}
+                  <div>
+                    <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">
+                      Target Audience Group
+                    </label>
+                    <select
+                      value={targetGroup}
+                      onChange={(e) => {
+                        setTargetGroup(e.target.value as any);
+                        setSearchQuery("");
+                      }}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl h-10 px-3 text-xs font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-[#064e43] outline-none transition-all"
+                    >
+                      <option value="All Students">All Students (Full Roster)</option>
+                      <option value="Missing Photos">📸 Missing Photos / ID Card Prep ({missingPhotosCount} Students)</option>
+                      <option value="Class Wise">Class & Section Wise</option>
+                      <option value="Fee Defaulters">Fee Defaulters (Pending Dues Only)</option>
+                      <option value="Selective Students">Selective Students (Pick from List)</option>
+                      <option value="Staff">College Staff / Faculty</option>
+                      <option value="Custom Numbers">Custom Phone Numbers</option>
+                    </select>
+                  </div>
+
+                  {/* 3-Way Grid: Class, Section (NEW!), and Campus */}
+                  {(targetGroup === "All Students" || targetGroup === "Class Wise" || targetGroup === "Fee Defaulters" || targetGroup === "Missing Photos") && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                      {/* Class Filter */}
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                          Class
+                        </label>
+                        <select
+                          value={selectedClass}
+                          onChange={(e) => {
+                            setSelectedClass(e.target.value);
+                            setSelectedSection("All Sections");
+                          }}
+                          className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl h-9 px-2 text-xs font-medium text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-[#064e43] outline-none"
+                        >
+                          <option value="All Classes">All Classes</option>
+                          {classes.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* SECTION FILTER (EXACT REQUIREMENT!) */}
+                      <div>
+                        <label className="block text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+                          <span>Section</span>
+                          <span className="text-[9px] font-mono">({sections.length})</span>
+                        </label>
+                        <select
+                          value={selectedSection}
+                          onChange={(e) => setSelectedSection(e.target.value)}
+                          className="w-full bg-emerald-50/50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 rounded-xl h-9 px-2 text-xs font-bold text-emerald-900 dark:text-emerald-200 focus:ring-2 focus:ring-emerald-500 outline-none"
+                        >
+                          <option value="All Sections">All Sections</option>
+                          {sections.map(sec => (
+                            <option key={sec} value={sec}>Sec: {sec}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Campus Filter */}
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                          Campus
+                        </label>
+                        <select
+                          value={selectedGender}
+                          onChange={(e) => setSelectedGender(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl h-9 px-2 text-xs font-medium text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-[#064e43] outline-none"
+                        >
+                          <option value="All">All Campuses</option>
+                          <option value="Male">Boys Campus</option>
+                          <option value="Female">Girls Campus</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Selective Students Mode */}
+                  {targetGroup === "Selective Students" && (
+                    <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-600 dark:text-slate-300">
+                          Selected: <b className="text-emerald-700 dark:text-emerald-400 font-mono">{selectedStudentIds.size}</b> students
+                        </span>
+                        <div className="flex items-center gap-2 text-[10px] font-bold">
+                          <button onClick={selectAllVisibleStudents} className="text-emerald-700 dark:text-emerald-400 hover:underline">Select All</button>
+                          <span>|</span>
+                          <button onClick={deselectAllStudents} className="text-red-500 hover:underline">Clear</button>
                         </div>
-                      ))
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Custom Numbers Mode */}
+                  {targetGroup === "Custom Numbers" && (
+                    <div className="pt-1">
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                        Formatted Mobile Numbers (One Per Line)
+                      </label>
+                      <textarea
+                        value={customNumbers}
+                        onChange={(e) => setCustomNumbers(e.target.value)}
+                        placeholder="e.g.&#10;03014455891&#10;03120000000"
+                        className="w-full h-24 resize-none bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs font-mono tracking-wider outline-none focus:ring-2 focus:ring-[#064e43] transition-all text-slate-700 dark:text-slate-200"
+                      />
+                    </div>
+                  )}
+
+                  {/* Real-time search box */}
+                  <div className="relative pt-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search student, father, roll, section..."
+                      className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#064e43] transition-all text-slate-700 dark:text-slate-200"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <X size={12} />
+                      </button>
                     )}
                   </div>
                 </div>
 
-              </div>
-
-              {/* Control Parameter Bar */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5 rounded-2xl grid grid-cols-1 md:grid-cols-12 gap-5 items-center">
-                
-                {/* Transmission mode Selector */}
-                <div className="md:col-span-5 space-y-1.5">
-                  <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest">
-                    Transmission Gate Mode
-                  </label>
-                  <div className="flex border border-slate-200 dark:border-slate-700 p-1 bg-slate-50 dark:bg-slate-800 rounded-xl gap-1">
-                    <button
-                      onClick={() => setDispatchMode("simulated")}
-                      className={`flex-1 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${
-                        dispatchMode === "simulated" 
-                          ? "bg-[#064e43] text-white shadow-sm" 
-                          : "text-slate-500 hover:text-slate-800 dark:hover:text-white"
-                      }`}
-                    >
-                      Gateway Bridge
-                    </button>
-                    <button
-                      onClick={() => setDispatchMode("supervised")}
-                      className={`flex-1 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${
-                        dispatchMode === "supervised" 
-                          ? "bg-[#064e43] text-white shadow-sm" 
-                          : "text-slate-500 hover:text-slate-800 dark:hover:text-white"
-                      }`}
-                    >
-                      Supervised Tab
-                    </button>
-                  </div>
-                </div>
-
-                {/* Delay Slider */}
-                <div className="md:col-span-4 space-y-1.5">
-                  <div className="flex justify-between items-center text-[11px]">
-                    <span className="font-black text-slate-500 uppercase tracking-widest">Antispam Delay Interval</span>
-                    <span className="font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-1.5 py-0.5 rounded text-[10px]">
-                      ~ {averageDelay} Sec
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={3}
-                    max={15}
-                    step={1}
-                    value={averageDelay}
-                    onChange={(e) => setAverageDelay(Number(e.target.value))}
-                    className="w-full accent-[#064e43] h-1.5 bg-slate-200 dark:bg-slate-700 rounded cursor-pointer"
-                  />
-                </div>
-
-                {/* Engine Controller Buttons */}
-                <div className="md:col-span-3 flex md:flex-col gap-2 pt-2 md:pt-0">
-                  {isBulkRunning ? (
-                    <button
-                      onClick={handlePauseBulk}
-                      className="flex-1 h-10 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all tracking-wide shadow-sm"
-                    >
-                      <Pause size={14} /> Pause Broadcast
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleStartBulk}
-                      className="flex-1 h-10 bg-[#064e43] hover:bg-[#053d34] text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all tracking-wide shadow-md"
-                    >
-                      <Play size={14} /> Launch Dispatch
-                    </button>
-                  )}
-                  <button
-                    onClick={handleClearQueue}
-                    className="h-10 px-3 border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white rounded-xl text-xs flex items-center justify-center gap-1 font-bold"
-                  >
-                    <RotateCcw size={13} /> Reset Queue
-                  </button>
-                </div>
-              </div>
-
-              {/* Automation Progress Bar */}
-              {queueList.length > 0 && (
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 rounded-xl space-y-2">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-black text-slate-700 dark:text-slate-300">CAMPAIGN DISPATCH PROGRESS</span>
-                    <span className="font-mono font-black text-emerald-700 dark:text-emerald-400">
-                      {totalSent} / {queueList.length} PROCESSED ({Math.round(progressPercent)}%)
-                    </span>
-                  </div>
-                  <div className="w-full bg-slate-100 dark:bg-slate-800 h-3 rounded-full overflow-hidden">
-                    <div 
-                      className="bg-gradient-to-r from-emerald-600 to-[#064e43] h-full transition-all duration-300 rounded-full" 
-                      style={{ width: `${progressPercent}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Queue Dashboard & Terminal Split Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                
-                {/* Active Dispatch Queue */}
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 rounded-2xl flex flex-col h-[400px]">
-                  <div className="pb-3 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center shrink-0">
-                    <p className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest">Active Dispatch Queue</p>
-                    <span className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-2 py-0.5 rounded text-[10px] font-black">
-                      {queueList.length} LOADED
+                {/* 2. INTERACTIVE STUDENT ROSTER (CLICK ANY STUDENT TO PREVIEW IN REAL TIME) */}
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5 rounded-3xl space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                    <div>
+                      <h3 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                        <Users size={14} className="text-[#064e43] dark:text-emerald-400" />
+                        <span>Matching Directory</span>
+                      </h3>
+                      <p className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold">
+                        👉 Click any student to preview their live message
+                      </p>
+                    </div>
+                    <span className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded text-[10px] font-black">
+                      {filteredRecipients.length} Students
                     </span>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 pt-2 pr-1">
-                    {queueList.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center text-slate-400 text-center h-full space-y-2">
-                        <Sliders size={32} className="opacity-40" />
-                        <p className="text-xs font-bold">Transmit Roster is empty.</p>
-                        <p className="text-[10px] max-w-[200px]">Click "Link All to Automation Engine" above to load recipients.</p>
+                  {/* Scrollable Student Cards */}
+                  <div className="max-h-[460px] overflow-y-auto space-y-2 pr-1">
+                    {filteredRecipients.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center p-12 text-slate-400 text-center">
+                        <Users size={32} className="mb-2 opacity-50" />
+                        <p className="text-xs font-bold">No students match current filters.</p>
+                        <p className="text-[10px] mt-1 text-slate-500">Try selecting "All Sections" or clearing search.</p>
                       </div>
                     ) : (
-                      queueList.map((item, index) => {
-                        const isActive = index === bulkCurrentIndex;
+                      filteredRecipients.map((recipient) => {
+                        const isSelectedForPreview = activePreviewRecipient?.id === recipient.id;
+                        const hasDues = Number(recipient.dues || 0) > 0;
+
                         return (
-                          <div 
-                            key={item.id} 
-                            className={`p-2.5 rounded-lg transition-all flex items-center justify-between ${
-                              isActive ? "bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800" : "hover:bg-slate-50 dark:hover:bg-slate-800"
+                          <div
+                            key={recipient.id}
+                            onClick={() => setSelectedPreviewStudentId(recipient.id)}
+                            className={`p-3 rounded-2xl cursor-pointer transition-all border flex items-center justify-between gap-3 ${
+                              isSelectedForPreview
+                                ? "bg-emerald-50 dark:bg-emerald-950/70 border-emerald-500 shadow-md ring-2 ring-emerald-500/20"
+                                : "hover:bg-slate-50 dark:hover:bg-slate-800/60 border-slate-200 dark:border-slate-800"
                             }`}
                           >
-                            <div className="space-y-0.5 truncate pr-2">
-                              <div className="flex items-center gap-1.5 truncate">
-                                <span className="text-xs font-black text-slate-800 dark:text-white truncate">{item.name}</span>
-                                <span className="text-[9px] text-slate-400 capitalize bg-slate-100 dark:bg-slate-800 px-1.5 rounded">{item.detail}</span>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${
+                                isSelectedForPreview
+                                  ? "bg-emerald-600 text-white shadow-sm"
+                                  : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                              }`}>
+                                {recipient.name ? recipient.name[0].toUpperCase() : "S"}
                               </div>
-                              <p className="text-[10px] text-slate-500 line-clamp-1 italic truncate" title={item.resolvedMessage}>
-                                {item.resolvedMessage}
-                              </p>
+                              <div className="min-w-0 space-y-0.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-xs font-black text-slate-900 dark:text-white truncate">
+                                    {recipient.name}
+                                  </span>
+                                  {/* Section Badge (NEW!) */}
+                                  <span className="px-1.5 py-0.2 rounded bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 font-mono font-bold text-[9px] border border-teal-200 dark:border-teal-800">
+                                    Sec: {recipient.section || "A"}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-slate-500 truncate">
+                                  s/o {recipient.father} • Roll: <span className="font-mono">{recipient.rollNo}</span>
+                                </p>
+                              </div>
                             </div>
-                            <div className="shrink-0 flex items-center gap-1.5">
-                              {item.status === "sent" && (
-                                <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                                  <CheckCircle2 size={11} /> Sent
+
+                            <div className="shrink-0 flex flex-col items-end gap-1">
+                              {hasDues ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                  Rs. {Number(recipient.dues).toLocaleString()}
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                  Clear ✅
                                 </span>
                               )}
-                              {item.status === "sending" && (
-                                <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 animate-pulse">
-                                  <RefreshCw size={11} className="animate-spin" /> Transmitting
-                                </span>
-                              )}
-                              {item.status === "queued" && (
-                                <span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
-                                  Queued
-                                </span>
-                              )}
-                              {item.status === "failed" && (
-                                <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
-                                  <XCircle size={11} /> Failed
+
+                              {isSelectedForPreview && (
+                                <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5">
+                                  <CheckCircle2 size={10} /> Active Preview
                                 </span>
                               )}
                             </div>
@@ -2615,28 +2664,403 @@ _Administration Directorate, SGC Jahanian_`;
                   </div>
                 </div>
 
-                {/* Digital Telemetry Console */}
-                <div className="bg-slate-950 text-slate-100 p-4 rounded-2xl font-mono text-[11px] flex flex-col h-[400px] shadow-lg border border-slate-900">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0 text-slate-400 text-[10px]">
-                    <div className="flex items-center gap-1.5">
-                      <Terminal size={14} className="text-emerald-400" />
-                      <span>GATEWAY TELEMETRY [SGCJ-AUTOMATOR]</span>
+              </div>
+
+              {/* ─── RIGHT COLUMN (7 COLS): TEMPLATE COMPOSER + REAL-TIME WHATSAPP LIVE PREVIEW + ENGINE ─── */}
+              <div className="lg:col-span-7 space-y-5">
+
+                {/* 1. MESSAGE COMPOSER & DYNAMIC VARIABLE CHIPS */}
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5 rounded-3xl space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                    <div className="space-y-0.5">
+                      <h3 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                        <FileText size={15} className="text-[#064e43] dark:text-emerald-400" />
+                        <span>Message Pattern Workspace</span>
+                      </h3>
+                      <p className="text-[10px] text-slate-400">Insert dynamic variables or draft custom reminders</p>
                     </div>
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+
+                    <div className="text-[11px] font-mono text-slate-400">
+                      {messageText.length} chars
+                    </div>
                   </div>
 
-                  <div ref={telemetryContainerRef} className="flex-1 overflow-y-auto space-y-1.5 pt-3 leading-relaxed text-slate-300 pr-1">
-                    {telemetryLogs.map((log, i) => (
-                      <div key={i} className="whitespace-pre-wrap select-text">
-                        <span className="text-emerald-500">➜</span> {log}
+                  {/* Clickable Variable Chips */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider self-center mr-1">Insert:</span>
+                    <button
+                      onClick={() => handleInsertVariable("{{name}}")}
+                      className="px-2 py-1 bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950 text-slate-700 hover:text-emerald-700 dark:text-slate-300 dark:hover:text-emerald-300 rounded-lg text-[10px] font-bold transition font-mono border border-slate-200 dark:border-slate-700"
+                    >
+                      + {"{{name}}"}
+                    </button>
+                    <button
+                      onClick={() => handleInsertVariable("{{father}}")}
+                      className="px-2 py-1 bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950 text-slate-700 hover:text-emerald-700 dark:text-slate-300 dark:hover:text-emerald-300 rounded-lg text-[10px] font-bold transition font-mono border border-slate-200 dark:border-slate-700"
+                    >
+                      + {"{{father}}"}
+                    </button>
+                    <button
+                      onClick={() => handleInsertVariable("{{rollNo}}")}
+                      className="px-2 py-1 bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950 text-slate-700 hover:text-emerald-700 dark:text-slate-300 dark:hover:text-emerald-300 rounded-lg text-[10px] font-bold transition font-mono border border-slate-200 dark:border-slate-700"
+                    >
+                      + {"{{rollNo}}"}
+                    </button>
+                    <button
+                      onClick={() => handleInsertVariable("{{section}}")}
+                      className="px-2 py-1 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 rounded-lg text-[10px] font-bold transition font-mono border border-emerald-300 dark:border-emerald-800"
+                    >
+                      + {"{{section}}"}
+                    </button>
+                    <button
+                      onClick={() => handleInsertVariable("{{class}}")}
+                      className="px-2 py-1 bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950 text-slate-700 hover:text-emerald-700 dark:text-slate-300 dark:hover:text-emerald-300 rounded-lg text-[10px] font-bold transition font-mono border border-slate-200 dark:border-slate-700"
+                    >
+                      + {"{{class}}"}
+                    </button>
+                    <button
+                      onClick={() => handleInsertVariable("{{dues}}")}
+                      className="px-2 py-1 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950 text-amber-800 dark:text-amber-300 rounded-lg text-[10px] font-bold transition font-mono border border-amber-300 dark:border-amber-800"
+                    >
+                      + {"{{dues}}"}
+                    </button>
+                    <button
+                      onClick={() => handleInsertVariable("{{marks}}")}
+                      className="px-2 py-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-950 text-blue-800 dark:text-blue-300 rounded-lg text-[10px] font-bold transition font-mono border border-blue-300 dark:border-blue-800"
+                    >
+                      + {"{{marks}}"}
+                    </button>
+                  </div>
+
+                  {/* Main Pattern Textarea */}
+                  <textarea
+                    value={messageText}
+                    onChange={(e) => setMessageText(e.target.value)}
+                    placeholder="Type your message template here. Live preview below will update immediately as you type..."
+                    className="w-full h-32 resize-none bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-2xl p-3.5 text-xs text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-[#064e43] font-sans leading-relaxed shadow-inner"
+                  />
+
+                  {/* AI Prompt Input Bar */}
+                  <div className="flex gap-2 pt-1">
+                    <input
+                      type="text"
+                      value={customAiPrompt}
+                      onChange={(e) => setCustomAiPrompt(e.target.value)}
+                      placeholder="Ask Nexus AI: e.g. Write an urgent reminder for Section MEPB fee defaulters..."
+                      className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-[#064e43]"
+                    />
+                    <button
+                      onClick={() => handleAiCompose()}
+                      disabled={isAiComposing}
+                      className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-[#064e43] hover:from-emerald-700 hover:to-[#053d34] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow active:scale-95 disabled:opacity-50 shrink-0"
+                    >
+                      {isAiComposing ? <RefreshCw size={13} className="animate-spin" /> : <Wand2 size={13} />}
+                      <span>Compose with AI</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. REAL-TIME WHATSAPP LIVE PHONE PREVIEW (STAR FEATURE!) */}
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm rounded-3xl overflow-hidden">
+                  
+                  {/* WhatsApp Header Bar */}
+                  <div className="bg-[#075E54] dark:bg-[#1f2c34] text-white p-3.5 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-white/20 border border-white/30 flex items-center justify-center font-black text-xs text-emerald-200">
+                        SCJ
                       </div>
-                    ))}
-                    {telemetryLogs.length === 0 && (
-                      <div className="text-slate-600 text-center py-20 italic">
-                        [Telemetry Standby] Engine offline. Waiting for broadcast sequence launch.
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-black tracking-wide">Superior College Jahanian</h4>
+                          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                        </div>
+                        <p className="text-[10px] text-emerald-100/80">
+                          Live Personalized Message Preview • <span className="font-mono text-white">online</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleSendTestToPreviewStudent}
+                        disabled={isSendingTestPreview || !activePreviewRecipient}
+                        className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition shadow active:scale-95 disabled:opacity-50"
+                        title="Send this exact message to this student's WhatsApp number right now"
+                      >
+                        {isSendingTestPreview ? (
+                          <RefreshCw size={13} className="animate-spin" />
+                        ) : (
+                          <Send size={13} />
+                        )}
+                        <span>Test Send to Student</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Chat Wallpaper & Live Message Bubble */}
+                  <div className="bg-[#efeae2] dark:bg-[#0b141a] p-5 min-h-[220px] max-h-[360px] overflow-y-auto space-y-3 relative">
+                    <div className="flex justify-center">
+                      <span className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm text-[10px] text-slate-500 dark:text-slate-400 px-3 py-1 rounded-full shadow-sm font-medium">
+                        TODAY (REAL-TIME PREVIEW)
+                      </span>
+                    </div>
+
+                    {activePreviewRecipient ? (
+                      <div className="flex flex-col items-start max-w-[92%]">
+                        <div className="bg-white dark:bg-[#202c33] text-slate-800 dark:text-slate-100 rounded-2xl rounded-tl-none p-4 shadow-md border border-black/5 dark:border-white/5 space-y-2 relative">
+                          <div className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 pb-1 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                            <span>Official Broadcast Desk</span>
+                            <span className="font-mono text-slate-400">To: {activePreviewRecipient.phone}</span>
+                          </div>
+
+                          {/* Rendered live message text with formatted line breaks */}
+                          <div className="text-xs leading-relaxed whitespace-pre-wrap font-sans select-text">
+                            {getPersonalizedMessage(messageText, activePreviewRecipient)}
+                          </div>
+
+                          {/* Anti-Ban Reference Signature */}
+                          {enableAntiBanHash && (
+                            <div className="text-[9px] font-mono text-slate-400 italic pt-1 border-t border-slate-100 dark:border-slate-700/60">
+                              _Ref: #SGCJ-{activePreviewRecipient.id ? activePreviewRecipient.id.slice(-4).toUpperCase() : "TEST"}_ (Anti-Ban Token)
+                            </div>
+                          )}
+
+                          <div className="flex justify-end items-center gap-1 pt-1 text-[9px] text-slate-400">
+                            <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            <CheckCheck size={13} className="text-cyan-500" />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-8 text-center text-slate-400 text-xs font-bold">
+                        No recipient selected for preview.
                       </div>
                     )}
                   </div>
+
+                  {/* Preview Navigation & Student Details Bar */}
+                  <div className="bg-slate-50 dark:bg-slate-800/80 p-3.5 px-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-slate-500">Previewing:</span>
+                      <span className="font-black text-slate-800 dark:text-white">
+                        {activePreviewRecipient?.name || "None"}
+                      </span>
+                      <span className="px-1.5 py-0.2 rounded bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 font-mono text-[10px] font-bold">
+                        Sec: {activePreviewRecipient?.section || "A"}
+                      </span>
+                      <span className="font-mono text-slate-400 text-[11px]">
+                        ({activePreviewRecipient?.phone || "No phone"})
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handlePrevPreviewRecipient}
+                        className="px-2.5 py-1 bg-white dark:bg-slate-900 hover:bg-slate-100 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 shadow-sm transition"
+                      >
+                        <ChevronLeft size={13} /> Prev
+                      </button>
+                      <button
+                        onClick={handleNextPreviewRecipient}
+                        className="px-2.5 py-1 bg-white dark:bg-slate-900 hover:bg-slate-100 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 shadow-sm transition"
+                      >
+                        Next <ChevronRight size={13} />
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* 3. ANTI-BAN BROADCAST ENGINE & DISPATCH CONTROLLER */}
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5 rounded-3xl space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                        <Play size={16} />
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider">
+                          Anti-Ban Broadcast Transmission Engine
+                        </h3>
+                        <p className="text-[10px] text-slate-400">Automated Dispatch via College WhatsApp QR Socket</p>
+                      </div>
+                    </div>
+
+                    <span className="text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded">
+                      Queue: {queueList.length} targets
+                    </span>
+                  </div>
+
+                  {/* Transmission Controls Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                    {/* Gate Mode */}
+                    <div className="md:col-span-4 space-y-1">
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                        Gate Mode
+                      </label>
+                      <div className="flex border border-slate-200 dark:border-slate-700 p-1 bg-slate-50 dark:bg-slate-800 rounded-xl gap-1">
+                        <button
+                          onClick={() => setDispatchMode("simulated")}
+                          className={`flex-1 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                            dispatchMode === "simulated" 
+                              ? "bg-[#064e43] text-white shadow-sm" 
+                              : "text-slate-500 hover:text-slate-800 dark:hover:text-white"
+                          }`}
+                        >
+                          QR Socket
+                        </button>
+                        <button
+                          onClick={() => setDispatchMode("supervised")}
+                          className={`flex-1 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                            dispatchMode === "supervised" 
+                              ? "bg-[#064e43] text-white shadow-sm" 
+                              : "text-slate-500 hover:text-slate-800 dark:hover:text-white"
+                          }`}
+                        >
+                          Web Tab
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Delay Interval Slider */}
+                    <div className="md:col-span-4 space-y-1">
+                      <div className="flex justify-between items-center text-[10px]">
+                        <span className="font-black text-slate-500 uppercase tracking-wider">Human Jitter Delay</span>
+                        <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                          ~{averageDelay}s (±2s)
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={3}
+                        max={15}
+                        step={1}
+                        value={averageDelay}
+                        onChange={(e) => setAverageDelay(Number(e.target.value))}
+                        className="w-full accent-[#064e43] h-1.5 bg-slate-200 dark:bg-slate-700 rounded cursor-pointer"
+                      />
+                    </div>
+
+                    {/* Anti-Ban Safeguard Toggles */}
+                    <div className="md:col-span-4 space-y-1.5">
+                      <label className="flex items-center gap-2 text-[11px] text-slate-700 dark:text-slate-300 font-bold cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={enableBatchPause}
+                          onChange={(e) => setEnableBatchPause(e.target.checked)}
+                          className="rounded text-[#064e43] focus:ring-emerald-500"
+                        />
+                        <span>Batch Cooldown (25s / 15 msgs)</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-[11px] text-slate-700 dark:text-slate-300 font-bold cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={enableAntiBanHash}
+                          onChange={(e) => setEnableAntiBanHash(e.target.checked)}
+                          className="rounded text-[#064e43] focus:ring-emerald-500"
+                        />
+                        <span>Unique Content Hash</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* COFFEE BREAK / BATCH PAUSE BANNER */}
+                  {isBatchPausing && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="bg-amber-500/10 border-2 border-amber-500/30 p-3 rounded-2xl flex items-center justify-between text-amber-800 dark:text-amber-200 text-xs"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Coffee className="w-5 h-5 text-amber-500 animate-bounce shrink-0" />
+                        <div>
+                          <span className="font-black">ANTI-BAN BATCH COOLDOWN IN PROGRESS:</span>
+                          <p className="text-[11px] text-amber-700/80 dark:text-amber-300/80">
+                            Simulating human coffee break to keep College SIM 100% safe from Meta spam detection.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="font-mono text-base font-black px-3 py-1 bg-amber-500 text-white rounded-xl shadow-sm">
+                        {batchPauseCountdown}s
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Main Action Buttons */}
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <button
+                      onClick={handleLoadQueueActive}
+                      className="px-4 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-sm active:scale-95"
+                    >
+                      <Layers size={14} /> 1. Link All Filtered to Send Queue ({filteredRecipients.length})
+                    </button>
+
+                    {isBulkRunning ? (
+                      <button
+                        onClick={handlePauseBulk}
+                        className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-xl text-xs flex items-center gap-1.5 transition shadow-md active:scale-95"
+                      >
+                        <Pause size={14} /> Pause Broadcast
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleStartBulk}
+                        className="px-5 py-2.5 bg-[#064e43] hover:bg-[#053d34] text-white font-black rounded-xl text-xs flex items-center gap-1.5 transition shadow-md active:scale-95"
+                      >
+                        <Play size={14} /> 2. Launch Safe Broadcast
+                      </button>
+                    )}
+
+                    <button
+                      onClick={handleClearQueue}
+                      className="px-3 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white rounded-xl text-xs font-bold flex items-center gap-1"
+                    >
+                      <RotateCcw size={13} /> Reset
+                    </button>
+                  </div>
+
+                  {/* Campaign Progress Bar */}
+                  {queueList.length > 0 && (
+                    <div className="space-y-1.5 pt-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-black text-slate-700 dark:text-slate-300">DISPATCH PROGRESS</span>
+                        <span className="font-mono font-black text-emerald-700 dark:text-emerald-400">
+                          {totalSent} / {queueList.length} PROCESSED ({Math.round(progressPercent)}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-100 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                        <div 
+                          className="bg-gradient-to-r from-emerald-600 to-[#064e43] h-full transition-all duration-300 rounded-full" 
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Digital Telemetry Terminal Console */}
+                  <div className="bg-slate-950 text-slate-100 p-3.5 rounded-2xl font-mono text-[11px] flex flex-col h-[200px] shadow-inner border border-slate-900">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0 text-slate-400 text-[10px]">
+                      <div className="flex items-center gap-1.5">
+                        <Terminal size={13} className="text-emerald-400" />
+                        <span>COLLEGE WHATSAPP GATEWAY TELEMETRY</span>
+                      </div>
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                    </div>
+
+                    <div ref={telemetryContainerRef} className="flex-1 overflow-y-auto space-y-1 pt-2 leading-relaxed text-slate-300 pr-1 select-text">
+                      {telemetryLogs.map((log, i) => (
+                        <div key={i} className="whitespace-pre-wrap">
+                          <span className="text-emerald-500">➜</span> {log}
+                        </div>
+                      ))}
+                      {telemetryLogs.length === 0 && (
+                        <div className="text-slate-600 text-center py-10 italic text-xs">
+                          [Telemetry Standby] Real-time transmission logs will appear here during dispatch.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                 </div>
 
               </div>
