@@ -25,7 +25,8 @@ import {
 import { motion } from "motion/react";
 import StudentDossier360 from "./StudentDossier360";
 import BankChallanModal from "./BankChallanModal";
-import { getDocumentLink } from "../lib/whatsappAutomation";
+import { getDocumentLink, sendAutoFeeReceiptNotice, buildFeeReminderMessage } from "../lib/whatsappAutomation";
+import WhatsAppReportModal, { ReportRecipientItem } from "./WhatsAppReportModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -74,7 +75,6 @@ import * as XLSX from "xlsx";
 import { safeLocalStorage } from "../utils/safeStorage";
 
 import { getUnifiedTransactions } from "../utils/fee";
-import { sendAutoFeeReceiptNotice } from "../lib/whatsappAutomation";
 import { useDebounce } from "../hooks/useDebounce";
 import { calculateStudentFeeBreakdown } from "../lib/feeCalculations";
 
@@ -116,39 +116,55 @@ export default function FeeManagementView({
   const [challanStudents, setChallanStudents] = React.useState<any[] | null>(null);
   const [isChallanModalOpen, setIsChallanModalOpen] = React.useState(false);
 
+  const [isBulkFeeModalOpen, setIsBulkFeeModalOpen] = React.useState(false);
+  const [bulkFeeModalProps, setBulkFeeModalProps] = React.useState<{
+    title: string;
+    subtitle?: string;
+    items: ReportRecipientItem[];
+  }>({ title: "", subtitle: "", items: [] });
+
+  const handleOpenBulkFeeRemindersModal = () => {
+    const defaulters = filteredStudents.filter((s: any) => {
+      const bal = (s.totalPackage || 0) - (s.feeReceived || 0);
+      return bal > 0;
+    });
+    if (defaulters.length === 0) {
+      toast.error("No fee defaulters found matching current filters.");
+      return;
+    }
+    const items: ReportRecipientItem[] = defaulters.map((s: any) => {
+      const balance = (s.totalPackage || 0) - (s.feeReceived || 0);
+      const msg = buildFeeReminderMessage(s, balance, data?.settings);
+      const rollNo = s.collegeNo || s.studentId || s.id || "N/A";
+      return {
+        id: s.id,
+        student: { ...s, balance },
+        name: s.fullName,
+        phone: s.contact || s.fatherContact || s.phone || s.mobile || "",
+        rollNo,
+        className: `${s.group || ""} (Sec: ${s.section || "A"})`,
+        message: msg,
+        statusBadge: `Rs. ${balance.toLocaleString()}`,
+        isFailed: balance >= 20000,
+      };
+    });
+    setBulkFeeModalProps({
+      title: "Broadcast Fee Due Reminders",
+      subtitle: `Target: ${items.length} Defaulters (${genderFilter === "all" ? "All Campuses" : genderFilter === "Male" ? "Boys Campus" : "Girls Campus"}, Sec: ${sectionFilter})`,
+      items,
+    });
+    setIsBulkFeeModalOpen(true);
+  };
+
   const handleQuickWhatsAppNotice = async (student: any, balance: number) => {
     const rawPhone = student.contact || student.fatherContact || student.phone || student.mobile;
     if (!rawPhone) {
-      toast.error(`No contact number registered for ${student.fullName || 'this student'}.`);
+      toast.error(`No contact number registered for ${student.fullName || "this student"}.`);
       return;
     }
 
     const cleanPhone = rawPhone.replace(/\D/g, "");
-    const studentRef = student.collegeNo || student.id || "N/A";
-    const statementUrl = getDocumentLink("statement", studentRef);
-
-    const msg = 
-`🏛️ *SUPERIOR COLLEGE JAHANIAN*
-📄 *OFFICIAL FEE REMINDER & ACCOUNT STATEMENT*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Dear Parent/Guardian (${student.fatherName || 'Guardian'}),
-
-Aapke bache ka fee ledger baqaya darj zail hai:
-
-• *Student Name:* ${student.fullName}
-• *Roll Number:* ${studentRef}
-• *Class / Group:* ${student.group || student.category || 'Intermediate'}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-• *Agreed Package:* Rs. ${Number(student.totalPackage || 0).toLocaleString()}
-• *Fee Deposited:* Rs. ${Number(student.feeReceived || 0).toLocaleString()}
-• *Outstanding Balance:* *Rs. ${Number(balance).toLocaleString()}*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 *Online Fee Statement / Ledger:*
-${statementUrl}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ *Instruction:* Baraye meherbani aakhri tareekh se qabal accounts desk par baqaya fee jama karwa kar computerised receipt hasil karein.
-📞 Accounts Desk: 0301-4455891
-_Accounts & Finance Department, SGC Jahanian_`;
+    const msg = buildFeeReminderMessage(student, balance, data?.settings);
 
     try {
       setSendingNoticeId(student.id);
@@ -1486,6 +1502,15 @@ _Accounts & Finance Department, SGC Jahanian_`;
                   <Building2 size={15} className="text-emerald-600" />
                   <span>Batch Challans</span>
                 </Button>
+
+                <Button
+                  onClick={handleOpenBulkFeeRemindersModal}
+                  className="h-10 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 shadow-sm"
+                  title="Broadcast Fee Due Reminders via WhatsApp"
+                >
+                  <MessageSquare size={15} />
+                  <span>Broadcast Reminders</span>
+                </Button>
               </div>
             </div>
           </CardHeader>
@@ -2177,6 +2202,17 @@ _Accounts & Finance Department, SGC Jahanian_`;
           settings={data?.settings}
         />
       )}
+
+      {/* Bulk Fee Reminders WhatsApp Report Modal */}
+      <WhatsAppReportModal
+        open={isBulkFeeModalOpen}
+        onOpenChange={setIsBulkFeeModalOpen}
+        title={bulkFeeModalProps.title}
+        subtitle={bulkFeeModalProps.subtitle}
+        category="fee_reminders"
+        items={bulkFeeModalProps.items}
+        settings={data?.settings}
+      />
     </div>
   );
 }

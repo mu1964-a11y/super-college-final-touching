@@ -48,7 +48,7 @@ export interface WhatsAppReportModalProps {
   onOpenChange: (open: boolean) => void;
   title: string;
   subtitle?: string;
-  category: "daily_attendance" | "monthly_attendance" | "test_marks" | "monthly_merit";
+  category: "daily_attendance" | "monthly_attendance" | "test_marks" | "monthly_merit" | "leads" | "admissions" | "students" | "fee_reminders";
   items: ReportRecipientItem[];
   settings?: any;
   onFinished?: () => void;
@@ -95,8 +95,6 @@ export default function WhatsAppReportModal({
       if (category === "daily_attendance") {
         const hasAbsents = items.some((i) => i.isAbsent);
         setFilterMode(hasAbsents ? "absent" : "all");
-      } else if (category === "test_marks") {
-        setFilterMode("all");
       } else {
         setFilterMode("all");
       }
@@ -112,6 +110,26 @@ export default function WhatsAppReportModal({
     if (category === "test_marks") {
       if (filterMode === "failed") return items.filter((i) => i.isFailed);
       if (filterMode === "top") return items.filter((i) => i.isTopRank);
+    }
+    if (category === "leads") {
+      if (filterMode === "new") return items.filter((i) => i.student?.pipelineStage === "new" || (i.statusBadge || "").toLowerCase().includes("new"));
+      if (filterMode === "pending") return items.filter((i) => !i.student?.isConverted);
+    }
+    if (category === "admissions") {
+      if (filterMode === "confirmed") return items.filter((i) => i.student?.status === "Confirmed" || (i.statusBadge || "").toLowerCase().includes("confirmed"));
+      if (filterMode === "pending") return items.filter((i) => i.student?.status !== "Confirmed");
+    }
+    if (category === "students") {
+      if (filterMode === "male") return items.filter((i) => i.student?.gender === "Male");
+      if (filterMode === "female") return items.filter((i) => i.student?.gender === "Female");
+    }
+    if (category === "fee_reminders") {
+      if (filterMode === "high") {
+        return items.filter((i) => {
+          const bal = Number(i.student?.balance ?? (Number(i.student?.totalPackage || 0) - Number(i.student?.feeReceived || 0)));
+          return bal >= 20000;
+        });
+      }
     }
     return items;
   }, [items, category, filterMode]);
@@ -396,6 +414,223 @@ export default function WhatsAppReportModal({
                       Har bache ke parent ko unka personalized monthly performance digest dispatch hoga
                     </p>
                   </button>
+                )}
+
+                {category === "leads" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setFilterMode("all")}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        filterMode === "all"
+                          ? "bg-emerald-50 border-emerald-300 text-emerald-800 shadow-xs font-bold"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs">📢 All Leads Pool</span>
+                        <Badge variant="secondary" className="bg-emerald-200 text-emerald-900 text-[10px]">
+                          {items.length}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-normal">Tamam filtered prospects</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFilterMode("new")}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        filterMode === "new"
+                          ? "bg-blue-50 border-blue-300 text-blue-800 shadow-xs font-bold"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs">🆕 New Inquiries</span>
+                        <Badge variant="secondary" className="bg-blue-200 text-blue-900 text-[10px]">
+                          {items.filter((i) => i.student?.pipelineStage === "new" || (i.statusBadge || "").toLowerCase().includes("new")).length}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-normal">Taza dakhla inquiries</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFilterMode("pending")}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        filterMode === "pending"
+                          ? "bg-amber-50 border-amber-300 text-amber-900 shadow-xs font-bold"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs">⏳ Unconverted</span>
+                        <Badge variant="secondary" className="bg-amber-200 text-amber-900 text-[10px]">
+                          {items.filter((i) => !i.student?.isConverted).length}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-normal">Ghair dakhil shuda leads</p>
+                    </button>
+                  </>
+                )}
+
+                {category === "admissions" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setFilterMode("all")}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        filterMode === "all"
+                          ? "bg-emerald-50 border-emerald-300 text-emerald-800 shadow-xs font-bold"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs">📢 All Applicants</span>
+                        <Badge variant="secondary" className="bg-emerald-200 text-emerald-900 text-[10px]">
+                          {items.length}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-normal">Tamam filtered dakhlay</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFilterMode("confirmed")}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        filterMode === "confirmed"
+                          ? "bg-emerald-50 border-emerald-300 text-emerald-800 shadow-xs font-bold"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs">✅ Confirmed Dakhlay</span>
+                        <Badge variant="secondary" className="bg-emerald-200 text-emerald-900 text-[10px]">
+                          {items.filter((i) => i.student?.status === "Confirmed" || (i.statusBadge || "").toLowerCase().includes("confirmed")).length}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-normal">Allotted Roll No & Section</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFilterMode("pending")}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        filterMode === "pending"
+                          ? "bg-amber-50 border-amber-300 text-amber-900 shadow-xs font-bold"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs">⏳ Under Verification</span>
+                        <Badge variant="secondary" className="bg-amber-200 text-amber-900 text-[10px]">
+                          {items.filter((i) => i.student?.status !== "Confirmed").length}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-normal">Docs / Fee pending</p>
+                    </button>
+                  </>
+                )}
+
+                {category === "students" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setFilterMode("all")}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        filterMode === "all"
+                          ? "bg-emerald-50 border-emerald-300 text-emerald-800 shadow-xs font-bold"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs">📢 All Enrolled</span>
+                        <Badge variant="secondary" className="bg-emerald-200 text-emerald-900 text-[10px]">
+                          {items.length}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-normal">Both Campuses</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFilterMode("male")}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        filterMode === "male"
+                          ? "bg-blue-50 border-blue-300 text-blue-800 shadow-xs font-bold"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs">👦 Boys Campus</span>
+                        <Badge variant="secondary" className="bg-blue-200 text-blue-900 text-[10px]">
+                          {items.filter((i) => i.student?.gender === "Male").length}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-normal">Male students only</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFilterMode("female")}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        filterMode === "female"
+                          ? "bg-pink-50 border-pink-300 text-pink-900 shadow-xs font-bold"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs">👧 Girls Campus</span>
+                        <Badge variant="secondary" className="bg-pink-200 text-pink-900 text-[10px]">
+                          {items.filter((i) => i.student?.gender === "Female").length}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-normal">Female students only</p>
+                    </button>
+                  </>
+                )}
+
+                {category === "fee_reminders" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setFilterMode("all")}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        filterMode === "all"
+                          ? "bg-emerald-50 border-emerald-300 text-emerald-800 shadow-xs font-bold"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs">📢 All Defaulters</span>
+                        <Badge variant="secondary" className="bg-emerald-200 text-emerald-900 text-[10px]">
+                          {items.length}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-normal">Har baqaya student</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFilterMode("high")}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        filterMode === "high"
+                          ? "bg-rose-50 border-rose-300 text-rose-900 shadow-xs font-bold"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs">🚨 High Balance (≥ 20k)</span>
+                        <Badge variant="secondary" className="bg-rose-200 text-rose-900 text-[10px]">
+                          {items.filter((i) => {
+                            const bal = Number(i.student?.balance ?? (Number(i.student?.totalPackage || 0) - Number(i.student?.feeReceived || 0)));
+                            return bal >= 20000;
+                          }).length}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-normal">Heavy dues priority</p>
+                    </button>
+                  </>
                 )}
               </div>
             </div>

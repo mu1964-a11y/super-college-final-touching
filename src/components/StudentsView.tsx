@@ -26,8 +26,11 @@ import {
   Mail,
   Phone,
   Receipt,
-  FileText
+  FileText,
+  MessageSquare
 } from 'lucide-react';
+import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
+import { buildStudentNoticeMessage, sendAutoStudentNotice } from '../lib/whatsappAutomation';
 import { motion } from 'motion/react';
 import { 
   Table, 
@@ -398,6 +401,62 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
     setDialogType('bulkDelete');
   };
 
+  // Universal WhatsApp Broadcast Modal state
+  const [isBulkWhatsAppModalOpen, setIsBulkWhatsAppModalOpen] = useState(false);
+  const [bulkModalProps, setBulkModalProps] = useState<{
+    title: string;
+    subtitle?: string;
+    items: ReportRecipientItem[];
+  }>({
+    title: '',
+    subtitle: '',
+    items: []
+  });
+
+  const handleSendSingleStudentWhatsApp = async (student: Student) => {
+    const defaultNotice = {
+      title: "Academic & Campus Circular Notice",
+      content: "Assalam-o-Alaikum, Baraye meherbani apne bache ke latest attendance, marks, aur fee dossier ke liye online student portal review karein. Regular class attendance yaqeeni banayein."
+    };
+    await sendAutoStudentNotice(student, defaultNotice, data?.settings);
+  };
+
+  const handleOpenBulkWhatsAppModal = (targetStudentIds?: string[]) => {
+    const list = targetStudentIds && targetStudentIds.length > 0
+      ? mergedStudents.filter((s: Student) => targetStudentIds.includes(s.id))
+      : filteredStudents;
+
+    if (list.length === 0) {
+      toast.error("No students available to broadcast.");
+      return;
+    }
+
+    const defaultTitle = "Important Institutional Circular";
+    const defaultContent = "Assalam-o-Alaikum, Tamam parents se guzarish hai ke rozana attendance aur class lectures ki pabandi barwaqt yaqeeni banayein. Mazeed tafseelat ke liye online student portal check karein.";
+
+    const items: ReportRecipientItem[] = list.map((s: Student) => {
+      const msg = buildStudentNoticeMessage(s, { title: defaultTitle, content: defaultContent }, data?.settings);
+      const rollNo = s.collegeNo || s.studentId || s.id || "N/A";
+      return {
+        id: s.id,
+        student: s,
+        name: s.fullName,
+        phone: s.fatherContact || s.contact || s.phone || s.mobile || "",
+        rollNo,
+        className: `${s.group || ''} (Sec: ${s.section || 'A'})`,
+        message: msg,
+        statusBadge: s.gender || "Student",
+      };
+    });
+
+    setBulkModalProps({
+      title: "Broadcast Student Circular (WhatsApp)",
+      subtitle: `Target: ${items.length} Students (${genderFilter === 'all' ? 'All Campuses' : genderFilter === 'Male' ? 'Boys Campus' : 'Girls Campus'}, Sec: ${sectionFilter})`,
+      items
+    });
+    setIsBulkWhatsAppModalOpen(true);
+  };
+
   return (
     <div className="space-y-8 pb-12">
       {/* Header Section */}
@@ -420,11 +479,14 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
         </div>
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex gap-2.5">
-            <Button onClick={handleExportPDF} variant="outline" className="h-12 px-5 rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center gap-2 font-black text-[10px] uppercase tracking-wider shadow-2xs">
-              <Download size={16} className="text-rose-500" /> PDF
+            <Button onClick={handleExportPDF} variant="outline" className="h-12 px-4 rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center gap-1.5 font-black text-[10px] uppercase tracking-wider shadow-2xs">
+              <Download size={15} className="text-rose-500" /> PDF
             </Button>
-            <Button onClick={handleExportExcel} variant="outline" className="h-12 px-5 rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 flex items-center gap-2 font-black text-[10px] uppercase tracking-wider shadow-2xs">
-              <Download size={16} className="text-emerald-500" /> Excel
+            <Button onClick={handleExportExcel} variant="outline" className="h-12 px-4 rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 flex items-center gap-1.5 font-black text-[10px] uppercase tracking-wider shadow-2xs">
+              <Download size={15} className="text-emerald-500" /> Excel
+            </Button>
+            <Button onClick={() => handleOpenBulkWhatsAppModal()} className="h-12 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2 font-black text-[10px] uppercase tracking-wider shadow-sm">
+              <MessageSquare size={15} /> Broadcast WhatsApp
             </Button>
           </div>
           <div className="bg-white dark:bg-slate-900 px-6 py-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 flex items-center gap-4 shadow-sm">
@@ -467,6 +529,12 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button 
+              onClick={() => handleOpenBulkWhatsAppModal(selectedStudents)}
+              className="h-10 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 border-none font-black text-[10px] uppercase tracking-widest px-4 shadow-md gap-1.5 flex items-center"
+            >
+              <MessageSquare size={14} /> WhatsApp ({selectedStudents.length})
+            </Button>
             <Button 
               onClick={() => setDialogType('bulk_promote')}
               className="h-10 rounded-xl bg-superior-gold text-slate-900 hover:bg-superior-gold/90 font-black text-[10px] uppercase tracking-widest px-4 shadow-md gap-1.5"
@@ -641,6 +709,18 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                   <Button 
                     variant="outline" 
                     size="icon" 
+                    title="Send WhatsApp Circular to Parents"
+                    className="h-8 w-8 rounded-lg bg-emerald-600/70 hover:bg-emerald-600 text-white border-white/20 shadow-none transition-all active:scale-95" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSendSingleStudentWhatsApp(student);
+                    }}
+                  >
+                    <MessageSquare size={14} />
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
                     title="Profile"
                     className="h-8 w-8 rounded-lg bg-white/10 hover:bg-white/20 text-white border-white/20 shadow-none transition-all active:scale-95" 
                     onClick={() => {
@@ -656,6 +736,12 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                       <MoreHorizontal size={14} />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="rounded-2xl p-2 min-w-[200px] border-slate-100 shadow-2xl">
+                      <DropdownMenuItem 
+                        className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-emerald-600 hover:bg-emerald-50" 
+                        onClick={() => handleSendSingleStudentWhatsApp(student)}
+                      >
+                        <MessageSquare size={16} /> Send WhatsApp Circular
+                      </DropdownMenuItem>
                       <DropdownMenuItem 
                         className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
                         onClick={() => {
@@ -1219,6 +1305,17 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Universal WhatsApp Reporting & Safe Bulk Dispatch Modal */}
+      <WhatsAppReportModal
+        open={isBulkWhatsAppModalOpen}
+        onOpenChange={setIsBulkWhatsAppModalOpen}
+        title={bulkModalProps.title}
+        subtitle={bulkModalProps.subtitle}
+        category="students"
+        items={bulkModalProps.items}
+        settings={data?.settings}
+      />
     </div>
   );
 }

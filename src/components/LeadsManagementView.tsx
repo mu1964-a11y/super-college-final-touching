@@ -22,6 +22,8 @@ import {
   MessageSquare,
   Phone
 } from 'lucide-react';
+import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
+import { buildLeadFollowUpMessage, sendAutoLeadFollowUpNotice } from '../lib/whatsappAutomation';
 import { motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -116,43 +118,53 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
     return counts;
   }, [leads]);
 
-  const sendWhatsAppGreeting = (lead: Lead) => {
-    let rawPhone = (lead.fatherPhone || '').trim();
-    if (!rawPhone) {
-      toast.error("No phone number registered for this lead.");
+  // Bulk WhatsApp modal state
+  const [isBulkWhatsAppModalOpen, setIsBulkWhatsAppModalOpen] = useState(false);
+  const [bulkModalProps, setBulkModalProps] = useState<{
+    title: string;
+    subtitle?: string;
+    items: ReportRecipientItem[];
+  }>({
+    title: '',
+    subtitle: '',
+    items: []
+  });
+
+  const sendWhatsAppGreeting = async (lead: Lead) => {
+    await sendAutoLeadFollowUpNotice(lead, data?.settings);
+  };
+
+  const handleOpenBulkWhatsAppModal = (targetLeadIds?: string[]) => {
+    const list = targetLeadIds && targetLeadIds.length > 0
+      ? leads.filter(l => targetLeadIds.includes(l.id))
+      : filteredLeads;
+
+    if (list.length === 0) {
+      toast.error('No leads available to broadcast.');
       return;
     }
-    let cleanPhone = rawPhone.replace(/\D/g, '');
-    if (cleanPhone.startsWith('0')) {
-      cleanPhone = '92' + cleanPhone.slice(1);
-    } else if (!cleanPhone.startsWith('92') && cleanPhone.length === 10) {
-      cleanPhone = '92' + cleanPhone;
-    }
 
-    const studentName = lead.studentName || 'Student';
-    const fatherName = lead.fatherName ? `Mr. ${lead.fatherName}` : 'Respected Parent';
-    const currentClass = lead.currentClass || 'College Admission';
+    const items: ReportRecipientItem[] = list.map(l => {
+      const msg = buildLeadFollowUpMessage(l, data?.settings);
+      const stage = l.isConverted ? 'Converted' : (l.pipelineStage === 'new' ? 'New Lead' : (l.pipelineStage || 'Inquiry'));
+      return {
+        id: l.id,
+        student: l,
+        name: l.studentName,
+        phone: l.fatherPhone || '',
+        rollNo: l.previousSchool || 'Lead',
+        className: `${l.currentClass || 'Prospect'} (${l.city || 'Jahanian'})`,
+        message: msg,
+        statusBadge: stage,
+      };
+    });
 
-    const message = 
-`🏛️ *SUPERIOR COLLEGE JAHANIAN*
-🎓 *ADMISSION INQUIRY & INFORMATION DESK*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Assalam-o-Alaikum ${fatherName} sb,
-
-Yeh rasmi rabta *Superior College Jahanian* ki janib se *${studentName}* ke dakhlay (*${currentClass}*) ki maloomat ke silsilay mein hai.
-
-• *Programs:* FSc (Pre-Med / Pre-Eng), ICS, I.Com, FA IT
-• *Campuses:* Dedicated Boys & Girls Campuses with Modern Labs
-• *Scholarships:* Special fee concessions available on matric marks
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Prospectus aur admission guidance ke liye hamare admission office tashreef layen ya is number par rabta karein.
-📍 Canal Road, Jahanian
-📞 Admission Helpline: 0301-4455891
-_Admissions Directorate, SGC Jahanian_`;
-
-    const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-    window.open(whatsappUrl, '_blank');
-    toast.success(`Opening WhatsApp for ${studentName}'s parent...`);
+    setBulkModalProps({
+      title: 'Broadcast WhatsApp Welcome & Follow-up',
+      subtitle: `Target: ${items.length} Leads (${schoolFilter === 'all' ? 'All Schools' : schoolFilter}, Stage: ${convertedFilter})`,
+      items
+    });
+    setIsBulkWhatsAppModalOpen(true);
   };
 
   const filteredLeads = useMemo(() => {
@@ -534,12 +546,21 @@ _Admissions Directorate, SGC Jahanian_`;
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <Button 
-            className="bg-[#053b32] text-white hover:bg-[#042f28] rounded-md h-12 px-8 shrink-0 font-bold uppercase tracking-[0.1em] text-[11px] transition-all shadow-md active:scale-95 flex items-center gap-3 w-full lg:w-auto"
-            onClick={() => setDialogType('add')}
-          >
-            <Plus size={18} /> Add New Lead Record
-          </Button>
+          <div className="flex items-center gap-3 w-full lg:w-auto">
+            <Button 
+              className="bg-[#053b32] text-white hover:bg-[#042f28] rounded-md h-12 px-6 shrink-0 font-bold uppercase tracking-[0.1em] text-[11px] transition-all shadow-md active:scale-95 flex items-center gap-2 flex-1 lg:flex-initial"
+              onClick={() => setDialogType('add')}
+            >
+              <Plus size={18} /> Add Lead Record
+            </Button>
+            <Button
+              onClick={() => handleOpenBulkWhatsAppModal()}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-md h-12 px-6 shrink-0 font-bold uppercase tracking-[0.1em] text-[11px] transition-all shadow-md active:scale-95 flex items-center gap-2 flex-1 lg:flex-initial"
+              title="Broadcast WhatsApp Welcome & Prospectus to Filtered Leads"
+            >
+              <MessageSquare size={16} /> Broadcast WhatsApp
+            </Button>
+          </div>
         </div>
 
         {/* Row 2: Expanded Filters */}
@@ -675,22 +696,28 @@ _Admissions Directorate, SGC Jahanian_`;
             <Button 
               variant="outline" 
               onClick={() => setSelectedLeads([])}
-              className="h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 font-black text-[10px] uppercase tracking-widest px-6"
+              className="h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 font-black text-[10px] uppercase tracking-widest px-4"
             >
               Cancel
             </Button>
             <Button 
-              onClick={() => setDialogType('convert')}
-              className="h-10 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 border-none font-black text-[10px] uppercase tracking-widest px-6 shadow-lg shadow-black/20"
+              onClick={() => handleOpenBulkWhatsAppModal(selectedLeads)}
+              className="h-10 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 border-none font-black text-[10px] uppercase tracking-widest px-4 shadow-lg shadow-black/20 flex items-center gap-1.5"
             >
-              <UserPlus size={14} className="mr-2" /> Convert
+              <MessageSquare size={14} /> WhatsApp ({selectedLeads.length})
+            </Button>
+            <Button 
+              onClick={() => setDialogType('convert')}
+              className="h-10 rounded-xl bg-superior-gold text-slate-900 hover:bg-superior-gold/90 border-none font-black text-[10px] uppercase tracking-widest px-5 shadow-lg shadow-black/20"
+            >
+              <UserPlus size={14} className="mr-1.5" /> Convert
             </Button>
             <Button 
               onClick={() => setDialogType('bulkDelete')}
               variant="destructive" 
-              className="h-10 rounded-xl bg-white text-rose-600 hover:bg-rose-50 border-none font-black text-[10px] uppercase tracking-widest px-6 shadow-lg shadow-black/20"
+              className="h-10 rounded-xl bg-white text-rose-600 hover:bg-rose-50 border-none font-black text-[10px] uppercase tracking-widest px-4 shadow-lg shadow-black/20"
             >
-              <Trash2 size={14} className="mr-2" /> Delete
+              <Trash2 size={14} className="mr-1.5" /> Delete
             </Button>
           </div>
         </motion.div>
@@ -1072,6 +1099,16 @@ _Admissions Directorate, SGC Jahanian_`;
         </DialogContent>
       </Dialog>
 
+      {/* Universal WhatsApp Reporting & Safe Bulk Dispatch Modal */}
+      <WhatsAppReportModal
+        open={isBulkWhatsAppModalOpen}
+        onOpenChange={setIsBulkWhatsAppModalOpen}
+        title={bulkModalProps.title}
+        subtitle={bulkModalProps.subtitle}
+        category="leads"
+        items={bulkModalProps.items}
+        settings={data?.settings}
+      />
       </div>
     </div>
   );

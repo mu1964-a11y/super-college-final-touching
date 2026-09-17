@@ -88,7 +88,8 @@ import * as XLSX from "xlsx";
 import FeeReceipt from "./FeeReceipt";
 import AdmissionSlip from "./AdmissionSlip";
 import { compressImage } from "../lib/imageUtils";
-import { sendAutoAdmissionNotice } from "../lib/whatsappAutomation";
+import { sendAutoAdmissionNotice, buildAdmissionNoticeMessage } from "../lib/whatsappAutomation";
+import WhatsAppReportModal, { ReportRecipientItem } from "./WhatsAppReportModal";
 
 export default function AdmissionsView({
   data,
@@ -430,8 +431,53 @@ export default function AdmissionsView({
     }
   };
 
+  // Bulk WhatsApp modal state
+  const [isBulkWhatsAppModalOpen, setIsBulkWhatsAppModalOpen] = useState(false);
+  const [bulkModalProps, setBulkModalProps] = useState<{
+    title: string;
+    subtitle?: string;
+    items: ReportRecipientItem[];
+  }>({
+    title: '',
+    subtitle: '',
+    items: []
+  });
+
   const sendWhatsAppConfirmationNotice = async (admission: Admission) => {
     await sendAutoAdmissionNotice(admission, data?.settings, { manualTrigger: true });
+  };
+
+  const handleOpenBulkWhatsAppModal = (targetAdmissionIds?: string[]) => {
+    const list = targetAdmissionIds && targetAdmissionIds.length > 0
+      ? admissions.filter((a: Admission) => targetAdmissionIds.includes(a.id))
+      : filteredAdmissions;
+
+    if (list.length === 0) {
+      toast.error("No admissions available to broadcast.");
+      return;
+    }
+
+    const items: ReportRecipientItem[] = list.map((a: Admission) => {
+      const msg = buildAdmissionNoticeMessage(a, data?.settings);
+      const rollNo = a.collegeNo || a.rollNo || a.studentId || a.id || "N/A";
+      return {
+        id: a.id,
+        student: a,
+        name: a.fullName,
+        phone: a.fatherContact || a.contactNumber || a.phone || a.mobile || "",
+        rollNo,
+        className: `${a.group || 'Admission'} (Sec: ${a.section || 'A'})`,
+        message: msg,
+        statusBadge: a.status || "Pending",
+      };
+    });
+
+    setBulkModalProps({
+      title: "Broadcast Admission Confirmation Notices",
+      subtitle: `Target: ${items.length} Applicants (${selectedSession || 'All Sessions'})`,
+      items
+    });
+    setIsBulkWhatsAppModalOpen(true);
   };
 
   const handleConfirm = (id: string) => {
@@ -1262,6 +1308,15 @@ export default function AdmissionsView({
           </Select>
 
           <Button
+            onClick={() => handleOpenBulkWhatsAppModal()}
+            className="h-12 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-sm shrink-0"
+            title="Broadcast Admission Notices to Filtered Applicants"
+          >
+            <MessageSquare size={16} />
+            <span className="hidden sm:inline">Broadcast WhatsApp</span>
+          </Button>
+
+          <Button
             variant="outline"
             className="h-12 w-12 rounded-xl border-slate-100 bg-slate-50 hover:bg-white transition-all p-0"
           >
@@ -1304,16 +1359,22 @@ export default function AdmissionsView({
             <Button
               variant="outline"
               onClick={() => setSelectedAdmissions([])}
-              className="h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 font-black text-[10px] uppercase tracking-widest px-6"
+              className="h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 font-black text-[10px] uppercase tracking-widest px-4"
             >
               Cancel
             </Button>
             <Button
+              onClick={() => handleOpenBulkWhatsAppModal(selectedAdmissions)}
+              className="h-10 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 border-none font-black text-[10px] uppercase tracking-widest px-4 shadow-lg shadow-black/20 flex items-center gap-1.5"
+            >
+              <MessageSquare size={14} /> WhatsApp ({selectedAdmissions.length})
+            </Button>
+            <Button
               onClick={handleBulkDelete}
               variant="destructive"
-              className="h-10 rounded-xl bg-white text-rose-600 hover:bg-rose-50 border-none font-black text-[10px] uppercase tracking-widest px-6 shadow-lg shadow-black/20"
+              className="h-10 rounded-xl bg-white text-rose-600 hover:bg-rose-50 border-none font-black text-[10px] uppercase tracking-widest px-4 shadow-lg shadow-black/20"
             >
-              <Trash2 size={14} className="mr-2" /> Delete All Selected
+              <Trash2 size={14} className="mr-1.5" /> Delete All Selected
             </Button>
           </div>
         </motion.div>
@@ -1890,6 +1951,17 @@ export default function AdmissionsView({
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Universal WhatsApp Reporting & Safe Bulk Dispatch Modal */}
+      <WhatsAppReportModal
+        open={isBulkWhatsAppModalOpen}
+        onOpenChange={setIsBulkWhatsAppModalOpen}
+        title={bulkModalProps.title}
+        subtitle={bulkModalProps.subtitle}
+        category="admissions"
+        items={bulkModalProps.items}
+        settings={data?.settings}
+      />
     </div>
   );
 }

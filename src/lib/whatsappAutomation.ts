@@ -111,25 +111,7 @@ export interface AutoAdmissionOptions {
   manualTrigger?: boolean;
 }
 
-/**
- * Automatically dispatches official Admission Confirmation WhatsApp notice to parents
- * Includes: Student ID, Roll No, Class, Section, Subjects, Session, Fee details, and ONLY Admission Slip / Receipt links.
- */
-export async function sendAutoAdmissionNotice(
-  admission: any,
-  settings?: any,
-  options?: AutoAdmissionOptions
-): Promise<boolean> {
-  if (!admission) return false;
-
-  // Check setting toggle if present (defaults to true)
-  if (!options?.manualTrigger && settings?.autoWhatsAppAdmission === false) {
-    return false;
-  }
-
-  const rawPhone = admission.fatherContact || admission.contactNumber || admission.phone || admission.mobile || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-
+export function buildAdmissionNoticeMessage(admission: any, settings?: any): string {
   const collegeName = settings?.collegeName || "Superior College Jahanian";
   const session = admission.session || settings?.academicSession || "2026-28";
   const studentName = (admission.fullName || "Student").trim();
@@ -171,8 +153,7 @@ export async function sendAutoAdmissionNotice(
     docLinksSection += `\n🧾 *Admission Fee Receipt:* ${feeReceiptUrl}`;
   }
 
-  const message = 
-`🏛️ *${collegeName.toUpperCase()}*
+  return `🏛️ *${collegeName.toUpperCase()}*
 🎓 *OFFICIAL ADMISSION CONFIRMATION NOTICE*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Dear Parent/Guardian (${fatherName}),
@@ -198,7 +179,29 @@ ${concessionLine}━━━━━━━━━━━━━━━━━━━━━
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 📍 *Campus Address:* ${address}
 📞 *Helpline / Query:* ${helpline}
-_Office of the Principal, SGC Jahanian_`;
+_Office of the Principal, Superior College Jahanian_`;
+}
+
+/**
+ * Automatically dispatches official Admission Confirmation WhatsApp notice to parents
+ * Includes: Student ID, Roll No, Class, Section, Subjects, Session, Fee details, and ONLY Admission Slip / Receipt links.
+ */
+export async function sendAutoAdmissionNotice(
+  admission: any,
+  settings?: any,
+  options?: AutoAdmissionOptions
+): Promise<boolean> {
+  if (!admission) return false;
+
+  // Check setting toggle if present (defaults to true)
+  if (!options?.manualTrigger && settings?.autoWhatsAppAdmission === false) {
+    return false;
+  }
+
+  const rawPhone = admission.fatherContact || admission.contactNumber || admission.phone || admission.mobile || "";
+  const phone = formatWhatsAppPhone(rawPhone);
+  const studentName = (admission.fullName || "Student").trim();
+  const message = buildAdmissionNoticeMessage(admission, settings);
 
   if (!phone) {
     if (!options?.silent) {
@@ -255,31 +258,11 @@ export interface AutoFeePaymentDetails {
   collectedBy?: string;
 }
 
-/**
- * Automatically dispatches official Computerized Fee Payment Receipt WhatsApp notice to parents
- * Triggered on any fee collection or installment submission.
- * Includes ONLY Fee Receipt link & Fee Statement link.
- */
-export async function sendAutoFeeReceiptNotice(
+export function buildFeeReceiptMessage(
   studentOrAdmission: any,
   paymentDetails: AutoFeePaymentDetails,
-  settings?: any,
-  options?: { silent?: boolean; manualTrigger?: boolean }
-): Promise<boolean> {
-  if (!studentOrAdmission || !paymentDetails) return false;
-
-  // Check setting toggle if present (defaults to true)
-  if (!options?.manualTrigger && settings?.autoWhatsAppFeePayment === false) {
-    return false;
-  }
-
-  const rawPhone = studentOrAdmission.fatherContact || 
-    studentOrAdmission.contact || 
-    studentOrAdmission.contactNumber || 
-    studentOrAdmission.phone || 
-    studentOrAdmission.mobile || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-
+  settings?: any
+): string {
   const collegeName = settings?.collegeName || "Superior College Jahanian";
   const studentName = (studentOrAdmission.fullName || "Student").trim();
   const fatherName = (studentOrAdmission.fatherName || "Sahib").trim();
@@ -308,8 +291,7 @@ export async function sendAutoFeeReceiptNotice(
   const receiptUrl = getDocumentLink("receipt", rollNo, { rcp: receiptNo }, settings);
   const statementUrl = getDocumentLink("statement", rollNo, undefined, settings);
 
-  const message = 
-`🏛️ *${collegeName.toUpperCase()}*
+  return `🏛️ *${collegeName.toUpperCase()}*
 🧾 *OFFICIAL FEE PAYMENT RECEIPT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Dear Parent/Guardian (${fatherName}),
@@ -334,7 +316,35 @@ ${statementUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ✅ Payment verified & registered in official accounts ledger.
 📞 Accounts Desk: ${helpline}
-_Accounts & Finance Department, SGC Jahanian_`;
+_Accounts & Finance Department, Superior College Jahanian_`;
+}
+
+/**
+ * Automatically dispatches official Computerized Fee Payment Receipt WhatsApp notice to parents
+ * Triggered on any fee collection or installment submission.
+ * Includes ONLY Fee Receipt link & Fee Statement link.
+ */
+export async function sendAutoFeeReceiptNotice(
+  studentOrAdmission: any,
+  paymentDetails: AutoFeePaymentDetails,
+  settings?: any,
+  options?: { silent?: boolean; manualTrigger?: boolean }
+): Promise<boolean> {
+  if (!studentOrAdmission || !paymentDetails) return false;
+
+  // Check setting toggle if present (defaults to true)
+  if (!options?.manualTrigger && settings?.autoWhatsAppFeePayment === false) {
+    return false;
+  }
+
+  const rawPhone = studentOrAdmission.fatherContact || 
+    studentOrAdmission.contact || 
+    studentOrAdmission.contactNumber || 
+    studentOrAdmission.phone || 
+    studentOrAdmission.mobile || "";
+  const phone = formatWhatsAppPhone(rawPhone);
+  const studentName = (studentOrAdmission.fullName || "Student").trim();
+  const message = buildFeeReceiptMessage(studentOrAdmission, paymentDetails, settings);
 
   if (!phone) {
     if (!options?.silent) {
@@ -381,24 +391,11 @@ _Accounts & Finance Department, SGC Jahanian_`;
   }
 }
 
-/**
- * Automatically dispatches official Fee Dues Reminder WhatsApp notice to parents
- * Includes ONLY Fee Statement link.
- */
-export async function sendAutoFeeReminderNotice(
+export function buildFeeReminderMessage(
   student: any,
-  settings?: any,
-  options?: { silent?: boolean; manualTrigger?: boolean }
-): Promise<boolean> {
-  if (!student) return false;
-
-  const rawPhone = student.fatherContact || 
-    student.contact || 
-    student.contactNumber || 
-    student.phone || 
-    student.mobile || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-
+  balanceAmount?: number,
+  settings?: any
+): string {
   const collegeName = settings?.collegeName || "Superior College Jahanian";
   const studentName = (student.fullName || "Student").trim();
   const fatherName = (student.fatherName || "Sahib").trim();
@@ -406,14 +403,13 @@ export async function sendAutoFeeReminderNotice(
   const group = student.group || student.category || "Intermediate";
   const totalPkg = Number(student.totalPackage || 0);
   const feeReceived = Number(student.feeReceived || 0);
-  const balance = Math.max(0, totalPkg - feeReceived);
+  const balance = typeof balanceAmount === "number" ? balanceAmount : Math.max(0, totalPkg - feeReceived);
   const helpline = settings?.contactNumber || "0301-4455891";
 
   // Context-specific link: ONLY Fee Statement / Ledger
   const statementUrl = getDocumentLink("statement", rollNo, undefined, settings);
 
-  const message = 
-`🏛️ *${collegeName.toUpperCase()}*
+  return `🏛️ *${collegeName.toUpperCase()}*
 📄 *OFFICIAL FEE REMINDER & ACCOUNT STATEMENT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Dear Parent/Guardian (${fatherName}),
@@ -433,7 +429,28 @@ ${statementUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ *Instruction:* Baraye meherbani aakhri tareekh se qabal accounts desk par baqaya fee jama karwa kar computerised receipt hasil karein.
 📞 Accounts Desk: ${helpline}
-_Accounts & Finance Department, SGC Jahanian_`;
+_Accounts & Finance Department, Superior College Jahanian_`;
+}
+
+/**
+ * Automatically dispatches official Fee Dues Reminder WhatsApp notice to parents
+ * Includes ONLY Fee Statement link.
+ */
+export async function sendAutoFeeReminderNotice(
+  student: any,
+  settings?: any,
+  options?: { silent?: boolean; manualTrigger?: boolean; balance?: number }
+): Promise<boolean> {
+  if (!student) return false;
+
+  const rawPhone = student.fatherContact || 
+    student.contact || 
+    student.contactNumber || 
+    student.phone || 
+    student.mobile || "";
+  const phone = formatWhatsAppPhone(rawPhone);
+  const studentName = (student.fullName || "Student").trim();
+  const message = buildFeeReminderMessage(student, options?.balance, settings);
 
   if (!phone) {
     if (!options?.silent) {
@@ -543,7 +560,7 @@ ${resultUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 *Instruction:* Board imtehanat mein aala position ke liye rozana revision aur regular attendance yaqeeni banayein.
 📞 Academic Helpdesk: ${helpline}
-_Office of the Controller of Examinations, SGC Jahanian_`;
+_Office of the Controller of Examinations, Superior College Jahanian_`;
 
   if (!phone) {
     if (!options?.silent) {
@@ -1145,5 +1162,164 @@ export async function dispatchBulkWhatsAppQueue(options: BulkDispatchOptions): P
 
   return { total: items.length, sent, failed };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEADS FOLLOW-UP & ADMISSION INQUIRY NOTICES
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function buildLeadFollowUpMessage(lead: any, settings?: any, customNote?: string): string {
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
+  const studentName = (lead.studentName || "Student").trim();
+  const fatherName = lead.fatherName ? `Mr. ${lead.fatherName}` : "Respected Parent";
+  const currentClass = lead.currentClass || "College Admission";
+  const previousSchool = lead.previousSchool ? `\n• *Previous School:* ${lead.previousSchool}` : "";
+  const feeLine = lead.finalizedFee ? `\n• *Agreed Package Fee:* Rs. ${Number(lead.finalizedFee).toLocaleString()}` : "";
+  const address = settings?.address || "Canal Road, Jahanian";
+  const helpline = settings?.contactNumber || "0301-4455891";
+
+  let noteSection = "";
+  if (customNote && customNote.trim()) {
+    noteSection = `\n📢 *Special Notice:* ${customNote.trim()}\n`;
+  }
+
+  return `🏛️ *${collegeName.toUpperCase()}*
+🎓 *ADMISSION INQUIRY & INFORMATION DESK*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum ${fatherName} sb,
+
+Yeh rasmi rabta *Superior College Jahanian* ki janib se *${studentName}* ke dakhlay (*${currentClass}*) ke silsilay mein hai.${previousSchool}${feeLine}
+
+• *Academic Programs:* FSc (Pre-Medical / Pre-Engineering), ICS, I.Com, FA IT, BS Degrees
+• *Campuses:* Dedicated Separate Boys & Girls Campuses with Modern AC Classrooms & Labs
+• *Scholarships:* Special fee concessions available on matric marks and high performance!
+${noteSection}━━━━━━━━━━━━━━━━━━━━━━━━━
+Prospectus aur admission guidance ke liye hamare admission office tashreef layen ya is helpline number par rabta karein.
+📍 *Campus Address:* ${address}
+📞 *Admission Helpline:* ${helpline}
+_Admissions Directorate, Superior College Jahanian_`;
+}
+
+export async function sendAutoLeadFollowUpNotice(
+  lead: any,
+  settings?: any,
+  options?: { customNote?: string; silent?: boolean }
+): Promise<boolean> {
+  if (!lead) return false;
+  const rawPhone = lead.fatherPhone || lead.phone || lead.contact || "";
+  const phone = formatWhatsAppPhone(rawPhone);
+  const message = buildLeadFollowUpMessage(lead, settings, options?.customNote);
+
+  if (!phone) {
+    if (!options?.silent) {
+      toast.warning(`No valid phone number for ${lead.studentName || 'Lead'}.`);
+    }
+    return false;
+  }
+
+  try {
+    const res = await fetch("/api/whatsapp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, message }),
+    });
+
+    if (res.ok) {
+      toast.success(`WhatsApp message sent to ${lead.studentName || 'Lead'}!`, { id: `lead-${lead.id}` });
+      return true;
+    } else {
+      const err = await res.json().catch(() => ({}));
+      if (!options?.silent) {
+        toast.info(err.error || "Gateway offline. Opening WhatsApp Web...", {
+          id: `lead-${lead.id}`,
+          action: {
+            label: "Open WhatsApp",
+            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
+          },
+        });
+      }
+      return false;
+    }
+  } catch {
+    window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STUDENT GENERAL CIRCULARS & NOTICES
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function buildStudentNoticeMessage(
+  student: any,
+  notice: { title: string; content: string },
+  settings?: any
+): string {
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
+  const studentName = (student.fullName || "Student").trim();
+  const fatherName = (student.fatherName || "Sahib").trim();
+  const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
+  const group = student.group || student.category || "Intermediate";
+  const section = student.section ? ` (Sec: ${student.section})` : "";
+  const address = settings?.address || "Canal Road, Jahanian";
+  const helpline = settings?.contactNumber || "0301-4455891";
+
+  const studentPortalUrl = getDocumentLink("student", rollNo, undefined, settings);
+
+  return `🏛️ *${collegeName.toUpperCase()}*
+📢 *OFFICIAL STUDENT CIRCULAR & ANNOUNCEMENT*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Dear Parent/Guardian (${fatherName}),
+
+• *Student Name:* ${studentName}
+• *Roll Number:* ${rollNo}
+• *Class & Section:* ${group}${section}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📌 *Subject: ${notice.title}*
+
+${notice.content}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🌐 *Online Student Portal Dossier:*
+${studentPortalUrl}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📍 *Campus Address:* ${address}
+📞 *Helpline / Desk:* ${helpline}
+_Administration Office, Superior College Jahanian_`;
+}
+
+export async function sendAutoStudentNotice(
+  student: any,
+  notice: { title: string; content: string },
+  settings?: any,
+  options?: { silent?: boolean }
+): Promise<boolean> {
+  if (!student) return false;
+  const rawPhone = student.fatherContact || student.contact || student.phone || student.mobile || "";
+  const phone = formatWhatsAppPhone(rawPhone);
+  const message = buildStudentNoticeMessage(student, notice, settings);
+
+  if (!phone) {
+    if (!options?.silent) toast.warning(`No phone number for ${student.fullName || 'Student'}`);
+    return false;
+  }
+
+  try {
+    const res = await fetch("/api/whatsapp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, message }),
+    });
+    if (res.ok) {
+      toast.success(`Circular notice sent to ${student.fullName}!`, { id: `stu-${student.id}` });
+      return true;
+    } else {
+      window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
+      return false;
+    }
+  } catch {
+    window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
+    return false;
+  }
+}
+
 
 
