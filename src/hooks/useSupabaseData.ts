@@ -251,8 +251,8 @@ export function useSupabaseData(user: any) {
           admissionFee: s.admission_fee ?? linkedAdmission?.admission_fee,
           miscFunds: s.misc_funds ?? linkedAdmission?.misc_funds,
           totalFeeFinalized: s.total_fee_finalized ?? linkedAdmission?.total_fee_finalized,
-          totalPackage: s.total_package ?? linkedAdmission?.total_package,
-          feeReceived: s.fee_received ?? linkedAdmission?.fee_received,
+          totalPackage: Number(s.total_package ?? linkedAdmission?.total_package ?? 0),
+          feeReceived: Number(s.fee_received ?? linkedAdmission?.fee_received ?? 0),
           totalInstallments: s.total_installments ?? linkedAdmission?.total_installments,
           monthlyFee: s.monthly_fee,
           admissionId: s.admission_id,
@@ -263,7 +263,14 @@ export function useSupabaseData(user: any) {
           academicPart: s.academic_part || linkedAdmission?.academic_part || 'Part-1',
           programType: s.program_type || linkedAdmission?.program_type || 'Yearly',
           currentSemester: s.current_semester || linkedAdmission?.current_semester,
-          feeLedger: s.fee_ledger || { totalPackage: 0, totalReceived: 0, remainingBalance: 0, installments: [], transactions: [] },
+          feeLedger: {
+            ...(s.fee_ledger || {}),
+            totalPackage: Number(s.total_package ?? linkedAdmission?.total_package ?? 0),
+            totalReceived: Number(s.fee_received ?? linkedAdmission?.fee_received ?? 0),
+            remainingBalance: Math.max(0, Number(s.total_package ?? linkedAdmission?.total_package ?? 0) - Number(s.fee_received ?? linkedAdmission?.fee_received ?? 0)),
+            installments: s.fee_ledger?.installments || [],
+            transactions: s.fee_ledger?.transactions || []
+          },
           feeHistory: s.fee_history || []
         };
         });

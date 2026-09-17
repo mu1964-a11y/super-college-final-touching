@@ -2139,7 +2139,7 @@ export default function FeeManagementView({
                       </Button>
                       <Button
                         onClick={() => {
-                          const remainingBal = selectedStudent.feeLedger?.remainingBalance ?? ((selectedStudent.totalPackage || 0) - (selectedStudent.feeReceived || 0));
+                          const remainingBal = Math.max(0, Number(selectedStudent.totalPackage || selectedStudent.feeLedger?.totalPackage || 0) - Number(selectedStudent.feeReceived || selectedStudent.feeLedger?.totalReceived || 0));
                           const msg = 
 `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 🧾 *OFFICIAL FEE PAYMENT RECEIPT*

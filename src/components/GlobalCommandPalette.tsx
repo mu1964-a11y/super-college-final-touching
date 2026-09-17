@@ -174,7 +174,9 @@ export default function GlobalCommandPalette({
                 {matchingStudents.map((student: any, idx: number) => {
                   const itemIndex = idx;
                   const isSelected = selectedIndex === itemIndex;
-                  const remaining = Number(student.feeLedger?.remainingBalance ?? ((student.totalPackage || 0) - (student.feeReceived || 0)));
+                  const totalPkg = Number(student.totalPackage || student.feeLedger?.totalPackage || 0);
+                  const feeRcv = Number(student.feeReceived || student.feeLedger?.totalReceived || 0);
+                  const remaining = Math.max(0, totalPkg - feeRcv);
 
                   return (
                     <div

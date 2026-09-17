@@ -29,5 +29,23 @@ export const getUnifiedTransactions = (student: any) => {
 
   const allTx = [...transactions, ...uniqueHistory];
 
+  // Auto-synthesize initial admission deposit if totalReceived exceeds transaction sum
+  const totalFromTxs = allTx.reduce((sum: number, tx: any) => sum + (Number(tx.amount) || 0), 0);
+  const totalReceived = Number(student.feeReceived || student.feeLedger?.totalReceived || 0);
+
+  if (totalReceived > totalFromTxs) {
+    const difference = totalReceived - totalFromTxs;
+    allTx.push({
+      id: `tx-adm-init-${student.id || student.studentId || 'fee'}`,
+      date: student.admissionDate || student.dateOfAdmission || student.created_at || student.date || new Date().toISOString().split('T')[0],
+      amount: difference,
+      description: "Admission / Initial Fee",
+      paymentMethod: "CASH PAYMENT",
+      receiptId: `REC-ADM-${String(student.collegeNo || student.id || '').slice(-6)}`,
+      recordedBy: "Admission Desk",
+      isLegacy: false
+    });
+  }
+
   return allTx.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };

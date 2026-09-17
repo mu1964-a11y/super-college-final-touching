@@ -2181,9 +2181,10 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
     
     pdf.line(5, 95, 75, 95);
     
+    const remainingBal = Math.max(0, Number(student.totalPackage || student.feeLedger?.totalPackage || 0) - Number(student.feeReceived || student.feeLedger?.totalReceived || 0));
     pdf.setFontSize(8);
     pdf.setFont("helvetica", "normal");
-    pdf.text(`Remaining Balance: Rs. ${(student.feeLedger?.remainingBalance || 0).toLocaleString()}`, 5, 102);
+    pdf.text(`Remaining Balance: Rs. ${remainingBal.toLocaleString()}`, 5, 102);
     
     pdf.setFontSize(7);
     pdf.text("Thank you for your payment.", 40, 130, { align: 'center' });
@@ -2194,15 +2195,17 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
   };
 
   const getBalanceStatus = () => {
-    const feeLedger = student.feeLedger || { totalPackage: 0, remainingBalance: 0, installments: [] };
-    const balance = feeLedger.remainingBalance || 0;
+    const totalPkg = Number(student.totalPackage || student.feeLedger?.totalPackage || 0);
+    const feeRcv = Number(student.feeReceived || student.feeLedger?.totalReceived || 0);
+    const balance = Math.max(0, totalPkg - feeRcv);
+    const feeLedger = student.feeLedger || { totalPackage: totalPkg, remainingBalance: balance, installments: [] };
     const hasOverdue = feeLedger.installments?.some(inst => 
       inst.status === 'Unpaid' && new Date(inst.dueDate) < new Date() && new Date(inst.dueDate).toDateString() !== new Date().toDateString()
     );
 
     if (hasOverdue && balance > 0) return <Badge className="bg-red-600 text-white animate-pulse">Overdue</Badge>;
     if (balance <= 0) return <Badge className="bg-emerald-100 text-emerald-700 font-bold">Fully Paid</Badge>;
-    if (balance < feeLedger.totalPackage) return <Badge className="bg-orange-100 text-orange-700 font-bold">Partial Paid</Badge>;
+    if (balance < totalPkg) return <Badge className="bg-orange-100 text-orange-700 font-bold">Partial Paid</Badge>;
     return <Badge className="bg-slate-100 text-slate-700 font-bold">Not Paid</Badge>;
   };
 
@@ -2303,7 +2306,7 @@ function FeeLedgerManager({ student, data }: { student: Student, data: any }) {
                 <Clock size={16} />
               </div>
             </div>
-            <p className="text-2xl font-display font-black text-rose-700 tracking-tight">Rs. {(student.feeLedger?.remainingBalance || 0).toLocaleString()}</p>
+            <p className="text-2xl font-display font-black text-rose-700 tracking-tight">Rs. {Math.max(0, Number(student.totalPackage || student.feeLedger?.totalPackage || 0) - Number(student.feeReceived || student.feeLedger?.totalReceived || 0)).toLocaleString()}</p>
           </div>
         </div>
 

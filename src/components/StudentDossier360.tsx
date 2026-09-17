@@ -36,12 +36,23 @@ export default function StudentDossier360({
 
   if (!isOpen || !student) return null;
 
-  // Calculate financial statistics
+  // Normalize session format so 2026-2028 becomes 2026-28
+  const normalizeSession = (s: string | null | undefined): string => {
+    if (!s) return "";
+    let trimmed = s.trim();
+    if (trimmed.match(/^\d{4}-\d{4}$/)) {
+      const parts = trimmed.split('-');
+      if (parts[1].length === 4) {
+        trimmed = `${parts[0]}-${parts[1].substring(2)}`;
+      }
+    }
+    return trimmed;
+  };
+
+  // Calculate financial statistics - exact mathematical balance
   const totalPackage = Number(student.totalPackage || student.feeLedger?.totalPackage || 0);
   const totalReceived = Number(student.feeReceived || student.feeLedger?.totalReceived || 0);
-  const remainingBalance = Number(
-    student.feeLedger?.remainingBalance ?? (totalPackage - totalReceived)
-  );
+  const remainingBalance = Math.max(0, totalPackage - totalReceived);
   const paymentRatio = totalPackage > 0 ? Math.min(100, Math.round((totalReceived / totalPackage) * 100)) : 0;
 
   // Attendance metrics
@@ -91,7 +102,7 @@ ${statementUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ *Instruction:* Baraye meherbani aakhri tareekh se qabal accounts desk par baqaya fee jama karwa kar computerised receipt hasil karein.
 📞 Accounts Desk: 0301-4455891
-_Accounts & Finance Department, SGC Jahanian_`;
+_Accounts & Finance Department, Superior College Jahanian_`;
     } else if (type === 'results') {
       const resultUrl = getDocumentLink("result", studentRef);
       const marksList = academicRecords.map((r: any) => `• *${r.subject || 'Assessment'}:* ${r.obtainedMarks}/${r.totalMarks}`).join('\n') || '• Academic records are being updated';
@@ -113,7 +124,7 @@ ${resultUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 *Instruction:* Board imtehanat ki aala tayari ke liye regular revision yaqeeni banayein.
 📞 Academic Helpdesk: 0301-4455891
-_Office of the Controller of Examinations, SGC Jahanian_`;
+_Office of the Controller of Examinations, Superior College Jahanian_`;
     } else {
       const dossierUrl = getDocumentLink("student", studentRef);
       text = 
@@ -133,7 +144,7 @@ ${dossierUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Kisi bhi rehnumai ya feedback ke liye college office se rabta karein.
 📞 Campus Helpdesk: 0301-4455891
-_Office of the Principal, SGC Jahanian_`;
+_Office of the Principal, Superior College Jahanian_`;
     }
 
     try {
@@ -203,7 +214,7 @@ _Office of the Principal, SGC Jahanian_`;
                   </Badge>
                   {student.session && (
                     <Badge variant="outline" className="text-white/60 border-white/20 text-[10px]">
-                      Session {student.session}
+                      Session {normalizeSession(student.session)}
                     </Badge>
                   )}
                   {remainingBalance > 0 ? (

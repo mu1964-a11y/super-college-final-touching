@@ -860,7 +860,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                     <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Package / Installment</p>
                     <div className="flex items-baseline gap-2">
                       <p className="text-lg font-display font-black text-slate-800 tracking-tight">Rs. {(student.monthlyFee || 0).toLocaleString()}</p>
-                      <span className="text-[10px] font-bold text-rose-500 underline decoration-rose-500/30">Bal: {((student.feeLedger?.remainingBalance || (student.totalPackage || 0) - (student.feeReceived || 0)) / 1000).toFixed(1)}k</span>
+                      <span className="text-[10px] font-bold text-rose-500 underline decoration-rose-500/30">Bal: {(Math.max(0, (student.totalPackage || 0) - (student.feeReceived || 0)) / 1000).toFixed(1)}k</span>
                     </div>
                   </div>
                 </div>
@@ -1015,7 +1015,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                       </TableCell>
                       <TableCell>
                          <span className="text-xs font-black text-rose-500 block underline decoration-rose-500/20">
-                           Rs. {(student.feeLedger?.remainingBalance || (student.totalPackage || 0) - (student.feeReceived || 0)).toLocaleString()}
+                           Rs. {Math.max(0, (student.totalPackage || 0) - (student.feeReceived || 0)).toLocaleString()}
                          </span>
                       </TableCell>
                       <TableCell className="text-right pr-6">
@@ -1504,7 +1504,7 @@ function StudentProfile({ student, data, initialTab = 'overview', onEdit, onDown
                 </div>
                 <div className="bg-rose-50 p-6 rounded-2xl border border-rose-100 shadow-sm flex flex-col justify-center">
                   <p className="text-[9px] font-black text-rose-600 uppercase tracking-widest mb-2">Remaining Balance</p>
-                  <p className="text-2xl font-display font-black text-rose-700">Rs. {(student.feeLedger?.remainingBalance || (student.totalPackage || 0) - (student.feeReceived || 0)).toLocaleString()}</p>
+                  <p className="text-2xl font-display font-black text-rose-700">Rs. {Math.max(0, (student.totalPackage || 0) - (student.feeReceived || 0)).toLocaleString()}</p>
                 </div>
               </div>
 
@@ -1534,7 +1534,7 @@ function StudentProfile({ student, data, initialTab = 'overview', onEdit, onDown
                     <div>
                       <p className="text-[10px] uppercase font-black tracking-widest text-white/50">Recovery Progress</p>
                       <h4 className="text-xl font-bold">
-                        Remaining: Rs. {(student.feeLedger?.remainingBalance || (student.totalPackage || 0) - (student.feeReceived || 0)).toLocaleString()}
+                        Remaining: Rs. {Math.max(0, (student.totalPackage || 0) - (student.feeReceived || 0)).toLocaleString()}
                       </h4>
                     </div>
                   </div>
