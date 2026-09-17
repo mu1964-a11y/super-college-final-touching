@@ -27,6 +27,73 @@ export interface VerifiedUser {
   linkedAt: string;
 }
 
+export interface AutomatedReportConfig {
+  enabled: boolean;
+  principalPhone: string;
+  principalName?: string;
+  daily: {
+    enabled: boolean;
+    time: string; // "14:00" (PKT)
+    includeStaffAttendance: boolean;
+    includeStudentAttendance: boolean;
+    includeFeeCollection: boolean;
+    includeAdmissions: boolean;
+    includeExpenses: boolean;
+    lastSentDate?: string;
+  };
+  weekly: {
+    enabled: boolean;
+    dayOfWeek: number; // 6 = Saturday
+    time: string; // "16:00"
+    includeWeeklyFee: boolean;
+    includeStaffPunctuality: boolean;
+    includeAdmissionsPipeline: boolean;
+    includeNetCash: boolean;
+    lastSentWeek?: string;
+  };
+  monthly: {
+    enabled: boolean;
+    dayOfMonth: number; // 1st of month
+    time: string; // "10:00"
+    includeMonthlyFinancials: boolean;
+    includePayrollSummary: boolean;
+    includeStrengthRetention: boolean;
+    lastSentMonth?: string;
+  };
+}
+
+export const DEFAULT_AUTOMATED_REPORT_CONFIG: AutomatedReportConfig = {
+  enabled: true,
+  principalPhone: "0301-4455891",
+  principalName: "Principal / Executive Leadership",
+  daily: {
+    enabled: true,
+    time: "14:00",
+    includeStaffAttendance: true,
+    includeStudentAttendance: true,
+    includeFeeCollection: true,
+    includeAdmissions: true,
+    includeExpenses: true,
+  },
+  weekly: {
+    enabled: true,
+    dayOfWeek: 6, // Saturday
+    time: "16:00",
+    includeWeeklyFee: true,
+    includeStaffPunctuality: true,
+    includeAdmissionsPipeline: true,
+    includeNetCash: true,
+  },
+  monthly: {
+    enabled: true,
+    dayOfMonth: 1, // 1st of month
+    time: "10:00",
+    includeMonthlyFinancials: true,
+    includePayrollSummary: true,
+    includeStrengthRetention: true,
+  },
+};
+
 class WhatsAppBridgeService {
   private sock: any = null;
   private status: "disconnected" | "connecting" | "qr_ready" | "connected" = "disconnected";
@@ -89,17 +156,22 @@ class WhatsAppBridgeService {
       phone: string;
       expiresAt: number;
       attempts: number;
-      candidate: {
-        role: "Principal" | "Teacher" | "Staff" | "Admin";
-        staffId?: string;
-        name: string;
-        email?: string;
-        designation?: string;
-        contact: string;
-      };
+      type: "staff" | "student";
+      candidate: any;
       registeredPhone: string;
     }
   > = new Map();
+  private pendingStudentPhotos: Map<
+    string,
+    {
+      buffer: Buffer;
+      timestamp: number;
+      mimeType: string;
+      caption?: string;
+    }
+  > = new Map();
+  private scheduledReportsTimer: NodeJS.Timeout | null = null;
+  private cachedSupabase: any = null;
 
   constructor() {
     this.authDir = path.join(process.cwd(), ".whatsapp_auth");
@@ -115,6 +187,7 @@ class WhatsAppBridgeService {
     this.loadLidMappings();
     this.loadChatLogs();
     this.loadVerifiedUsers();
+    this.startScheduledReportsDaemon();
   }
 
   private loadLidMappings() {
@@ -368,6 +441,19 @@ class WhatsAppBridgeService {
     return false;
   }
 
+  public async linkVerifiedUser(user: VerifiedUser, supabase?: any): Promise<boolean> {
+    const norm = this.normalizePhoneNumber(user.phone);
+    if (!norm) return false;
+    const verified: VerifiedUser = {
+      ...user,
+      phone: norm,
+      linkedAt: user.linkedAt || new Date().toISOString(),
+    };
+    this.verifiedUsers.set(norm, verified);
+    await this.saveVerifiedUsers(supabase);
+    return true;
+  }
+
   public getFacultyMenuText(user: VerifiedUser): string {
     const isLeader = user.role === "Principal" || user.role === "Admin" || user.role === "Director" || !!user.email;
     return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
@@ -607,6 +693,705 @@ _Realtime College Management System (LMS)_`;
 _Superior College Staff Portal_`;
   }
 
+  // Helper to obtain current Pakistan Standard Time (PKT / UTC+5)
+  public getPktDate(): { dateStr: string; timeStr: string; dayOfWeek: number; dayOfMonth: number; displayDate: string } {
+    const now = new Date();
+    // Offset for PKT (UTC+5)
+    const pktTime = new Date(now.getTime() + (5 * 60 + now.getTimezoneOffset()) * 60 * 1000);
+    const dateStr = pktTime.toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const hours = String(pktTime.getHours()).padStart(2, "0");
+    const mins = String(pktTime.getMinutes()).padStart(2, "0");
+    const timeStr = `${hours}:${mins}`; // "14:00"
+    const dayOfWeek = pktTime.getDay(); // 0-6 (6 = Saturday)
+    const dayOfMonth = pktTime.getDate(); // 1-31
+    const displayDate = pktTime.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    return { dateStr, timeStr, dayOfWeek, dayOfMonth, displayDate };
+  }
+
+  // Helper to get or lazily initialize Supabase client
+  public async getSupabase(): Promise<any> {
+    if (this.cachedSupabase) return this.cachedSupabase;
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const url = process.env.VITE_SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+      if (url && key) {
+        this.cachedSupabase = createClient(url, key, { auth: { persistSession: false } });
+      }
+    } catch (e) {
+      console.warn("[WhatsApp Bridge] Could not init Supabase client:", e);
+    }
+    return this.cachedSupabase;
+  }
+
+  // Fetch Automated Report Configuration from Supabase settings
+  public async getAutomatedReportConfig(supabaseClient?: any): Promise<AutomatedReportConfig> {
+    try {
+      const supabase = supabaseClient || await this.getSupabase();
+      if (supabase) {
+        const { data: settings } = await supabase.from("settings").select("config").limit(1).maybeSingle();
+        if (settings?.config?.automatedReports) {
+          const cfg = settings.config.automatedReports;
+          return {
+            ...DEFAULT_AUTOMATED_REPORT_CONFIG,
+            ...cfg,
+            daily: { ...DEFAULT_AUTOMATED_REPORT_CONFIG.daily, ...(cfg.daily || {}) },
+            weekly: { ...DEFAULT_AUTOMATED_REPORT_CONFIG.weekly, ...(cfg.weekly || {}) },
+            monthly: { ...DEFAULT_AUTOMATED_REPORT_CONFIG.monthly, ...(cfg.monthly || {}) },
+          };
+        }
+      }
+    } catch (e) {
+      console.warn("[Scheduled Reports] Error fetching automated report config:", e);
+    }
+    return DEFAULT_AUTOMATED_REPORT_CONFIG;
+  }
+
+  // Save Automated Report Configuration to Supabase settings
+  public async saveAutomatedReportConfig(supabaseClient: any, newConfig: Partial<AutomatedReportConfig>): Promise<AutomatedReportConfig> {
+    try {
+      const supabase = supabaseClient || await this.getSupabase();
+      if (supabase) {
+        const currentConfig = await this.getAutomatedReportConfig(supabase);
+        const merged: AutomatedReportConfig = {
+          ...currentConfig,
+          ...newConfig,
+          daily: { ...currentConfig.daily, ...(newConfig.daily || {}) },
+          weekly: { ...currentConfig.weekly, ...(newConfig.weekly || {}) },
+          monthly: { ...currentConfig.monthly, ...(newConfig.monthly || {}) },
+        };
+
+        const { data: settings } = await supabase.from("settings").select("id, config").limit(1).maybeSingle();
+        if (settings) {
+          await supabase.from("settings").update({
+            config: {
+              ...(settings.config || {}),
+              automatedReports: merged,
+            },
+          }).eq("id", settings.id);
+        }
+        return merged;
+      }
+    } catch (e) {
+      console.warn("[Scheduled Reports] Error saving automated report config:", e);
+    }
+    return DEFAULT_AUTOMATED_REPORT_CONFIG;
+  }
+
+  // 1. Generate Daily Flash Report for the Principal
+  public async generateDailyFlashReport(supabase: any, dailyConfig?: any): Promise<string> {
+    const pkt = this.getPktDate();
+    const dateStr = pkt.dateStr;
+
+    // 1A. Staff Attendance & Punctuality
+    let staffSection = "";
+    if (dailyConfig?.includeStaffAttendance !== false) {
+      try {
+        const { data: staffList } = await supabase.from("staff").select("id, full_name, role, designation");
+        const totalStaff = staffList?.length || 0;
+        const { data: staffAtt } = await supabase.from("staff_attendance").select("*").eq("date", dateStr);
+
+        let presentStaff = 0;
+        let absentStaff = 0;
+        let lateStaff = 0;
+        const absentNames: string[] = [];
+        const lateNames: string[] = [];
+
+        const attMap = new Map();
+        for (const a of (staffAtt || [])) {
+          attMap.set(a.staff_id, a);
+        }
+
+        for (const st of (staffList || [])) {
+          const a = attMap.get(st.id);
+          if (!a || a.status === "Absent") {
+            absentStaff++;
+            absentNames.push(st.full_name || "Staff");
+          } else if (a.status === "Late") {
+            lateStaff++;
+            const t = a.check_in ? ` (${a.check_in.slice(0, 5)})` : "";
+            lateNames.push(`${st.full_name || "Staff"}${t}`);
+          } else {
+            presentStaff++;
+          }
+        }
+
+        staffSection = 
+`👥 *STAFF ATTENDANCE & PUNCTUALITY*
+• Total Faculty Strength: *${totalStaff}*
+• Present: *${presentStaff}* | Absent: *${absentStaff}* | Late: *${lateStaff}*
+${absentNames.length > 0 ? `❌ *Absent Today:* ${absentNames.slice(0, 6).join(", ")}${absentNames.length > 6 ? ` (+${absentNames.length - 6} more)` : ""}\n` : ""}
+${lateNames.length > 0 ? `⚠️ *Late Today:* ${lateNames.slice(0, 6).join(", ")}\n` : ""}`;
+      } catch (err) {
+        console.warn("[Scheduled Reports] Error fetching staff attendance:", err);
+      }
+    }
+
+    // 1B. Student Attendance Snapshot
+    let studentSection = "";
+    if (dailyConfig?.includeStudentAttendance !== false) {
+      try {
+        const { data: studentAtt } = await supabase.from("student_attendance").select("status").eq("date", dateStr);
+        const totalMarked = studentAtt?.length || 0;
+        let stdPresent = 0;
+        let stdAbsent = 0;
+        for (const sa of (studentAtt || [])) {
+          if (sa.status === "Present") stdPresent++;
+          else if (sa.status === "Absent") stdAbsent++;
+        }
+        const attPct = totalMarked > 0 ? Math.round((stdPresent / totalMarked) * 100) : 0;
+
+        studentSection = 
+`🎓 *STUDENT ATTENDANCE SNAPSHOT*
+• Total Marked Today: *${totalMarked} Students*
+• Overall Attendance: *${attPct}%* (${stdPresent} Present / ${stdAbsent} Absent)\n`;
+      } catch (err) {
+        console.warn("[Scheduled Reports] Error fetching student attendance:", err);
+      }
+    }
+
+    // 1C. Daily Financial Counter
+    let financeSection = "";
+    if (dailyConfig?.includeFeeCollection !== false) {
+      try {
+        const { data: feeTx } = await supabase.from("fee_transactions").select("amount, payment_method").eq("date", dateStr);
+        const { data: incList } = await supabase.from("incomes").select("amount, payment_method").eq("date", dateStr);
+        const { data: todayExp } = await supabase.from("expenses").select("amount").eq("date", dateStr);
+
+        let totalFeeToday = 0;
+        let cashFee = 0;
+        let bankFee = 0;
+        let totalExpenses = 0;
+
+        for (const tx of (feeTx || [])) {
+          const amt = Number(tx.amount || 0);
+          totalFeeToday += amt;
+          const method = (tx.payment_method || "").toLowerCase();
+          if (method.includes("bank") || method.includes("online") || method.includes("cheque")) {
+            bankFee += amt;
+          } else {
+            cashFee += amt;
+          }
+        }
+
+        for (const inc of (incList || [])) {
+          const amt = Number(inc.amount || 0);
+          totalFeeToday += amt;
+          const method = (inc.payment_method || "").toLowerCase();
+          if (method.includes("bank") || method.includes("online")) {
+            bankFee += amt;
+          } else {
+            cashFee += amt;
+          }
+        }
+
+        for (const exp of (todayExp || [])) {
+          totalExpenses += Number(exp.amount || 0);
+        }
+
+        const netCounter = totalFeeToday - totalExpenses;
+
+        financeSection = 
+`💰 *DAILY FINANCIAL COUNTER*
+• Fee Collected Today: *Rs. ${totalFeeToday.toLocaleString()}*
+  *(Cash: Rs. ${cashFee.toLocaleString()} | Bank: Rs. ${bankFee.toLocaleString()})*
+• Daily Petty Expenses: *Rs. ${totalExpenses.toLocaleString()}*
+• Net Counter Cash: *Rs. ${netCounter.toLocaleString()}*\n`;
+      } catch (err) {
+        console.warn("[Scheduled Reports] Error fetching financials:", err);
+      }
+    }
+
+    // 1D. Admissions & Leads
+    let admissionsSection = "";
+    if (dailyConfig?.includeAdmissions !== false) {
+      try {
+        const { data: todayAdm } = await supabase
+          .from("admissions")
+          .select("id")
+          .or(`admission_date.eq.${dateStr},created_at.gte.${dateStr}T00:00:00Z`);
+
+        const { data: todayLeads } = await supabase
+          .from("leads")
+          .select("id")
+          .gte("created_at", `${dateStr}T00:00:00Z`);
+
+        const newLeadsCount = todayLeads?.length || 0;
+        const newAdmCount = todayAdm?.length || 0;
+
+        admissionsSection = 
+`📢 *ADMISSIONS & INQUIRIES (LEADS)*
+• New Inquiries / Walk-in Visitors: *${newLeadsCount}*
+• Confirmed Admissions Today: *${newAdmCount}*\n`;
+      } catch (err) {
+        console.warn("[Scheduled Reports] Error fetching admissions:", err);
+      }
+    }
+
+    return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
+📊 *PRINCIPAL'S DAILY FLASH REPORT*
+📅 *${pkt.displayDate}* (Generated at: ${pkt.timeStr} PKT)
+━━━━━━━━━━━━━━━━━━━━━━━━━
+${staffSection}
+${studentSection}
+${financeSection}
+${admissionsSection}━━━━━━━━━━━━━━━━━━━━━━━━━
+_Automated Executive Digest — SCJ Management System LMS_`;
+  }
+
+  // 2. Generate Weekly Executive Performance Summary
+  public async generateWeeklyExecutiveSummary(supabase: any, weeklyConfig?: any): Promise<string> {
+    const pkt = this.getPktDate();
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const startStr = sevenDaysAgo.toISOString().slice(0, 10);
+    const endStr = pkt.dateStr;
+
+    let totalWeeklyFee = 0;
+    let totalWeeklyExp = 0;
+    let newAdmCount = 0;
+    let newLeadsCount = 0;
+    let totalLateRecords = 0;
+
+    try {
+      const { data: feeTx } = await supabase.from("fee_transactions").select("amount").gte("date", startStr).lte("date", endStr);
+      for (const tx of (feeTx || [])) totalWeeklyFee += Number(tx.amount || 0);
+
+      const { data: incs } = await supabase.from("incomes").select("amount").gte("date", startStr).lte("date", endStr);
+      for (const inc of (incs || [])) totalWeeklyFee += Number(inc.amount || 0);
+
+      const { data: exps } = await supabase.from("expenses").select("amount").gte("date", startStr).lte("date", endStr);
+      for (const exp of (exps || [])) totalWeeklyExp += Number(exp.amount || 0);
+
+      const { data: adms } = await supabase.from("admissions").select("id").gte("created_at", `${startStr}T00:00:00Z`);
+      newAdmCount = adms?.length || 0;
+
+      const { data: leads } = await supabase.from("leads").select("id").gte("created_at", `${startStr}T00:00:00Z`);
+      newLeadsCount = leads?.length || 0;
+
+      const { data: lateAtt } = await supabase.from("staff_attendance").select("id").eq("status", "Late").gte("date", startStr).lte("date", endStr);
+      totalLateRecords = lateAtt?.length || 0;
+    } catch (err) {
+      console.warn("[Scheduled Reports] Error generating weekly summary:", err);
+    }
+
+    const netWeeklyCash = totalWeeklyFee - totalWeeklyExp;
+
+    return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
+📈 *WEEKLY EXECUTIVE PERFORMANCE SUMMARY*
+🗓️ Period: *${startStr}* to *${endStr}*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+💰 *WEEKLY FINANCIAL CASH FLOW*
+• Total Weekly Fee Recovered: *Rs. ${totalWeeklyFee.toLocaleString()}*
+• Total Operational Expenses: *Rs. ${totalWeeklyExp.toLocaleString()}*
+• Net Weekly Cash Surplus: *Rs. ${netWeeklyCash.toLocaleString()}*
+
+🎯 *ADMISSIONS & ENROLMENT PIPELINE*
+• New Inquiries & Prospects: *${newLeadsCount}*
+• Confirmed Admissions Enrolled: *${newAdmCount}*
+
+⏰ *FACULTY DISCIPLINE & PUNCTUALITY*
+• Total Late Arrival Incidents this Week: *${totalLateRecords}*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+_Generated for Principal & Directors — SCJ Management System LMS_`;
+  }
+
+  // 3. Generate Monthly Institutional Audit Brief
+  public async generateMonthlyAuditBrief(supabase: any, monthlyConfig?: any): Promise<string> {
+    const pkt = this.getPktDate();
+    const currentMonth = pkt.dateStr.slice(0, 7);
+
+    let totalMonthFee = 0;
+    let totalMonthExp = 0;
+    let activeStudents = 0;
+    let boysCount = 0;
+    let girlsCount = 0;
+    let totalOutstanding = 0;
+
+    try {
+      const { data: students } = await supabase.from("students").select("id, category, total_package, fee_received");
+      activeStudents = students?.length || 0;
+      for (const s of (students || [])) {
+        const pkg = Number(s.total_package || 0);
+        const paid = Number(s.fee_received || 0);
+        if (pkg > paid) totalOutstanding += (pkg - paid);
+        const cat = (s.category || "").toLowerCase();
+        if (cat.includes("girl") || cat.includes("female")) girlsCount++;
+        else boysCount++;
+      }
+
+      const { data: feeTx } = await supabase.from("fee_transactions").select("amount, date");
+      for (const tx of (feeTx || [])) {
+        if ((tx.date || "").startsWith(currentMonth)) totalMonthFee += Number(tx.amount || 0);
+      }
+
+      const { data: incs } = await supabase.from("incomes").select("amount, date");
+      for (const inc of (incs || [])) {
+        if ((inc.date || "").startsWith(currentMonth)) totalMonthFee += Number(inc.amount || 0);
+      }
+
+      const { data: exps } = await supabase.from("expenses").select("amount, date");
+      for (const exp of (exps || [])) {
+        if ((exp.date || "").startsWith(currentMonth)) totalMonthExp += Number(exp.amount || 0);
+      }
+    } catch (err) {
+      console.warn("[Scheduled Reports] Error generating monthly audit:", err);
+    }
+
+    const netSurplus = totalMonthFee - totalMonthExp;
+
+    return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
+🗓️ *MONTHLY INSTITUTIONAL AUDIT BRIEF (${currentMonth})*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+👥 *CAMPUS STRENGTH & RETENTION*
+• Total Active Enrolled Students: *${activeStudents}*
+• Boys Campus: *${boysCount}* | Girls Campus: *${girlsCount}*
+
+💵 *MONTHLY REVENUE & CASH POSITION*
+• Total Fee Collected (${currentMonth}): *Rs. ${totalMonthFee.toLocaleString()}*
+• Total Operational Expenses: *Rs. ${totalMonthExp.toLocaleString()}*
+• Net Monthly Surplus / Operating Balance: *Rs. ${netSurplus.toLocaleString()}*
+• Cumulative Unpaid Defaulters Balance: *Rs. ${totalOutstanding.toLocaleString()}*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+_Directorate of Audit & Accounts — Superior Group of Colleges Jahanian_`;
+  }
+
+  // 4. Dispatch Scheduled Report (Auto or Manual Trigger)
+  public async dispatchScheduledReport(
+    reportType: "daily" | "weekly" | "monthly",
+    force: boolean = false,
+    supabaseClient?: any,
+    overridePhone?: string
+  ): Promise<{ success: boolean; messageText?: string; error?: string }> {
+    const supabase = supabaseClient || await this.getSupabase();
+    if (!supabase) {
+      return { success: false, error: "Database client is not available." };
+    }
+
+    const config = await this.getAutomatedReportConfig(supabase);
+    if (!force && (!config.enabled || (reportType === "daily" && !config.daily.enabled) || (reportType === "weekly" && !config.weekly.enabled) || (reportType === "monthly" && !config.monthly.enabled))) {
+      return { success: false, error: `Automated report (${reportType}) is disabled in settings.` };
+    }
+
+    const targetPhone = overridePhone || config.principalPhone;
+    if (!targetPhone) {
+      return { success: false, error: "No Principal WhatsApp phone number configured." };
+    }
+
+    let reportText = "";
+    if (reportType === "daily") {
+      reportText = await this.generateDailyFlashReport(supabase, config.daily);
+    } else if (reportType === "weekly") {
+      reportText = await this.generateWeeklyExecutiveSummary(supabase, config.weekly);
+    } else if (reportType === "monthly") {
+      reportText = await this.generateMonthlyAuditBrief(supabase, config.monthly);
+    }
+
+    const sendRes = await this.sendMessage(targetPhone, reportText);
+    if (!sendRes.success) {
+      return { success: false, messageText: reportText, error: sendRes.error };
+    }
+
+    // Update last sent date/week/month if this was a live scheduled send without override
+    if (!overridePhone) {
+      const pkt = this.getPktDate();
+      if (reportType === "daily") {
+        config.daily.lastSentDate = pkt.dateStr;
+      } else if (reportType === "weekly") {
+        config.weekly.lastSentWeek = `${pkt.dateStr.slice(0, 4)}-W${Math.ceil(pkt.dayOfMonth / 7)}`;
+      } else if (reportType === "monthly") {
+        config.monthly.lastSentMonth = pkt.dateStr.slice(0, 7);
+      }
+      await this.saveAutomatedReportConfig(supabase, config);
+    }
+
+    this.logBotActivity(targetPhone, `Scheduled Report Dispatched: ${reportType.toUpperCase()}`, `Auto-Report (${reportType})`);
+
+    return {
+      success: true,
+      messageText: reportText,
+    };
+  }
+
+  // 5. Start Background Cron Daemon (Runs every 60 seconds)
+  public startScheduledReportsDaemon() {
+    if (this.scheduledReportsTimer) {
+      clearInterval(this.scheduledReportsTimer);
+    }
+
+    this.scheduledReportsTimer = setInterval(async () => {
+      try {
+        if (this.status !== "connected") return;
+        const supabase = await this.getSupabase();
+        if (!supabase) return;
+
+        const config = await this.getAutomatedReportConfig(supabase);
+        if (!config || !config.enabled || !config.principalPhone) return;
+
+        const pkt = this.getPktDate();
+
+        // Check Daily Flash Report
+        if (config.daily?.enabled && config.daily.time === pkt.timeStr) {
+          if (config.daily.lastSentDate !== pkt.dateStr) {
+            console.log(`[Scheduled Reports] ⏰ Dispatching Daily Flash Report to ${config.principalPhone} at ${pkt.timeStr} PKT`);
+            await this.dispatchScheduledReport("daily", false, supabase);
+          }
+        }
+
+        // Check Weekly Executive Summary
+        const currentWeekStr = `${pkt.dateStr.slice(0, 4)}-W${Math.ceil(pkt.dayOfMonth / 7)}`;
+        if (config.weekly?.enabled && pkt.dayOfWeek === config.weekly.dayOfWeek && config.weekly.time === pkt.timeStr) {
+          if (config.weekly.lastSentWeek !== currentWeekStr) {
+            console.log(`[Scheduled Reports] ⏰ Dispatching Weekly Executive Summary to ${config.principalPhone}`);
+            await this.dispatchScheduledReport("weekly", false, supabase);
+          }
+        }
+
+        // Check Monthly Audit Brief
+        const currentMonthStr = pkt.dateStr.slice(0, 7);
+        if (config.monthly?.enabled && pkt.dayOfMonth === config.monthly.dayOfMonth && config.monthly.time === pkt.timeStr) {
+          if (config.monthly.lastSentMonth !== currentMonthStr) {
+            console.log(`[Scheduled Reports] ⏰ Dispatching Monthly Audit Brief to ${config.principalPhone}`);
+            await this.dispatchScheduledReport("monthly", false, supabase);
+          }
+        }
+      } catch (cronErr) {
+        console.warn("[Scheduled Reports] Background daemon error:", cronErr);
+      }
+    }, 60 * 1000);
+  }
+
+  // Save received photo for a student in Supabase and on disk
+  public async applyStudentPhoto(
+    supabase: any,
+    student: any,
+    buffer: Buffer,
+    senderJid: string,
+    rawNumber: string
+  ): Promise<string> {
+    const studentId = student.id;
+    const studentName = student.full_name;
+    const rollNo = student.college_no || student.id;
+
+    // 1. Prepare Base64 Data URL
+    const base64Data = buffer.toString("base64");
+    const dataUrl = `data:image/jpeg;base64,${base64Data}`;
+
+    // 2. Save locally on disk in public/uploads/student-photos/
+    try {
+      const uploadDir = path.join(process.cwd(), "public", "uploads", "student-photos");
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      const filePath = path.join(uploadDir, `${studentId}.jpg`);
+      fs.writeFileSync(filePath, buffer);
+    } catch (diskErr) {
+      console.warn("[WhatsApp Bot] Could not save photo to disk:", diskErr);
+    }
+
+    // 3. Update Supabase Database (both students and admissions tables)
+    try {
+      await supabase
+        .from("students")
+        .update({ photo: dataUrl })
+        .eq("id", studentId);
+
+      await supabase
+        .from("admissions")
+        .update({ photo: dataUrl })
+        .or(`id.eq.${studentId},student_id.eq.${studentId},college_no.eq.${rollNo}`);
+    } catch (dbErr) {
+      console.error("[WhatsApp Bot] Error updating student photo in Supabase:", dbErr);
+    }
+
+    // 4. Send Confirmation back to Student / Parent
+    const confirmationMsg = 
+`✅ *STUDENT PROFILE PICTURE UPDATED!*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Khush-amdeed *${studentName}*!
+🏷️ *Roll No / ID:* ${rollNo}
+🏛️ *Class / Group:* ${student.group || "Intermediate"} (Sec: ${student.section || "A"})
+
+🎉 Mubarak ho! Aapki passport-size tasveer kamyab tareeqay se receive ho chuki hai aur college system mein auto-update kar di gayi hai.
+
+Yeh tasveer ab darj zail jagahon par live update ho chuki hai:
+🪪 College Student ID Card
+📋 Official Student Dossier & Profile
+🌐 Online Student Portal Profile
+
+Shukriya!
+_Administration, Superior College Jahanian_`;
+
+    if (this.sock) {
+      await this.sock.sendMessage(senderJid, { text: confirmationMsg });
+    }
+
+    this.saveChatLog({
+      phone: rawNumber,
+      direction: "outgoing",
+      text: confirmationMsg,
+      verifiedStudent: studentName,
+    });
+
+    return confirmationMsg;
+  }
+
+  // Handle incoming student photo received via WhatsApp
+  public async handleIncomingStudentPhoto(
+    msg: any,
+    senderJid: string,
+    rawNumber: string,
+    caption: string,
+    pushName?: string
+  ): Promise<void> {
+    const imageMsg = msg.message?.imageMessage;
+    if (!imageMsg) return;
+
+    this.saveChatLog({
+      phone: rawNumber,
+      senderName: pushName || undefined,
+      direction: "incoming",
+      text: caption ? `[Photo Received]: ${caption}` : `[Photo Received]`,
+    });
+
+    // Setup Supabase Client
+    let supabase: any = null;
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const url = process.env.VITE_SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+      if (url && key) {
+        supabase = createClient(url, key, { auth: { persistSession: false } });
+      }
+    } catch (dbInitErr) {
+      console.error("[WhatsApp Bot] Could not init Supabase for photo:", dbInitErr);
+    }
+
+    if (!supabase) {
+      const errMsg = "Assalam-o-Alaikum! Database is currently unreachable. Please try again in a few minutes.";
+      if (this.sock) await this.sock.sendMessage(senderJid, { text: errMsg });
+      return;
+    }
+
+    // Download decrypted media stream from WhatsApp
+    let buffer: Buffer;
+    try {
+      const downloadFn = baileys.downloadContentFromMessage || (baileys as any).default?.downloadContentFromMessage;
+      if (!downloadFn) {
+        throw new Error("downloadContentFromMessage not available");
+      }
+      const stream = await downloadFn(imageMsg, "image");
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+      }
+      buffer = Buffer.concat(chunks);
+    } catch (dlErr: any) {
+      console.error("[WhatsApp Bot] Error downloading image message:", dlErr);
+      const failMsg = "⚠️ Tasveer download nahi ho saki. Baraye meherbani dobara send karein.";
+      if (this.sock) await this.sock.sendMessage(senderJid, { text: failMsg });
+      return;
+    }
+
+    const standardPhone = this.normalizePhoneNumber(rawNumber);
+    const session = this.sessionState.get(rawNumber);
+
+    // 1. Check if user already verified a student in this session
+    if (session?.verifiedStudent) {
+      await this.applyStudentPhoto(supabase, session.verifiedStudent, buffer, senderJid, rawNumber);
+      return;
+    }
+
+    // 2. Check if caption has student roll or name
+    let matchedStudent: any = null;
+    if (caption && caption.trim().length >= 2) {
+      const lookup = await this.findStudentCandidate(supabase, caption, rawNumber);
+      if (lookup.candidate) {
+        matchedStudent = lookup.candidate;
+      }
+    }
+
+    // 3. Check by sender phone number against students table
+    if (!matchedStudent && standardPhone) {
+      const phoneDigits = standardPhone.replace(/\D/g, "");
+      const strippedSender = phoneDigits.startsWith("92") ? phoneDigits.slice(2) : phoneDigits.startsWith("0") ? phoneDigits.slice(1) : phoneDigits;
+      const last7 = phoneDigits.slice(-7);
+      const hyphenated = `0${strippedSender.slice(0, 3)}-${last7}`;
+
+      const { data: byPhone } = await supabase
+        .from("students")
+        .select("*")
+        .or(`contact.ilike.%${last7}%,contact.ilike.%${strippedSender}%,contact.ilike.%${hyphenated}%`)
+        .limit(3);
+
+      if (byPhone && byPhone.length === 1) {
+        matchedStudent = byPhone[0];
+      } else if (byPhone && byPhone.length > 1) {
+        // Multiple children registered under same phone (siblings)
+        this.pendingStudentPhotos.set(standardPhone, {
+          buffer,
+          timestamp: Date.now(),
+          mimeType: imageMsg.mimetype || "image/jpeg",
+          caption,
+        });
+
+        const listStr = byPhone.map((s: any, idx: number) => 
+          `${idx + 1}. *${s.full_name}* (Roll: *${s.college_no || s.id}*, Class: ${s.group || "Inter"})`
+        ).join("\n");
+
+        const promptMsg = 
+`📸 *Tasveer Mil Gayi Hai!*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Aapke is number par record mein 1 se zyada students darj hain:
+
+${listStr}
+
+Baraye meherbani batayein yeh picture kis student ki hai?
+Student ka *Roll Number* (maslan: *${byPhone[0].college_no || byPhone[0].id}*) ya *Mukammal Naam* likh kar reply karein.`;
+
+        if (this.sock) await this.sock.sendMessage(senderJid, { text: promptMsg });
+        this.saveChatLog({
+          phone: rawNumber,
+          direction: "outgoing",
+          text: promptMsg,
+        });
+        return;
+      }
+    }
+
+    // 4. If single candidate found, apply immediately!
+    if (matchedStudent) {
+      await this.applyStudentPhoto(supabase, matchedStudent, buffer, senderJid, rawNumber);
+      return;
+    }
+
+    // 5. Unknown sender or photo sent without context: Stage photo and ask for student details
+    this.pendingStudentPhotos.set(standardPhone, {
+      buffer,
+      timestamp: Date.now(),
+      mimeType: imageMsg.mimetype || "image/jpeg",
+      caption,
+    });
+
+    const needIdMsg = 
+`📸 *TASVEER MOSOOL HO GAYI HAI (PHOTO RECEIVED)*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Superior College Jahanian Portal Desk.
+
+Aapki tasveer receive ho chuki hai. Is tasveer ko student profile aur ID Card par lagane ke liye:
+
+Baraye meherbani student ka *Roll Number* ya *Mukammal Naam* likh kar reply karein (maslan: *Roll 1042* ya *Ali Raza*).
+
+_Reply aate hi tasveer foran profile par update kar di jayegi._`;
+
+    if (this.sock) await this.sock.sendMessage(senderJid, { text: needIdMsg });
+    this.saveChatLog({
+      phone: rawNumber,
+      direction: "outgoing",
+      text: needIdMsg,
+    });
+  }
+
   public getStatus(): WhatsAppStatus {
     return {
       status: this.status,
@@ -734,6 +1519,7 @@ _Superior College Staff Portal_`;
               continue;
             }
 
+            const isImage = Boolean(msg.message.imageMessage);
             const text = (
               msg.message.conversation ||
               msg.message.extendedTextMessage?.text ||
@@ -741,12 +1527,16 @@ _Superior College Staff Portal_`;
               ""
             ).trim();
 
-            if (!text) continue;
+            if (!text && !isImage) continue;
 
             // Resolve true phone number (Pakistani / International MSISDN)
             const realPhone = await this.resolvePhoneNumber(rawJid, msg.key);
-            console.log(`[WhatsApp Bot] Incoming message from ${rawJid} (Resolved Phone: ${realPhone}, PushName: ${msg.pushName || "N/A"}): "${text}"`);
-            await this.handleIncomingBotQuery(rawJid, text, realPhone, msg.pushName);
+            console.log(`[WhatsApp Bot] Incoming message from ${rawJid} (Resolved Phone: ${realPhone}, PushName: ${msg.pushName || "N/A"}, isImage: ${isImage}): "${text}"`);
+            if (isImage) {
+              await this.handleIncomingStudentPhoto(msg, rawJid, realPhone, text, msg.pushName);
+            } else {
+              await this.handleIncomingBotQuery(rawJid, text, realPhone, msg.pushName);
+            }
           }
         } catch (botErr: any) {
           console.error("[WhatsApp Bot] Error in message listener:", botErr);
@@ -947,6 +1737,114 @@ College Key Info:
       attendance_present: 0,
       attendance_absent: 0,
     };
+  }
+
+  // Check if a given phone number belongs to a student candidate record
+  public isPhoneRegisteredForStudent(student: any, phone: string): boolean {
+    if (!student || !phone) return false;
+    const stdPhone = this.normalizePhoneNumber(phone);
+    if (!stdPhone || stdPhone.length < 7) return false;
+    const last7 = stdPhone.slice(-7);
+    const candidateContacts = [
+      student.contact,
+      student.contact_number,
+      student.father_contact,
+      student.secondary_contact,
+    ].filter(Boolean);
+
+    return candidateContacts.some((c: string) => {
+      const normC = this.normalizePhoneNumber(c);
+      return normC && (normC === stdPhone || (last7.length >= 7 && normC.endsWith(last7)));
+    });
+  }
+
+  // Find all students in DB (students + admissions) registered with this phone number
+  public async findStudentsByRegisteredPhone(supabase: any, phone: string): Promise<any[]> {
+    if (!supabase || !phone) return [];
+    const std = this.normalizePhoneNumber(phone);
+    if (!std || std.length < 7) return [];
+    const stripped = std.startsWith("92") ? std.slice(2) : std.startsWith("0") ? std.slice(1) : std;
+    const last7 = stripped.slice(-7);
+    const hyphenated = `0${stripped.slice(0, 3)}-${last7}`;
+
+    const results: any[] = [];
+    const seenIds = new Set<string>();
+
+    try {
+      const { data: students } = await supabase
+        .from("students")
+        .select("*")
+        .or(`contact.ilike.%${last7}%,contact.ilike.%${stripped}%,contact.ilike.%${hyphenated}%`)
+        .limit(10);
+
+      if (students) {
+        for (const s of students) {
+          if (this.isPhoneRegisteredForStudent(s, std) && !seenIds.has(s.id)) {
+            seenIds.add(s.id);
+            results.push(s);
+          }
+        }
+      }
+
+      const { data: admissions } = await supabase
+        .from("admissions")
+        .select("*")
+        .or(`contact_number.ilike.%${last7}%,contact_number.ilike.%${stripped}%,contact_number.ilike.%${hyphenated}%,father_contact.ilike.%${last7}%,father_contact.ilike.%${stripped}%,secondary_contact.ilike.%${last7}%`)
+        .limit(10);
+
+      if (admissions) {
+        for (const a of admissions) {
+          const formatted = this.formatAdmissionAsStudent(a);
+          if (this.isPhoneRegisteredForStudent(formatted, std) && !seenIds.has(formatted.id)) {
+            seenIds.add(formatted.id);
+            results.push(formatted);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[WhatsApp Bot] Error finding students by registered phone:", e);
+    }
+
+    return results;
+  }
+
+  // Find staff or admin member in DB registered with this phone number
+  public async findStaffByRegisteredPhone(supabase: any, phone: string): Promise<any> {
+    if (!supabase || !phone) return null;
+    const std = this.normalizePhoneNumber(phone);
+    if (!std || std.length < 7) return null;
+
+    try {
+      const { data: staffList } = await supabase.from("staff").select("*");
+      if (staffList && staffList.length > 0) {
+        const matched = staffList.find((st: any) => {
+          const stPhone = this.normalizePhoneNumber(st.contact);
+          return stPhone && (stPhone === std || (stPhone.length >= 9 && std.endsWith(stPhone.slice(-9))));
+        });
+        if (matched) return matched;
+      }
+
+      const { data: perms } = await supabase.from("permissions").select("*");
+      if (perms && perms.length > 0) {
+        const permMatched = perms.find((p: any) => {
+          const pPhone = this.normalizePhoneNumber(p.contact || p.phone);
+          return pPhone && (pPhone === std || (pPhone.length >= 9 && std.endsWith(pPhone.slice(-9))));
+        });
+        if (permMatched) {
+          return {
+            id: `ADM-${permMatched.id.slice(0, 4)}`,
+            full_name: permMatched.display_name || "System Admin",
+            role: permMatched.is_admin ? "Principal" : "Admin",
+            contact: std,
+            designation: permMatched.is_admin ? "Principal / Super Admin" : "Sub Admin",
+            email: permMatched.email,
+          };
+        }
+      }
+    } catch (e) {
+      console.warn("[WhatsApp Bot] Error finding staff by registered phone:", e);
+    }
+    return null;
   }
 
   // Multi-attribute Candidate Lookup (Search by Roll, Phone, Student Name, Father Name, Section)
@@ -1427,22 +2325,41 @@ College Key Info:
 
       if (isDigitsCode) {
         if (cleanDigits === pendingOtp.code) {
-          // SUCCESS! Verify and bind number permanently
-          const verified: VerifiedUser = {
-            phone: standardPhone,
-            role: pendingOtp.candidate.role,
-            staffId: pendingOtp.candidate.staffId,
-            name: pendingOtp.candidate.name,
-            email: pendingOtp.candidate.email,
-            designation: pendingOtp.candidate.designation,
-            linkedAt: new Date().toISOString(),
-          };
-          this.verifiedUsers.set(standardPhone, verified);
-          await this.saveVerifiedUsers(supabase);
-          this.pendingOTPs.delete(standardPhone);
+          if (pendingOtp.type === "student") {
+            // Student OTP Verified successfully!
+            session.stage = "VERIFIED";
+            session.verifiedStudent = pendingOtp.candidate;
+            session.candidateStudent = undefined;
+            session.candidateStudents = undefined;
+            session.accumulatedMatches = undefined;
+            session.failedVerificationAttempts = 0;
+            this.pendingOTPs.delete(standardPhone);
 
-          const isLeader = verified.role === "Principal" || verified.role === "Admin" || verified.role === "Director" || !!verified.email;
-          const welcomeMsg = 
+            const detailsMsg = await this.buildStudentReply(supabase, pendingOtp.candidate, session.pendingIntent || "general");
+            const welcomeMsg = 
+`✅ *TASDEEQ KAMYAB (SECURITY OTP VERIFIED)*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Student *${pendingOtp.candidate.full_name}* (Roll: *${pendingOtp.candidate.college_no || pendingOtp.candidate.id || "N/A"}*) ka official record verify ho chuka hai:
+
+${detailsMsg}`;
+            return await sendReply(welcomeMsg, "Student OTP Verified Succeeded", pendingOtp.candidate.full_name);
+          } else {
+            // Faculty / Staff OTP Verified successfully!
+            const verified: VerifiedUser = {
+              phone: standardPhone,
+              role: pendingOtp.candidate.role,
+              staffId: pendingOtp.candidate.staffId,
+              name: pendingOtp.candidate.name,
+              email: pendingOtp.candidate.email,
+              designation: pendingOtp.candidate.designation,
+              linkedAt: new Date().toISOString(),
+            };
+            this.verifiedUsers.set(standardPhone, verified);
+            await this.saveVerifiedUsers(supabase);
+            this.pendingOTPs.delete(standardPhone);
+
+            const isLeader = verified.role === "Principal" || verified.role === "Admin" || verified.role === "Director" || !!verified.email;
+            const welcomeMsg = 
 `✅ *TASDEEQ KAMYAB (VERIFICATION COMPLETED)*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Khush-amdeed Mohtaram *${verified.name}*!
@@ -1458,12 +2375,13 @@ ${isLeader ? `📊 *3. Institutional Overview* (Total strength, collection, staf
 🚪 *4. Logout / Unlink*
 
 _Tip: Aap seedha likh sakte hain: "Mera aaj ka timetable kya hai?" ya "Student SGC-26-419 ka fee status dikhao"._`;
-          return await sendReply(welcomeMsg, "OTP Verification Succeeded", verified.name);
+            return await sendReply(welcomeMsg, "OTP Verification Succeeded", verified.name);
+          }
         } else {
           pendingOtp.attempts = (pendingOtp.attempts || 0) + 1;
           if (pendingOtp.attempts >= 3) {
             this.pendingOTPs.delete(standardPhone);
-            const failMsg = "❌ *3 Martaba Ghalat OTP!* Security policy ke tehat yeh verification cancel kar di gayi hai. Dobara koshish ke liye *login* likhein.";
+            const failMsg = "❌ *3 Martaba Ghalat OTP!* Security policy ke tehat yeh verification cancel kar di gayi hai. Dobara koshish ke liye naye sirey se query likhein.";
             return await sendReply(failMsg, "OTP Attempts Exceeded");
           } else {
             const retryMsg = `❌ *Ghalat Verification Code!* Baraye meherbani 4-digit code dobara check karke likhein.\n\n⚠️ Baqaya koshishein: *${3 - pendingOtp.attempts}*`;
@@ -1590,14 +2508,18 @@ Respond with high professional respect (polite Urdu / English / Hinglish). Answe
       cleanQuery.startsWith("stf-");
 
     let matchedCandidate: any = null;
+    let matchedByPhone = false;
     try {
       const { data: staffList } = await supabase.from("staff").select("*");
       if (staffList && staffList.length > 0) {
         // First check by phone number
         matchedCandidate = staffList.find((st: any) => {
           const stPhone = this.normalizePhoneNumber(st.contact);
-          return stPhone && stPhone === standardPhone;
+          return stPhone && (stPhone === standardPhone || (stPhone.length >= 9 && standardPhone.endsWith(stPhone.slice(-9))));
         });
+        if (matchedCandidate) {
+          matchedByPhone = true;
+        }
 
         // If not matched by phone, but user entered a query that might contain Staff ID or Name
         if (!matchedCandidate && isStaffLoginTrigger) {
@@ -1610,23 +2532,39 @@ Respond with high professional respect (polite Urdu / English / Hinglish). Answe
       }
 
       // If still not matched, check permissions table for admins
-      if (!matchedCandidate && isStaffLoginTrigger) {
+      if (!matchedCandidate) {
         const { data: perms } = await supabase.from("permissions").select("*");
         if (perms && perms.length > 0) {
-          const matchedPerm = perms.find((p: any) => {
-            const dName = (p.display_name || "").toLowerCase();
-            const email = (p.email || "").toLowerCase();
-            return dName === cleanQuery || cleanQuery.includes(dName) || email === cleanQuery;
+          const permByPhone = perms.find((p: any) => {
+            const pPhone = this.normalizePhoneNumber(p.contact || p.phone);
+            return pPhone && (pPhone === standardPhone || (pPhone.length >= 9 && standardPhone.endsWith(pPhone.slice(-9))));
           });
-          if (matchedPerm) {
+          if (permByPhone) {
             matchedCandidate = {
-              id: `ADM-${matchedPerm.id.slice(0, 4)}`,
-              full_name: matchedPerm.display_name || "System Admin",
-              role: matchedPerm.is_admin ? "Principal" : "Admin",
+              id: `ADM-${permByPhone.id.slice(0, 4)}`,
+              full_name: permByPhone.display_name || "System Admin",
+              role: permByPhone.is_admin ? "Principal" : "Admin",
               contact: standardPhone,
-              designation: matchedPerm.is_admin ? "Principal / Super Admin" : "Sub Admin",
-              email: matchedPerm.email
+              designation: permByPhone.is_admin ? "Principal / Super Admin" : "Sub Admin",
+              email: permByPhone.email,
             };
+            matchedByPhone = true;
+          } else if (isStaffLoginTrigger) {
+            const matchedPerm = perms.find((p: any) => {
+              const dName = (p.display_name || "").toLowerCase();
+              const email = (p.email || "").toLowerCase();
+              return dName === cleanQuery || cleanQuery.includes(dName) || email === cleanQuery;
+            });
+            if (matchedPerm) {
+              matchedCandidate = {
+                id: `ADM-${matchedPerm.id.slice(0, 4)}`,
+                full_name: matchedPerm.display_name || "System Admin",
+                role: matchedPerm.is_admin ? "Principal" : "Admin",
+                contact: standardPhone,
+                designation: matchedPerm.is_admin ? "Principal / Super Admin" : "Sub Admin",
+                email: matchedPerm.email,
+              };
+            }
           }
         }
       }
@@ -1634,50 +2572,205 @@ Respond with high professional respect (polite Urdu / English / Hinglish). Answe
       console.warn("[WhatsApp Bot] Error checking staff candidates:", searchErr);
     }
 
-    if (matchedCandidate && isStaffLoginTrigger) {
-      const otp = Math.floor(1000 + Math.random() * 9000).toString();
-      const candidatePhone = this.normalizePhoneNumber(matchedCandidate.contact || standardPhone);
-
-      this.pendingOTPs.set(standardPhone, {
-        code: otp,
+    // C1: REGISTERED STAFF — ZERO OTP ACCESS!
+    if (matchedCandidate && matchedByPhone) {
+      const verified: VerifiedUser = {
         phone: standardPhone,
-        expiresAt: Date.now() + 5 * 60 * 1000,
-        attempts: 0,
-        registeredPhone: candidatePhone,
-        candidate: {
-          role: matchedCandidate.role || "Faculty",
-          staffId: matchedCandidate.id,
-          name: matchedCandidate.full_name,
-          designation: matchedCandidate.designation || matchedCandidate.role,
-          email: matchedCandidate.email,
-          contact: candidatePhone
+        role: matchedCandidate.role || "Faculty",
+        staffId: matchedCandidate.id,
+        name: matchedCandidate.full_name,
+        email: matchedCandidate.email,
+        designation: matchedCandidate.designation || matchedCandidate.role,
+        linkedAt: new Date().toISOString(),
+      };
+      this.verifiedUsers.set(standardPhone, verified);
+      await this.saveVerifiedUsers(supabase);
+
+      const isLeader = verified.role === "Principal" || verified.role === "Admin" || verified.role === "Director" || !!verified.email;
+      const isTimetable = cleanQuery.includes("timetable") || cleanQuery.includes("lecture") || cleanQuery === "1" || cleanQuery.startsWith("1.");
+      const isOverview = cleanQuery.includes("strength") || cleanQuery.includes("overview") || cleanQuery.includes("attendance") || cleanQuery === "3" || cleanQuery.startsWith("3.");
+
+      if (isTimetable && verified.staffId) {
+        const timetableText = await this.getTeacherTimetable(supabase, verified.staffId, verified.name);
+        return await sendReply(timetableText, "Teacher Timetable Auto-Reply", verified.name);
+      } else if (isOverview) {
+        if (isLeader) {
+          const reportText = await this.getInstitutionalReport(supabase, verified.name);
+          return await sendReply(reportText, "Executive Institutional Report", verified.name);
+        } else {
+          const personalSummary = await this.getStaffPersonalSummary(supabase, verified.staffId || "", verified.name);
+          return await sendReply(personalSummary, "Staff Personal Summary", verified.name);
         }
-      });
-
-      const otpMsg = 
-`🔒 *SUPERIOR COLLEGE JAHANIAN — SECURITY VERIFICATION*
+      } else {
+        const menuMsg = this.getFacultyMenuText(verified);
+        const welcomeMsg = 
+`🏛️ *SUPERIOR COLLEGE JAHANIAN — FACULTY DESK*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Khush-amdeed *${matchedCandidate.full_name}*!
-🏷️ *Role:* ${matchedCandidate.role || "Faculty Member"} ${matchedCandidate.id ? `(${matchedCandidate.id})` : ""}
+Assalam-o-Alaikum Mohtaram *${verified.name}*!
+🏷️ *Role / Designation:* ${verified.designation || verified.role} ${verified.staffId ? `(${verified.staffId})` : ""}
+📱 *Registered Mobile:* ${standardPhone}
 
-Aapki identity tasdeeq ke liye 4-digit verification code hai:
+✅ *Direct Access Enabled (Zero OTP)*
+Aapka WhatsApp number College Faculty Database mein darj shuda hai.
+
+${menuMsg}`;
+        return await sendReply(welcomeMsg, "Faculty Auto-Verified Welcome (Zero OTP)", verified.name);
+      }
+    }
+
+    // C2: UNREGISTERED / UNKNOWN NUMBER ATTEMPTING FACULTY LOGIN — REMOTE MASKED OTP CHALLENGE!
+    if (matchedCandidate && !matchedByPhone && isStaffLoginTrigger) {
+      const candidatePhone = this.normalizePhoneNumber(matchedCandidate.contact || "");
+      if (candidatePhone && candidatePhone.length >= 10) {
+        const otp = Math.floor(1000 + Math.random() * 9000).toString();
+        this.pendingOTPs.set(standardPhone, {
+          code: otp,
+          phone: standardPhone,
+          expiresAt: Date.now() + 5 * 60 * 1000,
+          attempts: 0,
+          type: "staff",
+          registeredPhone: candidatePhone,
+          candidate: {
+            role: matchedCandidate.role || "Faculty",
+            staffId: matchedCandidate.id,
+            name: matchedCandidate.full_name,
+            designation: matchedCandidate.designation || matchedCandidate.role,
+            email: matchedCandidate.email,
+            contact: candidatePhone,
+          },
+        });
+
+        const otpMsg = 
+`🔐 *SECURITY ALERT — FACULTY DESK LOGIN*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mohtaram *${matchedCandidate.full_name}* (${matchedCandidate.designation || matchedCandidate.role})!
+Aapke profile par kisi unknown WhatsApp number (${standardPhone}) se Faculty Desk login ki request ki gayi hai.
+
+Agar yeh request aapne ki hai to 4-digit verification code:
 🔢 *${otp}*
 
-⚠️ Yeh code aglay *5 minute* ke liye valid hai.
-Baraye meherbani yeh 4-digit code isi chat mein reply karein.
-
-_(Kamyab tasdeeq ke baad aapka WhatsApp number permanent link ho jayega aur dobara kabhi OTP nahi mangi jayegi)._`;
-
-      await sendReply(otpMsg, "Faculty OTP Dispatched", matchedCandidate.full_name);
-
-      if (candidatePhone && candidatePhone !== standardPhone) {
+⚠️ Yeh code aglay 5 minute ke liye valid hai. Agar aapne login request nahi ki to kisi ko share na karein.`;
         await this.sendMessage(candidatePhone, otpMsg);
+
+        const masked = this.maskPhoneNumber(candidatePhone);
+        const challengeMsg = 
+`🔒 *FACULTY ACCESS VERIFICATION REQUIRED*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mohtaram *${matchedCandidate.full_name}* (${matchedCandidate.designation || matchedCandidate.role})!
+
+Aap kisi ghair-tasdeeq shuda WhatsApp number (${standardPhone}) se Faculty Desk access karne ki koshish kar rahe hain.
+Security policy ke tehat, humne aapke College Record mein darj mobile number (*${masked}*) par 4-digit Verification Code (OTP) bhej diya hai.
+
+Baraye meherbani wo 4-digit code yahan reply karein:`;
+        return await sendReply(challengeMsg, "Faculty Remote OTP Dispatched", matchedCandidate.full_name);
       }
-      return otpMsg;
+    }
+
+    // ─── D. CHECK IF SENDER IS A REGISTERED STUDENT OR PARENT (ZERO OTP ACCESS) ───
+    const registeredStudents = await this.findStudentsByRegisteredPhone(supabase, standardPhone);
+    if (registeredStudents.length > 0) {
+      if (registeredStudents.length === 1) {
+        const student = registeredStudents[0];
+        session.stage = "VERIFIED";
+        session.verifiedStudent = student;
+        session.candidateStudent = undefined;
+        session.candidateStudents = undefined;
+        session.accumulatedMatches = undefined;
+
+        // Check if query is for fee, marks, attendance, or general record
+        const isFee = cleanQuery === "1" || cleanQuery.startsWith("1.") || cleanQuery.includes("fee") || cleanQuery.includes("dues") || cleanQuery.includes("baqaya") || cleanQuery.includes("fees");
+        const isMarks = cleanQuery === "2" || cleanQuery.startsWith("2.") || cleanQuery.includes("mark") || cleanQuery.includes("result") || cleanQuery.includes("test") || cleanQuery.includes("exam");
+        const isAtt = cleanQuery === "3" || cleanQuery.startsWith("3.") || cleanQuery.includes("attend") || cleanQuery.includes("hazir") || cleanQuery.includes("ghair") || cleanQuery.includes("absent") || cleanQuery.includes("hazri");
+        const isAll = cleanQuery === "4" || cleanQuery.startsWith("4.") || cleanQuery.includes("all") || cleanQuery.includes("report") || cleanQuery.includes("record") || cleanQuery.includes("dossier");
+
+        if (isFee || isMarks || isAtt || isAll) {
+          const currentIntent = isFee ? "fee" : isMarks ? "marks" : isAtt ? "attendance" : "general";
+          const detailsMsg = await this.buildStudentReply(supabase, student, currentIntent);
+          return await sendReply(detailsMsg, `Registered Student Direct Query (${currentIntent})`, student.full_name);
+        }
+
+        // If user sent a greeting or menu request:
+        const isGreeting = 
+          cleanQuery.includes("salam") || 
+          cleanQuery.includes("assalam") || 
+          cleanQuery.includes("aoa") || 
+          cleanQuery === "hi" || 
+          cleanQuery === "hello" || 
+          cleanQuery === "0" || 
+          cleanQuery === "menu" || 
+          cleanQuery === "start" || 
+          cleanQuery === "shuru";
+
+        if (isGreeting) {
+          const studentWelcome = 
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
+🌸 *STUDENT & PARENT DESK*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum!
+Khush-amdeed Mohtaram (Parent of *${student.full_name}*)!
+🏷️ *Student:* ${student.full_name} (Roll: *${student.college_no || student.id || "N/A"}*, Class: ${student.group || student.section || "Intermediate"})
+📱 *Registered WhatsApp:* ${standardPhone}
+
+✅ *Direct Verified Access (Zero OTP Required)*
+Aapka number hamare College Record mein darj shuda hai.
+
+Aap seedha yeh maloomat hasil kar sakte hain:
+💵 *1. Fee Status & Dues*
+📊 *2. Test & Exam Results*
+📋 *3. Attendance Record*
+📄 *4. Complete Student Dossier*
+
+_Kahiye, aaj aapko kya maloomat darkaar hain? (Aap 1, 2, 3 likh sakte hain ya seedha sawal pooch sakte hain)._`;
+          return await sendReply(studentWelcome, "Registered Student Welcome (Zero OTP)", student.full_name);
+        }
+      } else {
+        // Multiple Siblings under this phone
+        const cleanDigits = cleanQuery.replace(/\D/g, "");
+        let pickedSibling: any = null;
+        if (cleanDigits && parseInt(cleanDigits, 10) >= 1 && parseInt(cleanDigits, 10) <= registeredStudents.length) {
+          pickedSibling = registeredStudents[parseInt(cleanDigits, 10) - 1];
+        } else {
+          pickedSibling = registeredStudents.find((s: any) => {
+            const sName = (s.full_name || "").toLowerCase();
+            const sRoll = String(s.college_no || s.id || "").toLowerCase();
+            return cleanQuery.includes(sName) || (sRoll && cleanQuery.includes(sRoll));
+          });
+        }
+
+        if (pickedSibling) {
+          session.stage = "VERIFIED";
+          session.verifiedStudent = pickedSibling;
+          session.candidateStudents = undefined;
+          const isFee = cleanQuery.includes("fee") || cleanQuery.includes("dues") || cleanQuery.includes("baqaya");
+          const isMarks = cleanQuery.includes("mark") || cleanQuery.includes("result") || cleanQuery.includes("test");
+          const isAtt = cleanQuery.includes("attend") || cleanQuery.includes("hazir") || cleanQuery.includes("absent");
+          const currentIntent = isFee ? "fee" : isMarks ? "marks" : isAtt ? "attendance" : "general";
+          const detailsMsg = await this.buildStudentReply(supabase, pickedSibling, currentIntent);
+          return await sendReply(detailsMsg, `Registered Sibling Selected (${currentIntent})`, pickedSibling.full_name);
+        }
+
+        session.candidateStudents = registeredStudents;
+        const sibOptions = registeredStudents.map((s, idx) => 
+          `${idx + 1}. *${s.full_name}* (Roll: *${s.college_no || s.id || "N/A"}*, Class: ${s.group || s.section || "Inter"})`
+        ).join("\n");
+
+        const sibMsg = 
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum!
+Aapke is WhatsApp number par College Database mein darj zail (*${registeredStudents.length}*) students register shuda hain:
+
+${sibOptions}
+
+✅ *Direct Access (Zero OTP)*
+Baraye meherbani batayein aap kis student ka record dekhna chahte hain (1 ya 2 likhein ya student ka naam):`;
+        return await sendReply(sibMsg, "Registered Sibling Selection Prompt");
+      }
     }
 
     // 1. Reset / Restart Session
     if (cleanQuery === "reset" || cleanQuery === "restart" || cleanQuery === "cancel" || cleanQuery === "wapis") {
+      this.pendingOTPs.delete(standardPhone);
       session.stage = "IDLE";
       session.candidateStudent = undefined;
       session.candidateStudents = undefined;
@@ -1688,7 +2781,6 @@ _(Kamyab tasdeeq ke baad aapka WhatsApp number permanent link ho jayega aur doba
       session.targetStudentQuery = undefined;
       session.history = [];
       const resetMsg = "🔄 Session reset ho chuki hai. Main *Superior Nexus* hoon. Kahiye, main aapki kya madad kar sakti hoon? Aap kisi student ka Naam, Walid ka Naam, Class Section (maslan: MEPB), ya Roll Number likh sakte hain, ya koi bhi general sawal pooch sakte hain.";
-      return await sendReply(resetMsg, "Session Reset");
     }
 
     // 2. Explicit Menu Request (0, menu, options, help)
@@ -1855,6 +2947,28 @@ _Directorate of Admissions, SGC Jahanian_`;
     const rollMatch = text.match(/\b([0-9]{3,6})\b/);
     if (rollMatch) {
       explicitRoll = rollMatch[1];
+    }
+
+    // 9b. Check if sender has a pending photo waiting to be attached to a student
+    const pendingPhoto = this.pendingStudentPhotos.get(standardPhone);
+    if (pendingPhoto) {
+      if (Date.now() - pendingPhoto.timestamp > 15 * 60 * 1000) {
+        this.pendingStudentPhotos.delete(standardPhone);
+      } else {
+        const photoCandidateLookup = await this.findStudentCandidate(supabase, text, rawNumber, explicitRoll);
+        if (photoCandidateLookup.candidate) {
+          const candidate = photoCandidateLookup.candidate;
+          this.pendingStudentPhotos.delete(standardPhone);
+          const confirmation = await this.applyStudentPhoto(supabase, candidate, pendingPhoto.buffer, senderJid, rawNumber);
+          return confirmation;
+        } else if (photoCandidateLookup.multipleMatches && photoCandidateLookup.multipleMatches.length > 1) {
+          const listStr = photoCandidateLookup.multipleMatches.slice(0, 4).map((s: any, idx: number) => 
+            `${idx + 1}. *${s.full_name}* (Roll: *${s.college_no || s.id}*, Class: ${s.group || "Inter"})`
+          ).join("\n");
+          const multiPrompt = `📸 *Tasveer Link Karne Ke Liye:* 1 se zyada students match hue hain:\n\n${listStr}\n\nBaraye meherbani specific Roll Number (maslan: *${photoCandidateLookup.multipleMatches[0].college_no || photoCandidateLookup.multipleMatches[0].id}*) likh kar reply karein:`;
+          return await sendReply(multiPrompt, "Photo Ambiguous Multi-Match");
+        }
+      }
     }
 
     // 10. If user is ALREADY VERIFIED in this session:
@@ -2027,70 +3141,88 @@ Baraye meherbani student ke *Walid ka Naam (Father Name)* ya *Class Section (mas
     // 14. If Candidate Found:
     if (lookup.candidate) {
       const candidate = lookup.candidate;
-      const evalResult = this.evaluateVerificationCredentials(candidate, text, rawNumber, explicitRoll);
 
-      // If credentials already satisfied in this query (e.g. User sent Name + Father Name, or Name + Section, or Roll Number, or registered phone + Name):
-      if (evalResult.isSatisfied) {
-        session.stage = "VERIFIED";
-        session.verifiedStudent = candidate;
-        session.candidateStudent = undefined;
-        session.candidateStudents = undefined;
-        session.accumulatedMatches = undefined;
-        session.failedVerificationAttempts = 0;
+      // Extract registered contact number from DB
+      const candidatePhone = this.normalizePhoneNumber(
+        candidate.contact || 
+        candidate.contact_number || 
+        candidate.father_contact || 
+        candidate.secondary_contact || 
+        ""
+      );
 
-        const verificationReasonStr = evalResult.matchedReasons.length > 0 
-          ? ` (${evalResult.matchedReasons.join(" + ")})` 
-          : "";
+      // If registered phone exists in DB -> REMOTE 4-DIGIT OTP SECURITY CHALLENGE!
+      if (candidatePhone && candidatePhone.length >= 10) {
+        const otp = Math.floor(1000 + Math.random() * 9000).toString();
+        this.pendingOTPs.set(standardPhone, {
+          code: otp,
+          phone: standardPhone,
+          expiresAt: Date.now() + 5 * 60 * 1000,
+          attempts: 0,
+          type: "student",
+          candidate: candidate,
+          registeredPhone: candidatePhone,
+        });
 
-        const successGreeting = 
-`Shukriya! Aapki tasdeeq (Verification) kamyab ho chuki hai. ✅${verificationReasonStr}
+        // 1. Dispatch OTP to the student's official registered phone in DB
+        const otpAlertMsg = 
+`🔐 *SECURITY ALERT — SUPERIOR COLLEGE JAHANIAN*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Student *${candidate.full_name}* (Roll: *${candidate.college_no || candidate.id || "N/A"}*) ka record WhatsApp par kisi unknown number (${standardPhone}) se access karne ki koshish ki gayi hai.
+
+Agar yeh request aapne ya aapki ijazat se ki gayi hai, to yeh 4-digit Verification Code (OTP) use karein:
+🔢 *${otp}*
+
+⚠️ Yeh code aglay *5 minute* ke liye valid hai. Agar aapne yeh request nahi ki to yeh code kisi se share na karein!`;
+        await this.sendMessage(candidatePhone, otpAlertMsg);
+
+        // 2. Reply to the unknown requester with masked phone challenge
+        const masked = this.maskPhoneNumber(candidatePhone);
+        const challengeMsg = 
+`🔒 *SECURITY VERIFICATION REQUIRED*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Student *${candidate.full_name}* (Roll/ID: *${candidate.college_no || candidate.id || "N/A"}*, Class: ${candidate.group || candidate.section || "Intermediate"}) ka record dhoondh liya gaya hai.
+
+Student privacy aur security ke pesh-e-nazar, humne student ke College Record mein darj official number (*${masked}*) par 4-digit Verification Code (OTP) bhej diya hai.
+
+Baraye meherbani wo 4-digit OTP code yahan reply karein taake record share kiya ja sake:`;
+        return await sendReply(challengeMsg, "Student Remote OTP Challenge Sent", candidate.full_name);
+      } else {
+        // Fallback if student record has no phone number in DB:
+        const evalResult = this.evaluateVerificationCredentials(candidate, text, rawNumber, explicitRoll);
+        if (evalResult.isSatisfied) {
+          session.stage = "VERIFIED";
+          session.verifiedStudent = candidate;
+          session.candidateStudent = undefined;
+          session.candidateStudents = undefined;
+          session.accumulatedMatches = undefined;
+          session.failedVerificationAttempts = 0;
+
+          const successGreeting = 
+`Shukriya! Aapki tasdeeq (Verification) kamyab ho chuki hai. ✅
 Hum *${candidate.full_name}* (Walid: ${candidate.father_name}, Sec: ${candidate.section || "A"}) ka official record share kar rahe hain:`;
 
-        const detailsMsg = await this.buildStudentReply(supabase, candidate, session.pendingIntent || "general");
-        const combined = `${successGreeting}\n\n${detailsMsg}`;
-        return await sendReply(combined, `Direct Verified Reply`, candidate.full_name);
-      }
+          const detailsMsg = await this.buildStudentReply(supabase, candidate, session.pendingIntent || "general");
+          const combined = `${successGreeting}\n\n${detailsMsg}`;
+          return await sendReply(combined, `Direct Verified Reply`, candidate.full_name);
+        }
 
-      // If not yet fully satisfied, enter AWAITING_VERIFICATION stage:
-      session.candidateStudent = candidate;
-      session.stage = "AWAITING_VERIFICATION";
-      session.failedVerificationAttempts = 0;
-      session.accumulatedMatches = {
-        name: evalResult.nameMatched,
-        father: evalResult.fatherMatched,
-        section: evalResult.sectionMatched,
-        phone: evalResult.phoneMatched,
-        roll: evalResult.rollMatched,
-        bay: evalResult.bayMatched,
-      };
+        session.candidateStudent = candidate;
+        session.stage = "AWAITING_VERIFICATION";
+        session.failedVerificationAttempts = 0;
+        session.accumulatedMatches = {
+          name: evalResult.nameMatched,
+          father: evalResult.fatherMatched,
+          section: evalResult.sectionMatched,
+          phone: evalResult.phoneMatched,
+          roll: evalResult.rollMatched,
+          bay: evalResult.bayMatched,
+        };
 
-      if (evalResult.isPhoneVerified) {
-        // WhatsApp message originates from the registered contact number in database!
         const challengeMsg = 
-`Superior College Jahanian mein khush-amdeed. 🌸
-
-Aapka number hamare college record mein register shuda hai.
-Student privacy aur security policy ke tehat, record dekhne ke liye tasdeeq zaroori hai.
-
-🛡️ *Security Verification:*
-Baraye meherbani in mein se koi aik cheez likh kar reply farmayein:
-• Student ka Mukammal Naam (Student Name)
-• Walid ka Naam (Father's Name)
-• Class Section (maslan: MEPB ya ICS)
-• Roll Number (agar yaad ho)`;
-        return await sendReply(challengeMsg, "Verification Challenge Sent (Registered Phone)", `Pending (${candidate.full_name})`);
-      } else {
-        // Third-party SIM or unknown phone:
-        const challengeMsg = 
-`Superior College Jahanian Information Desk. 🏛️
-
-Student (*${candidate.full_name}*) ka record dhoondh liya gaya hai.
-Student privacy aur hifazat ke pesh-e-nazar, tasdeeq mukammal karne ke liye baraye meherbani in mein se koi cheez darj farmayein:
-• Walid ka Naam (Father's Name)
-• Class Section (maslan: MEPB ya ICS)
-• College mein register Mobile Number
-• Roll Number ya Student ID`;
-        return await sendReply(challengeMsg, "Verification Challenge Sent (Unverified Phone)", `Pending (${candidate.full_name})`);
+`Student (*${candidate.full_name}*) ka record dhoondh liya gaya hai lekin database mein contact number darj nahi hai.
+Student privacy aur hifazat ke pesh-e-nazar, tasdeeq mukammal karne ke liye baraye meherbani Walid ka Naam (Father's Name) ya Class Section (maslan: MEPB ya ICS) likh kar reply karein:`;
+        return await sendReply(challengeMsg, "Missing Phone Fallback Challenge", candidate.full_name);
       }
     }
 
@@ -2381,6 +3513,28 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
     }
 
     return cleaned;
+  }
+
+  // Masks phone number revealing the operator prefix and last 3 digits (e.g. 0301-XXXX891)
+  public maskPhoneNumber(phone: string): string {
+    if (!phone) return "XXXX-XXXXXXX";
+    const digits = phone.replace(/\D/g, "");
+    let local = digits;
+    if (local.startsWith("92")) {
+      local = "0" + local.slice(2);
+    } else if (!local.startsWith("0") && local.length === 10) {
+      local = "0" + local;
+    }
+    if (local.length >= 11) {
+      const prefix = local.slice(0, 4);
+      const last3 = local.slice(-3);
+      return `${prefix}-XXXX${last3}`;
+    } else if (local.length >= 7) {
+      const prefix = local.slice(0, 3);
+      const last3 = local.slice(-3);
+      return `${prefix}-XXXX${last3}`;
+    }
+    return local.slice(0, 2) + "-XXXX-" + local.slice(-2);
   }
 
   public async sendMessage(

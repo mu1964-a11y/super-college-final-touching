@@ -611,6 +611,72 @@ ${statsText}`,
       res.status(500).json({ error: err.message });
     }
   });
+  app.post("/api/whatsapp/link-user", async (req, res) => {
+    try {
+      const { phone, name, role, staffId, designation, email } = req.body;
+      if (!phone || !name) {
+        return res.status(400).json({ error: "Phone and Name are required." });
+      }
+      const success = await whatsappBridge.linkVerifiedUser({
+        phone,
+        name,
+        role: role || "Teacher",
+        staffId,
+        designation,
+        email,
+        linkedAt: (/* @__PURE__ */ new Date()).toISOString()
+      });
+      res.json({ success });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.get("/api/whatsapp/scheduled-reports/config", async (req, res) => {
+    try {
+      const config = await whatsappBridge.getAutomatedReportConfig();
+      res.json(config);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/scheduled-reports/config", async (req, res) => {
+    try {
+      const config = await whatsappBridge.saveAutomatedReportConfig(null, req.body);
+      res.json(config);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/scheduled-reports/send-now", async (req, res) => {
+    try {
+      const { reportType = "daily", phone } = req.body;
+      const result = await whatsappBridge.dispatchScheduledReport(reportType, true, null, phone);
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/scheduled-reports/preview", async (req, res) => {
+    try {
+      const { reportType = "daily" } = req.body;
+      const supabase = await whatsappBridge.getSupabase();
+      const config = await whatsappBridge.getAutomatedReportConfig(supabase);
+      let previewText = "";
+      if (reportType === "daily") {
+        previewText = await whatsappBridge.generateDailyFlashReport(supabase, config.daily);
+      } else if (reportType === "weekly") {
+        previewText = await whatsappBridge.generateWeeklyExecutiveSummary(supabase, config.weekly);
+      } else if (reportType === "monthly") {
+        previewText = await whatsappBridge.generateMonthlyAuditBrief(supabase, config.monthly);
+      }
+      res.json({ success: true, previewText });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
   app.post("/api/whatsapp/send", async (req, res) => {
     try {
       const { phone, message } = req.body;
@@ -772,6 +838,16 @@ Return strictly the raw JSON without markdown code fences.`;
       res.status(500).json({ error: e.message || "Failed to process AI WhatsApp command." });
     }
   });
+  const uploadsDir = path.join(process.cwd(), "public", "uploads");
+  const studentPhotosDir = path.join(uploadsDir, "student-photos");
+  if (!fs.existsSync(studentPhotosDir)) {
+    try {
+      fs.mkdirSync(studentPhotosDir, { recursive: true });
+    } catch (e) {
+      console.warn("[Server] Could not create student-photos dir:", e);
+    }
+  }
+  app.use("/uploads", express.static(uploadsDir));
   app.get(["/downloads/:filename", "/api/download/:filename"], (req, res) => {
     const filename = req.params.filename;
     const candidatePaths = [

@@ -8,7 +8,7 @@ import {
   User, ArrowLeft, Trash2, ExternalLink, Smile, Paperclip, MoreVertical,
   Reply, X, BarChart3, Activity, Download, Eye, DollarSign, Calendar,
   BookOpen, ShieldAlert, PieChart, Lock, Filter, Smartphone, HelpCircle,
-  CheckCircle, Info, ChevronDown
+  CheckCircle, Info, ChevronDown, Plus, CalendarCheck, TrendingUp, Bell
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
@@ -40,7 +40,18 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
   const globalSettings = data?.settings || {};
 
   // Active navigation tab
-  const [activeTab, setActiveTab] = useState<"messenger" | "broadcaster" | "bot_dashboard">("messenger");
+  const [activeTab, setActiveTab] = useState<"messenger" | "broadcaster" | "bot_dashboard" | "automated_reports">("messenger");
+
+  // Automated Reports States
+  const [reportConfig, setReportConfig] = useState<any>(null);
+  const [isLoadingReportConfig, setIsLoadingReportConfig] = useState(false);
+  const [isSavingReportConfig, setIsSavingReportConfig] = useState(false);
+  const [isSendingTestReport, setIsSendingTestReport] = useState<string | null>(null);
+  const [reportPreviewModal, setReportPreviewModal] = useState<{ isOpen: boolean; title: string; text: string }>({
+    isOpen: false,
+    title: "",
+    text: "",
+  });
 
   // Audience selector states (Used inside Tab 2: Broadcaster)
   const [targetGroup, setTargetGroup] = useState("All Students");
@@ -89,6 +100,16 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
   const [botSimSenderPhone, setBotSimSenderPhone] = useState("03014455891");
   const [botSimResponse, setBotSimResponse] = useState<string | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
+
+  // Verified Faculty & Admin Users state
+  const [verifiedUsersList, setVerifiedUsersList] = useState<any[]>([]);
+  const [isLoadingVerifiedUsers, setIsLoadingVerifiedUsers] = useState(false);
+  const [isLinkingFacultyModal, setIsLinkingFacultyModal] = useState(false);
+  const [selectedStaffIdToLink, setSelectedStaffIdToLink] = useState("");
+  const [manualLinkName, setManualLinkName] = useState("");
+  const [manualLinkPhone, setManualLinkPhone] = useState("");
+  const [manualLinkRole, setManualLinkRole] = useState("Teacher");
+  const [manualLinkDesignation, setManualLinkDesignation] = useState("");
 
   // AI assistant status
   const [isAiComposing, setIsAiComposing] = useState(false);
@@ -170,15 +191,189 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
     }
   };
 
+  const fetchVerifiedUsers = async () => {
+    try {
+      setIsLoadingVerifiedUsers(true);
+      const res = await fetch("/api/whatsapp/verified-users");
+      if (res.ok) {
+        const d = await res.json();
+        setVerifiedUsersList(d.users || []);
+      }
+    } catch {} finally {
+      setIsLoadingVerifiedUsers(false);
+    }
+  };
+
+  const handleUnlinkUser = async (phone: string, name: string) => {
+    if (!confirm(`Are you sure you want to unlink ${name} (+${phone}) from WhatsApp Faculty Desk?`)) return;
+    try {
+      const res = await fetch("/api/whatsapp/unlink-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      if (res.ok) {
+        toast.success(`Unlinked ${name} successfully.`);
+        fetchVerifiedUsers();
+      } else {
+        toast.error("Failed to unlink user.");
+      }
+    } catch {
+      toast.error("Network error while unlinking.");
+    }
+  };
+
+  const handleQuickLinkStaff = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    let phoneToLink = manualLinkPhone.trim();
+    let nameToLink = manualLinkName.trim();
+    let roleToLink = manualLinkRole;
+    let designationToLink = manualLinkDesignation.trim();
+    let staffIdToLink = "";
+
+    if (selectedStaffIdToLink) {
+      const st = staff.find((s: any) => s.id === selectedStaffIdToLink);
+      if (st) {
+        nameToLink = st.fullName || st.name || nameToLink;
+        phoneToLink = st.contact || st.phone || phoneToLink;
+        roleToLink = st.role || roleToLink;
+        designationToLink = st.designation || st.role || designationToLink;
+        staffIdToLink = st.id;
+      }
+    }
+
+    if (!phoneToLink || !nameToLink) {
+      toast.error("Please provide both Name and Phone number.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/whatsapp/link-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: phoneToLink,
+          name: nameToLink,
+          role: roleToLink,
+          staffId: staffIdToLink || undefined,
+          designation: designationToLink || undefined,
+        }),
+      });
+
+      if (res.ok) {
+        toast.success(`Authorized ${nameToLink} (+${phoneToLink}) for WhatsApp Faculty Desk!`);
+        setIsLinkingFacultyModal(false);
+        setSelectedStaffIdToLink("");
+        setManualLinkName("");
+        setManualLinkPhone("");
+        setManualLinkDesignation("");
+        fetchVerifiedUsers();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Failed to authorize user.");
+      }
+    } catch {
+      toast.error("Network error authorizing user.");
+    }
+  };
+
+  const fetchReportConfig = async () => {
+    setIsLoadingReportConfig(true);
+    try {
+      const res = await fetch("/api/whatsapp/scheduled-reports/config");
+      if (res.ok) {
+        const data = await res.json();
+        setReportConfig(data);
+      }
+    } catch (e) {
+      console.error("Error fetching report config:", e);
+    } finally {
+      setIsLoadingReportConfig(false);
+    }
+  };
+
+  const saveReportConfig = async (updatedConfig: any) => {
+    setIsSavingReportConfig(true);
+    try {
+      const res = await fetch("/api/whatsapp/scheduled-reports/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedConfig),
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setReportConfig(saved);
+        toast.success("Scheduled reports settings saved successfully!");
+      } else {
+        toast.error("Failed to save report settings.");
+      }
+    } catch {
+      toast.error("Network error while saving settings.");
+    } finally {
+      setIsSavingReportConfig(false);
+    }
+  };
+
+  const handleSendTestReport = async (reportType: "daily" | "weekly" | "monthly") => {
+    setIsSendingTestReport(reportType);
+    try {
+      const res = await fetch("/api/whatsapp/scheduled-reports/send-now", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportType }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(`Dispatched ${reportType.toUpperCase()} report to ${reportConfig?.principalPhone || "Principal"}!`);
+        setReportPreviewModal({
+          isOpen: true,
+          title: `Report Dispatched: ${reportType.toUpperCase()}`,
+          text: data.messageText || "",
+        });
+      } else {
+        toast.error(data.error || "Failed to dispatch test report.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to trigger test report.");
+    } finally {
+      setIsSendingTestReport(null);
+    }
+  };
+
+  const handlePreviewReport = async (reportType: "daily" | "weekly" | "monthly") => {
+    try {
+      const res = await fetch("/api/whatsapp/scheduled-reports/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportType }),
+      });
+      const data = await res.json();
+      if (res.ok && data.previewText) {
+        setReportPreviewModal({
+          isOpen: true,
+          title: `${reportType.toUpperCase()} Report Live Preview`,
+          text: data.previewText,
+        });
+      } else {
+        toast.error("Could not generate report preview.");
+      }
+    } catch {
+      toast.error("Network error generating preview.");
+    }
+  };
+
   useEffect(() => {
     fetchStatus();
     fetchBotSettings();
     fetchChatLogs();
     fetchBotStats();
+    fetchVerifiedUsers();
+    fetchReportConfig();
     const iv = setInterval(() => {
       fetchStatus();
       fetchChatLogs();
       fetchBotStats();
+      fetchVerifiedUsers();
     }, 4000);
     return () => clearInterval(iv);
   }, []);
@@ -387,6 +582,11 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
     return Array.from(new Set(students.map(s => s.group).filter(Boolean))).sort();
   }, [students]);
 
+  // Students missing photo
+  const missingPhotosCount = useMemo(() => {
+    return (students || []).filter(s => !s.photo || String(s.photo).trim().length < 50).length;
+  }, [students]);
+
   // Sync / Clean bulk queue if filters shift
   const filteredRecipients = useMemo(() => {
     if (targetGroup === "Staff") {
@@ -450,6 +650,10 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
         const paid = Number(s.feeReceived || 0);
         return (total - paid) > 0;
       });
+    }
+
+    if (targetGroup === "Missing Photos") {
+      List = List.filter(s => !s.photo || String(s.photo).trim().length < 50);
     }
 
     if (targetGroup === "Selective Students") {
@@ -690,6 +894,24 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
       promptInstruction = "Write a concise executive academic assessment report notification. Use header '🏛️ *SUPERIOR COLLEGE JAHANIAN*', divider '━━━━━━━━━━━━━━━━━━━━━━━━━', placeholders {{name}}, {{father}}, {{class}}, and {{marks}}. Keep it strictly to the point, signed off by '_Office of the Controller of Examinations, SGC Jahanian_'.";
     } else if (prebuiltStyle === "absent_staff") {
       promptInstruction = "Write a concise administrative faculty notice regarding punctual attendance and lecture timetables. Use header '🏛️ *SUPERIOR COLLEGE JAHANIAN*', divider '━━━━━━━━━━━━━━━━━━━━━━━━━', signed off by '_Office of the Vice Principal, SGC Jahanian_'.";
+    } else if (prebuiltStyle === "missing_photos") {
+      setTargetGroup("Missing Photos");
+      setMessageText(
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
+📸 *STUDENT ID CARD & PROFILE NOTIFICATION*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum Mohtaram {{father}}!
+Student *{{name}}* (Roll No: *{{rollNo}}*, Class: *{{class}}*) ke official Student ID Card aur portal profile ke liye passport-size tasveer darkar hai.
+
+Baraye meherbani student ki saaf passport-size tasveer isi WhatsApp chat mein foran bhej dein. Tasveer receive hote hi system mein auto-update ho jayegi.
+
+Shukriya!
+_Office of the Principal, SGC Jahanian_
+📞 0301-4455891`
+      );
+      toast.success(`Targeted students missing photos with ID Card template!`);
+      setIsAiComposing(false);
+      return;
     }
 
     if (!promptInstruction) {
@@ -1224,6 +1446,154 @@ _Administration Directorate, SGC Jahanian_`;
         )}
       </AnimatePresence>
 
+      {/* 2b. DEDICATED FACULTY / ADMIN AUTHORIZATION MODAL */}
+      <AnimatePresence>
+        {isLinkingFacultyModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 relative"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-400 flex items-center justify-center">
+                    <GraduationCap size={18} />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-sm text-slate-800 dark:text-white uppercase tracking-wider">
+                      Authorize WhatsApp Faculty Desk
+                    </h3>
+                    <p className="text-[10px] text-slate-400">Pre-link a Teacher or Admin for automated Bot Access</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsLinkingFacultyModal(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleQuickLinkStaff} className="space-y-4">
+                {/* Pick from Staff list */}
+                {staff && staff.length > 0 && (
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                      Select From Staff Directory (Auto-Fill)
+                    </label>
+                    <select
+                      value={selectedStaffIdToLink}
+                      onChange={(e) => {
+                        const sId = e.target.value;
+                        setSelectedStaffIdToLink(sId);
+                        const matched = staff.find((s: any) => s.id === sId);
+                        if (matched) {
+                          setManualLinkName(matched.fullName || matched.name || "");
+                          setManualLinkPhone(matched.contact || matched.phone || "");
+                          setManualLinkRole(matched.role || "Teacher");
+                          setManualLinkDesignation(matched.designation || matched.role || "");
+                        }
+                      }}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-[#064e43]"
+                    >
+                      <option value="">-- Choose a Staff Member (or enter manually below) --</option>
+                      {staff.map((st: any) => (
+                        <option key={st.id} value={st.id}>
+                          {st.fullName || st.name} ({st.role || "Faculty"}) {st.contact ? `- ${st.contact}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                      Full Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={manualLinkName}
+                      onChange={(e) => setManualLinkName(e.target.value)}
+                      placeholder="e.g. Prof. Tariq Mahmood"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-[#064e43]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                      WhatsApp Mobile Number *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={manualLinkPhone}
+                      onChange={(e) => setManualLinkPhone(e.target.value)}
+                      placeholder="0300-1234567"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-[#064e43]"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                      Role Category
+                    </label>
+                    <select
+                      value={manualLinkRole}
+                      onChange={(e) => setManualLinkRole(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-[#064e43]"
+                    >
+                      <option value="Teacher">Teacher / Faculty</option>
+                      <option value="Principal">Principal / Executive</option>
+                      <option value="Admin">Administrator / Sub-Admin</option>
+                      <option value="Staff">Office / General Staff</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                      Designation / Department
+                    </label>
+                    <input
+                      type="text"
+                      value={manualLinkDesignation}
+                      onChange={(e) => setManualLinkDesignation(e.target.value)}
+                      placeholder="e.g. HOD Physics / Vice Principal"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-[#064e43]"
+                    />
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-500 leading-relaxed bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-700/70">
+                  💡 <b>Frictionless Access:</b> Once linked here, this staff member will NOT need any OTP. When they message the college WhatsApp number, the bot will immediately recognize them by name and provide Faculty features.
+                </p>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsLinkingFacultyModal(false)}
+                    className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-[#064e43] hover:bg-[#053d34] text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
+                  >
+                    <CheckCircle size={14} /> Authorize WhatsApp Desk
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* 3. UNIFIED 3-TAB NAVIGATION BAR */}
       <div className="bg-slate-100/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm p-1.5 rounded-2xl flex items-center gap-2">
         <button
@@ -1276,6 +1646,23 @@ _Administration Directorate, SGC Jahanian_`;
             activeTab === "bot_dashboard" ? "bg-emerald-300 text-slate-950" : "bg-teal-500/10 text-teal-600 dark:text-teal-400"
           }`}>
             Nexus AI
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("automated_reports")}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all relative ${
+            activeTab === "automated_reports" 
+              ? "bg-gradient-to-r from-[#064e43] to-[#085a4e] text-white shadow-md" 
+              : "text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white"
+          }`}
+        >
+          <CalendarCheck size={16} />
+          <span>Principal Auto-Reports</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+            activeTab === "automated_reports" ? "bg-emerald-300 text-slate-950" : "bg-teal-500/10 text-teal-600 dark:text-teal-400"
+          }`}>
+            Auto-Digest
           </span>
         </button>
       </div>
@@ -1782,6 +2169,7 @@ _Administration Directorate, SGC Jahanian_`;
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl h-11 px-3 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-[#064e43] outline-none transition-all"
                   >
                     <option value="All Students">All Students (Full Roster)</option>
+                    <option value="Missing Photos">📸 Missing Photos / ID Card Prep ({missingPhotosCount} Students)</option>
                     <option value="Class Wise">Class & Campus Wise</option>
                     <option value="Fee Defaulters">Fee Defaulters (Pending Dues Only)</option>
                     <option value="Selective Students">Selective Students (Pick from List)</option>
@@ -1790,7 +2178,7 @@ _Administration Directorate, SGC Jahanian_`;
                   </select>
                 </div>
 
-                {(targetGroup === "All Students" || targetGroup === "Class Wise" || targetGroup === "Fee Defaulters") && (
+                {(targetGroup === "All Students" || targetGroup === "Class Wise" || targetGroup === "Fee Defaulters" || targetGroup === "Missing Photos") && (
                   <div className="grid grid-cols-1 gap-3 pt-1">
                     <div>
                       <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">
@@ -1955,6 +2343,13 @@ _Administration Directorate, SGC Jahanian_`;
                       className="px-2.5 py-1.5 bg-white/10 hover:bg-white/15 text-white border border-white/10 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
                     >
                       <AlertTriangle size={12} className="text-emerald-400" /> Faculty Attendance Policy
+                    </button>
+                    <button
+                      onClick={() => handleAiCompose("missing_photos")}
+                      disabled={isAiComposing}
+                      className="px-2.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/30 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
+                    >
+                      <Sparkles size={12} className="text-amber-400" /> 📸 Request Student Photos ({missingPhotosCount})
                     </button>
                   </div>
 
@@ -2532,6 +2927,124 @@ _Administration Directorate, SGC Jahanian_`;
               )}
             </div>
 
+            {/* VERIFIED FACULTY & EXECUTIVE DESK (TEACHER / ADMIN WHATSAPP ACCESS) */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-400 flex items-center justify-center">
+                    <GraduationCap size={18} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-black text-sm text-slate-800 dark:text-white uppercase tracking-wider">
+                        Faculty & Executive WhatsApp Access
+                      </h3>
+                      <span className="px-2 py-0.5 bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 font-mono text-[10px] font-bold rounded-full border border-teal-200 dark:border-teal-800">
+                        {verifiedUsersList.length} Authorized
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      Teachers and Administrators authenticated for Timetables, Student Dossiers & Executive Briefings
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setIsLinkingFacultyModal(true);
+                      setSelectedStaffIdToLink("");
+                      setManualLinkName("");
+                      setManualLinkPhone("");
+                      setManualLinkRole("Teacher");
+                    }}
+                    className="px-3 py-1.5 bg-[#064e43] hover:bg-[#053d34] text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm active:scale-95"
+                  >
+                    <Plus size={14} /> Authorize Faculty / Admin
+                  </button>
+                </div>
+              </div>
+
+              {/* Informational Guidance Banner */}
+              <div className="p-3 bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200/70 dark:border-amber-800/70 rounded-xl text-xs text-amber-900 dark:text-amber-300 flex items-start gap-2.5">
+                <Info size={16} className="shrink-0 text-amber-600 mt-0.5" />
+                <div className="space-y-1 text-[11px] leading-relaxed">
+                  <p className="font-bold text-amber-950 dark:text-amber-200">
+                    Bot treats Teachers & Admins differently from regular students:
+                  </p>
+                  <ul className="list-disc list-inside space-y-0.5 text-amber-900/90 dark:text-amber-300/90">
+                    <li><b>Direct Phone Recognition:</b> Jab registered teacher apne mobile se bot ko message bhejte hain, bot unhein pehchan kar instant 4-digit OTP se connect karta hai.</li>
+                    <li><b>Instant Dashboard Authorization:</b> Aap yahan se kisi bhi teacher ko direct 1-click se authorize kar sakte hain (unhein OTP enter karne ki bhi zaroorat nahi rehti).</li>
+                    <li><b>Special Powers:</b> Verify hone ke baad teacher <b>Mera Timetable</b>, <b>Student Dossier (Fee/Marks)</b>, aur <b>Salary & Attendance</b> bina kisi restriction ke dekh sakte hain!</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* List of Verified Personnel */}
+              {isLoadingVerifiedUsers ? (
+                <div className="py-6 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                  <RefreshCw size={14} className="animate-spin" /> Loading authorized faculty...
+                </div>
+              ) : verifiedUsersList.length === 0 ? (
+                <div className="py-6 text-center space-y-1">
+                  <p className="text-xs font-bold text-slate-600 dark:text-slate-400">No faculty members linked yet.</p>
+                  <p className="text-[11px] text-slate-400 max-w-md mx-auto">
+                    Staff members can link their WhatsApp directly by messaging the bot, or you can click "Authorize Faculty / Admin" above to pre-link any teacher.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {verifiedUsersList.map((user: any) => {
+                    const isLeader = user.role === "Principal" || user.role === "Admin" || user.role === "Director";
+                    return (
+                      <div
+                        key={user.phone}
+                        className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex flex-col justify-between space-y-3 hover:border-slate-300 transition shadow-2xs"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs shrink-0 ${
+                              isLeader 
+                                ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300" 
+                                : "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-300"
+                            }`}>
+                              {(user.name || "U").charAt(0)}
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className="text-xs font-black text-slate-800 dark:text-white truncate">
+                                {user.name}
+                              </h4>
+                              <p className="text-[10px] text-slate-500 font-mono truncate">
+                                +{user.phone} {user.staffId ? `• ${user.staffId}` : ""}
+                              </p>
+                            </div>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${
+                            isLeader
+                              ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20"
+                              : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20"
+                          }`}>
+                            {user.designation || user.role}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-[10px] text-slate-400">
+                          <span>Linked: {user.linkedAt ? new Date(user.linkedAt).toLocaleDateString("en-GB") : "Active"}</span>
+                          <button
+                            onClick={() => handleUnlinkUser(user.phone, user.name)}
+                            className="text-rose-600 dark:text-rose-400 hover:underline font-bold flex items-center gap-1"
+                            title="Revoke access and unlink WhatsApp"
+                          >
+                            <Trash2 size={11} /> Unlink
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             {/* MASTER AUDIT TRAIL TABLE & INTERACTION LOGS */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-5 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
@@ -2705,7 +3218,569 @@ _Administration Directorate, SGC Jahanian_`;
           </motion.div>
         )}
 
+        {/* ========================================================================= */}
+        {/* TAB 4: PRINCIPAL EXECUTIVE AUTO-REPORTS & SCHEDULED DIGEST               */}
+        {/* ========================================================================= */}
+        {activeTab === "automated_reports" && (
+          <motion.div
+            key="tab-automated-reports"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.15 }}
+            className="space-y-6"
+          >
+            {/* HERO HEADER & STATUS */}
+            <div className="bg-gradient-to-r from-[#064e43] via-[#053d34] to-[#042822] text-white p-6 sm:p-8 rounded-3xl shadow-xl border border-white/10 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-400/10 rounded-full blur-3xl -z-10" />
+              
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div className="flex items-start gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-400/20 text-emerald-300 flex items-center justify-center font-black border border-emerald-400/30 shadow-inner shrink-0">
+                    <CalendarCheck size={30} className="animate-pulse" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xl sm:text-2xl font-black tracking-tight">Executive Auto-Reports & Digest</h2>
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/30 text-emerald-300 border border-emerald-400/30 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                        24/7 Daemon Active
+                      </span>
+                    </div>
+                    <p className="text-sm text-emerald-100/70 max-w-xl">
+                      Automated institutional intelligence dispatched directly to the Principal's WhatsApp at scheduled times (Daily at 2:00 PM, Weekly summaries & Monthly audit briefs).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/15">
+                  <div className="text-right">
+                    <div className="text-xs font-bold text-emerald-200 uppercase tracking-wider">Master Scheduler</div>
+                    <div className="text-sm font-black text-white">
+                      {reportConfig?.enabled ? "Automated & Active" : "System Paused"}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const updated = { ...(reportConfig || {}), enabled: !reportConfig?.enabled };
+                      saveReportConfig(updated);
+                    }}
+                    className={`w-12 h-6 flex items-center rounded-full p-1 transition duration-300 ${
+                      reportConfig?.enabled ? "bg-emerald-400 justify-end" : "bg-white/20 justify-start"
+                    }`}
+                  >
+                    <div className="bg-white w-4 h-4 rounded-full shadow-md transform transition" />
+                  </button>
+                </div>
+              </div>
+
+              {/* QUICK SCHEDULE BADGES */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6 pt-6 border-t border-white/10">
+                <div className="bg-black/20 rounded-xl p-3 border border-white/5 flex items-center gap-3">
+                  <Clock className="w-5 h-5 text-emerald-300 shrink-0" />
+                  <div>
+                    <div className="text-[10px] text-emerald-200/70 uppercase font-bold tracking-wider">Daily Flash Report</div>
+                    <div className="text-sm font-black text-white">Everyday at {reportConfig?.daily?.time || "14:00"} PKT</div>
+                  </div>
+                </div>
+                <div className="bg-black/20 rounded-xl p-3 border border-white/5 flex items-center gap-3">
+                  <TrendingUp className="w-5 h-5 text-teal-300 shrink-0" />
+                  <div>
+                    <div className="text-[10px] text-teal-200/70 uppercase font-bold tracking-wider">Weekly Executive</div>
+                    <div className="text-sm font-black text-white">Every Saturday at {reportConfig?.weekly?.time || "16:00"} PKT</div>
+                  </div>
+                </div>
+                <div className="bg-black/20 rounded-xl p-3 border border-white/5 flex items-center gap-3">
+                  <BarChart3 className="w-5 h-5 text-cyan-300 shrink-0" />
+                  <div>
+                    <div className="text-[10px] text-cyan-200/70 uppercase font-bold tracking-wider">Monthly Audit Brief</div>
+                    <div className="text-sm font-black text-white">1st of Month at {reportConfig?.monthly?.time || "10:00"} PKT</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* PRINCIPAL RECIPIENT SETTINGS CARD */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-7 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#064e43]/10 text-[#064e43] dark:text-emerald-400 flex items-center justify-center font-bold">
+                    <UserCheck size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 dark:text-white">Principal / Executive Recipient</h3>
+                    <p className="text-xs text-slate-500">The designated mobile phone that receives all automated executive reports.</p>
+                  </div>
+                </div>
+
+                {/* Quick Staff Picker */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 font-medium whitespace-nowrap">Pick from Staff:</span>
+                  <select
+                    onChange={(e) => {
+                      const st = staff.find((s: any) => s.id === e.target.value);
+                      if (st) {
+                        setReportConfig((prev: any) => ({
+                          ...prev,
+                          principalName: st.fullName || st.name,
+                          principalPhone: st.contact || st.phone || prev?.principalPhone,
+                        }));
+                      }
+                    }}
+                    defaultValue=""
+                    className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="" disabled>Select Principal / Leader...</option>
+                    {staff.map((st: any) => (
+                      <option key={st.id} value={st.id}>
+                        {st.fullName || st.name} ({st.role || "Staff"}) - {st.contact || "No Phone"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Principal Title / Display Name
+                  </label>
+                  <input
+                    type="text"
+                    value={reportConfig?.principalName || ""}
+                    onChange={(e) => setReportConfig((prev: any) => ({ ...prev, principalName: e.target.value }))}
+                    placeholder="e.g. Prof. Tariq Javed (Principal)"
+                    className="w-full text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-slate-800 dark:text-slate-100 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Principal WhatsApp Mobile Number
+                  </label>
+                  <input
+                    type="text"
+                    value={reportConfig?.principalPhone || ""}
+                    onChange={(e) => setReportConfig((prev: any) => ({ ...prev, principalPhone: e.target.value }))}
+                    placeholder="e.g. 0301-4455891 or 923014455891"
+                    className="w-full text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-slate-800 dark:text-slate-100 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-5 flex justify-end">
+                <button
+                  onClick={() => saveReportConfig(reportConfig)}
+                  disabled={isSavingReportConfig}
+                  className="px-5 py-2.5 bg-[#064e43] hover:bg-[#053d34] text-white font-bold text-xs rounded-xl transition shadow-md flex items-center gap-2 active:scale-95 disabled:opacity-50"
+                >
+                  {isSavingReportConfig ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                  Save Recipient Details
+                </button>
+              </div>
+            </div>
+
+            {/* THREE REPORT CARDS */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+              {/* 1. DAILY FLASH REPORT */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col justify-between space-y-5 relative overflow-hidden">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                        <Clock size={18} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-slate-900 dark:text-white">Daily Flash Report</h4>
+                        <span className="text-[10px] text-slate-500 font-medium">Daily Closing Summary</span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        const updated = {
+                          ...(reportConfig || {}),
+                          daily: { ...reportConfig?.daily, enabled: !reportConfig?.daily?.enabled }
+                        };
+                        setReportConfig(updated);
+                        saveReportConfig(updated);
+                      }}
+                      className={`w-10 h-5 flex items-center rounded-full p-0.5 transition duration-300 ${
+                        reportConfig?.daily?.enabled ? "bg-emerald-500 justify-end" : "bg-slate-300 dark:bg-slate-700 justify-start"
+                      }`}
+                    >
+                      <div className="bg-white w-4 h-4 rounded-full shadow-sm" />
+                    </button>
+                  </div>
+
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-2">
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                      <span>Dispatch Time (PKT)</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-mono font-bold">
+                        {reportConfig?.daily?.time || "14:00"} (2:00 PM)
+                      </span>
+                    </label>
+                    <input
+                      type="time"
+                      value={reportConfig?.daily?.time || "14:00"}
+                      onChange={(e) => {
+                        const updated = {
+                          ...(reportConfig || {}),
+                          daily: { ...reportConfig?.daily, time: e.target.value }
+                        };
+                        setReportConfig(updated);
+                      }}
+                      className="w-full text-xs font-mono font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div className="space-y-2 pt-1">
+                    <div className="text-[11px] font-black uppercase tracking-wider text-slate-400">Included Modules</div>
+                    
+                    <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={reportConfig?.daily?.includeStaffAttendance !== false}
+                        onChange={(e) => setReportConfig((prev: any) => ({
+                          ...prev,
+                          daily: { ...prev.daily, includeStaffAttendance: e.target.checked }
+                        }))}
+                        className="rounded border-slate-300 text-[#064e43] focus:ring-emerald-500"
+                      />
+                      <span>Staff Attendance & Absent/Late Faculty</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={reportConfig?.daily?.includeStudentAttendance !== false}
+                        onChange={(e) => setReportConfig((prev: any) => ({
+                          ...prev,
+                          daily: { ...prev.daily, includeStudentAttendance: e.target.checked }
+                        }))}
+                        className="rounded border-slate-300 text-[#064e43] focus:ring-emerald-500"
+                      />
+                      <span>Student Attendance Snapshot (%)</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={reportConfig?.daily?.includeFeeCollection !== false}
+                        onChange={(e) => setReportConfig((prev: any) => ({
+                          ...prev,
+                          daily: { ...prev.daily, includeFeeCollection: e.target.checked }
+                        }))}
+                        className="rounded border-slate-300 text-[#064e43] focus:ring-emerald-500"
+                      />
+                      <span>Today's Fee Recovered (Cash vs Bank)</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={reportConfig?.daily?.includeAdmissions !== false}
+                        onChange={(e) => setReportConfig((prev: any) => ({
+                          ...prev,
+                          daily: { ...prev.daily, includeAdmissions: e.target.checked }
+                        }))}
+                        className="rounded border-slate-300 text-[#064e43] focus:ring-emerald-500"
+                      />
+                      <span>New Inquiries / Leads & Admissions</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2">
+                  <button
+                    onClick={() => handleSendTestReport("daily")}
+                    disabled={isSendingTestReport === "daily"}
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition shadow-md flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50"
+                  >
+                    {isSendingTestReport === "daily" ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+                    Send Today's Report Now (Test)
+                  </button>
+                  <button
+                    onClick={() => handlePreviewReport("daily")}
+                    className="w-full py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
+                  >
+                    <Eye size={14} /> Preview Daily Flash
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. WEEKLY EXECUTIVE SUMMARY */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col justify-between space-y-5 relative overflow-hidden">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center font-bold">
+                        <TrendingUp size={18} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-slate-900 dark:text-white">Weekly Executive Summary</h4>
+                        <span className="text-[10px] text-slate-500 font-medium">Weekly Strategic Performance</span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        const updated = {
+                          ...(reportConfig || {}),
+                          weekly: { ...reportConfig?.weekly, enabled: !reportConfig?.weekly?.enabled }
+                        };
+                        setReportConfig(updated);
+                        saveReportConfig(updated);
+                      }}
+                      className={`w-10 h-5 flex items-center rounded-full p-0.5 transition duration-300 ${
+                        reportConfig?.weekly?.enabled ? "bg-teal-500 justify-end" : "bg-slate-300 dark:bg-slate-700 justify-start"
+                      }`}
+                    >
+                      <div className="bg-white w-4 h-4 rounded-full shadow-sm" />
+                    </button>
+                  </div>
+
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                        Dispatch Day & Time
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <select
+                          value={reportConfig?.weekly?.dayOfWeek ?? 6}
+                          onChange={(e) => setReportConfig((prev: any) => ({
+                            ...prev,
+                            weekly: { ...prev.weekly, dayOfWeek: parseInt(e.target.value, 10) }
+                          }))}
+                          className="text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-2 font-bold text-slate-800 dark:text-slate-200 focus:outline-none"
+                        >
+                          <option value={6}>Saturday</option>
+                          <option value={0}>Sunday</option>
+                          <option value={5}>Friday</option>
+                          <option value={1}>Monday</option>
+                        </select>
+                        <input
+                          type="time"
+                          value={reportConfig?.weekly?.time || "16:00"}
+                          onChange={(e) => setReportConfig((prev: any) => ({
+                            ...prev,
+                            weekly: { ...prev.weekly, time: e.target.value }
+                          }))}
+                          className="text-xs font-mono font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-2 text-slate-800 dark:text-slate-200 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 pt-1">
+                    <div className="text-[11px] font-black uppercase tracking-wider text-slate-400">Included Modules</div>
+                    
+                    <div className="p-2.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800 text-xs space-y-1.5 text-slate-600 dark:text-slate-400">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 size={13} className="text-teal-500" />
+                        <span>Weekly Fee Recovery vs Expenses</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 size={13} className="text-teal-500" />
+                        <span>Weekly Net Cash Surplus Flow</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 size={13} className="text-teal-500" />
+                        <span>Confirmed Admissions vs Leads Pipe</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 size={13} className="text-teal-500" />
+                        <span>Staff Punctuality & Late Incidents</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2">
+                  <button
+                    onClick={() => handleSendTestReport("weekly")}
+                    disabled={isSendingTestReport === "weekly"}
+                    className="w-full py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl transition shadow-md flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50"
+                  >
+                    {isSendingTestReport === "weekly" ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+                    Send Weekly Summary Now (Test)
+                  </button>
+                  <button
+                    onClick={() => handlePreviewReport("weekly")}
+                    className="w-full py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
+                  >
+                    <Eye size={14} /> Preview Weekly Summary
+                  </button>
+                </div>
+              </div>
+
+              {/* 3. MONTHLY AUDIT BRIEF */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col justify-between space-y-5 relative overflow-hidden">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 flex items-center justify-center font-bold">
+                        <BarChart3 size={18} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-slate-900 dark:text-white">Monthly Audit Brief</h4>
+                        <span className="text-[10px] text-slate-500 font-medium">Directorate Audit Overview</span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        const updated = {
+                          ...(reportConfig || {}),
+                          monthly: { ...reportConfig?.monthly, enabled: !reportConfig?.monthly?.enabled }
+                        };
+                        setReportConfig(updated);
+                        saveReportConfig(updated);
+                      }}
+                      className={`w-10 h-5 flex items-center rounded-full p-0.5 transition duration-300 ${
+                        reportConfig?.monthly?.enabled ? "bg-cyan-500 justify-end" : "bg-slate-300 dark:bg-slate-700 justify-start"
+                      }`}
+                    >
+                      <div className="bg-white w-4 h-4 rounded-full shadow-sm" />
+                    </button>
+                  </div>
+
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                        Dispatch Schedule
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-2 font-bold text-slate-800 dark:text-slate-200 flex items-center">
+                          1st of Month
+                        </div>
+                        <input
+                          type="time"
+                          value={reportConfig?.monthly?.time || "10:00"}
+                          onChange={(e) => setReportConfig((prev: any) => ({
+                            ...prev,
+                            monthly: { ...prev.monthly, time: e.target.value }
+                          }))}
+                          className="text-xs font-mono font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-2 text-slate-800 dark:text-slate-200 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 pt-1">
+                    <div className="text-[11px] font-black uppercase tracking-wider text-slate-400">Included Modules</div>
+                    
+                    <div className="p-2.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800 text-xs space-y-1.5 text-slate-600 dark:text-slate-400">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 size={13} className="text-cyan-500" />
+                        <span>Enrolled Campus Strength (Boys/Girls)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 size={13} className="text-cyan-500" />
+                        <span>Monthly Fee Revenue vs Defaulters</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 size={13} className="text-cyan-500" />
+                        <span>Operational Expenses & Net Surplus</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 size={13} className="text-cyan-500" />
+                        <span>Cumulative Outstanding Ledger</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2">
+                  <button
+                    onClick={() => handleSendTestReport("monthly")}
+                    disabled={isSendingTestReport === "monthly"}
+                    className="w-full py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs rounded-xl transition shadow-md flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50"
+                  >
+                    {isSendingTestReport === "monthly" ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+                    Send Monthly Brief Now (Test)
+                  </button>
+                  <button
+                    onClick={() => handlePreviewReport("monthly")}
+                    className="w-full py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
+                  >
+                    <Eye size={14} /> Preview Monthly Brief
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+            {/* SAVE ALL SETTINGS FLOATING BAR */}
+            <div className="bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 p-4 rounded-2xl flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                <Info size={16} className="text-emerald-600 shrink-0" />
+                <span>All time changes and toggle preferences are synced automatically with the backend WhatsApp daemon.</span>
+              </div>
+              <button
+                onClick={() => saveReportConfig(reportConfig)}
+                disabled={isSavingReportConfig}
+                className="px-6 py-2.5 bg-[#064e43] hover:bg-[#053d34] text-white font-bold text-xs rounded-xl transition shadow-md flex items-center gap-2 shrink-0 active:scale-95"
+              >
+                {isSavingReportConfig ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                Save All Schedules
+              </button>
+            </div>
+
+          </motion.div>
+        )}
+
       </AnimatePresence>
+
+      {/* REPORT PREVIEW MODAL */}
+      {reportPreviewModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-xl w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-gradient-to-r from-[#064e43] to-[#085a4e] text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <CalendarCheck size={20} className="text-emerald-300" />
+                <h3 className="text-sm font-black tracking-wide">{reportPreviewModal.title}</h3>
+              </div>
+              <button
+                onClick={() => setReportPreviewModal({ isOpen: false, title: "", text: "" })}
+                className="text-white/70 hover:text-white p-1 rounded-lg transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+              <div className="text-xs text-slate-500 font-medium flex items-center justify-between">
+                <span>WhatsApp Message Bubble Preview:</span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(reportPreviewModal.text);
+                    toast.success("Copied report text to clipboard!");
+                  }}
+                  className="text-[#064e43] dark:text-emerald-400 font-bold hover:underline flex items-center gap-1"
+                >
+                  <Copy size={12} /> Copy Text
+                </button>
+              </div>
+
+              {/* WHATSAPP CHAT BUBBLE STYLING */}
+              <div className="bg-[#eef8f5] dark:bg-emerald-950/40 p-4 sm:p-5 rounded-2xl border border-emerald-200 dark:border-emerald-800/60 font-sans text-xs sm:text-sm whitespace-pre-wrap text-slate-800 dark:text-slate-100 leading-relaxed shadow-inner">
+                {reportPreviewModal.text}
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+              <button
+                onClick={() => setReportPreviewModal({ isOpen: false, title: "", text: "" })}
+                className="px-5 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-xl transition"
+              >
+                Close Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
