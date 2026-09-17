@@ -21,7 +21,12 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Student, AcademicRecord } from '../types';
-import { getDocumentLink } from '../lib/whatsappAutomation';
+import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
+import { 
+  getDocumentLink, 
+  sendAutoTestMarksNotice, 
+  buildTestMarksMessage 
+} from '../lib/whatsappAutomation';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -81,6 +86,8 @@ export default function BatchMarksEntry({
   // Map of studentId -> obtainedMarks string
   const [marksMap, setMarksMap] = useState<Record<string, string>>({});
   const [isDispatchingWhatsApp, setIsDispatchingWhatsApp] = useState<boolean>(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState<boolean>(false);
+  const [bulkModalProps, setBulkModalProps] = useState<any>(null);
 
   // Input refs for Excel-like keyboard navigation (Enter / ArrowDown / ArrowUp)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -204,66 +211,77 @@ export default function BatchMarksEntry({
     toast.success(`Successfully saved marks for ${recordsToSave.length} students!`);
   };
 
+  // Single Student WhatsApp Result Dispatch
+  const handleSendSingleStudentResult = async (s: any) => {
+    if (s.numObtained === null) {
+      toast.error('No marks entered for this student.');
+      return;
+    }
+    await sendAutoTestMarksNotice(
+      s,
+      {
+        subject: activeSubject,
+        testType,
+        date: testDate,
+        totalMarks,
+        obtainedMarks: s.obtained,
+        percentage: s.pct ?? undefined,
+        grade: s.grade || undefined,
+        rank: s.rank || undefined,
+        remarks: s.rank ? `Position #${s.rank}` : ''
+      },
+      settings
+    );
+  };
+
   // Batch WhatsApp Result Dispatch
-  const handleBatchWhatsAppDispatch = async () => {
+  const handleBatchWhatsAppDispatch = () => {
     const enteredList = rankedStudents.filter(s => s.numObtained !== null);
     if (enteredList.length === 0) {
-      toast.error('No marks entered to send via WhatsApp.');
+      toast.error('No marks entered to send via WhatsApp. Please enter marks first.');
       return;
     }
 
-    setIsDispatchingWhatsApp(true);
-    let sentCount = 0;
+    const items: ReportRecipientItem[] = enteredList.map(s => {
+      const studentRef = s.collegeNo || s.id || s.rollNo || 'N/A';
+      const msg = buildTestMarksMessage(
+        s,
+        {
+          subject: activeSubject,
+          testType,
+          date: testDate,
+          totalMarks,
+          obtainedMarks: s.obtained,
+          percentage: s.pct ?? undefined,
+          grade: s.grade || undefined,
+          rank: s.rank || undefined,
+          remarks: s.rank ? `Position #${s.rank}` : ''
+        },
+        settings
+      );
+      const phone = (s.contact || s.fatherContact || s.phone || s.mobile || '').replace(/\D/g, '');
 
-    for (const student of enteredList) {
-      const phone = (student.contact || student.fatherContact || student.phone || student.mobile || '').replace(/\D/g, '');
-      if (!phone) continue;
+      return {
+        id: s.id,
+        student: s,
+        name: s.fullName,
+        phone,
+        rollNo: studentRef,
+        className: `${s.group} (${s.section || 'A'})`,
+        message: msg,
+        statusBadge: `${s.obtained}/${totalMarks} (${s.pct?.toFixed(0)}%)`,
+        isFailed: (s.pct ?? 0) < 50,
+        isTopRank: (s.rank ?? 999) <= 3
+      };
+    });
 
-      const pctStr = student.pct !== null ? student.pct.toFixed(1) + '%' : 'N/A';
-      const rankBadge = student.rank === 1 ? '🥇 1st Position' : student.rank === 2 ? '🥈 2nd Position' : student.rank === 3 ? '🥉 3rd Position' : student.rank ? `Position #${student.rank}` : 'N/A';
-      const status = (student.pct ?? 0) >= 50 ? 'PASSED (Kamyab) ✅' : 'NEEDS ATTENTION (Mehnat Darkar) ⚠️';
-
-      const studentRef = student.collegeNo || student.id || student.rollNo || 'N/A';
-      const resultUrl = getDocumentLink('result', studentRef, { m: testDate });
-
-      const message = 
-`🏛️ *SUPERIOR COLLEGE JAHANIAN*
-📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Dear Parent/Guardian (${student.fatherName || 'Guardian'}),
-
-• *Student Name:* ${student.fullName}
-• *Roll Number:* ${studentRef}
-• *Class & Section:* ${student.group} (Sec: ${student.section || 'A'})
-• *Subject:* ${activeSubject}
-• *Exam / Test:* ${testType} (${testDate})
-━━━━━━━━━━━━━━━━━━━━━━━━━
-• *Obtained Marks:* ${student.obtained} / ${totalMarks} (${pctStr})
-• *Grade:* ${student.grade || 'N/A'}
-• *Class Position:* ${rankBadge}
-• *Result Status:* ${status}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📈 *Official Academic Result Card:*
-${resultUrl}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 *Instruction:* Board imtehanat ki behtareen tayari ke liye regular revision par tawajjah dein.
-📞 Academic Helpdesk: 0301-4455891
-_Office of the Controller of Examinations, SGC Jahanian_`;
-
-      try {
-        await fetch('/api/whatsapp/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone, message }),
-        });
-        sentCount++;
-      } catch {
-        // Fallback: silently continue batch
-      }
-    }
-
-    setIsDispatchingWhatsApp(false);
-    toast.success(`WhatsApp results dispatched to ${sentCount} parents successfully!`);
+    setBulkModalProps({
+      category: 'test_marks',
+      title: `Broadcast ${activeSubject} - ${testType} Results`,
+      subtitle: `Date: ${testDate} • Marks Entered: ${items.length} Students (Group: ${selectedGroup}, Sec: ${selectedSection})`,
+      items
+    });
+    setIsBulkModalOpen(true);
   };
 
   // Export to Excel Award Sheet
@@ -569,12 +587,13 @@ _Office of the Controller of Examinations, SGC Jahanian_`;
                   <TableHead className="font-bold text-slate-600 text-center w-20">Score %</TableHead>
                   <TableHead className="font-bold text-slate-600 text-center w-20">Grade</TableHead>
                   <TableHead className="font-bold text-slate-600 text-center w-28">Class Position</TableHead>
+                  <TableHead className="font-bold text-slate-600 text-center w-20">WhatsApp</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rankedStudents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-32 text-center text-slate-400 font-medium">
+                    <TableCell colSpan={10} className="h-32 text-center text-slate-400 font-medium">
                       No active students found matching selected filters.
                     </TableCell>
                   </TableRow>
@@ -660,6 +679,20 @@ _Office of the Controller of Examinations, SGC Jahanian_`;
                           </span>
                         ) : '-'}
                       </TableCell>
+
+                      {/* WhatsApp Button */}
+                      <TableCell className="text-center">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={s.numObtained === null}
+                          className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg disabled:opacity-20"
+                          title={s.numObtained !== null ? `Send result via WhatsApp to parent of ${s.fullName}` : 'Enter marks first'}
+                          onClick={() => handleSendSingleStudentResult(s)}
+                        >
+                          <MessageSquare size={15} />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -668,6 +701,18 @@ _Office of the Controller of Examinations, SGC Jahanian_`;
           </div>
         </CardContent>
       </Card>
+
+      {bulkModalProps && (
+        <WhatsAppReportModal
+          open={isBulkModalOpen}
+          onOpenChange={setIsBulkModalOpen}
+          title={bulkModalProps.title}
+          subtitle={bulkModalProps.subtitle}
+          category={bulkModalProps.category}
+          items={bulkModalProps.items}
+          settings={settings}
+        />
+      )}
     </div>
   );
 }

@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import BatchMarksEntry from './BatchMarksEntry';
 import ClassMeritList from './ClassMeritList';
+import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
 import { motion } from 'motion/react';
 import { getDocumentLink } from '../lib/whatsappAutomation';
 import { 
@@ -297,6 +298,20 @@ export default function AcademicView({ data }: { data: any }) {
   // TABS
   const [activeTab, setActiveTab] = useState("marks");
 
+  // WhatsApp Broadcast Modal State
+  const [isBulkResultsModalOpen, setIsBulkResultsModalOpen] = useState(false);
+  const [bulkModalProps, setBulkModalProps] = useState<{
+    category: 'daily_attendance' | 'monthly_attendance' | 'test_marks' | 'monthly_merit';
+    title: string;
+    subtitle?: string;
+    items: ReportRecipientItem[];
+  }>({
+    category: 'test_marks',
+    title: '',
+    subtitle: '',
+    items: []
+  });
+
   const studentsList = data.students || [];
   const activeStudents = useMemo(() => studentsList.filter((s: Student & { status?: string }) => s.status !== "Struck Off"), [studentsList]);
 
@@ -474,7 +489,7 @@ ${resultUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 *Instruction:* Board imtehanat mein aala position ke liye rozana revision aur regular attendance yaqeeni banayein.
 📞 Academic Helpdesk: 0301-4455891
-_Office of the Controller of Examinations, SGC Jahanian_`;
+_Canal Road, Jahanian | Superior College Jahanian_`;
 
     try {
       setIsSendingWhatsApp(true);
@@ -527,6 +542,162 @@ _Office of the Controller of Examinations, SGC Jahanian_`;
     if(m.length !== 2) return yyyyMM;
     const date = new Date(Number(m[0]), Number(m[1])-1, 1);
     return date.toLocaleString('default', { month: 'short' });
+  };
+
+  const handleSendSingleStudentMonthReport = async (s: Student) => {
+    const monthName = getMonthName(selectedMonth);
+    const records = (data.academicRecords || []).filter((r: any) => 
+      r.studentId === s.id && r.date && r.date.startsWith(selectedMonth)
+    );
+
+    let sumObt = 0;
+    let sumTot = 0;
+    records.forEach((r: any) => {
+      sumObt += Number(r.obtainedMarks) || 0;
+      sumTot += Number(r.totalMarks) || 0;
+    });
+
+    const percentage = sumTot > 0 ? Number(((sumObt / sumTot) * 100).toFixed(1)) : 0;
+    const grade = percentage >= 80 ? 'A+' : percentage >= 70 ? 'A' : percentage >= 60 ? 'B' : percentage >= 50 ? 'C' : 'F';
+    const statusText = percentage >= 50 ? 'PASSED (Kamyab) ✅' : 'NEEDS IMPROVEMENT (Mazeed Mehnat) ⚠️';
+    const studentRef = s.collegeNo || s.id || "N/A";
+    const resultUrl = getDocumentLink("result", studentRef, { m: monthName }, data.settings);
+
+    const rawPhone = (s as any).guardianPhone || (s as any).fatherContact || s.contact || (s as any).whatsapp || (s as any).phone || (s as any).mobile || "";
+    const cleanPhone = (rawPhone || "").replace(/\D/g, "");
+
+    if (!cleanPhone) {
+      toast.error(`No contact phone number available for ${s.fullName}.`);
+      return;
+    }
+
+    const marksTableText = records.length > 0 ? records.map((r: any) => {
+      const p = Number(r.totalMarks) > 0 ? ((Number(r.obtainedMarks) / Number(r.totalMarks)) * 100).toFixed(0) : "0";
+      return `• *${r.subject}* (${r.testType || 'Exam'}): ${r.obtainedMarks} / ${r.totalMarks} (${p}%)`;
+    }).join("\n") : "• No individual test logs recorded for this month yet.";
+
+    const message = 
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
+📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Dear Parent/Guardian (${s.fatherName || 'Guardian'}),
+
+• *Student Name:* ${s.fullName}
+• *Roll Number:* ${studentRef}
+• *Class & Section:* ${s.group || 'N/A'} (Sec: ${s.section || 'N/A'})
+• *Assessment Month:* ${monthName}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 *Subject-wise Examination Scores:*
+${marksTableText}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Grand Total:* ${sumObt} / ${sumTot} (${percentage}%)
+• *Result Status:* ${statusText}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 *Official Academic Result Card:*
+${resultUrl}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 *Instruction:* Board imtehanat mein aala position ke liye rozana revision aur regular attendance yaqeeni banayein.
+📞 Academic Helpdesk: 0301-4455891
+_Canal Road, Jahanian | Superior College Jahanian_`;
+
+    try {
+      toast.loading(`Sending result card for ${s.fullName}...`, { id: `res-${s.id}` });
+      const res = await fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: cleanPhone, message }),
+      });
+
+      if (res.ok) {
+        toast.success(`Result card successfully sent to ${s.fullName}!`, { id: `res-${s.id}` });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.info(err.error || "Gateway offline. Opening WhatsApp Web...", { id: `res-${s.id}` });
+        window.open(`https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`, "_blank");
+      }
+    } catch {
+      window.open(`https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`, "_blank");
+      toast.dismiss(`res-${s.id}`);
+    }
+  };
+
+  const handleOpenBulkMonthlyResultsModal = () => {
+    if (filteredStudents.length === 0) {
+      toast.error("No students match the current filter.");
+      return;
+    }
+
+    const monthName = getMonthName(selectedMonth);
+    const items: ReportRecipientItem[] = filteredStudents.map((s: Student) => {
+      const records = (data.academicRecords || []).filter((r: any) => 
+        r.studentId === s.id && r.date && r.date.startsWith(selectedMonth)
+      );
+
+      let sumObt = 0;
+      let sumTot = 0;
+      records.forEach((r: any) => {
+        sumObt += Number(r.obtainedMarks) || 0;
+        sumTot += Number(r.totalMarks) || 0;
+      });
+
+      const percentage = sumTot > 0 ? Number(((sumObt / sumTot) * 100).toFixed(1)) : 0;
+      const grade = percentage >= 80 ? 'A+' : percentage >= 70 ? 'A' : percentage >= 60 ? 'B' : percentage >= 50 ? 'C' : 'F';
+      const statusText = percentage >= 50 ? 'PASSED (Kamyab) ✅' : 'NEEDS IMPROVEMENT (Mazeed Mehnat) ⚠️';
+      const studentRef = s.collegeNo || s.id || "N/A";
+      const resultUrl = getDocumentLink("result", studentRef, { m: monthName }, data.settings);
+
+      const rawPhone = (s as any).guardianPhone || (s as any).fatherContact || s.contact || (s as any).whatsapp || (s as any).phone || (s as any).mobile || "";
+
+      const marksTableText = records.length > 0 ? records.map((r: any) => {
+        const p = Number(r.totalMarks) > 0 ? ((Number(r.obtainedMarks) / Number(r.totalMarks)) * 100).toFixed(0) : "0";
+        return `• *${r.subject}* (${r.testType || 'Exam'}): ${r.obtainedMarks} / ${r.totalMarks} (${p}%)`;
+      }).join("\n") : "• No individual test logs recorded for this month yet.";
+
+      const message = 
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
+📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Dear Parent/Guardian (${s.fatherName || 'Guardian'}),
+
+• *Student Name:* ${s.fullName}
+• *Roll Number:* ${studentRef}
+• *Class & Section:* ${s.group || 'N/A'} (Sec: ${s.section || 'N/A'})
+• *Assessment Month:* ${monthName}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 *Subject-wise Examination Scores:*
+${marksTableText}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Grand Total:* ${sumObt} / ${sumTot} (${percentage}%)
+• *Result Status:* ${statusText}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 *Official Academic Result Card:*
+${resultUrl}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 *Instruction:* Board imtehanat mein aala position ke liye rozana revision aur regular attendance yaqeeni banayein.
+📞 Academic Helpdesk: 0301-4455891
+_Canal Road, Jahanian | Superior College Jahanian_`;
+
+      return {
+        id: s.id,
+        student: s,
+        name: s.fullName,
+        phone: rawPhone,
+        rollNo: studentRef,
+        className: `${s.group || ''} (Sec: ${s.section || 'A'})`,
+        message,
+        statusBadge: sumTot > 0 ? `${sumObt}/${sumTot} (${percentage.toFixed(0)}%)` : 'No Records',
+        isFailed: percentage < 50,
+        isTopRank: percentage >= 80,
+      };
+    });
+
+    setBulkModalProps({
+      category: 'test_marks',
+      title: `Broadcast Monthly Result Reports - ${monthName}`,
+      subtitle: `Target: ${items.length} Students (Group: ${selectedGroup === 'all' ? 'All Groups' : selectedGroup}, Sec: ${selectedSection === 'all' ? 'All Sections' : selectedSection})`,
+      items
+    });
+    setIsBulkResultsModalOpen(true);
   };
 
   return (
@@ -635,27 +806,54 @@ _Office of the Controller of Examinations, SGC Jahanian_`;
               {data.settings?.predefinedSections?.map((s: any) => <SelectItem key={s.name} value={s.name}>{s.name} ({s.gender})</SelectItem>)}
             </SelectContent>
           </Select>
-          <Input 
-            type="month"
-            value={selectedMonth}
-            onChange={e => setSelectedMonth(e.target.value)}
-            className="border-emerald-100 focus-visible:ring-emerald-500"
-          />
+          <div className="flex gap-2">
+            <Input 
+              type="month"
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(e.target.value)}
+              className="border-emerald-100 focus-visible:ring-emerald-500 flex-1"
+            />
+            <Button
+              onClick={handleOpenBulkMonthlyResultsModal}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0 flex items-center gap-1.5 shadow-sm px-3"
+              title="Broadcast Monthly Result Reports via WhatsApp"
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span className="hidden sm:inline">Broadcast Month</span>
+            </Button>
+          </div>
         </div>
         
         {!selectedStudent && (
           <div className="mt-4">
-            <h3 className="font-semibold text-emerald-800 mb-2">Select a student profile</h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold text-emerald-800">Select a student profile</h3>
+              <span className="text-xs text-slate-500 font-medium">{filteredStudents.length} Students Available</span>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 border border-transparent pb-10">
               {filteredStudents.length > 0 ? filteredStudents.map((s: Student) => (
-                <div key={s.id} onClick={() => setSelectedStudentId(s.id)} className="p-4 border rounded-xl cursor-pointer hover:-translate-y-1.5 hover:shadow-lg hover:bg-emerald-50 hover:border-emerald-300 transition-all duration-300 flex items-center gap-3 bg-white">
-                  <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shadow-sm">
-                    {(s.fullName || "??").substring(0, 2).toUpperCase()}
+                <div key={s.id} onClick={() => setSelectedStudentId(s.id)} className="p-4 border rounded-xl cursor-pointer hover:-translate-y-1.5 hover:shadow-lg hover:bg-emerald-50 hover:border-emerald-300 transition-all duration-300 flex items-center justify-between gap-3 bg-white group">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shadow-sm shrink-0">
+                      {(s.fullName || "??").substring(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm text-gray-900 truncate">{s.fullName}</div>
+                      <div className="text-xs text-emerald-600 truncate">{s.id} • {s.group} {s.section !== '-' ? "• SEC " + s.section : ""}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="font-semibold text-sm text-gray-900">{s.fullName}</div>
-                    <div className="text-xs text-emerald-600">{s.id} • {s.group} {s.section !== '-' ? "• SEC " + s.section : ""}</div>
-                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100 shrink-0 opacity-70 group-hover:opacity-100"
+                    title="Send monthly result via WhatsApp"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSendSingleStudentMonthReport(s);
+                    }}
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                  </Button>
                 </div>
               )) : (
                 <div className="col-span-full p-4 text-center text-emerald-600 bg-emerald-50 rounded-lg">No students found matching your filters.</div>
@@ -1068,6 +1266,17 @@ _Office of the Controller of Examinations, SGC Jahanian_`;
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Universal WhatsApp Reporting & Safe Bulk Dispatch Modal */}
+      <WhatsAppReportModal
+        open={isBulkResultsModalOpen}
+        onOpenChange={setIsBulkResultsModalOpen}
+        title={bulkModalProps.title}
+        subtitle={bulkModalProps.subtitle}
+        category={bulkModalProps.category}
+        items={bulkModalProps.items}
+        settings={data.settings}
+      />
     </motion.div>
   );
 }

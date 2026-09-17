@@ -13,12 +13,18 @@ import {
   FileSpreadsheet, 
   FileText, 
   TrendingUp, 
-  Star,
-  Users,
-  Percent
+  Star, 
+  Users, 
+  Percent,
+  MessageSquare
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Student, AcademicRecord } from '../types';
+import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
+import { 
+  sendAutoMeritPositionNotice, 
+  buildMeritPositionMessage 
+} from '../lib/whatsappAutomation';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -43,6 +49,8 @@ export default function ClassMeritList({
     `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
   );
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState<boolean>(false);
+  const [bulkModalProps, setBulkModalProps] = useState<any>(null);
 
   // Get all unique subjects from academic records
   const subjectsList = useMemo(() => {
@@ -209,6 +217,69 @@ export default function ClassMeritList({
     toast.success('Merit list PDF exported successfully!');
   };
 
+  const handleSendSingleMeritWhatsApp = async (s: any) => {
+    await sendAutoMeritPositionNotice(
+      s,
+      {
+        month: selectedMonth,
+        rank: s.rank,
+        totalScore: s.obtained,
+        maxScore: s.total,
+        percentage: s.pct,
+        grade: s.grade,
+        testsTaken: s.testsCount,
+        subject: selectedSubject !== 'all' ? selectedSubject : undefined
+      },
+      settings
+    );
+  };
+
+  const handleOpenBulkMeritModal = () => {
+    if (meritRankings.length === 0) {
+      toast.error('No students evaluated in merit rankings for this period.');
+      return;
+    }
+
+    const items: ReportRecipientItem[] = meritRankings.map(s => {
+      const studentRef = s.id || s.rollNo || 'N/A';
+      const msg = buildMeritPositionMessage(
+        s,
+        {
+          month: selectedMonth,
+          rank: s.rank,
+          totalScore: s.obtained,
+          maxScore: s.total,
+          percentage: s.pct,
+          grade: s.grade,
+          testsTaken: s.testsCount,
+          subject: selectedSubject !== 'all' ? selectedSubject : undefined
+        },
+        settings
+      );
+      const phone = (s.contact || s.fatherContact || s.phone || s.mobile || '').replace(/\D/g, '');
+
+      return {
+        id: s.id,
+        student: s,
+        name: s.fullName,
+        phone,
+        rollNo: studentRef,
+        className: `${s.group} (${s.section || 'A'})`,
+        message: msg,
+        statusBadge: `Rank #${s.rank} (${s.pct.toFixed(1)}%)`,
+        isTopRank: s.rank <= 3
+      };
+    });
+
+    setBulkModalProps({
+      category: 'monthly_merit',
+      title: 'Broadcast Class Merit & Positions',
+      subtitle: `Term: ${selectedMonth} • Total Ranked: ${items.length} Students (Group: ${selectedGroup}, Sec: ${selectedSection})`,
+      items
+    });
+    setIsBulkModalOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header & Controls Card */}
@@ -247,6 +318,15 @@ export default function ClassMeritList({
               >
                 <FileText size={15} />
                 <span>Export PDF</span>
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleOpenBulkMeritModal}
+                className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-md shadow-emerald-600/30"
+                title="Broadcast official class position and merit alert to all students' parents via WhatsApp"
+              >
+                <MessageSquare size={15} />
+                <span>Broadcast Positions</span>
               </Button>
             </div>
           </div>
@@ -419,12 +499,13 @@ export default function ClassMeritList({
                   <TableHead className="font-bold text-slate-700 text-center">Score</TableHead>
                   <TableHead className="font-bold text-slate-700 text-center">Percentage</TableHead>
                   <TableHead className="font-bold text-slate-700 text-center">Grade</TableHead>
+                  <TableHead className="font-bold text-slate-700 text-center w-20">WhatsApp</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredRankings.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-32 text-center text-slate-400 font-medium">
+                    <TableCell colSpan={10} className="h-32 text-center text-slate-400 font-medium">
                       No academic exam records found for this period. Try adjusting your month or filters.
                     </TableCell>
                   </TableRow>
@@ -476,6 +557,17 @@ export default function ClassMeritList({
                           {s.grade}
                         </Badge>
                       </TableCell>
+                      <TableCell className="text-center">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg"
+                          title={`Send position alert to parent of ${s.fullName}`}
+                          onClick={() => handleSendSingleMeritWhatsApp(s)}
+                        >
+                          <MessageSquare size={15} />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -484,6 +576,18 @@ export default function ClassMeritList({
           </div>
         </CardContent>
       </Card>
+
+      {bulkModalProps && (
+        <WhatsAppReportModal
+          open={isBulkModalOpen}
+          onOpenChange={setIsBulkModalOpen}
+          title={bulkModalProps.title}
+          subtitle={bulkModalProps.subtitle}
+          category={bulkModalProps.category}
+          items={bulkModalProps.items}
+          settings={settings}
+        />
+      )}
     </div>
   );
 }

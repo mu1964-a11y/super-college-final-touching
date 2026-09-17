@@ -590,3 +590,560 @@ _Office of the Controller of Examinations, SGC Jahanian_`;
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DAILY ATTENDANCE NOTIFICATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AutoDailyAttendanceDetails {
+  date: string;
+  status: 'Present' | 'Absent' | 'Late' | 'Leave' | 'Holiday' | string;
+  notes?: string;
+}
+
+export function buildDailyAttendanceMessage(student: any, details: AutoDailyAttendanceDetails, settings?: any): string {
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
+  const studentName = (student.fullName || "Student").trim();
+  const fatherName = (student.fatherName || "Sahib").trim();
+  const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
+  const group = student.group || student.category || "Intermediate";
+  const section = student.section ? ` (Sec: ${student.section})` : "";
+  const dateStr = details.date || new Date().toISOString().split('T')[0];
+  const helpline = settings?.contactNumber || "0301-4455891";
+
+  const statusBadge = details.status === 'Present' 
+    ? '✅ HAZIR (Present)' 
+    : details.status === 'Absent' 
+      ? '🚨 GHAIR HAZIR (Absent)' 
+      : details.status === 'Late' 
+        ? '⏰ LATE (Tawkheer)' 
+        : details.status === 'Leave' 
+          ? '📝 RUKHSAT (On Leave)' 
+          : `${String(details.status).toUpperCase()}`;
+
+  const attendanceUrl = getDocumentLink("attendance", rollNo, undefined, settings);
+
+  let remarkText = "";
+  if (details.status === 'Absent') {
+    remarkText = "\n⚠️ *Tawajjah Farmaiye:* Aapka bacha aaj baghair kisi ittela ke college se ghair hazir raha hai. Baraye meherbani foran college administration ya class teacher se rabta karein.";
+  } else if (details.status === 'Late') {
+    remarkText = "\n⚠️ *Hidayat:* Bacha aaj college auqat se dair se pohancha hai. Regular timing ki pabandi yaqeeni banayein.";
+  } else if (details.notes) {
+    remarkText = `\n📝 *Notes:* ${details.notes}`;
+  }
+
+  return `🏛️ *${collegeName.toUpperCase()}*
+📋 *DAILY STUDENT ATTENDANCE NOTIFICATION*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Dear Parent/Guardian (${fatherName}),
+
+Aapke bache ki aaj ki rozana hazri status darj zail hai:
+
+• *Student Name:* ${studentName}
+• *Roll Number:* ${rollNo}
+• *Class & Section:* ${group}${section}
+• *Date:* ${dateStr}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Daily Attendance Status:* *${statusBadge}*${remarkText}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 *Online Attendance Dossier & History:*
+${attendanceUrl}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📞 College Helpline: ${helpline}
+_Student Affairs & Attendance Desk, SCJ_`;
+}
+
+export async function sendAutoDailyAttendanceNotice(
+  student: any,
+  details: AutoDailyAttendanceDetails,
+  settings?: any,
+  options?: { silent?: boolean; manualTrigger?: boolean }
+): Promise<boolean> {
+  if (!student) return false;
+
+  const rawPhone = student.fatherContact || 
+    student.contact || 
+    student.contactNumber || 
+    student.phone || 
+    student.mobile || "";
+  const phone = formatWhatsAppPhone(rawPhone);
+  const message = buildDailyAttendanceMessage(student, details, settings);
+
+  if (!phone) {
+    if (!options?.silent) {
+      toast.warning(`No valid phone number for ${student.fullName || 'Student'}. Attendance alert skipped.`);
+    }
+    return false;
+  }
+
+  try {
+    const res = await fetch("/api/whatsapp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, message }),
+    });
+
+    if (res.ok) {
+      toast.success(`Attendance alert sent for ${student.fullName}!`, { id: `att-wa-${student.id}` });
+      return true;
+    } else {
+      const err = await res.json().catch(() => ({}));
+      if (!options?.silent) {
+        toast.info(err.error || "WhatsApp Gateway offline. Click to share attendance.", {
+          id: `att-wa-${student.id}`,
+          action: {
+            label: "Open WhatsApp",
+            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
+          },
+        });
+      }
+      return false;
+    }
+  } catch (error) {
+    console.warn("sendAutoDailyAttendanceNotice network error:", error);
+    if (!options?.silent) {
+      toast.info("WhatsApp Gateway not reachable. Click to open WhatsApp.", {
+        id: `att-wa-${student.id}`,
+        action: {
+          label: "Open WhatsApp",
+          onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
+        },
+      });
+    }
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PERIODIC (WEEKLY / MONTHLY) ATTENDANCE REPORT
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AutoPeriodicAttendanceDetails {
+  period: 'weekly' | 'monthly';
+  periodLabel: string;
+  present: number;
+  absent: number;
+  late: number;
+  leave: number;
+  holiday?: number;
+  totalWorkingDays: number;
+  percentage?: number;
+}
+
+export function buildPeriodicAttendanceMessage(
+  student: any, 
+  details: AutoPeriodicAttendanceDetails, 
+  settings?: any
+): string {
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
+  const studentName = (student.fullName || "Student").trim();
+  const fatherName = (student.fatherName || "Sahib").trim();
+  const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
+  const group = student.group || student.category || "Intermediate";
+  const section = student.section ? ` (Sec: ${student.section})` : "";
+  const helpline = settings?.contactNumber || "0301-4455891";
+
+  const totalDays = details.totalWorkingDays || (details.present + details.absent + details.late + details.leave) || 1;
+  const pct = details.percentage !== undefined 
+    ? details.percentage 
+    : Math.round(((details.present + details.late) / Math.max(1, totalDays)) * 100);
+
+  const evalRemark = pct >= 85 
+    ? "🌟 *Excellent Attendance Track Record!*" 
+    : pct >= 75 
+      ? "👍 *Satisfactory (Regular revision required)*" 
+      : "🚨 *CRITICAL SHORTAGE:* Board exams eligibility ke liye minimum 75% hazri lazmi hai.";
+
+  const attendanceUrl = getDocumentLink("attendance", rollNo, undefined, settings);
+
+  return `🏛️ *${collegeName.toUpperCase()}*
+📊 *${details.period.toUpperCase()} ATTENDANCE SUMMARY REPORT*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Dear Parent/Guardian (${fatherName}),
+
+• *Student Name:* ${studentName}
+• *Roll Number:* ${rollNo}
+• *Class & Section:* ${group}${section}
+• *Report Period:* ${details.periodLabel}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 *Attendance Performance Overview:*
+• *Total Working Days:* ${totalDays}
+• *Days Present:* ${details.present} ✅
+• *Days Late:* ${details.late} ⏰
+• *Days Absent:* ${details.absent} 🚨
+• *Approved Leaves:* ${details.leave} 📝
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Net Attendance Ratio:* *${pct}%*
+• *Performance Status:* ${evalRemark}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 *Detailed Attendance Verification Ledger:*
+${attendanceUrl}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 *Zaroori Hidayat:* Board imtehanat mein admission bhejne ke liye 75% hazri qanoonan lazmi hai.
+📞 Attendance Office: ${helpline}
+_Academic Administration, Superior College Jahanian_`;
+}
+
+export async function sendAutoPeriodicAttendanceReport(
+  student: any,
+  details: AutoPeriodicAttendanceDetails,
+  settings?: any,
+  options?: { silent?: boolean; manualTrigger?: boolean }
+): Promise<boolean> {
+  if (!student) return false;
+
+  const rawPhone = student.fatherContact || 
+    student.contact || 
+    student.contactNumber || 
+    student.phone || 
+    student.mobile || "";
+  const phone = formatWhatsAppPhone(rawPhone);
+  const message = buildPeriodicAttendanceMessage(student, details, settings);
+
+  if (!phone) {
+    if (!options?.silent) {
+      toast.warning(`No valid phone number for ${student.fullName || 'Student'}. Summary skipped.`);
+    }
+    return false;
+  }
+
+  try {
+    const res = await fetch("/api/whatsapp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, message }),
+    });
+
+    if (res.ok) {
+      toast.success(`Monthly attendance summary dispatched to +${phone}!`, { id: `att-m-${student.id}` });
+      return true;
+    } else {
+      const err = await res.json().catch(() => ({}));
+      if (!options?.silent) {
+        toast.info(err.error || "WhatsApp Gateway offline. Click to share.", {
+          id: `att-m-${student.id}`,
+          action: {
+            label: "Open WhatsApp",
+            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
+          },
+        });
+      }
+      return false;
+    }
+  } catch (error) {
+    console.warn("sendAutoPeriodicAttendanceReport network error:", error);
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SINGLE TEST / BATCH MARKS NOTIFICATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AutoTestMarksDetails {
+  subject: string;
+  testType: string;
+  date: string;
+  totalMarks: number;
+  obtainedMarks: number | string;
+  percentage?: number;
+  grade?: string;
+  rank?: number;
+  remarks?: string;
+}
+
+export function buildTestMarksMessage(student: any, details: AutoTestMarksDetails, settings?: any): string {
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
+  const studentName = (student.fullName || "Student").trim();
+  const fatherName = (student.fatherName || "Sahib").trim();
+  const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
+  const group = student.group || student.category || "Intermediate";
+  const section = student.section ? ` (Sec: ${student.section})` : "";
+  const helpline = settings?.contactNumber || "0301-4455891";
+
+  const numObtained = Number(details.obtainedMarks) || 0;
+  const total = Number(details.totalMarks) || 50;
+  const pct = details.percentage ?? Math.round((numObtained / Math.max(1, total)) * 100);
+  const grade = details.grade || (pct >= 80 ? 'A+' : pct >= 70 ? 'A' : pct >= 60 ? 'B' : pct >= 50 ? 'C' : 'F');
+  const rankStr = details.rank === 1 ? '🥇 1st Position' : details.rank === 2 ? '🥈 2nd Position' : details.rank === 3 ? '🥉 3rd Position' : details.rank ? `Position #${details.rank}` : '';
+  const status = pct >= 50 ? 'PASSED (Kamyab) ✅' : 'NEEDS ATTENTION (Mehnat Darkar) ⚠️';
+
+  const resultUrl = getDocumentLink("result", rollNo, { m: details.date }, settings);
+
+  const posLine = rankStr ? `• *Class Position:* ${rankStr}\n` : '';
+  const remLine = details.remarks ? `• *Teacher Remarks:* ${details.remarks}\n` : '';
+
+  return `🏛️ *${collegeName.toUpperCase()}*
+📝 *OFFICIAL TEST ASSESSMENT REPORT*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Dear Parent/Guardian (${fatherName}),
+
+Aapke bache ke haaliyah test ke nataij darj zail hain:
+
+• *Student Name:* ${studentName}
+• *Roll Number:* ${rollNo}
+• *Class & Section:* ${group}${section}
+• *Subject:* ${details.subject}
+• *Test Type:* ${details.testType} (${details.date})
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Obtained Marks:* *${details.obtainedMarks} / ${total}* (${pct}%)
+• *Assigned Grade:* *${grade}*
+${posLine}${remLine}• *Result Status:* ${status}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 *Official Online Result Card:*
+${resultUrl}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 *Hidayat:* Kam marks ki soorat mein revision aur teacher guidance session attend karein.
+📞 Academic Helpdesk: ${helpline}
+_Office of the Controller of Examinations, SCJ_`;
+}
+
+export async function sendAutoTestMarksNotice(
+  student: any,
+  details: AutoTestMarksDetails,
+  settings?: any,
+  options?: { silent?: boolean; manualTrigger?: boolean }
+): Promise<boolean> {
+  if (!student) return false;
+
+  const rawPhone = student.fatherContact || 
+    student.contact || 
+    student.contactNumber || 
+    student.phone || 
+    student.mobile || "";
+  const phone = formatWhatsAppPhone(rawPhone);
+  const message = buildTestMarksMessage(student, details, settings);
+
+  if (!phone) {
+    if (!options?.silent) {
+      toast.warning(`No valid phone number for ${student.fullName || 'Student'}. Result skipped.`);
+    }
+    return false;
+  }
+
+  try {
+    const res = await fetch("/api/whatsapp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, message }),
+    });
+
+    if (res.ok) {
+      toast.success(`Result dispatched to parent of ${student.fullName}!`, { id: `res-t-${student.id}` });
+      return true;
+    } else {
+      const err = await res.json().catch(() => ({}));
+      if (!options?.silent) {
+        toast.info(err.error || "WhatsApp Gateway offline. Click to share.", {
+          id: `res-t-${student.id}`,
+          action: {
+            label: "Open WhatsApp",
+            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
+          },
+        });
+      }
+      return false;
+    }
+  } catch (error) {
+    console.warn("sendAutoTestMarksNotice error:", error);
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLASS MERIT LIST & POSITION NOTIFICATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AutoMeritPositionDetails {
+  month: string;
+  rank: number;
+  totalScore: number;
+  maxScore: number;
+  percentage: number;
+  grade: string;
+  testsTaken: number;
+  subject?: string;
+}
+
+export function buildMeritPositionMessage(student: any, details: AutoMeritPositionDetails, settings?: any): string {
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
+  const studentName = (student.fullName || "Student").trim();
+  const fatherName = (student.fatherName || "Sahib").trim();
+  const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
+  const group = student.group || student.category || "Intermediate";
+  const section = student.section ? ` (Sec: ${student.section})` : "";
+  const helpline = settings?.contactNumber || "0301-4455891";
+
+  const posMedal = details.rank === 1 ? '🥇 FIRST POSITION (1st)' : details.rank === 2 ? '🥈 SECOND POSITION (2nd)' : details.rank === 3 ? '🥉 THIRD POSITION (3rd)' : `Class Position #${details.rank}`;
+
+  const resultUrl = getDocumentLink("result", rollNo, { m: details.month }, settings);
+
+  return `🏛️ *${collegeName.toUpperCase()}*
+🏆 *OFFICIAL CLASS MERIT & POSITION NOTICE*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Dear Parent/Guardian (${fatherName}),
+
+🌟 *Mubarakbaad!* Superior College Jahanian academic evaluation ke tehat aapke bache ka merit position report:
+
+• *Student Name:* *${studentName.toUpperCase()}*
+• *Roll Number:* ${rollNo}
+• *Class & Section:* ${group}${section}
+• *Assessment Term:* ${details.month}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🏆 *ACHIEVED CLASS POSITION:* *${posMedal}*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Aggregate Score:* ${details.totalScore} / ${details.maxScore}
+• *Percentage:* *${details.percentage.toFixed(1)}%*
+• *Aggregate Grade:* *${details.grade}*
+• *Tests Evaluated:* ${details.testsTaken} Tests
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 *Complete Verified Result Card:*
+${resultUrl}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🎉 Administration and Faculty Superior College Jahanian wish congratulations on this academic performance!
+📞 Academic Helpdesk: ${helpline}
+_Office of the Principal, Superior College Jahanian_`;
+}
+
+export async function sendAutoMeritPositionNotice(
+  student: any,
+  details: AutoMeritPositionDetails,
+  settings?: any,
+  options?: { silent?: boolean; manualTrigger?: boolean }
+): Promise<boolean> {
+  if (!student) return false;
+
+  const rawPhone = student.fatherContact || 
+    student.contact || 
+    student.contactNumber || 
+    student.phone || 
+    student.mobile || "";
+  const phone = formatWhatsAppPhone(rawPhone);
+  const message = buildMeritPositionMessage(student, details, settings);
+
+  if (!phone) {
+    if (!options?.silent) {
+      toast.warning(`No valid phone number for ${student.fullName || 'Student'}. Merit alert skipped.`);
+    }
+    return false;
+  }
+
+  try {
+    const res = await fetch("/api/whatsapp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, message }),
+    });
+
+    if (res.ok) {
+      toast.success(`Merit Position card sent for ${student.fullName}!`, { id: `merit-${student.id}` });
+      return true;
+    } else {
+      const err = await res.json().catch(() => ({}));
+      if (!options?.silent) {
+        toast.info(err.error || "WhatsApp Gateway offline. Click to share.", {
+          id: `merit-${student.id}`,
+          action: {
+            label: "Open WhatsApp",
+            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
+          },
+        });
+      }
+      return false;
+    }
+  } catch (error) {
+    console.warn("sendAutoMeritPositionNotice error:", error);
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UNIVERSAL BULK WHATSAPP DISPATCHER QUEUE
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface BulkDispatchItem {
+  id: string;
+  name: string;
+  phone: string;
+  message: string;
+  subtitle?: string;
+}
+
+export interface BulkDispatchOptions {
+  items: BulkDispatchItem[];
+  delaySeconds?: number;
+  onProgress?: (progress: {
+    total: number;
+    sent: number;
+    failed: number;
+    currentIndex: number;
+    currentItem?: BulkDispatchItem;
+    status: 'running' | 'paused' | 'completed' | 'cancelled';
+  }) => void;
+  signal?: AbortSignal;
+}
+
+export async function dispatchBulkWhatsAppQueue(options: BulkDispatchOptions): Promise<{
+  total: number;
+  sent: number;
+  failed: number;
+}> {
+  const { items, delaySeconds = 2.5, onProgress, signal } = options;
+  let sent = 0;
+  let failed = 0;
+
+  for (let i = 0; i < items.length; i++) {
+    if (signal?.aborted) {
+      onProgress?.({ total: items.length, sent, failed, currentIndex: i, status: 'cancelled' });
+      break;
+    }
+
+    const item = items[i];
+    onProgress?.({
+      total: items.length,
+      sent,
+      failed,
+      currentIndex: i,
+      currentItem: item,
+      status: 'running'
+    });
+
+    const cleanPhone = formatWhatsAppPhone(item.phone);
+    if (!cleanPhone) {
+      failed++;
+      continue;
+    }
+
+    try {
+      const res = await fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: cleanPhone, message: item.message }),
+      });
+
+      if (res.ok) {
+        sent++;
+      } else {
+        failed++;
+      }
+    } catch {
+      failed++;
+    }
+
+    // Delay between items to avoid rate limiting
+    if (i < items.length - 1 && !signal?.aborted) {
+      await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
+    }
+  }
+
+  onProgress?.({
+    total: items.length,
+    sent,
+    failed,
+    currentIndex: items.length,
+    status: 'completed'
+  });
+
+  return { total: items.length, sent, failed };
+}
+
+

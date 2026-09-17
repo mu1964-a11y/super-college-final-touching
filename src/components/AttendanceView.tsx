@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { CheckCircle2, CalendarDays, Search, Save, Download, FileText, RefreshCw } from 'lucide-react';
+import { CheckCircle2, CalendarDays, Search, Save, Download, FileText, RefreshCw, MessageSquare } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,13 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
+import { 
+  sendAutoDailyAttendanceNotice, 
+  sendAutoPeriodicAttendanceReport, 
+  buildDailyAttendanceMessage, 
+  buildPeriodicAttendanceMessage 
+} from '../lib/whatsappAutomation';
 
 export type StudentAttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Leave' | 'Holiday' | '';
 
@@ -29,6 +36,15 @@ export default function AttendanceView({ data }: { data: any }) {
   const [sectionFilter, setSectionFilter] = useState('all');
   const [classFilter, setClassFilter] = useState('all');
   
+  // WhatsApp Broadcast Modal State
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkModalProps, setBulkModalProps] = useState<{
+    category: 'daily_attendance' | 'monthly_attendance';
+    title: string;
+    subtitle?: string;
+    items: ReportRecipientItem[];
+  } | null>(null);
+
   const records = useMemo(() => {
     return data?.studentAttendance || [];
   }, [data?.studentAttendance]);
@@ -50,6 +66,9 @@ export default function AttendanceView({ data }: { data: any }) {
             admissionId: a.id,
             studentId: a.studentId,
             fullName: a.fullName,
+            fatherName: a.fatherName,
+            contact: a.contactNumber || a.phone || '',
+            fatherContact: a.fatherContact || a.contactNumber || '',
             section: a.section,
             currentClass: a.category,
             groupName: a.group,
@@ -271,6 +290,119 @@ export default function AttendanceView({ data }: { data: any }) {
     });
   };
 
+  const getStudentPhone = (student: any) => {
+    return student.fatherContact || student.contact || student.contactNumber || student.phone || student.mobile || '';
+  };
+
+  const handleSendSingleDailyWhatsApp = async (student: any) => {
+    const entry = dailyEntries[student.id];
+    const status = entry?.status || 'Present';
+    const notes = entry?.notes || '';
+    await sendAutoDailyAttendanceNotice(
+      student,
+      { date: selectedDate, status, notes },
+      data?.settings
+    );
+  };
+
+  const handleOpenBulkDailyModal = () => {
+    if (filteredStudents.length === 0) {
+      toast.error('No students matching current filters.');
+      return;
+    }
+
+    const items: ReportRecipientItem[] = filteredStudents.map((s: any) => {
+      const entry = dailyEntries[s.id];
+      const status = entry?.status || 'Present';
+      const isAbsent = status === 'Absent';
+      const notes = entry?.notes || '';
+      const msg = buildDailyAttendanceMessage(s, { date: selectedDate, status, notes }, data?.settings);
+      const phone = getStudentPhone(s);
+
+      return {
+        id: s.id,
+        student: s,
+        name: s.fullName,
+        phone,
+        rollNo: s.studentId || s.collegeNo || s.id || 'N/A',
+        className: `${s.currentClass || s.groupName || ''} (${s.section || 'Sec A'})`,
+        message: msg,
+        statusBadge: status,
+        isAbsent
+      };
+    });
+
+    setBulkModalProps({
+      category: 'daily_attendance',
+      title: 'Broadcast Daily Attendance Alerts',
+      subtitle: `Date: ${selectedDate} • Target: ${items.length} Students (${classFilter === 'all' ? 'All Classes' : classFilter}, Sec: ${sectionFilter})`,
+      items
+    });
+    setIsBulkModalOpen(true);
+  };
+
+  const handleSendSingleMonthlyWhatsApp = async (student: any) => {
+    const stats = getMonthlyStats(student.id);
+    await sendAutoPeriodicAttendanceReport(
+      student,
+      {
+        period: 'monthly',
+        periodLabel: reportMonth,
+        present: stats.present,
+        absent: stats.absent,
+        late: stats.late,
+        leave: stats.leave,
+        holiday: stats.holiday,
+        totalWorkingDays: stats.totalWorkingDays
+      },
+      data?.settings
+    );
+  };
+
+  const handleOpenBulkMonthlyModal = () => {
+    if (filteredStudents.length === 0) {
+      toast.error('No students found to broadcast monthly reports.');
+      return;
+    }
+
+    const items: ReportRecipientItem[] = filteredStudents.map((s: any) => {
+      const stats = getMonthlyStats(s.id);
+      const msg = buildPeriodicAttendanceMessage(
+        s,
+        {
+          period: 'monthly',
+          periodLabel: reportMonth,
+          present: stats.present,
+          absent: stats.absent,
+          late: stats.late,
+          leave: stats.leave,
+          holiday: stats.holiday,
+          totalWorkingDays: stats.totalWorkingDays
+        },
+        data?.settings
+      );
+      const phone = getStudentPhone(s);
+
+      return {
+        id: s.id,
+        student: s,
+        name: s.fullName,
+        phone,
+        rollNo: s.studentId || s.collegeNo || s.id || 'N/A',
+        className: `${s.currentClass || s.groupName || ''} (${s.section || 'Sec A'})`,
+        message: msg,
+        statusBadge: `Present: ${stats.present}, Absent: ${stats.absent}`
+      };
+    });
+
+    setBulkModalProps({
+      category: 'monthly_attendance',
+      title: 'Broadcast Monthly Attendance Reports',
+      subtitle: `Month: ${reportMonth} • Target: ${items.length} Students (${classFilter === 'all' ? 'All Classes' : classFilter}, Sec: ${sectionFilter})`,
+      items
+    });
+    setIsBulkModalOpen(true);
+  };
 
   return (
     <div className="space-y-8">
@@ -381,6 +513,14 @@ export default function AttendanceView({ data }: { data: any }) {
                     <RefreshCw size={16} className="mr-2" /> Sync Students
                   </Button>
                 )}
+                <Button 
+                  variant="outline"
+                  className="rounded-xl h-11 px-5 border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-bold"
+                  onClick={handleOpenBulkDailyModal}
+                  title="Send WhatsApp Attendance Alerts to Absentees or All Students in this class"
+                >
+                  <MessageSquare size={16} className="mr-2 text-emerald-600" /> WhatsApp Alerts
+                </Button>
                 <Button className="rounded-xl h-11 px-6 bg-superior-teal hover:bg-superior-teal/90 shadow-md shadow-superior-teal/20" onClick={handleSaveDaily}>
                    <Save size={18} className="mr-2" /> Save Attendance
                 </Button>
@@ -399,6 +539,13 @@ export default function AttendanceView({ data }: { data: any }) {
                   <Button variant="outline" className="rounded-xl h-11 border-superior-teal text-superior-teal" onClick={downloadSectionPDF}>
                      <Download size={18} className="mr-2" /> Download Section PDF
                   </Button>
+                  <Button 
+                    className="rounded-xl h-11 px-5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-600/20" 
+                    onClick={handleOpenBulkMonthlyModal}
+                    title="Broadcast monthly attendance summaries to all students in section"
+                  >
+                     <MessageSquare size={16} className="mr-2" /> Broadcast Monthly Reports
+                  </Button>
                </div>
             )}
         </div>
@@ -414,13 +561,14 @@ export default function AttendanceView({ data }: { data: any }) {
                    <TableHead className="w-20 pl-8 font-black uppercase text-[10px] tracking-wider text-slate-400">Roll No</TableHead>
                    <TableHead className="font-black uppercase text-[10px] tracking-wider text-slate-400">Student Info</TableHead>
                    <TableHead className="w-56 font-black uppercase text-[10px] tracking-wider text-slate-400">Status</TableHead>
-                   <TableHead className="w-1/3 font-black uppercase text-[10px] tracking-wider text-slate-400 pr-8">Notes</TableHead>
+                   <TableHead className="w-1/3 font-black uppercase text-[10px] tracking-wider text-slate-400">Notes</TableHead>
+                   <TableHead className="w-20 font-black uppercase text-[10px] tracking-wider text-slate-400 pr-8 text-right">WhatsApp</TableHead>
                  </TableRow>
                </TableHeader>
                <TableBody>
                   {filteredStudents.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="h-64 text-center">
+                      <TableCell colSpan={5} className="h-64 text-center">
                         <div className="flex flex-col items-center justify-center text-slate-400 space-y-2">
                            <CheckCircle2 size={32} className="opacity-20" />
                            <p className="font-medium">No students found matching your filters.</p>
@@ -474,13 +622,24 @@ export default function AttendanceView({ data }: { data: any }) {
                             })}
                           </div>
                         </TableCell>
-                        <TableCell className="pr-8">
+                        <TableCell>
                           <Input 
                             placeholder="Add reason/note..." 
                             className="h-10 rounded-xl text-sm border-slate-200 bg-slate-50 focus:bg-white"
                             value={dailyEntries[student.id]?.notes || ''}
                             onChange={(e) => handleEntryChange(student.id, 'notes', e.target.value)}
                           />
+                        </TableCell>
+                        <TableCell className="pr-8 text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 rounded-xl text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border border-emerald-100 shadow-2xs"
+                            title={`Send daily attendance alert for ${student.fullName}`}
+                            onClick={() => handleSendSingleDailyWhatsApp(student)}
+                          >
+                            <MessageSquare size={16} />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))
@@ -529,9 +688,14 @@ export default function AttendanceView({ data }: { data: any }) {
                           <TableCell className="text-center font-bold text-blue-600">{stats.leave > 0 ? stats.leave : '-'}</TableCell>
                           <TableCell className="text-center font-bold text-purple-600">{stats.holiday > 0 ? stats.holiday : '-'}</TableCell>
                           <TableCell className="pr-8 text-right">
-                             <Button variant="ghost" size="sm" className="h-8 rounded-lg text-superior-teal hover:text-superior-teal hover:bg-superior-teal/10" onClick={() => downloadIndividualPDF(student)}>
-                               <FileText size={14} className="mr-1.5" /> PDF
-                             </Button>
+                             <div className="flex items-center justify-end gap-1.5">
+                               <Button variant="ghost" size="sm" className="h-8 rounded-lg text-superior-teal hover:text-superior-teal hover:bg-superior-teal/10" onClick={() => downloadIndividualPDF(student)}>
+                                 <FileText size={14} className="mr-1.5" /> PDF
+                               </Button>
+                               <Button variant="ghost" size="sm" className="h-8 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 font-bold" onClick={() => handleSendSingleMonthlyWhatsApp(student)}>
+                                 <MessageSquare size={14} className="mr-1.5" /> WhatsApp
+                               </Button>
+                             </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -543,6 +707,18 @@ export default function AttendanceView({ data }: { data: any }) {
           )}
         </CardContent>
       </Card>
+
+      {bulkModalProps && (
+        <WhatsAppReportModal
+          open={isBulkModalOpen}
+          onOpenChange={setIsBulkModalOpen}
+          title={bulkModalProps.title}
+          subtitle={bulkModalProps.subtitle}
+          category={bulkModalProps.category}
+          items={bulkModalProps.items}
+          settings={data?.settings}
+        />
+      )}
     </div>
   );
 }
