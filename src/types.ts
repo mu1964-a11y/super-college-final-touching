@@ -321,3 +321,22 @@ export interface Notification {
   actorName: string;
   isRead: boolean;
 }
+
+export interface ArchivedRecord {
+  id: string;
+  originalId: string;
+  studentId?: string;
+  entityType: 'student' | 'admission';
+  fullName: string;
+  fatherName: string;
+  category?: string;
+  group?: string;
+  section?: string;
+  session?: string;
+  contact?: string;
+  totalPackage?: number;
+  feeReceived?: number;
+  snapshot: any;
+  deletedAt: string;
+  deletedBy: string;
+}

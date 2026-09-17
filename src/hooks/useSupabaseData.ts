@@ -10,7 +10,8 @@ import { useAcademicOperations } from './data/useAcademicOperations';
 import { 
   Lead, Admission, Student, Staff, Expense, Income, 
   AppSettings, UserPermission, Notification, AcademicRecord, 
-  SalaryPayment, FeePayment, Installment, FeeTransaction, AdmissionStatus 
+  SalaryPayment, FeePayment, Installment, FeeTransaction, AdmissionStatus,
+  ArchivedRecord
 } from '../types';
 import { toast } from 'sonner';
 import { safeLocalStorage } from '../utils/safeStorage';
@@ -18,17 +19,12 @@ import { safeLocalStorage } from '../utils/safeStorage';
 function safeParseArray(val: any): string[] {
   if (Array.isArray(val)) return val;
   if (typeof val === 'string' && val.trim() !== '') {
-    const trimmed = val.trim();
-    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-      try {
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) return parsed.map(String);
-      } catch {
-        // Fall back to splitting by comma if structure looks like JSON but is invalid
-      }
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      return val.split(',').map(s => s.trim()).filter(Boolean);
     }
-    // Handle plain text or comma-separated list
-    return trimmed.split(',').map(s => s.trim()).filter(Boolean);
   }
   return [];
 }
@@ -39,9 +35,9 @@ export function useSupabaseData(user: any) {
   const [students, setStudents] = useState<Student[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [staffAttendance, setStaffAttendance] = useState<any[]>([]);
+  const [studentAttendance, setStudentAttendance] = useState<any[]>([]);
   const [staffTimetable, setStaffTimetable] = useState<any[]>([]);
   const [staffAdvances, setStaffAdvances] = useState<any[]>([]);
-  const [studentAttendance, setStudentAttendance] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [academicRecords, setAcademicRecords] = useState<AcademicRecord[]>([]);
@@ -49,6 +45,7 @@ export function useSupabaseData(user: any) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [permissions, setPermissions] = useState<UserPermission[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [deletedArchive, setDeletedArchive] = useState<ArchivedRecord[]>([]);
   const [loading, setLoading] = useState(true);
   
   const isFetchingRef = useRef<boolean>(false);
@@ -615,7 +612,169 @@ export function useSupabaseData(user: any) {
     return `${prefix}-${year}-${random}`;
   };
 
-  const ctx = { user, generateStudentId, leads, setLeads, admissions, setAdmissions, students, setStudents, staff, setStaff, staffAttendance, setStaffAttendance, staffTimetable, setStaffTimetable, staffAdvances, setStaffAdvances, expenses, setExpenses, incomes, setIncomes, academicRecords, setAcademicRecords, salaryPayments, setSalaryPayments, studentAttendance, setStudentAttendance, settings, setSettings, permissions, setPermissions, notifications, setNotifications, isBulkOperatingRef, logActivity, fetchData };
+  // Archive Operations
+  const archiveRecords = async (records: ArchivedRecord[]) => {
+    if (!records.length) return;
+    const updated = [...records, ...deletedArchive.filter(existing => !records.some(r => r.originalId === existing.originalId))];
+    setDeletedArchive(updated);
+    try {
+      if ((settings as any)?.id) {
+        await supabase.from('settings').update({
+          config: {
+            ...((settings as any)?.config || {}),
+            deletedArchive: updated
+          },
+          updated_at: new Date().toISOString()
+        }).eq('id', (settings as any).id);
+      }
+    } catch (e) {
+      console.warn("Could not sync archive to settings:", e);
+    }
+  };
+
+  const restoreFromArchive = async (archiveId: string) => {
+    const item = deletedArchive.find(a => a.id === archiveId);
+    if (!item) {
+      toast.error("Archived record not found");
+      return;
+    }
+    const toastId = toast.loading(`Restoring ${item.fullName}...`);
+    try {
+      const snap = item.snapshot || {};
+      const { admission: admSnap, student: stuSnap } = snap;
+
+      // 1. Restore Admission if snapshot present
+      if (admSnap) {
+        await supabase.from('admissions').upsert({
+          id: admSnap.id,
+          student_id: admSnap.student_id || admSnap.studentId,
+          date: admSnap.date || new Date().toISOString().split('T')[0],
+          full_name: admSnap.full_name || admSnap.fullName,
+          father_name: admSnap.father_name || admSnap.fatherName,
+          category: admSnap.category || 'N/A',
+          group: admSnap.group || 'N/A',
+          section: admSnap.section || 'A',
+          subjects: admSnap.subjects || [],
+          address: admSnap.address || '',
+          admission_fee: admSnap.admission_fee || admSnap.admissionFee || 0,
+          total_fee_finalized: admSnap.total_fee_finalized || admSnap.totalFeeFinalized || 0,
+          total_package: admSnap.total_package || admSnap.totalPackage || 0,
+          fee_received: admSnap.fee_received || admSnap.feeReceived || 0,
+          payment_plan: admSnap.payment_plan || 'Monthly',
+          contact_number: admSnap.contact_number || admSnap.contactNumber || '',
+          father_contact: admSnap.father_contact || admSnap.fatherContact || '',
+          gender: admSnap.gender || 'Male',
+          status: admSnap.status || 'Admitted/Confirmed',
+          is_admitted: admSnap.is_admitted ?? true,
+          session: admSnap.session || '2026-28',
+          fee_history: admSnap.fee_history || [],
+          fee_ledger: admSnap.fee_ledger || {}
+        });
+      }
+
+      // 2. Restore Student if snapshot present
+      if (stuSnap) {
+        await supabase.from('students').upsert({
+          id: stuSnap.id,
+          admission_id: stuSnap.admission_id || admSnap?.id,
+          full_name: stuSnap.full_name || stuSnap.fullName,
+          father_name: stuSnap.father_name || stuSnap.fatherName,
+          category: stuSnap.category || 'N/A',
+          group: stuSnap.group || 'N/A',
+          section: stuSnap.section || 'A',
+          subjects: stuSnap.subjects || [],
+          contact: stuSnap.contact || '',
+          address: stuSnap.address || '',
+          gender: stuSnap.gender || 'Male',
+          admission_fee: stuSnap.admission_fee || stuSnap.admissionFee || 0,
+          total_package: stuSnap.total_package || stuSnap.totalPackage || 0,
+          fee_received: stuSnap.fee_received || stuSnap.feeReceived || 0,
+          fee_ledger: stuSnap.fee_ledger || {},
+          fee_history: stuSnap.fee_history || [],
+          session: stuSnap.session || '2026-28'
+        });
+      }
+
+      // 3. Restore income entry if fee_received > 0
+      const feeAmount = Number(item.feeReceived || admSnap?.fee_received || stuSnap?.fee_received) || 0;
+      if (feeAmount > 0) {
+        await supabase.from('income').insert({
+          student_id: item.studentId || item.originalId,
+          student_name: item.fullName,
+          fee_type: 'Admission Fee / Initial Payment',
+          amount: feeAmount,
+          month: new Date().toLocaleString('default', { month: 'long' }),
+          year: new Date().getFullYear(),
+          date: new Date().toISOString().split('T')[0],
+          status: 'Paid',
+          payment_method: 'Cash',
+          recorded_by: user?.email || 'System'
+        });
+      }
+
+      // 4. Remove from archive
+      const newArchive = deletedArchive.filter(a => a.id !== archiveId);
+      setDeletedArchive(newArchive);
+
+      if ((settings as any)?.id) {
+        await supabase.from('settings').update({
+          config: {
+            ...((settings as any)?.config || {}),
+            deletedArchive: newArchive
+          },
+          updated_at: new Date().toISOString()
+        }).eq('id', (settings as any).id);
+      }
+
+      toast.success(`${item.fullName} restored successfully!`, { id: toastId });
+      fetchData(true);
+    } catch (e: any) {
+      console.error("Restore Error:", e);
+      toast.error(`Restore failed: ${e.message}`, { id: toastId });
+    }
+  };
+
+  const permanentlyDeleteFromArchive = async (archiveId: string) => {
+    const newArchive = deletedArchive.filter(a => a.id !== archiveId);
+    setDeletedArchive(newArchive);
+
+    try {
+      if ((settings as any)?.id) {
+        await supabase.from('settings').update({
+          config: {
+            ...((settings as any)?.config || {}),
+            deletedArchive: newArchive
+          },
+          updated_at: new Date().toISOString()
+        }).eq('id', (settings as any).id);
+      }
+      toast.success("Record permanently deleted from archive");
+    } catch (e: any) {
+      console.error("Permanent Delete Error:", e);
+      toast.error("Failed to delete from archive");
+    }
+  };
+
+  const clearArchive = async () => {
+    setDeletedArchive([]);
+    try {
+      if ((settings as any)?.id) {
+        await supabase.from('settings').update({
+          config: {
+            ...((settings as any)?.config || {}),
+            deletedArchive: []
+          },
+          updated_at: new Date().toISOString()
+        }).eq('id', (settings as any).id);
+      }
+      toast.success("Deleted Archive emptied completely");
+    } catch (e: any) {
+      console.error("Clear Archive Error:", e);
+      toast.error("Failed to clear archive");
+    }
+  };
+
+  const ctx = { user, generateStudentId, leads, setLeads, admissions, setAdmissions, students, setStudents, staff, setStaff, staffAttendance, setStaffAttendance, staffTimetable, setStaffTimetable, staffAdvances, setStaffAdvances, expenses, setExpenses, incomes, setIncomes, academicRecords, setAcademicRecords, salaryPayments, setSalaryPayments, studentAttendance, setStudentAttendance, settings, setSettings, permissions, setPermissions, notifications, setNotifications, isBulkOperatingRef, logActivity, fetchData, archiveRecords, deletedArchive, setDeletedArchive };
   const leadsOps = useLeadsOperations(ctx);
   const admissionsOps = useAdmissionsOperations(ctx);
   const studentsOps = useStudentsOperations(ctx);
@@ -644,23 +803,19 @@ export function useSupabaseData(user: any) {
     settings,
     permissions,
     notifications,
+    deletedArchive,
+    restoreFromArchive,
+    permanentlyDeleteFromArchive,
+    clearArchive,
+    archiveRecords,
     loading,
     actionedItems,
     markActioned,
     isNewRecord,
     logActivity,
     ...admissionsOps,
-    // addLead,
-    // updateLead,
-    // deleteLead,
-    // addAdmission,
-    // addIncome,
-    // updateSettings,
     academicRecords,
     salaryPayments,
-    // addStudent,
-    // deleteStudent,
-    // recordFeePayment,
     generateStudentId,
   };
 }

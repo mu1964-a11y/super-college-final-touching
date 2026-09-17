@@ -1,10 +1,10 @@
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
-import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus } from '../../types';
+import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus, ArchivedRecord } from '../../types';
 import { diffObjects, STUDENT_FIELD_LABELS } from '../../utils/changeTracker';
 
 export function useStudentsOperations(ctx: any) {
-  const { user, generateStudentId, admissions, students, setStudents, isBulkOperatingRef, logActivity, fetchData } = ctx;
+  const { user, generateStudentId, admissions, students, setStudents, isBulkOperatingRef, logActivity, fetchData, archiveRecords } = ctx;
   const addStudent = async (student: Omit<Student, 'id'>) => {
     const id = (student as any).id || generateStudentId(student.group);
     const optimisticStudent: Student = { ...student, id } as Student;
@@ -98,6 +98,29 @@ export function useStudentsOperations(ctx: any) {
     setStudents(prev => prev.filter(s => s.id !== id));
 
     try {
+      // 0. Save full snapshot to Deleted Archive before deletion
+      if (targetStudent && typeof archiveRecords === 'function') {
+        const archiveItem: ArchivedRecord = {
+          id: `arch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          originalId: targetStudent.id,
+          studentId: targetStudent.id,
+          entityType: 'student',
+          fullName: targetStudent.fullName,
+          fatherName: targetStudent.fatherName,
+          category: targetStudent.category,
+          group: targetStudent.group,
+          section: targetStudent.section,
+          session: targetStudent.session,
+          contact: targetStudent.contact,
+          totalPackage: targetStudent.totalPackage,
+          feeReceived: targetStudent.feeReceived,
+          snapshot: { student: targetStudent },
+          deletedAt: new Date().toISOString(),
+          deletedBy: user?.email || 'System'
+        };
+        archiveRecords([archiveItem]);
+      }
+
       // 1. Delete associated child records first to ensure no foreign key violation
       try {
         await supabase.from('academic_records').delete().eq('student_id', id);
@@ -152,6 +175,30 @@ export function useStudentsOperations(ctx: any) {
       const toastId = toast.loading(`Deleting ${ids.length} students...`);
 
       try {
+        // 0. Save snapshots to Deleted Archive before bulk deletion
+        const targetStudents = students.filter((s: any) => ids.includes(s.id));
+        if (targetStudents.length > 0 && typeof archiveRecords === 'function') {
+          const archiveItems: ArchivedRecord[] = targetStudents.map((s: any) => ({
+            id: `arch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            originalId: s.id,
+            studentId: s.id,
+            entityType: 'student',
+            fullName: s.fullName,
+            fatherName: s.fatherName,
+            category: s.category,
+            group: s.group,
+            section: s.section,
+            session: s.session,
+            contact: s.contact,
+            totalPackage: s.totalPackage,
+            feeReceived: s.feeReceived,
+            snapshot: { student: s },
+            deletedAt: new Date().toISOString(),
+            deletedBy: user?.email || 'System'
+          }));
+          archiveRecords(archiveItems);
+        }
+
         const batchSize = 100;
         for (let i = 0; i < ids.length; i += batchSize) {
           const chunk = ids.slice(i, i + batchSize);

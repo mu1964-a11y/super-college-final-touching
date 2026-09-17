@@ -1,11 +1,11 @@
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
-import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus } from '../../types';
+import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus, ArchivedRecord } from '../../types';
 import { diffObjects, ADMISSION_FIELD_LABELS } from '../../utils/changeTracker';
 import { sendAutoAdmissionNotice } from '../../lib/whatsappAutomation';
 
 export function useAdmissionsOperations(ctx: any) {
-  const { user, generateStudentId, admissions, setAdmissions, students, setStudents, settings, isBulkOperatingRef, logActivity, fetchData } = ctx;
+  const { user, generateStudentId, admissions, setAdmissions, students, setStudents, settings, isBulkOperatingRef, logActivity, fetchData, archiveRecords } = ctx;
   const addAdmission = async (admission: Omit<Admission, 'id'>) => {
     const optimisticId = `temp-adm-${Date.now()}`;
     const optimisticAdmission: Admission = {
@@ -377,6 +377,29 @@ export function useAdmissionsOperations(ctx: any) {
       const targetAdmission = admissions.find((a: any) => a.id === id);
       const studentId = targetAdmission?.studentId;
 
+      // 0. Save full snapshot to Deleted Archive before deletion
+      if (targetAdmission && typeof archiveRecords === 'function') {
+        const archiveItem: ArchivedRecord = {
+          id: `arch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          originalId: targetAdmission.id,
+          studentId: targetAdmission.studentId,
+          entityType: 'admission',
+          fullName: targetAdmission.fullName,
+          fatherName: targetAdmission.fatherName,
+          category: targetAdmission.category,
+          group: targetAdmission.group,
+          section: targetAdmission.section,
+          session: targetAdmission.session,
+          contact: targetAdmission.contactNumber,
+          totalPackage: targetAdmission.totalPackage,
+          feeReceived: targetAdmission.feeReceived,
+          snapshot: { admission: targetAdmission },
+          deletedAt: new Date().toISOString(),
+          deletedBy: user?.email || 'System'
+        };
+        archiveRecords([archiveItem]);
+      }
+
       // 1. Identify any student records associated with this admission
       let linkedStudentIds: string[] = [];
       try {
@@ -478,6 +501,30 @@ export function useAdmissionsOperations(ctx: any) {
     const toastId = toast.loading(`Deleting ${ids.length} admissions...`);
 
     try {
+      // 0. Save snapshots to Deleted Archive before bulk deletion
+      const targetAdmissions = admissions.filter((a: any) => ids.includes(a.id));
+      if (targetAdmissions.length > 0 && typeof archiveRecords === 'function') {
+        const archiveItems: ArchivedRecord[] = targetAdmissions.map((a: any) => ({
+          id: `arch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          originalId: a.id,
+          studentId: a.studentId,
+          entityType: 'admission',
+          fullName: a.fullName,
+          fatherName: a.fatherName,
+          category: a.category,
+          group: a.group,
+          section: a.section,
+          session: a.session,
+          contact: a.contactNumber,
+          totalPackage: a.totalPackage,
+          feeReceived: a.feeReceived,
+          snapshot: { admission: a },
+          deletedAt: new Date().toISOString(),
+          deletedBy: user?.email || 'System'
+        }));
+        archiveRecords(archiveItems);
+      }
+
       const batchSize = 50;
       let totalDeleted = 0;
 

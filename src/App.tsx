@@ -44,6 +44,7 @@ import {
   Star,
   Activity,
   Wifi,
+  Archive,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useSupabaseData } from "./hooks/useSupabaseData";
@@ -69,6 +70,7 @@ import AttendanceView from "./components/AttendanceView";
 import SettingsView from "./components/SettingsView";
 import AcademicView from "./components/AcademicView";
 import WhatsAppCenterView from "./components/WhatsAppCenterView";
+import DeletedArchiveView from "./components/DeletedArchiveView";
 import GlobalCommandPalette from "./components/GlobalCommandPalette";
 import StudentDossier360 from "./components/StudentDossier360";
 import PublicVerificationView from "./components/PublicVerificationView";
@@ -113,7 +115,8 @@ type Page =
   | "academic"
   | "classes"
   | "timetable"
-  | "whatsapp-center";
+  | "whatsapp-center"
+  | "archive";
 
 const NavSection = ({
   title,
@@ -140,6 +143,7 @@ const NavItem = ({
   expandedMenu,
   activePage,
   activeFilter,
+  badge,
   onToggleMenu,
   onNavClick,
 }: {
@@ -150,6 +154,7 @@ const NavItem = ({
   expandedMenu: string | null;
   activePage: Page;
   activeFilter: string | null;
+  badge?: number | string;
   onToggleMenu?: (id: string) => void;
   onNavClick?: (
     id: Page,
@@ -191,6 +196,11 @@ const NavItem = ({
             "text-[12px] transition-all tracking-normal text-left truncate flex-1",
             isActive ? "font-semibold text-superior-gold" : "font-medium"
           )}>{label}</span>
+          {badge !== undefined && badge !== null && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500/25 text-rose-300 border border-rose-500/30 shrink-0">
+              {badge}
+            </span>
+          )}
         </div>
         {subItems && (
           <div
@@ -1010,7 +1020,7 @@ export default function App() {
       return Array.from(new Set([
         ...modulesFromSettings, 
         ...Object.keys(parentMap), 
-        "dashboard", "fee", "academic", "attendance", "library", "accounts", "classes", "timetable", "reports", "leads", "admissions", "students", "staff", "settings", "whatsapp-center"
+        "dashboard", "fee", "academic", "attendance", "library", "accounts", "classes", "timetable", "reports", "leads", "admissions", "students", "staff", "settings", "whatsapp-center", "archive"
       ]));
     }
 
@@ -2015,18 +2025,33 @@ export default function App() {
                     </NavSection>
                   )}
 
-                  {allowedSections.includes("whatsapp-center") && (
+                  {(allowedSections.includes("whatsapp-center") || allowedSections.includes("archive")) && (
                     <NavSection title="Additional">
-                      <NavItem
-                        id="whatsapp-center"
-                        label="WhatsApp Center"
-                        icon={MessageCircle}
-                        expandedMenu={expandedMenu}
-                        activePage={activePage}
-                        activeFilter={activeFilter}
-                        onToggleMenu={toggleMenu}
-                        onNavClick={handleNavClick}
-                      />
+                      {allowedSections.includes("whatsapp-center") && (
+                        <NavItem
+                          id="whatsapp-center"
+                          label="WhatsApp Center"
+                          icon={MessageCircle}
+                          expandedMenu={expandedMenu}
+                          activePage={activePage}
+                          activeFilter={activeFilter}
+                          onToggleMenu={toggleMenu}
+                          onNavClick={handleNavClick}
+                        />
+                      )}
+                      {allowedSections.includes("archive") && (
+                        <NavItem
+                          id="archive"
+                          label="Deleted Archive"
+                          icon={Archive}
+                          badge={data.deletedArchive?.length || undefined}
+                          expandedMenu={expandedMenu}
+                          activePage={activePage}
+                          activeFilter={activeFilter}
+                          onToggleMenu={toggleMenu}
+                          onNavClick={handleNavClick}
+                        />
+                      )}
                     </NavSection>
                   )}
                 </nav>
@@ -2412,6 +2437,12 @@ export default function App() {
                 )}
                 {activePage === "whatsapp-center" && (
                   <WhatsAppCenterView data={filteredData} />
+                )}
+                {activePage === "archive" && (
+                  <DeletedArchiveView 
+                    data={filteredData} 
+                    onNavigate={(p: string) => handleNavClick(p as Page)} 
+                  />
                 )}
               </motion.div>
               
