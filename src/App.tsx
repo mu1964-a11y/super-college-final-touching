@@ -2115,23 +2115,28 @@ export default function App() {
           </div>
 
           {/* Shortcut Modules Floating Bar */}
-          <div className="hidden lg:flex flex-1 justify-center px-4">
-            <div className="flex items-center gap-1.5 p-1 bg-slate-50/70 dark:bg-slate-800/60 rounded-2xl border border-slate-200/50 dark:border-slate-700/50 backdrop-blur-sm">
+          <div className="hidden lg:flex flex-1 justify-center px-2 min-w-0 max-w-full overflow-x-auto scrollbar-none">
+            <div className="flex items-center gap-1 p-1 bg-slate-50/70 dark:bg-slate-800/60 rounded-2xl border border-slate-200/50 dark:border-slate-700/50 backdrop-blur-sm shrink-0">
               {[
                 { id: "dashboard", label: "Dashboard", Icon: Home, color: "text-blue-500", shadow: "drop-shadow-[0_4px_6px_rgba(59,130,246,0.4)]" },
                 { id: "leads", label: "Marketing", Icon: Sparkles, color: "text-pink-500", shadow: "drop-shadow-[0_4px_6px_rgba(236,72,153,0.4)]" },
                 { id: "admissions", label: "Admissions", Icon: Layers, color: "text-purple-500", shadow: "drop-shadow-[0_4px_6px_rgba(168,85,247,0.4)]" },
                 { id: "students", label: "Students", Icon: Users, color: "text-emerald-500", shadow: "drop-shadow-[0_4px_6px_rgba(16,185,129,0.4)]" },
-                { id: "staff", label: "Staff", Icon: Briefcase, color: "text-amber-500", shadow: "drop-shadow-[0_4px_6px_rgba(245,158,11,0.4)]" },
-                { id: "fee", label: "Accounts", Icon: Wallet, color: "text-teal-500", shadow: "drop-shadow-[0_4px_6px_rgba(20,184,166,0.4)]" },
-                { id: "academic", label: "Academic", Icon: GraduationCap, color: "text-indigo-500", shadow: "drop-shadow-[0_4px_6px_rgba(99,102,241,0.4)]" },
                 { id: "attendance", label: "Attendance", Icon: CheckCircle2, color: "text-green-500", shadow: "drop-shadow-[0_4px_6px_rgba(34,197,94,0.4)]" },
+                { id: "academic", label: "Academic", Icon: GraduationCap, color: "text-indigo-500", shadow: "drop-shadow-[0_4px_6px_rgba(99,102,241,0.4)]" },
+                { id: "classes", label: "Classes", Icon: BookOpen, color: "text-violet-500", shadow: "drop-shadow-[0_4px_6px_rgba(139,92,246,0.4)]" },
+                { id: "timetable", label: "Timetable", Icon: Calendar, color: "text-orange-500", shadow: "drop-shadow-[0_4px_6px_rgba(249,115,22,0.4)]" },
+                { id: "fee", label: "Fees", Icon: CreditCard, color: "text-teal-500", shadow: "drop-shadow-[0_4px_6px_rgba(20,184,166,0.4)]" },
+                { id: "accounts", label: "Accounts", Icon: Wallet, color: "text-cyan-500", shadow: "drop-shadow-[0_4px_6px_rgba(6,182,212,0.4)]" },
+                { id: "staff", label: "Staff", Icon: Briefcase, color: "text-amber-500", shadow: "drop-shadow-[0_4px_6px_rgba(245,158,11,0.4)]" },
+                { id: "whatsapp-center", label: "WhatsApp", Icon: MessageCircle, color: "text-emerald-500", shadow: "drop-shadow-[0_4px_6px_rgba(16,185,129,0.4)]" },
                 { id: "reports", label: "Reports", Icon: BarChart3, color: "text-rose-500", shadow: "drop-shadow-[0_4px_6px_rgba(244,63,94,0.4)]" },
+                { id: "archive", label: "Archive", Icon: Archive, color: "text-slate-400", shadow: "drop-shadow-[0_4px_6px_rgba(148,163,184,0.4)]" },
                 { id: "settings", label: "Settings", Icon: SettingsIcon, color: "text-slate-600 dark:text-slate-300", shadow: "drop-shadow-[0_4px_6px_rgba(100,116,139,0.4)]" },
               ]
                 .filter((mod) => allowedSections.includes(mod.id))
                 .map((mod) => {
-                  const isActive = activePage === mod.id || activePage.startsWith(mod.id);
+                  const isActive = activePage === mod.id || activePage.startsWith(`${mod.id}-`);
                   return (
                     <div key={mod.id} className="relative group flex items-center justify-center">
                       <motion.button
@@ -2139,14 +2144,14 @@ export default function App() {
                         transition={{ duration: 0.2, type: "spring", stiffness: 350 }}
                         onClick={() => handleNavClick(mod.id as Page)}
                         className={cn(
-                          "flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-200 relative",
+                          "flex items-center justify-center w-8.5 h-8.5 xl:w-9.5 xl:h-9.5 rounded-xl transition-all duration-200 relative",
                           isActive
                             ? "bg-white dark:bg-slate-700 shadow-sm border border-superior-teal/30 dark:border-superior-gold/30 ring-2 ring-superior-teal/20"
                             : "hover:bg-white/80 dark:hover:bg-slate-700/60 text-slate-500"
                         )}
                       >
                         <mod.Icon 
-                          size={20} 
+                          size={18} 
                           strokeWidth={isActive ? 2.5 : 2} 
                           className={cn(
                             "transition-all duration-200",
@@ -2158,7 +2163,7 @@ export default function App() {
                       </motion.button>
                       
                       {/* Tooltip */}
-                      <div className="absolute top-[48px] left-1/2 -translate-x-1/2 px-2.5 py-1 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[10px] font-black uppercase tracking-wider rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 z-[60] whitespace-nowrap shadow-lg">
+                      <div className="absolute top-[46px] left-1/2 -translate-x-1/2 px-2.5 py-1 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[10px] font-black uppercase tracking-wider rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 z-[60] whitespace-nowrap shadow-lg">
                         {mod.label}
                       </div>
                     </div>

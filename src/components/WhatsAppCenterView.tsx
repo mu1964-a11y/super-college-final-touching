@@ -9,7 +9,7 @@ import {
   Reply, X, BarChart3, Activity, Download, Eye, DollarSign, Calendar,
   BookOpen, ShieldAlert, PieChart, Lock, Filter, Smartphone, HelpCircle,
   CheckCircle, Info, ChevronDown, Plus, CalendarCheck, TrendingUp, Bell,
-  Coffee, ChevronLeft, ArrowRight, Shield
+  Coffee, ChevronLeft, ArrowRight, Shield, Camera
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
@@ -2407,7 +2407,7 @@ _Administration Directorate, SGC Jahanian_`;
                 disabled={isAiComposing}
                 className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-200 dark:border-amber-800 rounded-xl text-xs font-bold text-amber-800 dark:text-amber-200 transition flex items-center gap-1.5 shadow-sm whitespace-nowrap active:scale-95"
               >
-                <CameraIcon size={13} className="text-amber-600" /> 📸 Request Missing Photos ({missingPhotosCount})
+                <Camera size={13} className="text-amber-600" /> 📸 Request Missing Photos ({missingPhotosCount})
               </button>
               <button
                 onClick={() => handleAiCompose("absent_staff")}
