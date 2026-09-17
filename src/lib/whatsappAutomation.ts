@@ -130,7 +130,7 @@ export async function sendAutoAdmissionNotice(
   const rawPhone = admission.fatherContact || admission.contactNumber || admission.phone || admission.mobile || "";
   const phone = formatWhatsAppPhone(rawPhone);
 
-  const collegeName = settings?.collegeName || "Superior Group of Colleges Jahanian";
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
   const session = admission.session || settings?.academicSession || "2026-28";
   const studentName = (admission.fullName || "Student").trim();
   const fatherName = (admission.fatherName || "Sahib").trim();
@@ -157,7 +157,7 @@ export async function sendAutoAdmissionNotice(
     ? `• *Scholarship / Category:* ${admission.concessionReason}\n` 
     : "";
 
-  const address = settings?.address || "Superior College, Khanewal Road, Jahanian";
+  const address = settings?.address || "Superior College, Canal Road, Jahanian";
   const helpline = settings?.contactNumber || "0301-4455891";
 
   // Build Context-Specific Links (ONLY Admission Slip & Initial Fee Receipt if paid)
@@ -280,7 +280,7 @@ export async function sendAutoFeeReceiptNotice(
     studentOrAdmission.mobile || "";
   const phone = formatWhatsAppPhone(rawPhone);
 
-  const collegeName = settings?.collegeName || "Superior Group of Colleges Jahanian";
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
   const studentName = (studentOrAdmission.fullName || "Student").trim();
   const fatherName = (studentOrAdmission.fatherName || "Sahib").trim();
   const rollNo = studentOrAdmission.collegeNo || studentOrAdmission.studentId || studentOrAdmission.id || "N/A";
@@ -399,7 +399,7 @@ export async function sendAutoFeeReminderNotice(
     student.mobile || "";
   const phone = formatWhatsAppPhone(rawPhone);
 
-  const collegeName = settings?.collegeName || "Superior Group of Colleges Jahanian";
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
   const studentName = (student.fullName || "Student").trim();
   const fatherName = (student.fatherName || "Sahib").trim();
   const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
@@ -509,7 +509,7 @@ export async function sendAutoResultNotice(
     student.mobile || "";
   const phone = formatWhatsAppPhone(rawPhone);
 
-  const collegeName = settings?.collegeName || "Superior Group of Colleges Jahanian";
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
   const studentName = (student.fullName || "Student").trim();
   const fatherName = (student.fatherName || "Sahib").trim();
   const rollNo = student.collegeNo || student.studentId || student.id || "N/A";

@@ -370,7 +370,7 @@ class WhatsAppBridgeService {
 
   public getFacultyMenuText(user: VerifiedUser): string {
     const isLeader = user.role === "Principal" || user.role === "Admin" || user.role === "Director" || !!user.email;
-    return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+    return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 🎓 *Faculty & Administrative Helpdesk*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 👤 *Verified User:* ${user.name}
@@ -546,7 +546,7 @@ _Authorized Faculty Access_`;
     const presentStaff = (staffAtt || []).filter((a: any) => a.status === "Present").length;
     const absentStaff = (staffAtt || []).filter((a: any) => a.status === "Absent").length;
 
-    return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+    return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📊 *Executive Institutional Briefing*
 Executive: *${adminName}*
 Date: *${new Date().toLocaleDateString('en-GB')}*
@@ -843,7 +843,7 @@ _Superior College Staff Portal_`;
     if (!ai) return fallbackResponse;
 
     try {
-      const systemInstruction = customSystemInstruction || `You are Superior Nexus, the official female AI Virtual Assistant of Superior Group of Colleges Jahanian (SGC-J).
+      const systemInstruction = customSystemInstruction || `You are Superior Nexus, the official female AI Virtual Assistant of Superior College Jahanian (SGC-J).
 Identity & Persona:
 - Name: Superior Nexus.
 - Gender / Persona: Female AI Assistant.
@@ -860,9 +860,9 @@ Identity & Persona:
 - Language: Reply in the language the user messages in (Roman Urdu / Hinglish or English).
 
 College Key Info:
-- Institution: Superior Group of Colleges Jahanian (SGC-J).
+- Institution: Superior College Jahanian (SGC-J).
 - Programs: Intermediate 2026-28 (FSc Pre-Medical, FSc Pre-Engineering, ICS, I.Com, FA IT).
-- Location: Khanewal Road, Jahanian.
+- Location: Canal Road, Jahanian.
 - Helpline / Inquiries: 0301-4455891.
 - Timings: Mon-Sat 08:00 AM - 02:00 PM.
 - Separate purpose-built campuses for Boys and Girls.
@@ -1565,7 +1565,7 @@ _Tip: Aap seedha likh sakte hain: "Mera aaj ka timetable kya hai?" ya "Student S
       }
 
       // 6. Conversational AI fallback with Faculty awareness
-      const facultySystemPrompt = `You are Superior Nexus, the intelligent executive AI assistant for Superior Group of Colleges Jahanian.
+      const facultySystemPrompt = `You are Superior Nexus, the intelligent executive AI assistant for Superior College Jahanian.
 You are currently speaking directly with a verified faculty / administrative authority:
 Name: ${verifiedUser.name}
 Role: ${verifiedUser.designation || verifiedUser.role}
@@ -1746,13 +1746,13 @@ _(Kamyab tasdeeq ke baad aapka WhatsApp number permanent link ho jayega aur doba
     if (isHiGreeting || isHelloGreeting || isSalamGreeting || isHalAhwalGreeting || isGoodTimeGreeting) {
       let baseGreetingReply = "";
       if (isSalamGreeting) {
-        baseGreetingReply = "Walaikum Assalam! Main *Superior Nexus* hoon, Superior Group of Colleges Jahanian ki official AI Virtual Assistant. 🌸 Kahiye, admissions, fees, exam results, attendance ya kisi bhi academic sawal ke silsilay mein main aapki kya madad kar sakti hoon?";
+        baseGreetingReply = "Walaikum Assalam! Main *Superior Nexus* hoon, Superior College Jahanian ki official AI Virtual Assistant. 🌸 Kahiye, admissions, fees, exam results, attendance ya kisi bhi academic sawal ke silsilay mein main aapki kya madad kar sakti hoon?";
       } else if (isHiGreeting || isHelloGreeting) {
-        baseGreetingReply = "Hello! Welcome to Superior Group of Colleges Jahanian. I am *Superior Nexus*, your official AI Assistant. 🌸 How may I assist you today regarding admissions, fee records, exam results, or academic queries?";
+        baseGreetingReply = "Hello! Welcome to Superior College Jahanian. I am *Superior Nexus*, your official AI Assistant. 🌸 How may I assist you today regarding admissions, fee records, exam results, or academic queries?";
       } else if (isHalAhwalGreeting) {
         baseGreetingReply = "Alhamdolillah, main theek hoon, shukriya! 🌸 Main Superior Nexus hoon. Kahiye aaj academic ya administrative silsilay mein aapko kya maloomat darkaar hain?";
       } else {
-        baseGreetingReply = "Good day! Superior Group of Colleges Jahanian mein khush-amdeed. Main *Superior Nexus* hoon. 🌸 Kahiye aaj main aapki kya madad kar sakti hoon?";
+        baseGreetingReply = "Good day! Superior College Jahanian mein khush-amdeed. Main *Superior Nexus* hoon. 🌸 Kahiye aaj main aapki kya madad kar sakti hoon?";
       }
 
       const reply = await this.generateAiConversationalReply(text, session.history || [], baseGreetingReply);
@@ -1770,7 +1770,7 @@ _(Kamyab tasdeeq ke baad aapka WhatsApp number permanent link ho jayega aur doba
       cleanQuery.includes("kya karte ho");
 
     if (isIntroQuery) {
-      const baseIntro = "Main *Superior Nexus* hoon, Superior Group of Colleges Jahanian ki official AI Virtual Assistant. 🌸 Main aapko admissions, fee balance, imtehani results, attendance aur kisi bhi general ya academic sawal ka fori aur verified jawab dene ke liye hazir hoon. Kahiye aapko kis hawalay se rehnumai darkaar hai?";
+      const baseIntro = "Main *Superior Nexus* hoon, Superior College Jahanian ki official AI Virtual Assistant. 🌸 Main aapko admissions, fee balance, imtehani results, attendance aur kisi bhi general ya academic sawal ka fori aur verified jawab dene ke liye hazir hoon. Kahiye aapko kis hawalay se rehnumai darkaar hai?";
       const reply = await this.generateAiConversationalReply(text, session.history || [], baseIntro);
       return await sendReply(reply, "Intro Inquiry");
     }
@@ -1789,7 +1789,7 @@ _(Kamyab tasdeeq ke baad aapka WhatsApp number permanent link ho jayega aur doba
 
     if (isAdmissionQuery) {
       const baseAdmission = 
-`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📢 *Admissions Open — Session 2026-28*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Intermediate ke darj zail programs mein admissions jari hain:
@@ -1803,7 +1803,7 @@ Intermediate ke darj zail programs mein admissions jari hain:
 • Special Merit & Need-based Scholarships (Up to 100%)
 • Safe College Transport Pick & Drop
 
-📍 *Campus Address:* Khanewal Road, Jahanian
+📍 *Campus Address:* Canal Road, Jahanian
 📞 *Admissions Helpline:* 0301-4455891
 _Directorate of Admissions, SGC Jahanian_`;
       const reply = await this.generateAiConversationalReply(text, session.history || [], baseAdmission);
@@ -2067,7 +2067,7 @@ Hum *${candidate.full_name}* (Walid: ${candidate.father_name}, Sec: ${candidate.
       if (evalResult.isPhoneVerified) {
         // WhatsApp message originates from the registered contact number in database!
         const challengeMsg = 
-`Superior Group of Colleges Jahanian mein khush-amdeed. 🌸
+`Superior College Jahanian mein khush-amdeed. 🌸
 
 Aapka number hamare college record mein register shuda hai.
 Student privacy aur security policy ke tehat, record dekhne ke liye tasdeeq zaroori hai.
@@ -2082,7 +2082,7 @@ Baraye meherbani in mein se koi aik cheez likh kar reply farmayein:
       } else {
         // Third-party SIM or unknown phone:
         const challengeMsg = 
-`Superior Group of Colleges Jahanian Information Desk. 🏛️
+`Superior College Jahanian Information Desk. 🏛️
 
 Student (*${candidate.full_name}*) ka record dhoondh liya gaya hai.
 Student privacy aur hifazat ke pesh-e-nazar, tasdeeq mukammal karne ke liye baraye meherbani in mein se koi cheez darj farmayein:
@@ -2098,7 +2098,7 @@ Student privacy aur hifazat ke pesh-e-nazar, tasdeeq mukammal karne ke liye bara
     if (isFeeQuery || isMarksQuery || isAttendanceQuery || (isAllQuery && text.split(/\s+/).length <= 4)) {
       const intentName = isFeeQuery ? "Fee Status" : isMarksQuery ? "Exam Result" : isAttendanceQuery ? "Attendance" : "Record";
       const askForStudent = 
-`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
 🔒 *STUDENT RECORD INQUIRY*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Student ka *${intentName}* maloom karne ke liye, baraye meherbani darj zail mein se koi maloomat likhein:
@@ -2114,7 +2114,7 @@ _Verification ke foran baad official record faraham kar diya jayega._`;
 
     // 16. Default Fallback: Intelligent AI conversational response (Superior Nexus acts like ChatGPT for any question!)
     const fallbackMessage = 
-      "Main *Superior Nexus* hoon, Superior Group of Colleges Jahanian ki AI Assistant. 🌸 Main admissions, fee records, results, timetables aur har qisam ke academic sawalat me aapki rehnumai ke liye hazir hoon. Kahiye, main aapki kya madad kar sakti hoon?";
+      "Main *Superior Nexus* hoon, Superior College Jahanian ki AI Assistant. 🌸 Main admissions, fee records, results, timetables aur har qisam ke academic sawalat me aapki rehnumai ke liye hazir hoon. Kahiye, main aapki kya madad kar sakti hoon?";
     const conversationalReply = await this.generateAiConversationalReply(text, session.history || [], fallbackMessage);
     return await sendReply(conversationalReply, "Conversational AI Fallback");
   }
@@ -2125,7 +2125,7 @@ _Verification ke foran baad official record faraham kar diya jayega._`;
       ? `👤 *Verified Student:* ${verifiedStudentName}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n`
       : "";
 
-    return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+    return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 🏢 *Student & Parent Helpdesk*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ${verifiedHeader}Matlooba service ke liye number likh kar reply karein:
@@ -2141,10 +2141,10 @@ _Tip: Aap kisi bhi student ka Naam ya Roll Number direct likh kar bhi bhej sakte
 
   // Helper: Campus Info (Option 4)
   public getCampusInfoText(): string {
-    return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+    return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📍 *Campus Information & Schedule*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-• *Location:* Khanewal Road, Jahanian
+• *Location:* Canal Road, Jahanian
 • *Office Timings:* 08:00 AM – 02:00 PM (Monday – Saturday)
 • *Academic Setup:* Separate Purpose-Built Boys & Girls Campuses
 • *Helpline:* 0301-4455891
@@ -2155,13 +2155,13 @@ _Tip: Aap kisi bhi student ka Naam ya Roll Number direct likh kar bhi bhej sakte
 
   // Helper: Helpline & Admin Support (Option 5)
   public getHelplineText(): string {
-    return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+    return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📞 *Administration & Executive Contacts*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 • *Principal Office / Inquiries:* 0301-4455891
 • *Accounts & Fee Section:* 0301-4455891
 • *Visiting Hours:* 08:00 AM – 02:00 PM (Mon – Sat)
-• *Address:* Khanewal Road, Jahanian
+• *Address:* Canal Road, Jahanian
 
 Admissions, fee concessions ya academic guidance ke liye campus office tashreef layen.
 ━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2201,7 +2201,7 @@ Admissions, fee concessions ya academic guidance ke liye campus office tashreef 
 
     if (intent === "fee") {
       const statementUrl = `${baseUrl}/?v=statement&id=${studentRef}`;
-      return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+      return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 💰 *OFFICIAL FEE LEDGER SUMMARY*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 • *Student Name:* ${student.full_name}
@@ -2241,7 +2241,7 @@ _Accounts & Finance Department, SGC Jahanian_${this.getMenuFooter()}`;
 
       const resultUrl = `${baseUrl}/?v=result&id=${studentRef}`;
 
-      return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+      return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 • *Student:* ${student.full_name} (${student.college_no || student.id})
@@ -2271,7 +2271,7 @@ _Office of the Controller of Examinations, SGC Jahanian_${this.getMenuFooter()}`
       const todayStatus = todayAtt?.status ? todayAtt.status.toUpperCase() : "Marked in Progress";
       const attendanceUrl = `${baseUrl}/?v=attendance&id=${studentRef}`;
 
-      return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+      return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📅 *ATTENDANCE & PUNCTUALITY NOTIFICATION*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 • *Student:* ${student.full_name} (${student.college_no || student.id})
@@ -2305,7 +2305,7 @@ _Office of the Vice Principal (Discipline), SGC Jahanian_${this.getMenuFooter()}
 
     const dossierUrl = `${baseUrl}/?v=student&id=${studentRef}`;
 
-    return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+    return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📋 *STUDENT 360° EXECUTIVE PROGRESS SUMMARY*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 • *Student Name:* ${student.full_name} (${student.college_no || student.id})

@@ -11,7 +11,7 @@ export const addStandardLetterhead = (doc: jsPDF, title: string) => {
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(22);
-  doc.text("SUPERIOR GROUP OF COLLEGES", width / 2, 25, { align: "center" });
+  doc.text("SUPERIOR COLLEGE JAHANIAN", width / 2, 25, { align: "center" });
   
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");

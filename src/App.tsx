@@ -1207,7 +1207,7 @@ export default function App() {
           <div className="space-y-1 mb-2">
             <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[9px] font-black uppercase tracking-[0.25em] text-[#085a4e] shadow-xs">
               <Sparkles size={10} />
-              <span>Superior Group of Colleges</span>
+              <span>Superior College Jahanian</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight pt-1">
               {brandingSettings.name || "Superior College Jahanian"}
@@ -1538,7 +1538,7 @@ export default function App() {
 
             {/* Bottom Card Footer */}
             <div className="w-full pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 gap-2">
-              <span>&copy; 2026 Superior Group of Colleges Jahanian. All rights reserved.</span>
+              <span>&copy; 2026 Superior College Jahanian. All rights reserved.</span>
               <span className="font-medium text-slate-500">Session 2026-28</span>
             </div>
           </div>
@@ -2457,6 +2457,7 @@ export default function App() {
         permissions={data.permissions}
         onUpdate={data.updatePermission}
         onDelete={data.deletePermission}
+        settings={data.settings}
       />
 
       {/* Global Spotlight Search (Ctrl + K) */}

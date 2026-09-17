@@ -553,7 +553,7 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
           <Card className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm rounded-2xl overflow-hidden printable-payslip print:shadow-none print:rounded-none">
             <div className="bg-gradient-to-r from-[#064e43] via-[#053d34] to-[#042822] p-8 text-white flex flex-col sm:flex-row items-center justify-between gap-6 print:bg-white print:text-black print:border-b-2 print:border-slate-800 print:p-0 print:pb-4">
               <div>
-                <h2 className="text-3xl font-black mb-1 tracking-tight">Superior Group of Colleges</h2>
+                <h2 className="text-3xl font-black mb-1 tracking-tight">Superior College Jahanian</h2>
                 <p className="text-emerald-200/90 font-medium print:text-slate-600">Staff Payslip - {format(new Date(selectedMonth + '-01'), 'MMMM yyyy')}</p>
               </div>
               <div className="text-right flex items-center gap-3 print:hidden">

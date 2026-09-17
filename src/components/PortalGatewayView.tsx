@@ -327,7 +327,7 @@ export default function PortalGatewayView({
 
           {/* Bottom Card Footer */}
           <div className="w-full pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 gap-2">
-            <span>&copy; 2026 Superior Group of Colleges Jahanian. All rights reserved.</span>
+            <span>&copy; 2026 Superior College Jahanian. All rights reserved.</span>
             <span className="font-medium text-slate-500">Session 2026-28</span>
           </div>
         </div>

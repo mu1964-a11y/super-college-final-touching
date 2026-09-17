@@ -76,6 +76,7 @@ import StaffAttendance from './StaffAttendance';
 import StaffPayroll from './StaffPayroll';
 import StaffSubjects from './StaffSubjects';
 import StaffTimetable from './StaffTimetable';
+import ExecutiveIDCardModal from './ExecutiveIDCardModal';
 
 export default function StaffView({ data, initialFilter, title, hideNavigation }: { data: any, initialFilter?: string | null, title?: string, hideNavigation?: boolean }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -88,6 +89,7 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [dialogType, setDialogType] = useState<'profile' | 'edit' | 'delete' | 'bulkDelete' | null>(null);
+  const [cardStaffMember, setCardStaffMember] = useState<Staff | null>(null);
 
   const [activeModule, setActiveModule] = useState<'directory' | 'attendance' | 'payroll' | 'timetable' | 'subjects'>(
     ['directory', 'attendance', 'payroll', 'timetable', 'subjects'].includes(initialFilter as string) 
@@ -581,6 +583,14 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                       <DropdownMenuItem 
                         className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-600 focus:bg-superior-teal/5 focus:text-superior-teal" 
                         onClick={() => {
+                          setCardStaffMember(member);
+                        }}
+                      >
+                        <CreditCard size={16} className="text-emerald-600" /> <span>Official ID Card</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-600 focus:bg-superior-teal/5 focus:text-superior-teal" 
+                        onClick={() => {
                           setSelectedStaff(member);
                           setDialogType('edit');
                         }}
@@ -671,6 +681,7 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
               member={selectedStaff} 
               data={data} 
               onEdit={() => setDialogType('edit')}
+              onShowCard={() => setCardStaffMember(selectedStaff)}
             />
           )}
         </DialogContent>
@@ -717,11 +728,36 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
         <StaffSubjects staffList={filteredStaff} onUpdateStaff={data.updateStaff} />
       </TabsContent>
       </Tabs>
+
+      {cardStaffMember && (
+        <ExecutiveIDCardModal
+          open={!!cardStaffMember}
+          onOpenChange={(open) => !open && setCardStaffMember(null)}
+          settings={data?.settings}
+          entity={{
+            type: 'staff',
+            fullName: cardStaffMember.fullName,
+            fatherName: cardStaffMember.fatherName,
+            idNumber: cardStaffMember.id,
+            categoryOrRole: cardStaffMember.role || 'Faculty Member',
+            subCategory: cardStaffMember.subjects && cardStaffMember.subjects.length > 0
+              ? cardStaffMember.subjects.slice(0, 2).join(', ')
+              : (cardStaffMember.qualification || 'Academic Faculty'),
+            sessionOrValidity: cardStaffMember.joinDate ? `Valid From: ${cardStaffMember.joinDate.slice(0, 4)}` : '2026-2027',
+            contact: cardStaffMember.contact,
+            emergencyContact: cardStaffMember.contact,
+            cnicOrBForm: cardStaffMember.cnic,
+            photo: cardStaffMember.photo,
+            qualification: cardStaffMember.qualification,
+            address: cardStaffMember.address
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function StaffProfile({ member, data, onEdit }: { member: Staff, data: any, onEdit?: () => void }) {
+function StaffProfile({ member, data, onEdit, onShowCard }: { member: Staff, data: any, onEdit?: () => void, onShowCard?: () => void }) {
   const [imageError, setImageError] = useState(false);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -925,8 +961,12 @@ function StaffProfile({ member, data, onEdit }: { member: Staff, data: any, onEd
         )}
 
         <div className="flex flex-col sm:flex-row justify-end gap-4 pt-8 border-t border-slate-100">
-          <Button variant="outline" className="h-11 px-6 text-superior-teal border-superior-teal/20 hover:bg-superior-teal/5 font-bold">
-            <Download size={18} className="mr-2" /> Download ID Card
+          <Button 
+            variant="outline" 
+            className="h-11 px-6 text-superior-teal border-superior-teal/20 hover:bg-superior-teal/5 font-bold"
+            onClick={onShowCard}
+          >
+            <CreditCard size={18} className="mr-2" /> Official ID Card
           </Button>
           <Button 
             className="h-11 px-10 bg-superior-teal text-white hover:bg-superior-teal/90 font-bold"

@@ -1580,7 +1580,7 @@ export default function PortalAuthCard({
 
       {/* Footer Branding Guarantee */}
       <div className="mt-5 pt-3 border-t border-slate-200/70 text-center text-[10px] text-slate-400">
-        <span>Copyright © 2026 Superior Group of Colleges Jahanian. All rights reserved.</span>
+        <span>Copyright © 2026 Superior College Jahanian. All rights reserved.</span>
       </div>
     </motion.div>
   );

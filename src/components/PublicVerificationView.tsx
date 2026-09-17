@@ -854,7 +854,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
           <div>
             <h3 className="font-black text-slate-900 text-lg">Querying College Records Database...</h3>
             <p className="text-xs text-slate-500 font-medium mt-1">
-              Verifying cryptographic record authenticity with Superior Group of Colleges central server.
+              Verifying cryptographic record authenticity with Superior College Jahanian central server.
             </p>
           </div>
         </div>
@@ -1143,7 +1143,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
 
                 {/* College Institutional Title */}
                 <h1 className="text-xl sm:text-2xl font-black tracking-tight uppercase leading-tight font-serif" style={{ color: '#085a4e' }}>
-                  {collegeName || "Superior Group of Colleges"}
+                  {collegeName || "Superior College Jahanian"}
                 </h1>
                 
                 <p className="text-[11.5px] font-bold tracking-wide mt-0.5" style={{ color: '#334155' }}>
@@ -1550,7 +1550,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
                         <Award size={15} className="text-[#c9a84c]" /> EXAMINATION OFFICE VERIFIED
                       </span>
                       <span className="text-[9px] font-black block mt-0.5 uppercase tracking-wider" style={{ color: '#334155' }}>
-                        SUPERIOR GROUP OF COLLEGES JAHANIAN
+                        SUPERIOR COLLEGE JAHANIAN
                       </span>
                     </div>
 
@@ -1848,7 +1848,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
 
                 {/* Right: College Contact & Registry */}
                 <div className="text-right text-[10px]" style={{ color: '#475569' }}>
-                  <strong className="block font-black uppercase text-[10px]" style={{ color: '#0f172a' }}>Superior Group of Colleges</strong>
+                  <strong className="block font-black uppercase text-[10px]" style={{ color: '#0f172a' }}>Superior College Jahanian</strong>
                   <span>Old Multan Road, Jahanian</span>
                   <span className="block font-mono font-bold" style={{ color: '#085a4e' }}>Helpline: 0301-4455891</span>
                 </div>

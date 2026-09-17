@@ -403,7 +403,7 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(15);
       doc.setFont('helvetica', 'bold');
-      doc.text("SUPERIOR GROUP OF COLLEGES", 105, 12, { align: 'center' });
+      doc.text("SUPERIOR COLLEGE JAHANIAN", 105, 12, { align: 'center' });
 
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
@@ -1406,7 +1406,7 @@ function DailyCashClosingTab({
           : `CASH SHORTAGE (-Rs. ${Math.abs(closingDiscrepancy).toLocaleString()}) ⚠️`;
 
     const briefingMsg = 
-`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📊 *DAILY FINANCIAL CLOSING EXECUTIVE BRIEFING*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 📅 *Closing Date:* ${closingDate}
@@ -1460,7 +1460,7 @@ _Accounts & Finance Department, SGC Jahanian_`;
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(16);
       doc.setFont("helvetica", "bold");
-      doc.text("SUPERIOR GROUP OF COLLEGES JAHANIAN", 40, 32);
+      doc.text("SUPERIOR COLLEGE JAHANIAN", 40, 32);
 
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");

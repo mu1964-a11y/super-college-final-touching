@@ -99,7 +99,7 @@ export default function StaffPortal({
                 Faculty & Staff Portal
               </span>
               <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight leading-tight">
-                {settings?.collegeName || "Superior Group of Colleges"}
+                {settings?.collegeName || "Superior College Jahanian"}
               </h1>
             </div>
           </div>

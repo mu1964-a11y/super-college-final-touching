@@ -118,7 +118,7 @@ export default function StudentPortal({
                 Student Self-Service Portal
               </span>
               <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight leading-tight">
-                {settings?.collegeName || "Superior Group of Colleges"}
+                {settings?.collegeName || "Superior College Jahanian"}
               </h1>
             </div>
           </div>
@@ -346,7 +346,7 @@ export default function StudentPortal({
                   </div>
                   <div className="col-span-2 p-3 bg-slate-50 rounded-xl">
                     <span className="text-slate-400 font-bold block text-[10px] uppercase">Home Address</span>
-                    <span className="font-medium text-slate-700 mt-0.5 block">{student.address || 'Khanewal Road, Jahanian'}</span>
+                    <span className="font-medium text-slate-700 mt-0.5 block">{student.address || 'Canal Road, Jahanian'}</span>
                   </div>
                 </div>
               </Card>

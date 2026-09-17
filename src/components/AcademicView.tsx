@@ -74,7 +74,7 @@ export const generateProfessionalResultCard = (records: any[], data: any, doc: j
   if (!records || records.length === 0) return; if (!isFirstPage) doc.addPage(); const record = records[0];
 
   const settings = data.settings;
-  const cName = settings?.collegeName || 'SUPERIOR GROUP OF COLLEGES';
+  const cName = settings?.collegeName || 'SUPERIOR COLLEGE JAHANIAN';
   const cCampus = settings?.campusName || 'MAIN CAMPUS';
   const cAddress = settings?.address || 'City Name';
   const cContact = settings?.contactNumber || 'Contact';
@@ -453,7 +453,7 @@ export default function AcademicView({ data }: { data: any }) {
     }).join("\n");
 
     const message = 
-`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Dear Parent/Guardian (${selectedStudent.fatherName || 'Guardian'}),

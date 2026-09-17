@@ -219,7 +219,7 @@ export default function StaffSalarySlipModal({
                     </span>
                   </div>
                   <h1 className="text-2xl sm:text-3xl font-black text-slate-900 mt-2 tracking-tight">
-                    SUPERIOR GROUP OF COLLEGES
+                    SUPERIOR COLLEGE JAHANIAN
                   </h1>
                   <p className="text-xs font-bold text-slate-600 mt-0.5">
                     Jahanian Campus • Staff Payroll Slip
@@ -439,7 +439,7 @@ export default function StaffSalarySlipModal({
 
             {/* Footer Note */}
             <div className="text-[10px] text-center text-slate-400 pt-2 border-t border-slate-100">
-              System generated computer slip • Superior Group of Colleges Jahanian ERP • Verification Key: {staff.id}-{month}
+              System generated computer slip • Superior College Jahanian ERP • Verification Key: {staff.id}-{month}
             </div>
           </div>
         </div>

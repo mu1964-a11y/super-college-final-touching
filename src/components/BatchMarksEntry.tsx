@@ -227,7 +227,7 @@ export default function BatchMarksEntry({
       const resultUrl = getDocumentLink('result', studentRef, { m: testDate });
 
       const message = 
-`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Dear Parent/Guardian (${student.fatherName || 'Guardian'}),
@@ -304,7 +304,7 @@ _Office of the Controller of Examinations, SGC Jahanian_`;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
     doc.setTextColor(11, 77, 69); // Superior Teal
-    doc.text(settings?.collegeName || 'SUPERIOR GROUP OF COLLEGES JAHANIAN', pageWidth / 2, 40, { align: 'center' });
+    doc.text(settings?.collegeName || 'SUPERIOR COLLEGE JAHANIAN', pageWidth / 2, 40, { align: 'center' });
 
     doc.setFontSize(12);
     doc.setTextColor(50, 50, 50);

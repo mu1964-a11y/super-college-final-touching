@@ -683,13 +683,13 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
     let promptInstruction = customAiPrompt.trim();
     
     if (prebuiltStyle === "fee_dues") {
-      promptInstruction = "Write an outstanding fee dues reminder template in polite Roman Urdu (Hinglish). Use header '🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*', line divider '━━━━━━━━━━━━━━━━━━━━━━━━━', bullet points with placeholders {{name}}, {{father}}, {{class}}, and {{dues}}. Keep it strictly to the point, dignified, signed off by '_Accounts & Finance Department, SGC Jahanian_' with phone '0301-4455891'. No rambling or conversational filler.";
+      promptInstruction = "Write an outstanding fee dues reminder template in polite Roman Urdu (Hinglish). Use header '🏛️ *SUPERIOR COLLEGE JAHANIAN*', line divider '━━━━━━━━━━━━━━━━━━━━━━━━━', bullet points with placeholders {{name}}, {{father}}, {{class}}, and {{dues}}. Keep it strictly to the point, dignified, signed off by '_Accounts & Finance Department, SGC Jahanian_' with phone '0301-4455891'. No rambling or conversational filler.";
     } else if (prebuiltStyle === "announcement") {
-      promptInstruction = "Write an official campus circular/holiday notice template for Superior Group of Colleges Jahanian. Use header '🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*', divider '━━━━━━━━━━━━━━━━━━━━━━━━━', placeholders {{name}} and {{class}}. Keep it strictly concise, executive, bilingual English/Roman Urdu, signed off by '_Office of the Principal, SGC Jahanian_'.";
+      promptInstruction = "Write an official campus circular/holiday notice template for Superior College Jahanian. Use header '🏛️ *SUPERIOR COLLEGE JAHANIAN*', divider '━━━━━━━━━━━━━━━━━━━━━━━━━', placeholders {{name}} and {{class}}. Keep it strictly concise, executive, bilingual English/Roman Urdu, signed off by '_Office of the Principal, SGC Jahanian_'.";
     } else if (prebuiltStyle === "marks") {
-      promptInstruction = "Write a concise executive academic assessment report notification. Use header '🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*', divider '━━━━━━━━━━━━━━━━━━━━━━━━━', placeholders {{name}}, {{father}}, {{class}}, and {{marks}}. Keep it strictly to the point, signed off by '_Office of the Controller of Examinations, SGC Jahanian_'.";
+      promptInstruction = "Write a concise executive academic assessment report notification. Use header '🏛️ *SUPERIOR COLLEGE JAHANIAN*', divider '━━━━━━━━━━━━━━━━━━━━━━━━━', placeholders {{name}}, {{father}}, {{class}}, and {{marks}}. Keep it strictly to the point, signed off by '_Office of the Controller of Examinations, SGC Jahanian_'.";
     } else if (prebuiltStyle === "absent_staff") {
-      promptInstruction = "Write a concise administrative faculty notice regarding punctual attendance and lecture timetables. Use header '🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*', divider '━━━━━━━━━━━━━━━━━━━━━━━━━', signed off by '_Office of the Vice Principal, SGC Jahanian_'.";
+      promptInstruction = "Write a concise administrative faculty notice regarding punctual attendance and lecture timetables. Use header '🏛️ *SUPERIOR COLLEGE JAHANIAN*', divider '━━━━━━━━━━━━━━━━━━━━━━━━━', signed off by '_Office of the Vice Principal, SGC Jahanian_'.";
     }
 
     if (!promptInstruction) {
@@ -700,7 +700,7 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
 
     const getOfflineTemplate = (style?: string) => {
       if (style === "fee_dues") {
-        return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+        return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📄 *OFFICIAL FEE REMINDER NOTICE*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Dear Parent/Guardian ({{father}}),
@@ -713,7 +713,7 @@ Dear Parent/Guardian ({{father}}),
 📞 Accounts Desk: 0301-4455891
 _Accounts & Finance Department, SGC Jahanian_`;
       } else if (style === "marks") {
-        return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+        return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Dear Parent/Guardian ({{father}}),
@@ -728,7 +728,7 @@ Dear Parent/Guardian ({{father}}),
 📞 Academic Helpdesk: 0301-4455891
 _Office of the Controller of Examinations, SGC Jahanian_`;
       } else if (style === "announcement") {
-        return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+        return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📢 *OFFICIAL CAMPUS CIRCULAR*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Respected Parents & Students,
@@ -739,7 +739,7 @@ College academic schedule aur official directives ke mutabiq tamam classes aur i
 📞 Campus Helpdesk: 0301-4455891
 _Office of the Principal, SGC Jahanian_`;
       } else if (style === "absent_staff") {
-        return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+        return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 ⚠️ *FACULTY ATTENDANCE & PUNCTUALITY NOTICE*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Respected Faculty Member,
@@ -749,7 +749,7 @@ This is an administrative reminder regarding daily biometric reporting and stric
 📞 Administration Office: 0301-4455891
 _Office of the Vice Principal, SGC Jahanian_`;
       }
-      return `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+      return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📌 *OFFICIAL CAMPUS NOTIFICATION*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Dear Parent/Guardian ({{father}}),
@@ -1140,7 +1140,7 @@ _Administration Directorate, SGC Jahanian_`;
                     <h3 className="font-black text-sm text-slate-800 dark:text-white uppercase tracking-wider">
                       Official WhatsApp Gateway
                     </h3>
-                    <p className="text-[10px] text-slate-400">Superior Group of Colleges Jahanian</p>
+                    <p className="text-[10px] text-slate-400">Superior College Jahanian</p>
                   </div>
                 </div>
                 <button
@@ -1309,7 +1309,7 @@ _Administration Directorate, SGC Jahanian_`;
                     </span>
                   </div>
                   <p className="text-[11px] text-teal-100/70">
-                    Official Two-Way Live WhatsApp Gateway • Superior Group of Colleges Jahanian
+                    Official Two-Way Live WhatsApp Gateway • Superior College Jahanian
                   </p>
                 </div>
               </div>

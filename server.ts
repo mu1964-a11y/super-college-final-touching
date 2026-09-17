@@ -154,7 +154,7 @@ You have PRIVILEGED, DIRECT read-only lookup access to the real-time operational
 ==================================================
 1. APP ARCHITECTURE & FILE LAYOUT KNOWLEDGEBASE
 ==================================================
-The application is named "SCJ Management System LMS Final" (built for Superior Group of Colleges Jahanian). It uses:
+The application is named "SCJ Management System LMS Final" (built for Superior College Jahanian). It uses:
 - Frontend: React 19, TypeScript, Vite
 - Theme & Styling: Tailwind CSS v4, Lucide React icons
 - Database/Backend: Supabase (PostgreSQL)
@@ -774,7 +774,7 @@ College Metrics Data:
       }
 
       const ai = getGenAI();
-      const prompt = `You are an automated College Administration AI for Superior Group of Colleges Jahanian.
+      const prompt = `You are an automated College Administration AI for Superior College Jahanian.
 The administrator provided this natural language command in Urdu/Hinglish/English: "${command}".
 
 Analyze the intent and return ONLY valid JSON matching this schema:

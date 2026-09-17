@@ -215,7 +215,7 @@ How can I assist you with college strategy, custom notices, or student audits to
         </style>
       </head>
       <body>
-        <h1 style="text-align: center;">Superior Group of Colleges Jahanian</h1>
+        <h1 style="text-align: center;">Superior College Jahanian</h1>
         <p style="text-align: center; font-size: 10pt; color: #666; font-style: italic; margin-bottom: 20px;">
           Superior Nexus AI Console & Administrative Decision Support Report
         </p>
@@ -639,7 +639,7 @@ How can I assist you with college strategy, custom notices, or student audits to
     },
     topper: {
       badge: "ACADEMIC EXCELLENCE",
-      title: "SUPERIOR GROUP OF COLLEGES JAHANIAN",
+      title: "SUPERIOR COLLEGE JAHANIAN",
       subtitle: "HONOR ROLL & CONGRATULATIONS TO THE PRIDE OF JAHANIAN",
       headline: "CELEBRATING GRADE OUTSTANDING ACHIEVERS",
       body: "Under the elite academy coaching, our high-performing students have secured spectacular scores in the Multan Division Intermediate Board Exams, setting new legendary standings.",
@@ -971,7 +971,7 @@ How can I assist you with college strategy, custom notices, or student audits to
     setIsAiDesigning(true);
     try {
       const designInstruction = `
-You are the Creative Brand Director of Superior Group of Colleges. Formulate premium, print-ready college flyer card specifications based on this prompt: "${aiDesignPrompt}".
+You are the Creative Brand Director of Superior College Jahanian. Formulate premium, print-ready college flyer card specifications based on this prompt: "${aiDesignPrompt}".
 Return ONLY a valid, parseable JSON object matching the properties below, in plain text. Do not wrap it in any Markdown formatting (no triple backticks), and do not add any conversation.
 
 JSON Template Structure:
@@ -1061,7 +1061,7 @@ JSON Template Structure:
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: `Act as an expert AI Prompter and Art Director for "Superior Group of Colleges Jahanian" (SGC-J). 
+          message: `Act as an expert AI Prompter and Art Director for "Superior College Jahanian" (SGC-J). 
 The user wants to generate a graphic design. Enhance their basic idea into a highly detailed, extremely coherent prompt suitable for an elite AI image generator (like Imagen 3 or Midjourney). 
 Specify aesthetic details: lighting, composition, camera angles, color palette (e.g. SGC Emerald Green, Gold, Crisp White).
 Important: End the prompt with "Single coherent cohesive design, do not tile, do not repeat elements".
@@ -1546,7 +1546,7 @@ User's basic idea: "${imageGenPrompt}"`,
                 </h3>
               </div>
               <p className="text-[9.5px] text-amber-200 font-extrabold uppercase tracking-[0.25em] mt-0.5">
-                Superior Group of Colleges Jahanian Real-time Intelligence Hub
+                Superior College Jahanian Real-time Intelligence Hub
               </p>
             </div>
           </div>
@@ -2129,7 +2129,7 @@ User's basic idea: "${imageGenPrompt}"`,
                           key={preset}
                           onClick={() => {
                             setImageGenPrompt(preset);
-                            setEnhancedDesignPrompt(preset + " at Superior Group of Colleges Jahanian Campus, high detail, premium executive graphics.");
+                            setEnhancedDesignPrompt(preset + " at Superior College Jahanian Campus, high detail, premium executive graphics.");
                           }}
                           className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-[9px] font-black text-slate-600 dark:text-slate-400 hover:border-emerald-500 hover:text-emerald-500 cursor-pointer transition-all shadow-2xs"
                         >

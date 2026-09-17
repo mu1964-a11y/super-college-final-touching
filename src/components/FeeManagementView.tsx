@@ -128,7 +128,7 @@ export default function FeeManagementView({
     const statementUrl = getDocumentLink("statement", studentRef);
 
     const msg = 
-`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📄 *OFFICIAL FEE REMINDER & ACCOUNT STATEMENT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Dear Parent/Guardian (${student.fatherName || 'Guardian'}),
@@ -2116,7 +2116,7 @@ _Accounts & Finance Department, SGC Jahanian_`;
                         onClick={() => {
                           const remainingBal = selectedStudent.feeLedger?.remainingBalance ?? ((selectedStudent.totalPackage || 0) - (selectedStudent.feeReceived || 0));
                           const msg = 
-`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
 🧾 *OFFICIAL FEE PAYMENT RECEIPT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 • *Student Name:* ${selectedStudent.fullName}

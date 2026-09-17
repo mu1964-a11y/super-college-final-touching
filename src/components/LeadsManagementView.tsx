@@ -134,7 +134,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
     const currentClass = lead.currentClass || 'College Admission';
 
     const message = 
-`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
 🎓 *ADMISSION INQUIRY & INFORMATION DESK*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Assalam-o-Alaikum ${fatherName} sb,
@@ -146,7 +146,7 @@ Yeh rasmi rabta *Superior College Jahanian* ki janib se *${studentName}* ke dakh
 • *Scholarships:* Special fee concessions available on matric marks
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Prospectus aur admission guidance ke liye hamare admission office tashreef layen ya is number par rabta karein.
-📍 Khanewal Road, Jahanian
+📍 Canal Road, Jahanian
 📞 Admission Helpline: 0301-4455891
 _Admissions Directorate, SGC Jahanian_`;
 
@@ -325,7 +325,7 @@ _Admissions Directorate, SGC Jahanian_`;
     const doc = new jsPDF();
     doc.setFontSize(20);
     doc.setTextColor(8, 90, 78); // Superior Teal
-    doc.text("Superior Group of Colleges Jahanian", 14, 20);
+    doc.text("Superior College Jahanian", 14, 20);
     doc.setFontSize(16);
     doc.text("Marketing Leads - Full Analytical Report", 14, 30);
     

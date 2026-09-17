@@ -172,7 +172,7 @@ export default function ClassMeritList({
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
     doc.setTextColor(11, 77, 69);
-    doc.text(settings?.collegeName || 'SUPERIOR GROUP OF COLLEGES JAHANIAN', pageWidth / 2, 40, { align: 'center' });
+    doc.text(settings?.collegeName || 'SUPERIOR COLLEGE JAHANIAN', pageWidth / 2, 40, { align: 'center' });
 
     doc.setFontSize(12);
     doc.setTextColor(40, 40, 40);

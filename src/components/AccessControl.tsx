@@ -12,10 +12,11 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { UserPermission } from '../types';
-import { Mail, Shield, User, Trash2, Key, Eye, EyeOff, Circle, Plus, Edit2 } from 'lucide-react';
+import { Mail, Shield, User, Trash2, Key, Eye, EyeOff, Circle, Plus, Edit2, CreditCard } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
+import ExecutiveIDCardModal from './ExecutiveIDCardModal';
 
 const SECTIONS = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -40,6 +41,7 @@ interface AccessControlDialogProps {
   permissions: UserPermission[];
   onUpdate: (permission: Omit<UserPermission, 'id'>) => void;
   onDelete: (email: string) => void;
+  settings?: any;
 }
 
 export default function AccessControlDialog({
@@ -47,7 +49,8 @@ export default function AccessControlDialog({
   onOpenChange,
   permissions,
   onUpdate,
-  onDelete
+  onDelete,
+  settings
 }: AccessControlDialogProps) {
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -56,6 +59,7 @@ export default function AccessControlDialog({
   const [isAdmin, setIsAdmin] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [selectedAdminCard, setSelectedAdminCard] = useState<UserPermission | null>(null);
 
   const handleAdd = () => {
     if (!email) return;
@@ -96,7 +100,8 @@ export default function AccessControlDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[1280px] w-[95vw] p-0 rounded-[3rem] overflow-hidden border-none shadow-2xl">
         <div className="flex flex-col lg:flex-row h-full max-h-screen lg:h-[85vh] lg:max-h-[850px] overflow-auto lg:overflow-hidden">
           {/* Left Side: Form */}
@@ -343,6 +348,15 @@ export default function AccessControlDialog({
                         <Button 
                           variant="ghost" 
                           size="icon" 
+                          className="text-superior-gold hover:text-white hover:bg-superior-gold rounded-xl h-9 w-9 border border-superior-gold/20 shadow-sm transition-all"
+                          title="Official Executive Admin Card"
+                          onClick={() => setSelectedAdminCard(p)}
+                        >
+                          <CreditCard size={16} />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
                           className="text-superior-teal hover:text-white hover:bg-superior-teal rounded-xl h-9 w-9 border border-superior-teal/10 shadow-sm"
                           onClick={() => handleEdit(p)}
                         >
@@ -366,6 +380,29 @@ export default function AccessControlDialog({
         </div>
       </DialogContent>
     </Dialog>
+
+    {selectedAdminCard && (
+      <ExecutiveIDCardModal
+        open={!!selectedAdminCard}
+        onOpenChange={(open) => !open && setSelectedAdminCard(null)}
+        settings={settings}
+        entity={{
+          type: 'admin',
+          fullName: selectedAdminCard.displayName || 'College Administrator',
+          idNumber: `ADM-${(selectedAdminCard.displayName || 'SCJ').replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase() || '001'}`,
+          categoryOrRole: selectedAdminCard.isAdmin ? 'Super Administrator' : 'Sub Administrator / Staff Officer',
+          subCategory: selectedAdminCard.isAdmin 
+            ? 'Institutional Executive Access' 
+            : `Access: ${selectedAdminCard.sections?.slice(0, 2).join(', ') || 'Restricted'}`,
+          sessionOrValidity: 'Official College Administration',
+          email: selectedAdminCard.email,
+          contact: 'College Administration Office',
+          emergencyContact: '0300-0000000',
+          address: 'Canal Road, Jahanian'
+        }}
+      />
+    )}
+    </>
   );
 }
 

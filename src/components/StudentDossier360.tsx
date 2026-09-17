@@ -73,7 +73,7 @@ export default function StudentDossier360({
     if (type === 'fee') {
       const statementUrl = getDocumentLink("statement", studentRef);
       text = 
-`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📄 *OFFICIAL FEE REMINDER & ACCOUNT STATEMENT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Dear Parent/Guardian (${student.fatherName || 'Guardian'}),
@@ -96,7 +96,7 @@ _Accounts & Finance Department, SGC Jahanian_`;
       const resultUrl = getDocumentLink("result", studentRef);
       const marksList = academicRecords.map((r: any) => `• *${r.subject || 'Assessment'}:* ${r.obtainedMarks}/${r.totalMarks}`).join('\n') || '• Academic records are being updated';
       text = 
-`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Dear Parent/Guardian (${student.fatherName || 'Guardian'}),
@@ -117,7 +117,7 @@ _Office of the Controller of Examinations, SGC Jahanian_`;
     } else {
       const dossierUrl = getDocumentLink("student", studentRef);
       text = 
-`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📋 *STUDENT PROGRESS UPDATE*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Dear Parent/Guardian (${student.fatherName || 'Guardian'}),

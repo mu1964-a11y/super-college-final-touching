@@ -321,7 +321,7 @@ export default function WelcomeScreen({
 
           {/* Bottom Card Footer */}
           <div className="w-full pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 gap-2">
-            <span>&copy; 2026 Superior Group of Colleges Jahanian. All rights reserved.</span>
+            <span>&copy; 2026 Superior College Jahanian. All rights reserved.</span>
             <div className="flex items-center gap-3">
               {isDesktopApp ? (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100/90 text-emerald-800 text-[10.5px] font-bold border border-emerald-300 shadow-xs">
