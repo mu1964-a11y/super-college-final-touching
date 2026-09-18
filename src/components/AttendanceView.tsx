@@ -583,8 +583,17 @@ export default function AttendanceView({ data }: { data: any }) {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-superior-teal/10 flex items-center justify-center text-superior-teal font-black text-sm">
-                              {(student.fullName || 'S').substring(0, 1).toUpperCase()}
+                            <div className="w-10 h-10 rounded-full bg-superior-teal/10 flex items-center justify-center text-superior-teal font-black text-sm overflow-hidden border border-slate-200/80 shadow-2xs shrink-0">
+                              {student.photo ? (
+                                <img
+                                  src={student.photo}
+                                  alt={student.fullName || ''}
+                                  className="w-full h-full object-cover object-[center_top] rounded-full"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                (student.fullName || 'S').substring(0, 1).toUpperCase()
+                              )}
                             </div>
                             <div>
                               <div className="font-bold text-slate-800 text-sm flex items-center gap-2">
@@ -673,8 +682,17 @@ export default function AttendanceView({ data }: { data: any }) {
                         <TableRow key={student.id} className="hover:bg-slate-50/50">
                           <TableCell className="pl-8">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 font-black text-sm">
-                                {(student.fullName || 'S').substring(0, 1).toUpperCase()}
+                              <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-black text-sm overflow-hidden border border-slate-200/80 shadow-2xs shrink-0">
+                                {student.photo ? (
+                                  <img
+                                    src={student.photo}
+                                    alt={student.fullName || ''}
+                                    className="w-full h-full object-cover object-[center_top] rounded-full"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : (
+                                  (student.fullName || 'S').substring(0, 1).toUpperCase()
+                                )}
                               </div>
                               <div>
                                 <div className="font-bold text-slate-800 text-sm">{student.fullName}</div>

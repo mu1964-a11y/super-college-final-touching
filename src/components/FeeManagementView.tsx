@@ -1575,12 +1575,12 @@ export default function FeeManagementView({
                           >
                             <TableCell className="pl-8 py-4">
                               <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center text-sm font-black text-superior-teal overflow-hidden border border-slate-200">
+                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-sm font-black text-superior-teal overflow-hidden border border-slate-200 shadow-2xs shrink-0">
                                   {student.photo ? (
                                     <img
                                       src={student.photo}
                                       alt=""
-                                      className="w-full h-full object-cover"
+                                      className="w-full h-full object-cover object-[center_top] rounded-full"
                                       referrerPolicy="no-referrer"
                                       onError={(e) => {
                                         const target =
@@ -1589,7 +1589,7 @@ export default function FeeManagementView({
                                       }}
                                     />
                                   ) : (
-                                    student.fullName?.charAt(0)?.toUpperCase()
+                                    (student.fullName || 'S').charAt(0).toUpperCase()
                                   )}
                                 </div>
                                 <div>
@@ -1830,11 +1830,34 @@ export default function FeeManagementView({
             <DialogTitle className="text-2xl font-serif font-black text-slate-800 italic">
               Record Fee Payment
             </DialogTitle>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-              {selectedStudent
-                ? `For: ${selectedStudent.fullName}`
-                : "New Fee Record"}
-            </p>
+            {selectedStudent ? (
+              <div className="flex items-center gap-3 pt-2">
+                <div className="w-10 h-10 rounded-full bg-superior-teal/10 flex items-center justify-center text-sm font-black text-superior-teal overflow-hidden border border-slate-200 shadow-2xs shrink-0">
+                  {selectedStudent.photo ? (
+                    <img
+                      src={selectedStudent.photo}
+                      alt=""
+                      className="w-full h-full object-cover object-[center_top] rounded-full"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    (selectedStudent.fullName || 'S').charAt(0).toUpperCase()
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-700 leading-tight">
+                    {selectedStudent.fullName}
+                  </p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    {selectedStudent.id} • {selectedStudent.group || selectedStudent.category}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                New Fee Record
+              </p>
+            )}
           </DialogHeader>
           <div className="space-y-6 py-4 overflow-visible">
             {!selectedStudent && (
@@ -2081,9 +2104,30 @@ export default function FeeManagementView({
             <DialogTitle className="text-2xl font-serif font-black text-slate-800 italic">
               Student Payment History
             </DialogTitle>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-              {selectedStudent?.fullName} ({selectedStudent?.id})
-            </p>
+            {selectedStudent && (
+              <div className="flex items-center gap-3 pt-2">
+                <div className="w-10 h-10 rounded-full bg-superior-teal/10 flex items-center justify-center text-sm font-black text-superior-teal overflow-hidden border border-slate-200 shadow-2xs shrink-0">
+                  {selectedStudent.photo ? (
+                    <img
+                      src={selectedStudent.photo}
+                      alt=""
+                      className="w-full h-full object-cover object-[center_top] rounded-full"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    (selectedStudent.fullName || 'S').charAt(0).toUpperCase()
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-700 leading-tight">
+                    {selectedStudent.fullName}
+                  </p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    {selectedStudent.id} • {selectedStudent.group || selectedStudent.category}
+                  </p>
+                </div>
+              </div>
+            )}
           </DialogHeader>
           <ScrollArea className="flex-1 mt-6">
             <div className="space-y-4">

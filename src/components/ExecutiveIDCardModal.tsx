@@ -274,28 +274,31 @@ export default function ExecutiveIDCardModal({
 
               {/* ─── 2. PORTRAIT & IDENTITY SECTION ─── */}
               <div className="flex-1 flex flex-col items-center justify-between px-3.5 py-2 text-center relative z-10">
-                {/* Photo with Executive Gold Frame & Verification Hologram (Balanced Size, Face Focused) */}
+                {/* Circular Photo with Executive Gold Frame & Verification Hologram (Face Focused) */}
                 <div 
-                  className="w-21 h-25 rounded-2xl border-2 border-[#cfa84c] bg-slate-50 overflow-hidden shadow-md relative shrink-0 mt-0.5"
-                  style={{ width: '84px', height: '100px', minWidth: '84px', minHeight: '100px' }}
+                  className="w-22 h-22 rounded-full border-2 border-[#cfa84c] p-0.5 bg-gradient-to-tr from-[#cfa84c] via-[#f3d274] to-[#a8822d] shadow-md relative shrink-0 mt-0.5 flex items-center justify-center"
+                  style={{ width: '88px', height: '88px', minWidth: '88px', minHeight: '88px' }}
                 >
-                  {entity.photo ? (
-                    <img 
-                      src={entity.photo} 
-                      alt={entity.fullName} 
-                      className="w-full h-full object-cover object-[center_top]" 
-                      width={84}
-                      height={100}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 text-slate-400">
-                      <User size={34} className="text-slate-300" />
-                      <span className="text-[7px] font-black uppercase tracking-widest text-slate-400 mt-1">NO PHOTO</span>
-                    </div>
-                  )}
+                  <div className="w-full h-full rounded-full overflow-hidden bg-slate-50 relative">
+                    {entity.photo ? (
+                      <img 
+                        src={entity.photo} 
+                        alt={entity.fullName} 
+                        className="w-full h-full object-cover object-[center_top] rounded-full" 
+                        referrerPolicy="no-referrer"
+                        width={88}
+                        height={88}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 text-slate-400 rounded-full">
+                        <User size={32} className="text-slate-300" />
+                        <span className="text-[6.5px] font-black uppercase tracking-widest text-slate-400 mt-0.5">NO PHOTO</span>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Verified Holographic Green Badge */}
-                  <div className="absolute bottom-1 right-1 bg-emerald-600 text-white rounded-full p-0.5 shadow-md border border-white">
+                  <div className="absolute bottom-0 right-0 bg-emerald-600 text-white rounded-full p-0.5 shadow-md border border-white z-10">
                     <CheckCircle2 size={11} strokeWidth={3} />
                   </div>
                 </div>

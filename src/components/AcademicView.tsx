@@ -834,8 +834,17 @@ _Canal Road, Jahanian | Superior College Jahanian_`;
               {filteredStudents.length > 0 ? filteredStudents.map((s: Student) => (
                 <div key={s.id} onClick={() => setSelectedStudentId(s.id)} className="p-4 border rounded-xl cursor-pointer hover:-translate-y-1.5 hover:shadow-lg hover:bg-emerald-50 hover:border-emerald-300 transition-all duration-300 flex items-center justify-between gap-3 bg-white group">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shadow-sm shrink-0">
-                      {(s.fullName || "??").substring(0, 2).toUpperCase()}
+                    <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shadow-sm shrink-0 overflow-hidden border border-emerald-200/70">
+                      {s.photo ? (
+                        <img
+                          src={s.photo}
+                          alt={s.fullName || ''}
+                          className="w-full h-full object-cover object-[center_top] rounded-full"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        (s.fullName || "??").substring(0, 2).toUpperCase()
+                      )}
                     </div>
                     <div className="min-w-0">
                       <div className="font-semibold text-sm text-gray-900 truncate">{s.fullName}</div>
@@ -856,7 +865,9 @@ _Canal Road, Jahanian | Superior College Jahanian_`;
                   </Button>
                 </div>
               )) : (
-                <div className="col-span-full p-4 text-center text-emerald-600 bg-emerald-50 rounded-lg">No students found matching your filters.</div>
+                <div className="col-span-full py-12 text-center text-slate-500 font-medium">
+                  No students found matching current filters.
+                </div>
               )}
             </div>
           </div>
@@ -868,8 +879,17 @@ _Canal Road, Jahanian | Superior College Jahanian_`;
           <Card className="bg-[#FAF9F6] border-emerald-100 shadow-sm p-4 md:p-6 overflow-hidden relative rounded-xl">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative z-10">
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-xl font-bold shadow-sm">
-                  {(selectedStudent.fullName || "??").substring(0, 2).toUpperCase()}
+                <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-xl font-bold shadow-sm overflow-hidden border-2 border-emerald-300 shrink-0">
+                  {selectedStudent.photo ? (
+                    <img
+                      src={selectedStudent.photo}
+                      alt={selectedStudent.fullName || ''}
+                      className="w-full h-full object-cover object-[center_top] rounded-full"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    (selectedStudent.fullName || "??").substring(0, 2).toUpperCase()
+                  )}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -1132,8 +1152,17 @@ _Canal Road, Jahanian | Superior College Jahanian_`;
         <DialogContent className="max-w-4xl p-0 overflow-hidden bg-gray-50 border-0 rounded-xl shadow-xl">
           <div className="p-6 bg-white border-b flex flex-col md:flex-row justify-between md:items-center gap-4">
             <div className="flex items-center gap-3">
-               <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-800 font-bold text-lg">
-                 {(selectedStudent?.fullName || "??").substring(0,2).toUpperCase()}
+               <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-800 font-bold text-lg overflow-hidden border-2 border-emerald-200 shrink-0">
+                 {selectedStudent?.photo ? (
+                   <img
+                     src={selectedStudent.photo}
+                     alt={selectedStudent.fullName || ''}
+                     className="w-full h-full object-cover object-[center_top] rounded-full"
+                     referrerPolicy="no-referrer"
+                   />
+                 ) : (
+                   (selectedStudent?.fullName || "??").substring(0,2).toUpperCase()
+                 )}
                </div>
                <div>
                   <h3 className="font-bold text-gray-900 text-lg">{selectedStudent?.fullName}</h3>

@@ -195,10 +195,24 @@ export default function GlobalCommandPalette({
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className={cn(
-                          "w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 shadow-sm",
-                          isSelected ? "bg-teal-700 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                          "w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 shadow-sm overflow-hidden border border-slate-200 dark:border-slate-700",
+                          isSelected ? "ring-2 ring-teal-500" : ""
                         )}>
-                          {student.fullName ? student.fullName[0].toUpperCase() : <User size={16} />}
+                          {student.photo ? (
+                            <img
+                              src={student.photo}
+                              alt={student.fullName || ''}
+                              className="w-full h-full object-cover object-[center_top] rounded-full"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className={cn(
+                              "w-full h-full flex items-center justify-center font-bold text-xs",
+                              isSelected ? "bg-teal-700 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                            )}>
+                              {(student.fullName || 'S').charAt(0).toUpperCase()}
+                            </div>
+                          )}
                         </div>
                         <div className="truncate">
                           <div className="flex items-center gap-2">

@@ -398,9 +398,25 @@ export default function ClassMeritList({
             {/* 2nd Position Card */}
             <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-100 to-slate-200/80 border border-slate-300 text-center flex flex-col justify-between order-2 md:order-1 shadow-sm">
               <div className="flex justify-center mb-2">
-                <span className="w-12 h-12 rounded-full bg-slate-300 text-slate-700 flex items-center justify-center font-black text-xl shadow-inner">
-                  🥈
-                </span>
+                <div className="relative">
+                  <div className="w-14 h-14 rounded-full bg-slate-300 border-2 border-white shadow-md overflow-hidden flex items-center justify-center">
+                    {secondRank?.photo ? (
+                      <img
+                        src={secondRank.photo}
+                        alt={secondRank.fullName || ''}
+                        className="w-full h-full object-cover object-[center_top] rounded-full"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span className="font-black text-slate-700 text-lg">
+                        {(secondRank?.fullName || '2').charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-slate-200 border border-white flex items-center justify-center text-xs shadow-sm">
+                    🥈
+                  </span>
+                </div>
               </div>
               <div>
                 <span className="text-xs font-black uppercase tracking-wider text-slate-600 block">
@@ -424,9 +440,25 @@ export default function ClassMeritList({
             {/* 1st Position Card (Champion) */}
             <div className="p-6 rounded-2xl bg-gradient-to-b from-amber-100 via-amber-50 to-amber-200/70 border-2 border-amber-400 text-center flex flex-col justify-between order-1 md:order-2 shadow-lg -translate-y-1">
               <div className="flex justify-center mb-2">
-                <span className="w-14 h-14 rounded-full bg-amber-400 text-amber-950 flex items-center justify-center font-black text-2xl shadow-md border-2 border-white">
-                  🥇
-                </span>
+                <div className="relative">
+                  <div className="w-16 h-16 rounded-full bg-amber-400 border-3 border-white shadow-lg overflow-hidden flex items-center justify-center">
+                    {firstRank?.photo ? (
+                      <img
+                        src={firstRank.photo}
+                        alt={firstRank.fullName || ''}
+                        className="w-full h-full object-cover object-[center_top] rounded-full"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span className="font-black text-amber-950 text-xl">
+                        {(firstRank?.fullName || '1').charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <span className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-amber-300 border-2 border-white flex items-center justify-center text-sm shadow-md">
+                    🥇
+                  </span>
+                </div>
               </div>
               <div>
                 <span className="text-xs font-black uppercase tracking-widest text-amber-800 block">
@@ -450,9 +482,25 @@ export default function ClassMeritList({
             {/* 3rd Position Card */}
             <div className="p-5 rounded-2xl bg-gradient-to-b from-orange-50 to-orange-100/80 border border-orange-200 text-center flex flex-col justify-between order-3 md:order-3 shadow-sm">
               <div className="flex justify-center mb-2">
-                <span className="w-12 h-12 rounded-full bg-amber-700/20 text-amber-800 flex items-center justify-center font-black text-xl shadow-inner">
-                  🥉
-                </span>
+                <div className="relative">
+                  <div className="w-14 h-14 rounded-full bg-orange-200 border-2 border-white shadow-md overflow-hidden flex items-center justify-center">
+                    {thirdRank?.photo ? (
+                      <img
+                        src={thirdRank.photo}
+                        alt={thirdRank.fullName || ''}
+                        className="w-full h-full object-cover object-[center_top] rounded-full"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span className="font-black text-amber-800 text-lg">
+                        {(thirdRank?.fullName || '3').charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-orange-100 border border-white flex items-center justify-center text-xs shadow-sm">
+                    🥉
+                  </span>
+                </div>
               </div>
               <div>
                 <span className="text-xs font-black uppercase tracking-wider text-amber-800 block">
@@ -526,8 +574,22 @@ export default function ClassMeritList({
                       <TableCell className="font-mono text-xs font-bold text-slate-700">
                         {s.id || s.rollNo}
                       </TableCell>
-                      <TableCell className="font-bold text-slate-800 text-sm">
-                        {s.fullName}
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-700 overflow-hidden border border-slate-200 shadow-2xs shrink-0">
+                            {s.photo ? (
+                              <img
+                                src={s.photo}
+                                alt={s.fullName || ''}
+                                className="w-full h-full object-cover object-[center_top] rounded-full"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              (s.fullName || 'S').charAt(0).toUpperCase()
+                            )}
+                          </div>
+                          <span className="font-bold text-slate-800 text-sm">{s.fullName}</span>
+                        </div>
                       </TableCell>
                       <TableCell className="text-xs text-slate-500 font-medium">
                         {s.fatherName || '-'}

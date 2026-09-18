@@ -611,8 +611,22 @@ export default function BatchMarksEntry({
                       <TableCell className="font-mono text-xs font-bold text-slate-700">
                         {s.id || s.rollNo}
                       </TableCell>
-                      <TableCell className="font-bold text-slate-800 text-sm">
-                        {s.fullName}
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-700 overflow-hidden border border-slate-200 shadow-2xs shrink-0">
+                            {s.photo ? (
+                              <img
+                                src={s.photo}
+                                alt={s.fullName || ''}
+                                className="w-full h-full object-cover object-[center_top] rounded-full"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              (s.fullName || 'S').charAt(0).toUpperCase()
+                            )}
+                          </div>
+                          <span className="font-bold text-slate-800 text-sm">{s.fullName}</span>
+                        </div>
                       </TableCell>
                       <TableCell className="text-xs text-slate-500 font-medium">
                         {s.fatherName || '-'}
