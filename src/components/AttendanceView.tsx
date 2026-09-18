@@ -1,6 +1,22 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { CheckCircle2, CalendarDays, Search, Save, Download, FileText, RefreshCw, MessageSquare } from 'lucide-react';
+import { 
+  CheckCircle2, 
+  CalendarDays, 
+  Search, 
+  Save, 
+  Download, 
+  FileText, 
+  RefreshCw, 
+  MessageSquare,
+  AlertCircle,
+  CheckCheck,
+  Loader2,
+  Bot,
+  RotateCw,
+  Send,
+  Users
+} from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -13,6 +29,7 @@ import autoTable from 'jspdf-autotable';
 import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
 import { 
   sendAutoDailyAttendanceNotice, 
+  sendAutoDailyAttendanceNoticeDetailed,
   sendAutoPeriodicAttendanceReport, 
   buildDailyAttendanceMessage, 
   buildPeriodicAttendanceMessage 
@@ -26,6 +43,42 @@ export interface StudentAttendanceRecord {
   date: string; // YYYY-MM-DD
   status: StudentAttendanceStatus;
   notes: string;
+}
+
+export interface AttendanceWhatsAppStatus {
+  status: 'sending' | 'sent' | 'failed';
+  timestamp: number;
+  phone?: string;
+  error?: string;
+}
+
+const WA_STORAGE_PREFIX = 'scj_att_wa_status_';
+const WA_STATUS_EXPIRY_MS = 30 * 60 * 1000; // 30 minutes
+
+function getStoredWaStatuses(date: string): Record<string, AttendanceWhatsAppStatus> {
+  try {
+    const raw = localStorage.getItem(`${WA_STORAGE_PREFIX}${date}`);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    const now = Date.now();
+    const valid: Record<string, AttendanceWhatsAppStatus> = {};
+    Object.entries(parsed).forEach(([id, val]: [string, any]) => {
+      if (val && val.timestamp && (now - val.timestamp < WA_STATUS_EXPIRY_MS)) {
+        valid[id] = val;
+      }
+    });
+    return valid;
+  } catch {
+    return {};
+  }
+}
+
+function storeWaStatuses(date: string, statuses: Record<string, AttendanceWhatsAppStatus>) {
+  try {
+    localStorage.setItem(`${WA_STORAGE_PREFIX}${date}`, JSON.stringify(statuses));
+  } catch (e) {
+    console.warn("Storage error:", e);
+  }
 }
 
 export default function AttendanceView({ data }: { data: any }) {
@@ -72,7 +125,8 @@ export default function AttendanceView({ data }: { data: any }) {
             section: a.section,
             currentClass: a.category,
             groupName: a.group,
-            gender: a.gender
+            gender: a.gender,
+            photo: a.photo || a.photoUrl || a.photo_url || a.studentPhoto || a.student_photo
           });
         }
       }
@@ -107,6 +161,51 @@ export default function AttendanceView({ data }: { data: any }) {
     });
   }, [students, searchTerm, sectionFilter, classFilter]);
 
+  // Real-time WhatsApp Bot Status for Attendance (Cached for 30 minutes)
+  const [waStatuses, setWaStatuses] = useState<Record<string, AttendanceWhatsAppStatus>>(() => getStoredWaStatuses(selectedDate));
+  const [autoWhatsAppEnabled, setAutoWhatsAppEnabled] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('scj_auto_whatsapp_attendance');
+      return saved !== null ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
+  const [isRetryingFailed, setIsRetryingFailed] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('scj_auto_whatsapp_attendance', JSON.stringify(autoWhatsAppEnabled));
+    } catch {}
+  }, [autoWhatsAppEnabled]);
+
+  useEffect(() => {
+    setWaStatuses(getStoredWaStatuses(selectedDate));
+  }, [selectedDate]);
+
+  // Periodic cleanup of expired entries (>30 mins)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setWaStatuses(prev => {
+        const now = Date.now();
+        let changed = false;
+        const next = { ...prev };
+        Object.entries(next).forEach(([id, val]) => {
+          if (val && val.timestamp && (now - val.timestamp >= WA_STATUS_EXPIRY_MS)) {
+            delete next[id];
+            changed = true;
+          }
+        });
+        if (changed) {
+          storeWaStatuses(selectedDate, next);
+          return next;
+        }
+        return prev;
+      });
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [selectedDate]);
+
   // Daily entries state
   const [dailyEntries, setDailyEntries] = useState<Record<string, Partial<StudentAttendanceRecord>>>({});
 
@@ -120,8 +219,6 @@ export default function AttendanceView({ data }: { data: any }) {
       let initializedCount = 0;
       
       students.forEach((student: any) => {
-        // If we switch to a new date, `prev` might have the previous date's entries or be empty.
-        // If `prev[student.id]?.date === selectedDate`, we've already initialized it.
         if (!newEntries[student.id] || newEntries[student.id].date !== selectedDate) {
           const existing = existingForDate.find(r => r.studentId === student.id);
           if (existing) {
@@ -138,7 +235,6 @@ export default function AttendanceView({ data }: { data: any }) {
         }
       });
       
-      // If nothing new was added, just return prev to avoid unnecessary re-renders
       return initializedCount > 0 ? newEntries : prev;
     });
   }, [selectedDate, students, records]);
@@ -166,6 +262,135 @@ export default function AttendanceView({ data }: { data: any }) {
     }));
   };
 
+  const getMonthlyStats = (studentId: string, targetMonth?: string) => {
+    const m = targetMonth || (activeTab === 'report' ? reportMonth : selectedDate.slice(0, 7));
+    const monthRecords = records.filter((r: any) => r.studentId === studentId && r.date && r.date.startsWith(m));
+    const stats = {
+      present: 0,
+      absent: 0,
+      late: 0,
+      leave: 0,
+      holiday: 0,
+      totalWorkingDays: 0
+    };
+
+    monthRecords.forEach((r: any) => {
+      if (['Present', 'Late'].includes(r.status)) stats.totalWorkingDays++;
+      
+      switch(r.status) {
+        case 'Present': stats.present++; break;
+        case 'Absent': stats.absent++; break;
+        case 'Late': stats.late++; break;
+        case 'Leave': stats.leave++; break;
+        case 'Holiday': stats.holiday++; break;
+      }
+    });
+
+    return stats;
+  };
+
+  const dispatchStudentAttendanceWhatsApp = async (
+    student: any,
+    targetStatus?: StudentAttendanceStatus,
+    targetNotes?: string,
+    isManualRetry = false
+  ) => {
+    if (!student) return false;
+
+    const currentEntry = dailyEntries[student.id];
+    const status = targetStatus || currentEntry?.status || 'Present';
+    const notes = targetNotes !== undefined ? targetNotes : (currentEntry?.notes || '');
+
+    // Set status to sending in UI
+    setWaStatuses(prev => {
+      const next = {
+        ...prev,
+        [student.id]: {
+          status: 'sending' as const,
+          timestamp: Date.now()
+        }
+      };
+      storeWaStatuses(selectedDate, next);
+      return next;
+    });
+
+    // Compute month stats for selectedDate's month
+    const targetMonth = selectedDate.slice(0, 7);
+    const stats = getMonthlyStats(student.id, targetMonth);
+    const existingForToday = records.find((r: any) => r.studentId === student.id && r.date === selectedDate);
+    const todayWasAlreadyAbsent = existingForToday?.status === 'Absent';
+    const totalAbsentsThisMonth = stats.absent + (status === 'Absent' && !todayWasAlreadyAbsent ? 1 : 0);
+    const todayWasAlreadyLeave = existingForToday?.status === 'Leave';
+    const totalLeavesThisMonth = stats.leave + (status === 'Leave' && !todayWasAlreadyLeave ? 1 : 0);
+    const todayWasAlreadyPresent = existingForToday?.status === 'Present';
+    const totalPresentsThisMonth = stats.present + (status === 'Present' && !todayWasAlreadyPresent ? 1 : 0);
+
+    const monthDate = new Date(`${selectedDate}T00:00:00`);
+    const monthLabel = monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+    const result = await sendAutoDailyAttendanceNoticeDetailed(
+      student,
+      {
+        date: selectedDate,
+        status,
+        notes,
+        monthlyAbsents: totalAbsentsThisMonth,
+        monthlyLeaves: totalLeavesThisMonth,
+        monthlyPresents: totalPresentsThisMonth,
+        monthName: monthLabel
+      },
+      data?.settings,
+      { silent: !isManualRetry, manualTrigger: isManualRetry }
+    );
+
+    setWaStatuses(prev => {
+      const next = {
+        ...prev,
+        [student.id]: {
+          status: result.success ? ('sent' as const) : ('failed' as const),
+          timestamp: Date.now(),
+          phone: result.phone,
+          error: result.error
+        }
+      };
+      storeWaStatuses(selectedDate, next);
+      return next;
+    });
+
+    return result.success;
+  };
+
+  const handleStatusChange = (student: any, status: StudentAttendanceStatus) => {
+    handleEntryChange(student.id, 'status', status);
+
+    // If auto-WhatsApp is enabled and status is Absent or Leave:
+    if (autoWhatsAppEnabled && (status === 'Absent' || status === 'Leave')) {
+      dispatchStudentAttendanceWhatsApp(student, status, dailyEntries[student.id]?.notes);
+    }
+  };
+
+  const handleResendAllFailed = async () => {
+    const failedStudents = filteredStudents.filter((s: any) => waStatuses[s.id]?.status === 'failed');
+    if (failedStudents.length === 0) {
+      toast.info('No failed WhatsApp notices to resend.');
+      return;
+    }
+
+    setIsRetryingFailed(true);
+    toast.loading(`Resending WhatsApp notices to ${failedStudents.length} students...`, { id: 'retry-failed-wa' });
+
+    let count = 0;
+    for (const student of failedStudents) {
+      const entry = dailyEntries[student.id];
+      const ok = await dispatchStudentAttendanceWhatsApp(student, entry?.status, entry?.notes, false);
+      if (ok) count++;
+      await new Promise(r => setTimeout(r, 600));
+    }
+
+    setIsRetryingFailed(false);
+    toast.success(`Resent ${count} of ${failedStudents.length} notices!`, { id: 'retry-failed-wa' });
+  };
+
   const handleSaveDaily = async () => {
     const payloads: Omit<StudentAttendanceRecord, "id">[] = [];
     
@@ -188,36 +413,58 @@ export default function AttendanceView({ data }: { data: any }) {
     const success = await data.saveStudentAttendanceLogs(payloads);
     if (success) {
       toast.success(`Attendance saved successfully for ${selectedDate}`);
+
+      // Auto-dispatch to unsent Absentees / Leaves if enabled
+      if (autoWhatsAppEnabled) {
+        const unsent = filteredStudents.filter((s: any) => {
+          const entry = dailyEntries[s.id];
+          const isAbsOrLeave = entry?.status === 'Absent' || entry?.status === 'Leave';
+          const alreadySent = waStatuses[s.id]?.status === 'sent';
+          return isAbsOrLeave && !alreadySent;
+        });
+
+        if (unsent.length > 0) {
+          toast.info(`Auto-dispatching WhatsApp notices to ${unsent.length} unsent absentees/leaves...`, { id: 'auto-save-wa' });
+          (async () => {
+            for (const s of unsent) {
+              const entry = dailyEntries[s.id];
+              await dispatchStudentAttendanceWhatsApp(s, entry?.status, entry?.notes);
+              await new Promise(r => setTimeout(r, 600));
+            }
+          })();
+        }
+      }
     } else {
       toast.error('Failed to save attendance. Ensure all students are fully converted to the Students table.');
     }
   };
 
-  const getMonthlyStats = (studentId: string) => {
-    const monthRecords = records.filter(r => r.studentId === studentId && r.date.startsWith(reportMonth));
-    const stats = {
-      present: 0,
-      absent: 0,
-      late: 0,
-      leave: 0,
-      holiday: 0,
-      totalWorkingDays: 0
-    };
+  const { presentsCount, absentsCount, leavesCount, sentCount, failedCount } = useMemo(() => {
+    let p = 0;
+    let a = 0;
+    let l = 0;
+    let sent = 0;
+    let fail = 0;
 
-    monthRecords.forEach(r => {
-      if (['Present', 'Late'].includes(r.status)) stats.totalWorkingDays++;
-      
-      switch(r.status) {
-        case 'Present': stats.present++; break;
-        case 'Absent': stats.absent++; break;
-        case 'Late': stats.late++; break;
-        case 'Leave': stats.leave++; break;
-        case 'Holiday': stats.holiday++; break;
-      }
+    filteredStudents.forEach((student: any) => {
+      const status = dailyEntries[student.id]?.status;
+      if (status === 'Present') p++;
+      else if (status === 'Absent') a++;
+      else if (status === 'Leave') l++;
+
+      const wa = waStatuses[student.id];
+      if (wa?.status === 'sent') sent++;
+      else if (wa?.status === 'failed') fail++;
     });
 
-    return stats;
-  };
+    return {
+      presentsCount: p,
+      absentsCount: a,
+      leavesCount: l,
+      sentCount: sent,
+      failedCount: fail
+    };
+  }, [filteredStudents, dailyEntries, waStatuses]);
 
   const downloadSectionPDF = () => {
     if (sectionFilter === 'all') {
@@ -555,107 +802,281 @@ export default function AttendanceView({ data }: { data: any }) {
         <CardContent className="p-0">
           {activeTab === 'daily' ? (
              <div className="overflow-x-auto min-h-[400px]">
-             <Table>
-               <TableHeader className="bg-slate-50 border-b border-slate-100">
-                 <TableRow className="hover:bg-transparent">
-                   <TableHead className="w-20 pl-8 font-black uppercase text-[10px] tracking-wider text-slate-400">Roll No</TableHead>
-                   <TableHead className="font-black uppercase text-[10px] tracking-wider text-slate-400">Student Info</TableHead>
-                   <TableHead className="w-56 font-black uppercase text-[10px] tracking-wider text-slate-400">Status</TableHead>
-                   <TableHead className="w-1/3 font-black uppercase text-[10px] tracking-wider text-slate-400">Notes</TableHead>
-                   <TableHead className="w-20 font-black uppercase text-[10px] tracking-wider text-slate-400 pr-8 text-right">WhatsApp</TableHead>
-                 </TableRow>
-               </TableHeader>
-               <TableBody>
-                  {filteredStudents.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="h-64 text-center">
-                        <div className="flex flex-col items-center justify-center text-slate-400 space-y-2">
-                           <CheckCircle2 size={32} className="opacity-20" />
-                           <p className="font-medium">No students found matching your filters.</p>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredStudents.map((student: any) => (
-                      <TableRow key={student.id} className="hover:bg-slate-50/80 transition-colors">
-                        <TableCell className="pl-8 font-mono text-xs font-semibold text-slate-600">
-                           {student.studentId || student.collegeNo || 'Pending'}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-superior-teal/10 flex items-center justify-center text-superior-teal font-black text-sm overflow-hidden border border-slate-200/80 shadow-2xs shrink-0">
-                              {student.photo ? (
-                                <img
-                                  src={student.photo}
-                                  alt={student.fullName || ''}
-                                  className="w-full h-full object-cover object-[center_top] rounded-full"
-                                  referrerPolicy="no-referrer"
-                                />
-                              ) : (
-                                (student.fullName || 'S').substring(0, 1).toUpperCase()
-                              )}
-                            </div>
-                            <div>
-                              <div className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                                 {student.fullName}
-                                 {student.gender === 'Female' && <span className="w-1.5 h-1.5 rounded-full bg-pink-400"></span>}
-                                 {student.gender === 'Male' && <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>}
-                              </div>
-                              <div className="text-[11px] font-semibold tracking-wider uppercase text-slate-400">
-                                {student.section || 'Unassigned'} • {student.groupName || student.currentClass}
-                              </div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center bg-slate-50 inline-flex p-1 rounded-xl border border-slate-100">
-                            {['Present', 'Absent', 'Late', 'Leave'].map(status => {
-                              const isActive = dailyEntries[student.id]?.status === status;
-                              return (
-                                <button
-                                  key={status}
-                                  onClick={() => handleEntryChange(student.id, 'status', status)}
-                                  className={cn(
-                                    "px-3 py-1.5 text-xs font-bold rounded-lg transition-all",
-                                    isActive 
-                                      ? status === 'Present' ? "bg-emerald-500 text-white shadow-sm"
-                                      : status === 'Absent' ? "bg-red-500 text-white shadow-sm"
-                                      : status === 'Late' ? "bg-amber-500 text-white shadow-sm"
-                                      : "bg-blue-500 text-white shadow-sm"
-                                      : "text-slate-500 hover:bg-slate-200/50"
-                                  )}
-                                >
-                                  {status.charAt(0)}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Input 
-                            placeholder="Add reason/note..." 
-                            className="h-10 rounded-xl text-sm border-slate-200 bg-slate-50 focus:bg-white"
-                            value={dailyEntries[student.id]?.notes || ''}
-                            onChange={(e) => handleEntryChange(student.id, 'notes', e.target.value)}
-                          />
-                        </TableCell>
-                        <TableCell className="pr-8 text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-9 w-9 rounded-xl text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border border-emerald-100 shadow-2xs"
-                            title={`Send daily attendance alert for ${student.fullName}`}
-                            onClick={() => handleSendSingleDailyWhatsApp(student)}
-                          >
-                            <MessageSquare size={16} />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
+              {/* Real-time Attendance & WhatsApp Bot Summary Bar */}
+              <div className="p-4 bg-slate-50/80 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
+                {/* Left: Live Attendance Counters */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold shadow-2xs">
+                    <Users size={14} className="text-slate-500" />
+                    Total: <strong className="text-slate-900 font-black">{filteredStudents.length}</strong>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-2xs">
+                    <CheckCircle2 size={14} className="text-emerald-600" />
+                    Hazir: <strong className="font-black">{presentsCount}</strong>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold shadow-2xs">
+                    <AlertCircle size={14} className="text-rose-600" />
+                    Ghair Hazir: <strong className="font-black">{absentsCount}</strong>
+                  </span>
+                  {leavesCount > 0 && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-xs font-bold shadow-2xs">
+                      Rukhsat: <strong className="font-black">{leavesCount}</strong>
+                    </span>
                   )}
-               </TableBody>
-             </Table>
-           </div>
+                </div>
+
+                {/* Right: WhatsApp Bot Controls & 30m Log Status */}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {/* WhatsApp 30-min log status pill */}
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs shadow-2xs">
+                    <Bot size={15} className="text-emerald-600 shrink-0" />
+                    <span className="text-[11px] font-bold text-slate-600">Bot Log (30m):</span>
+                    <span className="inline-flex items-center gap-1 text-emerald-700 font-black" title="Delivered within last 30 minutes">
+                      <CheckCheck size={13} /> {sentCount} Sent
+                    </span>
+                    {failedCount > 0 && (
+                      <span className="inline-flex items-center gap-1 text-rose-600 font-black ml-1" title="Failed deliveries">
+                        <AlertCircle size={13} /> {failedCount} Failed
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Resend to all failed button */}
+                  {failedCount > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleResendAllFailed}
+                      disabled={isRetryingFailed}
+                      className="h-8 rounded-xl text-xs font-extrabold text-rose-700 border-rose-300 hover:bg-rose-50 shadow-2xs gap-1.5 animate-pulse"
+                      title="Resend WhatsApp notices to all failed students"
+                    >
+                      <RotateCw size={12} className={isRetryingFailed ? "animate-spin" : ""} />
+                      Resend to {failedCount} Failed
+                    </Button>
+                  )}
+
+                  {/* Auto-WhatsApp Toggle Button */}
+                  <div 
+                    onClick={() => setAutoWhatsAppEnabled(!autoWhatsAppEnabled)}
+                    className={cn(
+                      "flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl border cursor-pointer select-none transition-all shadow-2xs",
+                      autoWhatsAppEnabled 
+                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-900" 
+                        : "bg-slate-100 border-slate-200 text-slate-500"
+                    )}
+                    title="When ON, WhatsApp notice is automatically dispatched whenever a student is marked Absent or Leave"
+                  >
+                    <div className="flex flex-col text-left">
+                      <span className="text-[10px] font-black uppercase tracking-wider leading-tight">
+                        Auto-WhatsApp
+                      </span>
+                      <span className="text-[9px] font-bold text-slate-500 leading-tight">
+                        {autoWhatsAppEnabled ? "Instant (Absent/Leave)" : "Paused"}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className={cn(
+                        "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out",
+                        autoWhatsAppEnabled ? "bg-emerald-600" : "bg-slate-300"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out",
+                          autoWhatsAppEnabled ? "translate-x-4" : "translate-x-0"
+                        )}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <Table>
+                <TableHeader className="bg-slate-50 border-b border-slate-100">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-20 pl-8 font-black uppercase text-[10px] tracking-wider text-slate-400">Roll No</TableHead>
+                    <TableHead className="font-black uppercase text-[10px] tracking-wider text-slate-400">Student Info</TableHead>
+                    <TableHead className="w-56 font-black uppercase text-[10px] tracking-wider text-slate-400">Status</TableHead>
+                    <TableHead className="w-1/3 font-black uppercase text-[10px] tracking-wider text-slate-400">Notes</TableHead>
+                    <TableHead className="w-48 font-black uppercase text-[10px] tracking-wider text-slate-400 pr-8 text-right">WhatsApp Bot</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                   {filteredStudents.length === 0 ? (
+                     <TableRow>
+                       <TableCell colSpan={5} className="h-64 text-center">
+                         <div className="flex flex-col items-center justify-center text-slate-400 space-y-2">
+                            <CheckCircle2 size={32} className="opacity-20" />
+                            <p className="font-medium">No students found matching your filters.</p>
+                         </div>
+                       </TableCell>
+                     </TableRow>
+                   ) : (
+                     filteredStudents.map((student: any) => (
+                       <TableRow key={student.id} className="hover:bg-slate-50/80 transition-colors">
+                         <TableCell className="pl-8 font-mono text-xs font-semibold text-slate-600">
+                            {student.studentId || student.collegeNo || 'Pending'}
+                         </TableCell>
+                         <TableCell>
+                           <div className="flex items-center gap-3">
+                             <div className="w-10 h-10 rounded-full bg-superior-teal/10 flex items-center justify-center text-superior-teal font-black text-sm overflow-hidden border border-slate-200/80 shadow-2xs shrink-0">
+                               {student.photo ? (
+                                 <img
+                                   src={student.photo}
+                                   alt={student.fullName || ''}
+                                   className="w-full h-full object-cover object-[center_top] rounded-full"
+                                   referrerPolicy="no-referrer"
+                                 />
+                               ) : (
+                                 (student.fullName || 'S').substring(0, 1).toUpperCase()
+                               )}
+                             </div>
+                             <div>
+                               <div className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                                  {student.fullName}
+                                  {student.gender === 'Female' && <span className="w-1.5 h-1.5 rounded-full bg-pink-400"></span>}
+                                  {student.gender === 'Male' && <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>}
+                               </div>
+                               <div className="text-[11px] font-semibold tracking-wider uppercase text-slate-400">
+                                 {student.section || 'Unassigned'} • {student.groupName || student.currentClass}
+                               </div>
+                             </div>
+                           </div>
+                         </TableCell>
+                         <TableCell>
+                           <div className="flex items-center bg-slate-50 inline-flex p-1 rounded-xl border border-slate-100">
+                             {['Present', 'Absent', 'Late', 'Leave'].map(status => {
+                               const isActive = dailyEntries[student.id]?.status === status;
+                               return (
+                                 <button
+                                   key={status}
+                                   onClick={() => handleStatusChange(student, status as StudentAttendanceStatus)}
+                                   className={cn(
+                                     "px-3 py-1.5 text-xs font-bold rounded-lg transition-all",
+                                     isActive 
+                                       ? status === 'Present' ? "bg-emerald-500 text-white shadow-sm"
+                                       : status === 'Absent' ? "bg-red-500 text-white shadow-sm"
+                                       : status === 'Late' ? "bg-amber-500 text-white shadow-sm"
+                                       : "bg-blue-500 text-white shadow-sm"
+                                       : "text-slate-500 hover:bg-slate-200/50"
+                                   )}
+                                 >
+                                   {status.charAt(0)}
+                                 </button>
+                               )
+                             })}
+                           </div>
+                         </TableCell>
+                         <TableCell>
+                           <Input 
+                             placeholder="Add reason/note..." 
+                             className="h-10 rounded-xl text-sm border-slate-200 bg-slate-50 focus:bg-white"
+                             value={dailyEntries[student.id]?.notes || ''}
+                             onChange={(e) => handleEntryChange(student.id, 'notes', e.target.value)}
+                           />
+                         </TableCell>
+                         <TableCell className="pr-8 text-right">
+                           {(() => {
+                             const wa = waStatuses[student.id];
+                             const currentStatus = dailyEntries[student.id]?.status;
+                             const isAbsOrLeave = currentStatus === 'Absent' || currentStatus === 'Leave';
+
+                             if (wa?.status === 'sending') {
+                               return (
+                                 <div className="flex items-center justify-end">
+                                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200 animate-pulse shadow-2xs">
+                                     <Loader2 size={11} className="animate-spin text-amber-600" />
+                                     Sending...
+                                   </span>
+                                 </div>
+                               );
+                             }
+
+                             if (wa?.status === 'sent') {
+                               return (
+                                 <div className="flex items-center justify-end gap-1.5">
+                                   <span 
+                                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs"
+                                     title={`Delivered via WhatsApp at ${new Date(wa.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                                   >
+                                     <CheckCheck size={13} className="text-emerald-600" />
+                                     Sent ✓
+                                   </span>
+                                   <Button
+                                     variant="ghost"
+                                     size="icon"
+                                     className="h-7 w-7 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50"
+                                     title="Resend WhatsApp notice"
+                                     onClick={() => dispatchStudentAttendanceWhatsApp(student, undefined, undefined, true)}
+                                   >
+                                     <RotateCw size={12} />
+                                   </Button>
+                                 </div>
+                               );
+                             }
+
+                             if (wa?.status === 'failed') {
+                               return (
+                                 <div className="flex items-center justify-end gap-1.5">
+                                   <span 
+                                     className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs max-w-[125px] truncate"
+                                     title={`Failed: ${wa.error || 'Delivery error'}. Click resend to retry.`}
+                                   >
+                                     <AlertCircle size={12} className="text-rose-600 shrink-0" />
+                                     <span className="truncate">{wa.error || 'Failed'}</span>
+                                   </span>
+                                   <Button
+                                     variant="outline"
+                                     size="icon"
+                                     className="h-7 w-7 rounded-lg text-rose-700 border-rose-200 hover:bg-rose-50 hover:border-rose-300 shadow-2xs"
+                                     title="Resend WhatsApp notice"
+                                     onClick={() => dispatchStudentAttendanceWhatsApp(student, undefined, undefined, true)}
+                                   >
+                                     <RotateCw size={12} />
+                                   </Button>
+                                 </div>
+                               );
+                             }
+
+                             if (isAbsOrLeave) {
+                               return (
+                                 <div className="flex items-center justify-end">
+                                   <Button
+                                     variant="outline"
+                                     size="sm"
+                                     className="h-7 px-2.5 rounded-lg text-[10px] font-extrabold text-superior-teal border-superior-teal/30 hover:bg-superior-teal/10 gap-1 shadow-2xs"
+                                     title={`Send ${currentStatus} notice to parent`}
+                                     onClick={() => dispatchStudentAttendanceWhatsApp(student, undefined, undefined, true)}
+                                   >
+                                     <Send size={10} /> Send Notice
+                                   </Button>
+                                 </div>
+                               );
+                             }
+
+                             return (
+                               <div className="flex items-center justify-end">
+                                 <Button
+                                   variant="ghost"
+                                   size="icon"
+                                   className="h-8 w-8 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50"
+                                   title={`Send daily attendance alert for ${student.fullName}`}
+                                   onClick={() => dispatchStudentAttendanceWhatsApp(student, undefined, undefined, true)}
+                                 >
+                                   <MessageSquare size={15} />
+                                 </Button>
+                               </div>
+                             );
+                           })()}
+                         </TableCell>
+                       </TableRow>
+                     ))
+                   )}
+                </TableBody>
+              </Table>
+            </div>
           ) : (
             <div className="overflow-x-auto min-h-[400px]">
               <Table>

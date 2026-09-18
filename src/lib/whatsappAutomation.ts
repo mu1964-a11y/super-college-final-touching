@@ -615,10 +615,14 @@ export interface AutoDailyAttendanceDetails {
   date: string;
   status: 'Present' | 'Absent' | 'Late' | 'Leave' | 'Holiday' | string;
   notes?: string;
+  monthlyAbsents?: number;
+  monthlyLeaves?: number;
+  monthlyPresents?: number;
+  monthName?: string;
 }
 
 export function buildDailyAttendanceMessage(student: any, details: AutoDailyAttendanceDetails, settings?: any): string {
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
+  const collegeName = settings?.collegeName || "Superior Group of Colleges Jahanian";
   const studentName = (student.fullName || "Student").trim();
   const fatherName = (student.fatherName || "Sahib").trim();
   const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
@@ -648,6 +652,12 @@ export function buildDailyAttendanceMessage(student: any, details: AutoDailyAtte
     remarkText = `\n📝 *Notes:* ${details.notes}`;
   }
 
+  let monthlySummarySection = "";
+  if (details.monthlyAbsents !== undefined) {
+    const periodLabel = details.monthName || "Iss Maheene";
+    monthlySummarySection = `\n━━━━━━━━━━━━━━━━━━━━━━━━━\n📊 *Monthly Hazri Khulasa (${periodLabel}):*\n• Iss Maah Total Chutian (Absents): *${details.monthlyAbsents}*\n• Iss Maah Total Rukhsat (Leaves): *${details.monthlyLeaves ?? 0}*\n• Iss Maah Hazri (Presents): *${details.monthlyPresents ?? 0}*`;
+  }
+
   return `🏛️ *${collegeName.toUpperCase()}*
 📋 *DAILY STUDENT ATTENDANCE NOTIFICATION*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -660,7 +670,7 @@ Aapke bache ki aaj ki rozana hazri status darj zail hai:
 • *Class & Section:* ${group}${section}
 • *Date:* ${dateStr}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-• *Daily Attendance Status:* *${statusBadge}*${remarkText}
+• *Daily Attendance Status:* *${statusBadge}*${remarkText}${monthlySummarySection}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 *Online Attendance Dossier & History:*
 ${attendanceUrl}
@@ -669,13 +679,19 @@ ${attendanceUrl}
 _Student Affairs & Attendance Desk, SCJ_`;
 }
 
-export async function sendAutoDailyAttendanceNotice(
+export interface DailyAttendanceSendResult {
+  success: boolean;
+  phone?: string;
+  error?: string;
+}
+
+export async function sendAutoDailyAttendanceNoticeDetailed(
   student: any,
   details: AutoDailyAttendanceDetails,
   settings?: any,
   options?: { silent?: boolean; manualTrigger?: boolean }
-): Promise<boolean> {
-  if (!student) return false;
+): Promise<DailyAttendanceSendResult> {
+  if (!student) return { success: false, error: "Student not found" };
 
   const rawPhone = student.fatherContact || 
     student.contact || 
@@ -687,9 +703,9 @@ export async function sendAutoDailyAttendanceNotice(
 
   if (!phone) {
     if (!options?.silent) {
-      toast.warning(`No valid phone number for ${student.fullName || 'Student'}. Attendance alert skipped.`);
+      toast.warning(`No phone number for ${(student.fullName || 'Student')}. Alert skipped.`, { id: `att-wa-${student.id}` });
     }
-    return false;
+    return { success: false, error: "No Phone Number" };
   }
 
   try {
@@ -700,12 +716,13 @@ export async function sendAutoDailyAttendanceNotice(
     });
 
     if (res.ok) {
-      toast.success(`Attendance alert sent for ${student.fullName}!`, { id: `att-wa-${student.id}` });
-      return true;
+      toast.success(`Attendance alert sent for ${(student.fullName || 'Student')}!`, { id: `att-wa-${student.id}` });
+      return { success: true, phone };
     } else {
       const err = await res.json().catch(() => ({}));
+      const reason = err.error || "WhatsApp Gateway offline";
       if (!options?.silent) {
-        toast.info(err.error || "WhatsApp Gateway offline. Click to share attendance.", {
+        toast.info(reason, {
           id: `att-wa-${student.id}`,
           action: {
             label: "Open WhatsApp",
@@ -713,10 +730,11 @@ export async function sendAutoDailyAttendanceNotice(
           },
         });
       }
-      return false;
+      return { success: false, phone, error: reason };
     }
-  } catch (error) {
+  } catch (error: any) {
     console.warn("sendAutoDailyAttendanceNotice network error:", error);
+    const reason = error?.message || "Network error";
     if (!options?.silent) {
       toast.info("WhatsApp Gateway not reachable. Click to open WhatsApp.", {
         id: `att-wa-${student.id}`,
@@ -726,8 +744,18 @@ export async function sendAutoDailyAttendanceNotice(
         },
       });
     }
-    return false;
+    return { success: false, phone, error: reason };
   }
+}
+
+export async function sendAutoDailyAttendanceNotice(
+  student: any,
+  details: AutoDailyAttendanceDetails,
+  settings?: any,
+  options?: { silent?: boolean; manualTrigger?: boolean }
+): Promise<boolean> {
+  const result = await sendAutoDailyAttendanceNoticeDetailed(student, details, settings, options);
+  return result.success;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
