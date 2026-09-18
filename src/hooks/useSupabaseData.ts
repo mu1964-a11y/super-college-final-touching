@@ -178,38 +178,48 @@ export function useSupabaseData(user: any) {
         followUpDate: l.follow_up_date || l.extra_info2 || '',
         notes: l.notes || ''
       })));
-      if (admissionsData) setAdmissions(admissionsData.map(a => ({
-        ...a,
-        fullName: a.full_name,
-        fatherName: a.father_name,
-        previousMarks: a.previous_marks,
-        previousInstitute: a.previous_institute,
-        collegeNo: a.college_no,
-        bayFormNo: a.bay_form_no,
-        admissionFee: a.admission_fee,
-        miscFunds: a.misc_funds,
-        totalFeeFinalized: a.total_fee_finalized,
-        totalPackage: a.total_package,
-        feeReceived: a.fee_received,
-        paymentPlan: a.payment_plan,
-        contactNumber: a.contact_number,
-        fatherContact: a.father_contact,
-        secondaryContact: a.secondary_contact,
-        email: a.email,
-        bloodGroup: a.blood_group,
-        concessionReason: a.concession_reason || (a.reference && a.reference.startsWith('Concession:') ? a.reference.replace('Concession:', '').trim() : undefined),
-        isAdmitted: a.is_admitted,
-        session: a.session || defaultSession,
-        sessionStartDate: a.session_start_date,
-        sessionEndDate: a.session_end_date,
-        academicPart: a.academic_part,
-        programType: a.program_type || 'Yearly',
-        currentSemester: a.current_semester,
-        studentId: a.student_id,
-        photo: a.photo_url || a.photo, // Mapping photo_url from DB to photo in app
-        feeHistory: a.fee_history || [],
-        feeLedger: a.fee_ledger || null,
-      })));
+      if (admissionsData) setAdmissions(admissionsData.map(a => {
+        const linkedStudent = studentsData?.find(s => 
+          s.admission_id === a.id || 
+          (a.student_id && (s.student_id === a.student_id || s.college_no === a.student_id)) || 
+          (a.college_no && (s.college_no === a.college_no || s.student_id === a.college_no)) ||
+          ((s.full_name || '').trim().toLowerCase() === (a.full_name || '').trim().toLowerCase() && (s.father_name || '').trim().toLowerCase() === (a.father_name || '').trim().toLowerCase())
+        );
+        const resolvedPhoto = a.photo || a.photo_url || linkedStudent?.photo || linkedStudent?.photo_url || '';
+
+        return {
+          ...a,
+          fullName: a.full_name,
+          fatherName: a.father_name,
+          previousMarks: a.previous_marks,
+          previousInstitute: a.previous_institute,
+          collegeNo: a.college_no,
+          bayFormNo: a.bay_form_no,
+          admissionFee: a.admission_fee,
+          miscFunds: a.misc_funds,
+          totalFeeFinalized: a.total_fee_finalized,
+          totalPackage: a.total_package,
+          feeReceived: a.fee_received,
+          paymentPlan: a.payment_plan,
+          contactNumber: a.contact_number,
+          fatherContact: a.father_contact,
+          secondaryContact: a.secondary_contact,
+          email: a.email,
+          bloodGroup: a.blood_group,
+          concessionReason: a.concession_reason || (a.reference && a.reference.startsWith('Concession:') ? a.reference.replace('Concession:', '').trim() : undefined),
+          isAdmitted: a.is_admitted,
+          session: a.session || defaultSession,
+          sessionStartDate: a.session_start_date,
+          sessionEndDate: a.session_end_date,
+          academicPart: a.academic_part,
+          programType: a.program_type || 'Yearly',
+          currentSemester: a.current_semester,
+          studentId: a.student_id,
+          photo: resolvedPhoto, // Mapping photo_url from DB or linked student to photo in app
+          feeHistory: a.fee_history || [],
+          feeLedger: a.fee_ledger || null,
+        };
+      }));
       if (studentsData) {
         const mappedStudents = studentsData.map(s => {
           let parsedSubjects = safeParseArray(s.subjects);

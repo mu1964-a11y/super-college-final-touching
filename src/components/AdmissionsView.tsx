@@ -1502,26 +1502,37 @@ export default function AdmissionsView({
                       </TableCell>
                       <TableCell className="py-4">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-sm font-black text-superior-teal overflow-hidden border border-slate-200">
-                            {admission.photo ? (
-                              <img
-                                src={admission.photo}
-                                alt=""
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = "none";
-                                  const parent = target.parentElement;
-                                  if (parent) {
-                                    // Use standard DOM or better yet, just hide it and show nothing
-                                    // But for now, let's just make it hidden and let CSS handle default
-                                  }
-                                }}
-                              />
-                            ) : (
-                              admission.fullName.charAt(0)
-                            )}
-                          </div>
+                          {(() => {
+                            const linkedStudent = data.students?.find((s: any) => 
+                              s.id === admission.id || 
+                              (admission.studentId && (s.studentId === admission.studentId || s.collegeNo === admission.studentId || s.id === admission.studentId)) || 
+                              (admission.collegeNo && (s.collegeNo === admission.collegeNo || s.studentId === admission.collegeNo)) || 
+                              ((s.fullName || '').trim().toLowerCase() === (admission.fullName || '').trim().toLowerCase() && (s.fatherName || '').trim().toLowerCase() === (admission.fatherName || '').trim().toLowerCase())
+                            );
+                            const applicantPhoto = admission.photo || (admission as any).photoUrl || (admission as any).photo_url || linkedStudent?.photo || (linkedStudent as any)?.photo_url;
+                            
+                            return (
+                              <div className="w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center text-sm font-black text-superior-teal overflow-hidden border-2 border-slate-200 shadow-2xs shrink-0 ring-2 ring-superior-teal/10">
+                                {applicantPhoto ? (
+                                  <img
+                                    src={applicantPhoto}
+                                    alt=""
+                                    className="w-full h-full object-cover object-[center_top] rounded-full"
+                                    onError={(e) => {
+                                      const target = e.target as HTMLImageElement;
+                                      target.style.display = "none";
+                                      const parent = target.parentElement;
+                                      if (parent) {
+                                        parent.innerText = admission.fullName ? admission.fullName.charAt(0).toUpperCase() : "A";
+                                      }
+                                    }}
+                                  />
+                                ) : (
+                                  <span>{admission.fullName ? admission.fullName.charAt(0).toUpperCase() : "A"}</span>
+                                )}
+                              </div>
+                            );
+                          })()}
                           <div>
                             <p className="font-black text-slate-800 text-sm uppercase tracking-tight flex items-center gap-2">
                               <HighlightText
@@ -2256,19 +2267,19 @@ function EditAdmissionDialog({
         <div className="space-y-10 py-6">
           <div className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-3xl border border-slate-100">
             <div className="relative group">
-              <div className="w-28 h-28 rounded-3xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center overflow-hidden transition-all group-hover:border-superior-teal shadow-inner">
+              <div className="w-28 h-28 rounded-full border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center overflow-hidden transition-all group-hover:border-superior-teal shadow-inner">
                 {formData.photo ? (
                   <img
                     src={formData.photo}
                     alt=""
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover object-[center_top] rounded-full"
                     referrerPolicy="no-referrer"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       target.style.display = "none";
                       const parent = target.parentElement;
                       if (parent) {
-                        parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-superior-gold/10 text-superior-gold font-bold text-3xl">${formData.fullName.charAt(0)}</div>`;
+                        parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-superior-gold/10 text-superior-gold font-bold text-3xl rounded-full">${formData.fullName ? formData.fullName.charAt(0) : 'A'}</div>`;
                       }
                     }}
                   />
@@ -3049,19 +3060,19 @@ function AdmissionProfile({
 
         <div className="flex flex-col md:flex-row gap-10 md:gap-14 items-center relative z-10">
           <div className="shrink-0 flex flex-col items-center">
-            <div className="w-40 h-40 md:w-56 md:h-56 rounded-[3rem] border-8 border-white/5 bg-white/10 backdrop-blur-xl overflow-hidden shadow-2xl transition-transform hover:scale-105 duration-500">
+            <div className="w-40 h-40 md:w-52 md:h-52 rounded-full border-8 border-white/10 bg-white/10 backdrop-blur-xl overflow-hidden shadow-2xl transition-transform hover:scale-105 duration-500 ring-4 ring-superior-gold/30">
               {admission.photo ? (
                 <img
                   src={admission.photo}
                   alt=""
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover object-[center_top] rounded-full"
                   referrerPolicy="no-referrer"
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
                     target.style.display = "none";
                     const parent = target.parentElement;
                     if (parent) {
-                      parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-superior-gold/10 text-superior-gold font-bold text-5xl">${admission.fullName.charAt(0)}</div>`;
+                      parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-superior-gold/10 text-superior-gold font-bold text-5xl rounded-full">${admission.fullName ? admission.fullName.charAt(0) : 'A'}</div>`;
                     }
                   }}
                 />
@@ -4265,12 +4276,12 @@ function AdmissionForm({
                 {/* Identity Banner */}
                 <div className="bg-slate-50 rounded-[2.5rem] p-8 border border-slate-100 flex flex-col md:flex-row items-center gap-8">
                   <div className="relative group shrink-0">
-                    <div className="w-36 h-36 rounded-[2.5rem] border-4 border-dashed border-slate-200 bg-white flex flex-col items-center justify-center overflow-hidden transition-all group-hover:border-superior-teal/50 group-hover:bg-superior-teal/[0.02]">
+                    <div className="w-36 h-36 rounded-full border-4 border-dashed border-slate-200 bg-white flex flex-col items-center justify-center overflow-hidden transition-all group-hover:border-superior-teal/50 group-hover:bg-superior-teal/[0.02] shadow-inner">
                       {formData.photo ? (
                         <img
                           src={formData.photo}
                           alt=""
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-cover object-[center_top] rounded-full"
                         />
                       ) : (
                         <>

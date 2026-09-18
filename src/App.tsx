@@ -2085,7 +2085,7 @@ export default function App() {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#fcfdfd] dark:bg-slate-950">
         {/* Header - Unified Navigation */}
         {/* Header - Unified Navigation */}
-        <header className="h-18 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex items-center justify-between px-5 md:px-6 border-b border-slate-100 dark:border-slate-800 sticky top-0 z-30 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.06)]">
+        <header className="h-20 min-h-[80px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex items-center justify-between px-5 md:px-6 border-b border-slate-100 dark:border-slate-800 sticky top-0 z-30 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.06)]">
           <div className="flex items-center gap-3 md:gap-4">
             <Button
               variant="ghost"
@@ -2115,8 +2115,8 @@ export default function App() {
           </div>
 
           {/* Shortcut Modules Floating Bar */}
-          <div className="hidden lg:flex flex-1 justify-center px-2 min-w-0 max-w-full overflow-x-auto scrollbar-none">
-            <div className="flex items-center gap-1 p-1 bg-slate-50/70 dark:bg-slate-800/60 rounded-2xl border border-slate-200/50 dark:border-slate-700/50 backdrop-blur-sm shrink-0">
+          <div className="hidden lg:flex flex-1 justify-center px-2 min-w-0 max-w-full overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] py-1.5">
+            <div className="flex items-center gap-1.5 p-1.5 bg-slate-50/80 dark:bg-slate-800/70 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 backdrop-blur-sm shrink-0">
               {[
                 { id: "dashboard", label: "Dashboard", Icon: Home, color: "text-blue-500", shadow: "drop-shadow-[0_4px_6px_rgba(59,130,246,0.4)]" },
                 { id: "leads", label: "Marketing", Icon: Sparkles, color: "text-pink-500", shadow: "drop-shadow-[0_4px_6px_rgba(236,72,153,0.4)]" },
@@ -2140,18 +2140,18 @@ export default function App() {
                   return (
                     <div key={mod.id} className="relative group flex items-center justify-center">
                       <motion.button
-                        whileHover={{ scale: 1.12, y: -2 }}
+                        whileHover={{ scale: 1.1, y: -2 }}
                         transition={{ duration: 0.2, type: "spring", stiffness: 350 }}
                         onClick={() => handleNavClick(mod.id as Page)}
                         className={cn(
-                          "flex items-center justify-center w-8.5 h-8.5 xl:w-9.5 xl:h-9.5 rounded-xl transition-all duration-200 relative",
+                          "flex items-center justify-center w-10 h-10 xl:w-11 xl:h-11 rounded-xl transition-all duration-200 relative",
                           isActive
                             ? "bg-white dark:bg-slate-700 shadow-sm border border-superior-teal/30 dark:border-superior-gold/30 ring-2 ring-superior-teal/20"
                             : "hover:bg-white/80 dark:hover:bg-slate-700/60 text-slate-500"
                         )}
                       >
                         <mod.Icon 
-                          size={18} 
+                          size={20} 
                           strokeWidth={isActive ? 2.5 : 2} 
                           className={cn(
                             "transition-all duration-200",
@@ -2163,7 +2163,7 @@ export default function App() {
                       </motion.button>
                       
                       {/* Tooltip */}
-                      <div className="absolute top-[46px] left-1/2 -translate-x-1/2 px-2.5 py-1 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[10px] font-black uppercase tracking-wider rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 z-[60] whitespace-nowrap shadow-lg">
+                      <div className="absolute top-[52px] left-1/2 -translate-x-1/2 px-2.5 py-1 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[10px] font-black uppercase tracking-wider rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 z-[60] whitespace-nowrap shadow-lg">
                         {mod.label}
                       </div>
                     </div>

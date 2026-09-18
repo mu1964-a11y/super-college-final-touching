@@ -1191,15 +1191,36 @@ _Directorate of Audit & Accounts — Superior Group of Colleges Jahanian_`;
 
     // 3. Update Supabase Database (both students and admissions tables)
     try {
-      await supabase
-        .from("students")
-        .update({ photo: dataUrl })
-        .eq("id", studentId);
+      try {
+        await supabase
+          .from("students")
+          .update({ photo: dataUrl, photo_url: dataUrl })
+          .eq("id", studentId);
+      } catch {
+        await supabase
+          .from("students")
+          .update({ photo: dataUrl })
+          .eq("id", studentId);
+      }
 
-      await supabase
-        .from("admissions")
-        .update({ photo: dataUrl })
-        .or(`id.eq.${studentId},student_id.eq.${studentId},college_no.eq.${rollNo}`);
+      try {
+        await supabase
+          .from("admissions")
+          .update({ photo: dataUrl, photo_url: dataUrl })
+          .or(`id.eq.${studentId},student_id.eq.${studentId},college_no.eq.${rollNo}`);
+      } catch {
+        try {
+          await supabase
+            .from("admissions")
+            .update({ photo: dataUrl })
+            .or(`id.eq.${studentId},student_id.eq.${studentId},college_no.eq.${rollNo}`);
+        } catch {
+          await supabase
+            .from("admissions")
+            .update({ photo_url: dataUrl })
+            .or(`id.eq.${studentId},student_id.eq.${studentId},college_no.eq.${rollNo}`);
+        }
+      }
     } catch (dbErr) {
       console.error("[WhatsApp Bot] Error updating student photo in Supabase:", dbErr);
     }

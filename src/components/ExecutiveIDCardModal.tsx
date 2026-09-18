@@ -274,22 +274,22 @@ export default function ExecutiveIDCardModal({
 
               {/* ─── 2. PORTRAIT & IDENTITY SECTION ─── */}
               <div className="flex-1 flex flex-col items-center justify-between px-3.5 py-2 text-center relative z-10">
-                {/* Photo with Executive Gold Frame & Verification Hologram */}
+                {/* Photo with Executive Gold Frame & Verification Hologram (Balanced Size, Face Focused) */}
                 <div 
-                  className="w-23 h-28 rounded-2xl border-2 border-[#cfa84c] bg-slate-50 overflow-hidden shadow-md relative shrink-0 mt-0.5"
-                  style={{ width: '92px', height: '112px', minWidth: '92px', minHeight: '112px' }}
+                  className="w-21 h-25 rounded-2xl border-2 border-[#cfa84c] bg-slate-50 overflow-hidden shadow-md relative shrink-0 mt-0.5"
+                  style={{ width: '84px', height: '100px', minWidth: '84px', minHeight: '100px' }}
                 >
                   {entity.photo ? (
                     <img 
                       src={entity.photo} 
                       alt={entity.fullName} 
-                      className="w-full h-full object-cover" 
-                      width={92}
-                      height={112}
+                      className="w-full h-full object-cover object-[center_top]" 
+                      width={84}
+                      height={100}
                     />
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 text-slate-400">
-                      <User size={38} className="text-slate-300" />
+                      <User size={34} className="text-slate-300" />
                       <span className="text-[7px] font-black uppercase tracking-widest text-slate-400 mt-1">NO PHOTO</span>
                     </div>
                   )}
@@ -300,81 +300,81 @@ export default function ExecutiveIDCardModal({
                   </div>
                 </div>
 
-                {/* Member Full Name */}
-                <div className="mt-1.5 w-full">
-                  <h3 className="text-[15px] font-black text-slate-900 uppercase tracking-tight leading-tight line-clamp-1">
+                {/* Member Full Name - Bold & Prominent */}
+                <div className="mt-2 w-full">
+                  <h3 className="text-base sm:text-[17px] font-black text-slate-950 uppercase tracking-tight leading-tight line-clamp-1">
                     {entity.fullName}
                   </h3>
                   {entity.fatherName && (
-                    <p className="text-[10px] font-bold text-slate-600 truncate mt-0.2">
+                    <p className="text-[11px] font-extrabold text-slate-800 truncate mt-0.5">
                       s/o {entity.fatherName}
                     </p>
                   )}
                   {entity.qualification && (
-                    <p className="text-[9px] font-bold text-emerald-800 truncate">
+                    <p className="text-[9.5px] font-black text-emerald-800 truncate mt-0.5">
                       {entity.qualification}
                     </p>
                   )}
                 </div>
 
                 {/* Prominent High-Contrast ID Pill */}
-                <div className="my-1.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-[#064e43] to-[#0a6659] text-white shadow-xs border border-[#f3d274]/60">
-                  <span className="text-[8px] font-black tracking-widest text-[#f3d274] uppercase">
+                <div className="my-2 inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-gradient-to-r from-[#064e43] to-[#0a6659] text-white shadow-sm border-2 border-[#f3d274]">
+                  <span className="text-[9px] font-black tracking-widest text-[#f3d274] uppercase">
                     {isStudent ? "ROLL NO:" : isStaff ? "STAFF ID:" : "ADMIN ID:"}
                   </span>
-                  <span className="text-[11px] font-mono font-black tracking-wider text-white">
+                  <span className="text-[12px] font-mono font-black tracking-wider text-white">
                     {entity.idNumber}
                   </span>
                 </div>
 
-                {/* ─── 3. MICRO DATA GRID (6 Badges) ─── */}
-                <div className="w-full grid grid-cols-3 gap-1 bg-slate-50/90 border border-slate-200/80 rounded-xl p-1.5 shadow-2xs text-left">
+                {/* ─── 3. MICRO DATA GRID (6 Badges) - Bold & Wazeh ─── */}
+                <div className="w-full grid grid-cols-3 gap-1.5 bg-slate-50 border border-slate-300/80 rounded-xl p-2 shadow-2xs text-left">
                   <div className="px-1 border-r border-slate-200">
-                    <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest block">
+                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-wider block mb-0.5">
                       {isStudent ? "Program" : "Department"}
                     </span>
-                    <span className="text-[8.5px] font-bold text-slate-800 truncate block leading-tight">
+                    <span className="text-[10px] font-black text-slate-900 truncate block leading-tight">
                       {entity.categoryOrRole}
                     </span>
                   </div>
 
                   <div className="px-1 border-r border-slate-200">
-                    <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest block">
+                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-wider block mb-0.5">
                       {isStudent ? "Section" : "Designation"}
                     </span>
-                    <span className="text-[8.5px] font-black text-[#085a4e] truncate block leading-tight">
+                    <span className="text-[10px] font-black text-[#064e43] truncate block leading-tight">
                       {entity.subCategory || "General"}
                     </span>
                   </div>
 
                   <div className="px-1">
-                    <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest block">
+                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-wider block mb-0.5">
                       {isStudent ? "Session" : "Validity"}
                     </span>
-                    <span className="text-[8.5px] font-mono font-black text-slate-800 block leading-tight">
+                    <span className="text-[10px] font-mono font-black text-slate-900 block leading-tight">
                       {entity.sessionOrValidity || "2026-28"}
                     </span>
                   </div>
 
-                  <div className="px-1 pt-1 border-t border-slate-200 border-r">
-                    <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest block">Blood Grp</span>
-                    <span className="text-[9px] font-black text-rose-600 block leading-tight">
+                  <div className="px-1 pt-1.5 border-t border-slate-200 border-r">
+                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-wider block mb-0.5">Blood Grp</span>
+                    <span className="text-[10.5px] font-black text-rose-600 block leading-tight">
                       {entity.bloodGroup || "---"}
                     </span>
                   </div>
 
-                  <div className="px-1 pt-1 border-t border-slate-200 border-r">
-                    <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest block">
+                  <div className="px-1 pt-1.5 border-t border-slate-200 border-r">
+                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-wider block mb-0.5">
                       {isStudent ? "B-Form / CNIC" : "CNIC No"}
                     </span>
-                    <span className="text-[8px] font-mono font-bold text-slate-700 truncate block leading-tight">
+                    <span className="text-[9px] font-mono font-black text-slate-900 truncate block leading-tight">
                       {entity.cnicOrBForm || "---"}
                     </span>
                   </div>
 
-                  <div className="px-1 pt-1 border-t border-slate-200">
-                    <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest block">Emergency</span>
-                    <span className="text-[8px] font-mono font-black text-slate-800 truncate block leading-tight">
+                  <div className="px-1 pt-1.5 border-t border-slate-200">
+                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-wider block mb-0.5">Emergency</span>
+                    <span className="text-[9px] font-mono font-black text-slate-900 truncate block leading-tight">
                       {entity.emergencyContact || entity.contact || helplinePhone}
                     </span>
                   </div>

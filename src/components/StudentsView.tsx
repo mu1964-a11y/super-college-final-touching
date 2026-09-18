@@ -803,12 +803,12 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                 </div>
 
                 <div className="absolute -bottom-10 left-5">
-                  <div className="w-20 h-20 rounded-[1.5rem] border-4 border-white bg-slate-100 overflow-hidden shadow-xl shadow-superior-teal/10">
+                  <div className="w-20 h-20 rounded-full border-4 border-white bg-slate-100 overflow-hidden shadow-xl shadow-superior-teal/10 ring-2 ring-superior-teal/15">
                     {student.photo ? (
                       <img 
                         src={student.photo} 
                         alt="" 
-                        className="w-full h-full object-cover" 
+                        className="w-full h-full object-cover object-[center_top] rounded-full" 
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
@@ -816,8 +816,8 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                         }}
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-slate-200 text-slate-400 font-bold text-2xl">
-                        {student.fullName.charAt(0)}
+                      <div className="w-full h-full flex items-center justify-center bg-slate-200 text-slate-500 font-bold text-2xl rounded-full">
+                        {student.fullName ? student.fullName.charAt(0).toUpperCase() : 'S'}
                       </div>
                     )}
                   </div>
@@ -941,13 +941,13 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                       </TableCell>
                       <TableCell>
                          <div className="flex items-center gap-3">
-                           <div className="w-10 h-10 rounded-[10px] overflow-hidden bg-slate-100 flex-shrink-0">
-                             {student.photo ? (
-                               <img src={student.photo} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                             ) : (
-                               <div className="w-full h-full flex items-center justify-center text-slate-400 font-bold text-lg bg-slate-200">{student.fullName.charAt(0)}</div>
-                             )}
-                           </div>
+                            <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200 shadow-2xs">
+                              {student.photo ? (
+                                <img src={student.photo} alt="" className="w-full h-full object-cover object-[center_top] rounded-full" referrerPolicy="no-referrer" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-slate-500 font-bold text-base bg-slate-200 rounded-full">{student.fullName ? student.fullName.charAt(0).toUpperCase() : 'S'}</div>
+                              )}
+                            </div>
                            <div className="flex flex-col">
                               <span className="text-sm font-black text-slate-900 group-hover:text-superior-teal transition-colors tracking-tight">{student.fullName}</span>
                               <span className="text-[10px] font-black text-superior-gold uppercase tracking-widest">{student.id}</span>
@@ -1392,17 +1392,17 @@ function StudentProfile({ student, data, initialTab = 'overview', onEdit, onDown
       <div className="bg-superior-teal p-6 md:p-10 text-white relative">
         <div className="flex flex-col md:flex-row gap-6 md:gap-10 items-center md:items-center relative z-10">
           <div className="relative group shrink-0">
-            <div className="w-32 h-32 md:w-44 md:h-44 rounded-2xl border-4 border-white/20 bg-white/10 backdrop-blur-md overflow-hidden">
+            <div className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-white/30 bg-white/10 backdrop-blur-md overflow-hidden shadow-2xl ring-4 ring-white/10">
               {student.photo ? (
-                <img src={student.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <img src={student.photo} alt="" className="w-full h-full object-cover object-[center_top] rounded-full" referrerPolicy="no-referrer" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-white/40">
                   <User size={64} />
                 </div>
               )}
             </div>
-            <label className="absolute -bottom-2 -right-2 p-2.5 bg-superior-gold text-white rounded-xl cursor-pointer hover:scale-110 active:scale-95 transition-all border-2 border-white">
-              <Camera size={20} />
+            <label className="absolute bottom-0 right-0 p-2.5 bg-superior-gold text-white rounded-full cursor-pointer hover:scale-110 active:scale-95 transition-all border-2 border-white shadow-lg">
+              <Camera size={18} />
               <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
             </label>
           </div>
@@ -1886,9 +1886,9 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
       <div className="space-y-6 py-4">
         <div className="flex justify-center mb-6">
           <div className="relative group">
-            <div className="w-32 h-32 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center overflow-hidden transition-colors group-hover:border-superior-teal">
+            <div className="w-32 h-32 rounded-full border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center overflow-hidden transition-colors group-hover:border-superior-teal shadow-inner">
               {formData.photo ? (
-                <img src={formData.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <img src={formData.photo} alt="" className="w-full h-full object-cover object-[center_top] rounded-full" referrerPolicy="no-referrer" />
               ) : (
                 <>
                   <Camera className="text-slate-400 mb-2" size={24} />

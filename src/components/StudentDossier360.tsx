@@ -190,12 +190,12 @@ _Office of the Principal, Superior College Jahanian_`;
 
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
               {/* Photo Avatar */}
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white/10 border-2 border-superior-gold/40 p-1 flex-shrink-0 shadow-lg relative overflow-hidden flex items-center justify-center">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-white/10 border-2 border-superior-gold/40 p-1 flex-shrink-0 shadow-lg relative overflow-hidden flex items-center justify-center">
                 {student.photo ? (
                   <img
                     src={student.photo}
                     alt={student.fullName}
-                    className="w-full h-full object-cover rounded-xl"
+                    className="w-full h-full object-cover object-[center_top] rounded-full"
                   />
                 ) : (
                   <User size={42} className="text-superior-gold/80" />

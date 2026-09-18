@@ -501,25 +501,25 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
             <div className="bg-superior-teal h-28 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-white/20 transition-all duration-500"></div>
               <div className="absolute -bottom-14 left-8">
-                <div className="w-28 h-28 rounded-3xl border-4 border-white bg-slate-50 overflow-hidden shadow-lg shadow-black/5">
+                <div className="w-28 h-28 rounded-full border-4 border-white bg-slate-50 overflow-hidden shadow-lg shadow-black/10 ring-2 ring-superior-teal/15">
                   {member.photo ? (
                     <img 
                       src={member.photo} 
                       alt="" 
-                      className="w-full h-full object-cover" 
+                      className="w-full h-full object-cover object-[center_top] rounded-full" 
                       referrerPolicy="no-referrer" 
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
                         target.style.display = 'none';
                         const parent = target.parentElement;
                         if (parent) {
-                          parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-superior-gold/10 text-superior-gold font-bold text-lg">${member.fullName.charAt(0)}</div>`;
+                          parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-superior-gold/10 text-superior-gold font-bold text-2xl rounded-full">${member.fullName ? member.fullName.charAt(0).toUpperCase() : 'T'}</div>`;
                         }
                       }}
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-300">
-                      <User size={48} />
+                    <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400 font-bold text-2xl rounded-full">
+                      {member.fullName ? member.fullName.charAt(0).toUpperCase() : 'T'}
                     </div>
                   )}
                 </div>
@@ -783,18 +783,18 @@ function StaffProfile({ member, data, onEdit, onShowCard }: { member: Staff, dat
       <div className="bg-slate-800 p-6 md:p-10 text-white relative">
         <div className="flex flex-col md:flex-row gap-6 md:gap-10 items-center md:items-center relative z-10">
           <div className="relative group shrink-0">
-            <div className="w-32 h-32 md:w-44 md:h-44 rounded-2xl border-4 border-white/20 bg-white/10 backdrop-blur-md overflow-hidden">
+            <div className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-white/30 bg-white/10 backdrop-blur-md overflow-hidden shadow-2xl ring-4 ring-white/10">
               {member.photo && !imageError ? (
                 <img 
                   src={member.photo} 
                   alt="" 
-                  className="w-full h-full object-cover" 
+                  className="w-full h-full object-cover object-[center_top] rounded-full" 
                   referrerPolicy="no-referrer"
                   onError={() => setImageError(true)}
                 />
               ) : member.photo && imageError ? (
-                <div className="w-full h-full flex items-center justify-center bg-superior-gold/10 text-superior-gold font-bold text-3xl">
-                  {member.fullName.charAt(0)}
+                <div className="w-full h-full flex items-center justify-center bg-superior-gold/10 text-superior-gold font-bold text-3xl rounded-full">
+                  {member.fullName ? member.fullName.charAt(0).toUpperCase() : 'T'}
                 </div>
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-white/40">
@@ -802,8 +802,8 @@ function StaffProfile({ member, data, onEdit, onShowCard }: { member: Staff, dat
                 </div>
               )}
             </div>
-            <label className="absolute -bottom-2 -right-2 p-2.5 bg-superior-gold text-superior-teal rounded-xl cursor-pointer hover:scale-110 active:scale-95 transition-all border-2 border-white">
-              <Camera size={20} />
+            <label className="absolute bottom-0 right-0 p-2.5 bg-superior-gold text-superior-teal rounded-full cursor-pointer hover:scale-110 active:scale-95 transition-all border-2 border-white shadow-lg">
+              <Camera size={18} />
               <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
             </label>
           </div>
@@ -1032,9 +1032,9 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
       <div className="space-y-6 py-4">
         <div className="flex justify-center mb-6">
           <div className="relative group">
-            <div className="w-32 h-32 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center overflow-hidden transition-colors group-hover:border-superior-teal">
+            <div className="w-32 h-32 rounded-full border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center overflow-hidden transition-colors group-hover:border-superior-teal shadow-inner">
               {formData.photo ? (
-                <img src={formData.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <img src={formData.photo} alt="" className="w-full h-full object-cover object-[center_top] rounded-full" referrerPolicy="no-referrer" />
               ) : (
                 <>
                   <Camera className="text-slate-400 mb-2" size={24} />
@@ -1215,9 +1215,9 @@ function AddStaffDialog({ data }: { data: any }) {
       <div className="space-y-6 py-4">
         <div className="flex justify-center mb-6">
           <div className="relative group">
-            <div className="w-32 h-32 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center overflow-hidden transition-colors group-hover:border-superior-teal">
+            <div className="w-32 h-32 rounded-full border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center overflow-hidden transition-colors group-hover:border-superior-teal shadow-inner">
               {formData.photo ? (
-                <img src={formData.photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <img src={formData.photo} alt="" className="w-full h-full object-cover object-[center_top] rounded-full" referrerPolicy="no-referrer" />
               ) : (
                 <>
                   <Camera className="text-slate-400 mb-2" size={24} />

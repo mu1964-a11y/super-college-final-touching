@@ -2617,12 +2617,18 @@ _Administration Directorate, SGC Jahanian_`;
                             }`}
                           >
                             <div className="flex items-center gap-3 min-w-0">
-                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${
+                              <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-xs shrink-0 overflow-hidden border ${
                                 isSelectedForPreview
-                                  ? "bg-emerald-600 text-white shadow-sm"
-                                  : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                                  ? "border-emerald-500 shadow-sm ring-2 ring-emerald-400/40"
+                                  : "border-slate-200 dark:border-slate-700"
                               }`}>
-                                {recipient.name ? recipient.name[0].toUpperCase() : "S"}
+                                {recipient.photo ? (
+                                  <img src={recipient.photo} alt="" className="w-full h-full object-cover object-[center_top] rounded-full" />
+                                ) : (
+                                  <span className={isSelectedForPreview ? "bg-emerald-600 text-white w-full h-full flex items-center justify-center" : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 w-full h-full flex items-center justify-center"}>
+                                    {recipient.name ? recipient.name[0].toUpperCase() : "S"}
+                                  </span>
+                                )}
                               </div>
                               <div className="min-w-0 space-y-0.5">
                                 <div className="flex items-center gap-1.5 flex-wrap">
