@@ -1596,7 +1596,7 @@ export default function FeeManagementView({
                                   <p className="font-black text-slate-700 leading-none mb-1 group-hover:text-superior-teal transition-colors italic">
                                     {student.fullName}
                                   </p>
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter bg-slate-100 px-1.5 py-0.5 rounded-md">
                                       {student.id}
                                     </p>
@@ -1608,6 +1608,13 @@ export default function FeeManagementView({
                                     {student.group && (
                                       <p className="text-[10px] font-bold text-rose-600 uppercase tracking-tighter bg-rose-50 px-1.5 py-0.5 rounded-md">
                                         {student.group}
+                                      </p>
+                                    )}
+                                    {((student.reference || '').toLowerCase().includes('whatsapp') ||
+                                      (student.notes && JSON.stringify(student.notes).toLowerCase().includes('whatsapp')) ||
+                                      (student.feeHistory && student.feeHistory.some((h: any) => (h.paymentMethod === 'WhatsApp Bot' || (h.collectedBy || '').toLowerCase().includes('whatsapp'))))) && (
+                                      <p className="text-[9px] font-black text-emerald-700 uppercase tracking-tighter bg-emerald-100 border border-emerald-300 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-2xs">
+                                        🤖 Via WhatsApp Bot
                                       </p>
                                     )}
                                   </div>
@@ -2157,8 +2164,13 @@ export default function FeeManagementView({
                           {h.recordedBy && (
                             <>
                               <br />
-                              <span className="text-slate-500 opacity-80">
+                              <span className="text-slate-500 opacity-80 inline-flex items-center gap-1.5 mt-0.5">
                                 Rcvd By: {h.recordedBy}
+                                {(h.paymentMethod === 'WhatsApp Bot' || (h.recordedBy || '').toLowerCase().includes('whatsapp')) && (
+                                  <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                    🤖 Via WhatsApp Bot
+                                  </span>
+                                )}
                               </span>
                             </>
                           )}

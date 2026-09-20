@@ -829,7 +829,16 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                     <h3 className="font-display font-black text-lg text-slate-800 tracking-tight leading-tight line-clamp-1">
                       <HighlightText text={student.fullName} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
                     </h3>
-                    <p className="text-[10px] font-black text-superior-gold uppercase tracking-[0.3em] mt-1">{student.id}</p>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <p className="text-[10px] font-black text-superior-gold uppercase tracking-[0.3em]">{student.id}</p>
+                      {((student.reference || '').toLowerCase().includes('whatsapp') || 
+                        (student.notes && JSON.stringify(student.notes).toLowerCase().includes('whatsapp')) ||
+                        (student.admissionId && (data.admissions || []).some((a: any) => (a.id === student.admissionId || a.studentId === student.id) && (a.reference || '').toLowerCase().includes('whatsapp')))) && (
+                        <span className="text-[8px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded flex items-center gap-0.5 shadow-2xs">
+                          🤖 Via WhatsApp Bot
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-right">
                     <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em] mb-1">Guardian</p>
@@ -950,7 +959,16 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                             </div>
                            <div className="flex flex-col">
                               <span className="text-sm font-black text-slate-900 group-hover:text-superior-teal transition-colors tracking-tight">{student.fullName}</span>
-                              <span className="text-[10px] font-black text-superior-gold uppercase tracking-widest">{student.id}</span>
+                              <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                <span className="text-[10px] font-black text-superior-gold uppercase tracking-widest">{student.id}</span>
+                                {((student.reference || '').toLowerCase().includes('whatsapp') || 
+                                  (student.notes && JSON.stringify(student.notes).toLowerCase().includes('whatsapp')) ||
+                                  (student.admissionId && (data.admissions || []).some((a: any) => (a.id === student.admissionId || a.studentId === student.id) && (a.reference || '').toLowerCase().includes('whatsapp')))) && (
+                                  <span className="text-[8px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded flex items-center gap-0.5 shadow-2xs">
+                                    🤖 Via WhatsApp Bot
+                                  </span>
+                                )}
+                              </div>
                               {student.bloodGroup && (
                                 <span className="text-[8px] mt-1 px-1 py-0.5 w-fit rounded-[4px] bg-red-50 text-red-600 font-bold flex items-center gap-0.5" title="Blood Group">
                                   <Droplet size={8} /> {student.bloodGroup}

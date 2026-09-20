@@ -3261,12 +3261,16 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
               address: pendingAdm.address || "Jahanian",
               date: new Date().toISOString().slice(0, 10),
               session: "2026-28",
+              reference: `Via WhatsApp Bot (${delegatedAdmin.name})`,
+              status: "Admitted",
+              is_admitted: true
             };
 
             await supabase.from("admissions").insert(admRecord);
             try {
               await supabase.from("students").insert({
                 id: newId,
+                admission_id: newId,
                 college_no: newId,
                 full_name: pendingAdm.fullName,
                 father_name: pendingAdm.fatherName || "N/A",
@@ -3278,6 +3282,12 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
                 fee_received: Number(pendingAdm.admissionFee || 10000),
                 session: "2026-28",
                 address: pendingAdm.address || "Jahanian",
+                reference: `Via WhatsApp Bot (${delegatedAdmin.name})`,
+                notes: [{
+                  date: new Date().toISOString(),
+                  type: "General",
+                  content: `Admitted via WhatsApp Bot by ${delegatedAdmin.name}`
+                }]
               });
             } catch (e) {}
 
@@ -3299,7 +3309,7 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
             if (automatedConfig.principalPhone && automatedConfig.principalPhone !== standardPhone) {
               await this.sendMessage(
                 automatedConfig.principalPhone,
-                `📝 *NEW ADMISSION VIA BOT:*\n• Student: *${admRecord.full_name}* (ID: *${newId}*)\n• Program: *${admRecord.group_name}* (${admRecord.section})\n• Package: Rs. ${admRecord.total_package.toLocaleString()}\n• By: *${delegatedAdmin.name}* (PIN Verified)`
+                `📝 *NEW ADMISSION VIA BOT:*\n• Student: *${admRecord.full_name}* (ID: *${newId}*)\n• Program: *${admRecord.group_name}* (${admRecord.section})\n• Package: Rs. ${admRecord.total_package.toLocaleString()}\n• By: *${delegatedAdmin.name}* (PIN Verified)\n• Channel: *Via WhatsApp Bot*`
               );
             }
 
@@ -3312,6 +3322,7 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
 • *Session:* 2026-28
 • *Total Package:* Rs. ${admRecord.total_package.toLocaleString()}
 • *Fee Received:* Rs. ${admRecord.fee_received.toLocaleString()}
+• *Channel:* *Via WhatsApp Bot (${delegatedAdmin.name})*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🎉 Record college database mein live sync ho chuka hai.`;
             return await sendReply(successAdmMsg, "Admission Registered Successfully");
@@ -3349,18 +3360,57 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
             if (stMatches && stMatches.length > 0) {
               const st = stMatches[0];
               const updatedFee = Number(st.fee_received || 0) + amount;
+              const botReceiptId = `REC-BOT-${Math.floor(100000 + Math.random() * 900000)}`;
+
+              // Append payment to student's fee_history
+              const existingHistory = Array.isArray(st.fee_history) ? st.fee_history : [];
+              const newFeeEntry = {
+                id: `pay-bot-${Date.now()}`,
+                month: new Date().toLocaleString("en-US", { month: "long" }),
+                year: new Date().getFullYear(),
+                amountPaid: amount,
+                amountDue: Math.max(0, (st.total_package || 0) - updatedFee),
+                status: "Paid",
+                datePaid: new Date().toISOString(),
+                receiptId: botReceiptId,
+                feeType: "Tuition Fee Installment",
+                paymentMethod: "WhatsApp Bot",
+                collectedBy: `WhatsApp Bot (${delegatedAdmin.name})`
+              };
 
               await supabase
                 .from("students")
-                .update({ fee_received: updatedFee })
+                .update({ 
+                  fee_received: updatedFee,
+                  fee_history: [...existingHistory, newFeeEntry]
+                })
                 .eq("id", st.id);
 
+              // 1. Insert into income table (Roznamcha Inflow)
+              try {
+                await supabase.from("income").insert({
+                  student_id: st.id,
+                  student_name: st.full_name,
+                  fee_type: "Tuition Fee Installment",
+                  amount,
+                  month: new Date().toLocaleString("en-US", { month: "long" }),
+                  year: new Date().getFullYear(),
+                  date: new Date().toISOString().slice(0, 10),
+                  status: "Full",
+                  payment_method: "WhatsApp Bot",
+                  recorded_by: `WhatsApp Bot (${delegatedAdmin.name})`
+                });
+              } catch (e) {}
+
+              // 2. Fallback insert to incomes table if present
               try {
                 await supabase.from("incomes").insert({
                   source: `Student Fee: ${st.full_name} (${st.id})`,
                   amount,
                   category: "Tuition Fee",
                   date: new Date().toISOString().slice(0, 10),
+                  payment_method: "WhatsApp Bot",
+                  recorded_by: `WhatsApp Bot (${delegatedAdmin.name})`,
                   notes: `Received via WhatsApp Bot by ${delegatedAdmin.name}`
                 });
               } catch (e) {}
@@ -3383,7 +3433,7 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
                 if (reportCfg.principalPhone && reportCfg.principalPhone !== standardPhone) {
                   await this.sendMessage(
                     reportCfg.principalPhone,
-                    `💰 *FEE DEPOSITED VIA BOT:*\n• Student: *${st.full_name}* (ID: *${st.id}*)\n• Amount Received: *Rs. ${amount.toLocaleString()}*\n• Collected By: *${delegatedAdmin.name}* (PIN Verified)\n• Total Paid: Rs. ${updatedFee.toLocaleString()}`
+                    `💰 *FEE DEPOSITED VIA BOT:*\n• Student: *${st.full_name}* (ID: *${st.id}*)\n• Amount Received: *Rs. ${amount.toLocaleString()}*\n• Collected By: *${delegatedAdmin.name}* (PIN Verified)\n• Total Paid: Rs. ${updatedFee.toLocaleString()}\n• Channel: *Via WhatsApp Bot*`
                   );
                 }
               } catch (e) {}
@@ -3396,9 +3446,12 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
 Dear *${st.full_name}* (Roll No: *${st.id}*)!
 
 Aapki fee *Rs. ${amount.toLocaleString()}* college accounts mein jama ho chuki hai.
+• Channel: *Via WhatsApp Bot*
+• Collected By: *${delegatedAdmin.name}*
 • Total Paid: *Rs. ${updatedFee.toLocaleString()}*
 • Total Package: Rs. ${(st.total_package || 0).toLocaleString()}
 • Remaining Balance: *Rs. ${Math.max(0, (st.total_package || 0) - updatedFee).toLocaleString()}*
+• Receipt Ref: *${botReceiptId}*
 
 Shukriya!
 _Directorate of Accounts, Superior College Jahanian_`;
@@ -3412,6 +3465,7 @@ _Directorate of Accounts, Superior College Jahanian_`;
 • *Amount Received:* *Rs. ${amount.toLocaleString()}*
 • *Total Received:* Rs. ${updatedFee.toLocaleString()}
 • *Operator:* *${delegatedAdmin.name}* (PIN Verified)
+• *Channel:* *Via WhatsApp Bot*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Student ko official fee receipt WhatsApp deliver kar di gayi hai.`;
               return await sendReply(adminReply, "Fee Collection Recorded");

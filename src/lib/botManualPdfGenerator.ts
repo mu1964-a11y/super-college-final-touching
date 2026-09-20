@@ -63,7 +63,7 @@ export function generateBotUserManualPDF(metadata?: {
   // ══════════════════════════════════════════════════════
   addHeader(
     "AI Executive Assistant & WhatsApp Bot Operations Manual",
-    "Architecture: Google Gemini 2.5 Flash (Audio/STT) & Gemini 2.5 Flash Vision (Multimodal OCR & Face ID)"
+    "Architecture: SCJ Autonomous Neural Engine (Audio/STT) & SCJ Multimodal Deep Vision OCR (Face ID & Docs)"
   );
 
   let y = 36;
@@ -82,7 +82,7 @@ export function generateBotUserManualPDF(metadata?: {
   doc.setFontSize(8);
   doc.setTextColor(...darkSlate);
   doc.text("Document Ref: SGC-AI-OPS-2026-V3", 18, y + 13);
-  doc.text("Core AI Engine: Google Gemini 2.5 Flash (Audio STT + Vision OCR)", 18, y + 18.5);
+  doc.text("Core AI Engine: SCJ Autonomous Enterprise Neural Processing Stack", 18, y + 18.5);
   doc.text("Multi-Device Gateway: Baileys WS Bridge (Port 5000)", 18, y + 24);
   doc.text(`Effective Date: ${new Date().toLocaleDateString("en-GB")}`, pageWidth - 72, y + 13);
   doc.text("Normalized Session: 2026-28", pageWidth - 72, y + 18.5);
@@ -101,7 +101,7 @@ export function generateBotUserManualPDF(metadata?: {
   doc.setFontSize(8.5);
   doc.setTextColor(...darkSlate);
   const overviewText = 
-    "The Superior College Jahanian Autonomous WhatsApp AI Executive Agent is powered by an enterprise dual-engine stack built directly on Google Gemini 2.5 Flash. It operates 24/7 as an intelligent institutional coworker across voice, visual documents, and database operations. The platform eliminates manual administrative overhead by processing spoken voice notes in Urdu, Roman Urdu, and English, scanning handwritten admission slips, automating parent absent alerts, and executing verified fee deposits.";
+    "The Superior College Jahanian Autonomous WhatsApp AI Executive Agent is powered by an enterprise proprietary dual-engine neural stack. It operates 24/7 as an intelligent institutional coworker across voice, visual documents, and database operations. The platform eliminates manual administrative overhead by processing spoken voice notes in Urdu, Roman Urdu, and English, scanning handwritten admission slips, automating parent absent alerts, and executing verified fee deposits.";
   
   const splitOverview = doc.splitTextToSize(overviewText, pageWidth - 28);
   doc.text(splitOverview, 14, y);
@@ -114,22 +114,22 @@ export function generateBotUserManualPDF(metadata?: {
     body: [
       [
         "Voice Understanding (STT)",
-        "Google Gemini 2.5 Flash Audio API",
+        "SCJ Autonomous Voice Engine",
         "Native multimodal comprehension of incoming voice notes (.ogg, .mp4, .m4a) in Roman Urdu, Spoken Urdu, and English. No third-party transcription required."
       ],
       [
         "Document & Slip OCR",
-        "Google Gemini 2.5 Flash Vision API",
+        "SCJ Deep Document Visual OCR",
         "Deep computer vision extraction of handwritten paper admission slips, matric marks, Bay-Form/CNIC numbers, and fee receipts directly from camera photos."
       ],
       [
         "Biometric Face Engine",
-        "Gemini Vision Landmark Biometrics",
+        "SCJ Biometric Landmark Security System",
         "High-security face comparison across facial geometry (eye spacing, nose bridge, jaw structure). Compares live selfie against enrolled anchor (>=65% match)."
       ],
       [
         "Audio Fallback Protocol",
-        "OpenAI Whisper STT Dual-Stack",
+        "SCJ High-Fidelity Voice Failover Stack",
         "Secondary transcription failover ensuring zero interruption if primary voice channels experience packet degradation or latency."
       ],
       [
@@ -175,18 +175,18 @@ export function generateBotUserManualPDF(metadata?: {
   // PAGE 2: ADMISSIONS, FEES & ACADEMIC WORKFLOWS
   // ══════════════════════════════════════════════════════
   doc.addPage();
-  addHeader("Operational Workflows: Admissions, Fees & Academic Exams", "Gemini Vision Paper OCR, Instant Fee Ledger & Result Cards");
+  addHeader("Operational Workflows: Admissions, Fees & Academic Exams", "Autonomous Document OCR, Instant Fee Ledger & Result Cards");
 
   y = 36;
 
   doc.setTextColor(...primaryTeal);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text("3. Paper / Handwritten Admission Form OCR (Gemini Vision)", 14, y);
+  doc.text("3. Paper / Handwritten Admission Form OCR (SCJ Deep Vision)", 14, y);
 
   y += 4.5;
   const admText = 
-    "Staff members no longer need to type lengthy admission records on a computer. An admission can be completed in under 30 seconds straight from WhatsApp using Gemini 2.5 Flash Vision:";
+    "Staff members no longer need to type lengthy admission records on a computer. An admission can be completed in under 30 seconds straight from WhatsApp using SCJ Autonomous Deep Document OCR:";
   const splitAdm = doc.splitTextToSize(admText, pageWidth - 28);
   doc.text(splitAdm, 14, y);
   y += splitAdm.length * 4.2 + 3;
@@ -198,12 +198,12 @@ export function generateBotUserManualPDF(metadata?: {
       [
         "1. Photo Capture",
         "Staff member snaps a clear photo of handwritten admission form / slip and sends to WhatsApp Bot.",
-        "Image buffered in memory; bot replies: '⏳ Scanning Admission Document via Gemini Vision...'",
+        "Image buffered in memory; bot replies: '⏳ Scanning Admission Document via Deep Vision Engine...'",
         "Temporary secure memory allocation."
       ],
       [
-        "2. Gemini Vision OCR",
-        "Gemini 2.5 Flash Vision parses document fields automatically.",
+        "2. Deep Visual OCR",
+        "SCJ Multimodal Vision parses document fields automatically.",
         "Extracts Full Name, Father Name, Contact, CNIC/B-Form, Previous Marks, Program, Section, Total Fee Package.",
         "Staged in pendingAdmissions cache with normalized Session 2026-28."
       ],
@@ -254,7 +254,7 @@ export function generateBotUserManualPDF(metadata?: {
       [
         "Voice Note",
         "🎤 'Ahmad Raza roll 102 ki 15,000 fee jama ho gayi hai receipt 402 PIN 12345'",
-        "Gemini 2.5 STT parses speech -> Validates 5-Digit PIN",
+        "SCJ Neural Voice STT parses speech -> Validates 5-Digit PIN",
         "Updates fee_received in DB; dispatches official branded Fee Receipt to student/father WhatsApp."
       ],
       [
@@ -282,7 +282,7 @@ export function generateBotUserManualPDF(metadata?: {
   // PAGE 3: STAFF DELEGATION & BIOMETRIC SECURITY
   // ══════════════════════════════════════════════════════
   doc.addPage();
-  addHeader("Zero-Trust Security, Staff Delegation & Face Biometrics", "OTP Handshake, 5-Digit Operational PINs & Gemini Face Verification");
+  addHeader("Zero-Trust Security, Staff Delegation & Face Biometrics", "OTP Handshake, 5-Digit Operational PINs & Biometric Face Verification");
 
   y = 36;
 
@@ -350,7 +350,7 @@ export function generateBotUserManualPDF(metadata?: {
   y += 4.5;
   const bioText = 
     "When an admin enters an incorrect PIN 2 times, attempts actions from an unrecognized session, or when the Principal clicks 'Force Face Re-Auth' in the Web Console, the bot halts execution and demands a live camera selfie.\n\n" +
-    "Gemini 2.5 Flash Vision evaluates facial geometry between the live selfie and the database enrolled photo. Facial similarity must meet or exceed 65%. If verification fails, the account is locked and an emergency breach warning is sent to the Principal.";
+    "SCJ Biometric Facial Geometry Engine evaluates landmark coordinates between the live selfie and the database enrolled photo. Facial similarity must meet or exceed 65%. If verification fails, the account is locked and an emergency breach warning is sent to the Principal.";
   const splitBio = doc.splitTextToSize(bioText, pageWidth - 28);
   doc.text(splitBio, 14, y);
 
@@ -403,7 +403,7 @@ export function generateBotUserManualPDF(metadata?: {
       [
         "Delegated Admin",
         "📸 [Camera photo of paper admission slip]",
-        "Gemini Vision extracts candidate details; prompts for 5-digit PIN."
+        "SCJ Deep OCR extracts candidate details; prompts for 5-digit PIN."
       ],
       [
         "Delegated Admin",

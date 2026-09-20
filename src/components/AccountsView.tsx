@@ -849,7 +849,14 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
                           </div>
                           <div className="flex flex-col">
                             <span className="font-bold text-slate-800">{inc.studentName}</span>
-                            {inc.studentId && <span className="text-[10px] text-slate-400 font-bold tracking-widest">{inc.studentId}</span>}
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              {inc.studentId && <span className="text-[10px] text-slate-400 font-bold tracking-widest">{inc.studentId}</span>}
+                              {((inc.paymentMethod || '').toLowerCase().includes('bot') || (inc.recordedBy || (inc as any).recorded_by || '').toLowerCase().includes('bot')) && (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 w-fit">
+                                  🤖 Via WhatsApp Bot {((inc.recordedBy || (inc as any).recorded_by || '').replace(/whatsapp bot/i, '').replace(/[()]/g, '').trim()) ? `(${(inc.recordedBy || (inc as any).recorded_by || '').replace(/whatsapp bot/i, '').replace(/[()]/g, '').trim()})` : ''}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </TableCell>
@@ -1862,14 +1869,26 @@ _Accounts & Finance Department, SGC Jahanian_`;
                     todayIncomes.map((inc: any, i: number) => (
                       <TableRow key={inc.id || i} className="hover:bg-slate-50/50">
                         <TableCell className="font-bold text-slate-800 text-xs">
-                          {inc.studentName || inc.title || "Fee Payment"}
+                          <div>{inc.studentName || inc.title || "Fee Payment"}</div>
+                          {((inc.paymentMethod || '').toLowerCase().includes('bot') || (inc.recordedBy || (inc as any).recorded_by || '').toLowerCase().includes('bot')) && (
+                            <span className="inline-flex items-center gap-0.5 text-[8px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded mt-0.5 shadow-2xs">
+                              🤖 Via WhatsApp Bot {((inc.recordedBy || (inc as any).recorded_by || '').replace(/whatsapp bot/i, '').replace(/[()]/g, '').trim()) ? `(${((inc.recordedBy || (inc as any).recorded_by || '').replace(/whatsapp bot/i, '').replace(/[()]/g, '').trim())})` : ''}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="font-mono text-slate-500 text-xs">
                           {inc.studentId || "-"}
                         </TableCell>
                         <TableCell>
-                          <Badge className="bg-emerald-50 text-emerald-700 border-0 font-bold text-[10px]">
-                            {inc.paymentMethod || "Cash"}
+                          <Badge className={cn(
+                            "border-0 font-bold text-[10px]",
+                            ((inc.paymentMethod || '').toLowerCase().includes('bot') || (inc.recordedBy || (inc as any).recorded_by || '').toLowerCase().includes('bot'))
+                              ? "bg-emerald-100 text-emerald-800 font-black shadow-2xs"
+                              : "bg-emerald-50 text-emerald-700"
+                          )}>
+                            {((inc.paymentMethod || '').toLowerCase().includes('bot') || (inc.recordedBy || (inc as any).recorded_by || '').toLowerCase().includes('bot'))
+                              ? "WhatsApp Bot"
+                              : (inc.paymentMethod || "Cash")}
                           </Badge>
                         </TableCell>
                         <TableCell className="font-black text-emerald-600 text-xs text-right">

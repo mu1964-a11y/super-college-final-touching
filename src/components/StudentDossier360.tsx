@@ -226,6 +226,12 @@ _Office of the Principal, Superior College Jahanian_`;
                       Fee Cleared
                     </Badge>
                   )}
+                  {((student.reference || '').toLowerCase().includes('whatsapp') || 
+                    (student.notes && JSON.stringify(student.notes).toLowerCase().includes('whatsapp'))) && (
+                    <Badge className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold flex items-center gap-1">
+                      🤖 Via WhatsApp Bot {student.reference?.replace(/via whatsapp bot/i, '').replace(/[()]/g, '').trim() ? `(${student.reference.replace(/via whatsapp bot/i, '').replace(/[()]/g, '').trim()})` : ''}
+                    </Badge>
+                  )}
                 </div>
 
                 <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white truncate">
@@ -474,8 +480,18 @@ _Office of the Principal, Superior College Jahanian_`;
                                 {tx.date ? new Date(tx.date).toLocaleDateString() : 'Recorded'}
                               </TableCell>
                               <TableCell>
-                                <Badge variant="outline" className="text-[9px] font-bold uppercase">
-                                  {tx.paymentMethod || 'Cash Payment'}
+                                <Badge 
+                                  variant="outline" 
+                                  className={cn(
+                                    "text-[9px] font-bold uppercase",
+                                    (tx.paymentMethod === 'WhatsApp Bot' || (tx.recordedBy || tx.collectedBy || '').toLowerCase().includes('whatsapp'))
+                                      ? "bg-emerald-100 text-emerald-800 border-emerald-300 font-black shadow-2xs"
+                                      : ""
+                                  )}
+                                >
+                                  {(tx.paymentMethod === 'WhatsApp Bot' || (tx.recordedBy || tx.collectedBy || '').toLowerCase().includes('whatsapp'))
+                                    ? `🤖 Via WhatsApp Bot ${((tx.recordedBy || tx.collectedBy || '').replace(/whatsapp bot/i, '').replace(/[()]/g, '').trim()) ? `(${((tx.recordedBy || tx.collectedBy || '').replace(/whatsapp bot/i, '').replace(/[()]/g, '').trim())})` : ''}`
+                                    : (tx.paymentMethod || 'Cash Payment')}
                                 </Badge>
                               </TableCell>
                             </TableRow>

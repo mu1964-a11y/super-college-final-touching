@@ -764,15 +764,15 @@ export default function WhatsAppExecutiveConsole({
             <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
               <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300 font-bold text-sm">
                 <Mic className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                <span>1. Core AI Models: Gemini 2.5 Flash</span>
+                <span>1. Enterprise AI Neural Stack (Autonomous Engine)</span>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                Powered directly by Google's native multimodal intelligence stack:
+                Powered directly by SCJ Institutional Multimodal Neural Architecture:
               </p>
               <ul className="list-disc list-inside text-xs text-slate-600 dark:text-slate-300 space-y-1 pl-1">
-                <li><strong>Gemini 2.5 Flash Audio STT:</strong> Native transcription of spoken Urdu, Roman Urdu & English voice notes.</li>
-                <li><strong>Gemini 2.5 Flash Vision:</strong> Deep document computer vision for handwritten paper forms & slips.</li>
-                <li><strong>Gemini Landmark Biometrics:</strong> Multi-point facial geometry comparison (&gt;=65% match).</li>
+                <li><strong>SCJ Autonomous Voice STT:</strong> Native transcription of spoken Urdu, Roman Urdu & English voice notes.</li>
+                <li><strong>SCJ Deep Vision OCR:</strong> Deep document computer vision for handwritten paper forms & slips.</li>
+                <li><strong>SCJ Landmark Biometrics:</strong> Multi-point facial geometry comparison (&gt;=65% match).</li>
               </ul>
             </div>
 
@@ -796,14 +796,14 @@ export default function WhatsAppExecutiveConsole({
             <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
               <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300 font-bold text-sm">
                 <Camera className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                <span>3. Paper Admission OCR (Gemini Vision)</span>
+                <span>3. Paper Admission OCR (SCJ Deep Vision Engine)</span>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                 Enroll new candidates in under 30 seconds straight from camera:
               </p>
               <ul className="list-disc list-inside text-xs text-slate-600 dark:text-slate-300 space-y-1 pl-1">
                 <li><strong>Snap Slip Photo:</strong> Send photo of paper form to WhatsApp bot.</li>
-                <li><strong>OCR Extraction:</strong> Gemini Vision parses Name, Phone, Marks, Program, Section & Fee.</li>
+                <li><strong>OCR Extraction:</strong> Deep Document Vision parses Name, Phone, Marks, Program, Section & Fee.</li>
                 <li><strong>5-Digit PIN Commit:</strong> Reply <code>CONFIRM [PIN]</code> to write into LMS (Session 2026-28 normalized).</li>
               </ul>
             </div>

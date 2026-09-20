@@ -1001,7 +1001,7 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
     toast.info("Cleared student selections.");
   };
 
-  // Ask Gemini AI to Compose Template
+  // Ask AI Copilot to Compose Template
   const handleAiCompose = async (prebuiltStyle?: string) => {
     setIsAiComposing(true);
     addLog("Querying SCJ Nexus AI for intelligent template compilation...");
@@ -3123,7 +3123,7 @@ _Administration Directorate, SGC Jahanian_`;
                       </span>
                     </div>
                     <p className="text-xs text-emerald-100/80 font-medium max-w-xl">
-                      Autonomous 360° AI Virtual Assistant powered by Gemini 2.5 Flash and College Database verification.
+                      Autonomous 360° AI Virtual Assistant powered by SCJ Autonomous Neural Engine and College Database verification.
                     </p>
                   </div>
                 </div>

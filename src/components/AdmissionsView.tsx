@@ -1548,6 +1548,11 @@ export default function AdmissionsView({
                                   New
                                 </span>
                               )}
+                              {((admission.reference || '').toLowerCase().includes('whatsapp') || ((admission as any).remarks || '').toLowerCase().includes('whatsapp')) && (
+                                <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
+                                  🤖 Via WhatsApp Bot {admission.reference ? `(${admission.reference.replace(/via whatsapp bot/i, '').replace(/[()]/g, '').trim() || 'Admin'})` : ''}
+                                </span>
+                              )}
                             </p>
                             <p className="text-[10px] text-slate-400 font-bold mt-0.5">
                               {admission.date}
@@ -2321,6 +2326,11 @@ function EditAdmissionDialog({
                     className="text-[10px] font-black uppercase text-slate-400"
                   >
                     ID Pending Admission
+                  </Badge>
+                )}
+                {((formData.reference || '').toLowerCase().includes('whatsapp')) && (
+                  <Badge className="bg-emerald-600 text-white font-bold text-xs px-3 flex items-center gap-1">
+                    🤖 Via WhatsApp Bot {formData.reference?.replace(/via whatsapp bot/i, '').replace(/[()]/g, '').trim() ? `(${formData.reference.replace(/via whatsapp bot/i, '').replace(/[()]/g, '').trim()})` : ''}
                   </Badge>
                 )}
               </div>
@@ -3235,7 +3245,15 @@ function AdmissionProfile({
               />
               <ProfileItem
                 label="Reference"
-                value={admission.reference || "N/A"}
+                value={
+                  (admission.reference || '').toLowerCase().includes('whatsapp') ? (
+                    <span className="text-emerald-700 font-black flex items-center gap-1">
+                      🤖 {admission.reference}
+                    </span>
+                  ) : (
+                    admission.reference || "N/A"
+                  )
+                }
               />
               <ProfileItem
                 label="Residential Address"
