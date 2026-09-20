@@ -3,7 +3,7 @@ import {
   ShieldCheck, UserCheck, ShieldAlert, Key, Camera, Mic, FileText, 
   Download, Plus, RefreshCw, UserX, AlertTriangle, CheckCircle2, 
   Clock, Smartphone, Shield, Eye, Lock, Zap, Search, Filter, BookOpen,
-  ChevronRight, ArrowRight, UserPlus
+  ChevronRight, ArrowRight, UserPlus, Users
 } from "lucide-react";
 import { toast } from "sonner";
 import { generateBotUserManualPDF } from "../lib/botManualPdfGenerator";
