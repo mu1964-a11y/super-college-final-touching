@@ -1146,6 +1146,7 @@ Return strictly the raw JSON without markdown code fences.`;
     const distPath = fs.existsSync(path.join(__dirname, "dist"))
       ? path.join(__dirname, "dist")
       : path.join(process.cwd(), "dist");
+    app.use("/assets", express.static(path.join(distPath, "assets"), { maxAge: '30d' }));
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
