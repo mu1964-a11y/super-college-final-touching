@@ -759,67 +759,99 @@ export default function WhatsAppExecutiveConsole({
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Guide Card 1 */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-              <div className="flex items-center gap-2 text-teal-800 font-bold text-sm">
-                <Mic className="w-4 h-4 text-purple-600" />
-                <span>1. Multi-Role Voice Recognition</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {/* Guide Card 1: AI Models Stack */}
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+              <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300 font-bold text-sm">
+                <Mic className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                <span>1. Core AI Models: Gemini 2.5 Flash</span>
               </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Gemini 2.5 Flash understands native voice notes in Urdu, Roman Urdu, and English across all campus roles:
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Powered directly by Google's native multimodal intelligence stack:
               </p>
-              <ul className="list-disc list-inside text-xs text-slate-600 space-y-1 pl-1">
-                <li><strong>Students/Parents:</strong> "Mera roll 419 hai, meri fee kitni rehti hai?" or "Result card dikhao".</li>
-                <li><strong>Teachers:</strong> "Mera aaj ka timetable kya hai?" or "Meri attendance record dikhao".</li>
-                <li><strong>Principal:</strong> "Aaj ki fee collection aur staff attendance ki summary do".</li>
+              <ul className="list-disc list-inside text-xs text-slate-600 dark:text-slate-300 space-y-1 pl-1">
+                <li><strong>Gemini 2.5 Flash Audio STT:</strong> Native transcription of spoken Urdu, Roman Urdu & English voice notes.</li>
+                <li><strong>Gemini 2.5 Flash Vision:</strong> Deep document computer vision for handwritten paper forms & slips.</li>
+                <li><strong>Gemini Landmark Biometrics:</strong> Multi-point facial geometry comparison (&gt;=65% match).</li>
               </ul>
             </div>
 
-            {/* Guide Card 2 */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-              <div className="flex items-center gap-2 text-teal-800 font-bold text-sm">
-                <ShieldCheck className="w-4 h-4 text-teal-600" />
-                <span>2. Principal Delegation & OTP Flow</span>
+            {/* Guide Card 2: Attendance Module */}
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+              <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300 font-bold text-sm">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span>2. Attendance & Parent Absent Alerts</span>
               </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Zero-trust staff authorization lifecycle:
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Automated parental notification & voice checks:
               </p>
-              <ol className="list-decimal list-inside text-xs text-slate-600 space-y-1 pl-1">
-                <li>Principal selects staff member & modules (Admissions, Fees, Attendance).</li>
-                <li>Bot verifies phone number in database and dispatches a 6-digit OTP via WhatsApp.</li>
-                <li>Staff replies with <code>VERIFY [OTP]</code> to claim delegated rights.</li>
-              </ol>
-            </div>
-
-            {/* Guide Card 3 */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-              <div className="flex items-center gap-2 text-teal-800 font-bold text-sm">
-                <Key className="w-4 h-4 text-amber-600" />
-                <span>3. Password, 5-Digit PIN & Face Enrollment</span>
-              </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Staff member completes credentials onboarding:
-              </p>
-              <ul className="list-disc list-inside text-xs text-slate-600 space-y-1 pl-1">
-                <li>Sets 8+ char password and 5-digit transaction PIN: <code>SETUP Pass@123 PIN 58291</code>.</li>
-                <li>Sends a camera selfie to bot. Stored in DB as official biometric reference snapshot.</li>
-                <li>Principal gets WhatsApp confirmation; account becomes Active.</li>
+              <ul className="list-disc list-inside text-xs text-slate-600 dark:text-slate-300 space-y-1 pl-1">
+                <li><strong>Auto Absent SMS/WhatsApp:</strong> Parents receive instant alert when student is marked absent with monthly total count.</li>
+                <li><strong>Voice Query:</strong> "Sir aaj kitne students absent hain?" or "Ahmad ki is mahine kitni chuttiyan hain?"</li>
+                <li><strong>Faculty Punctuality:</strong> Daily staff arrival logs & payroll absent deductions.</li>
               </ul>
             </div>
 
-            {/* Guide Card 4 */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-              <div className="flex items-center gap-2 text-teal-800 font-bold text-sm">
-                <FileText className="w-4 h-4 text-blue-600" />
-                <span>4. Paper Admission Slips & Fee Recording</span>
+            {/* Guide Card 3: Admissions & Paper OCR */}
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+              <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300 font-bold text-sm">
+                <Camera className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span>3. Paper Admission OCR (Gemini Vision)</span>
               </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Rapid data entry without opening the computer:
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Enroll new candidates in under 30 seconds straight from camera:
               </p>
-              <ul className="list-disc list-inside text-xs text-slate-600 space-y-1 pl-1">
-                <li><strong>Paper Form OCR:</strong> Snap photo of handwritten admission slip &rarr; Bot extracts fields &rarr; Reply <code>CONFIRM [PIN]</code> &rarr; Student is enrolled in DB!</li>
-                <li><strong>Fee Collection:</strong> Voice/text: "Ahmad Raza roll 102 fee 15000 jama ho gayi PIN 12345" &rarr; Ledger updated + parent gets WhatsApp receipt.</li>
+              <ul className="list-disc list-inside text-xs text-slate-600 dark:text-slate-300 space-y-1 pl-1">
+                <li><strong>Snap Slip Photo:</strong> Send photo of paper form to WhatsApp bot.</li>
+                <li><strong>OCR Extraction:</strong> Gemini Vision parses Name, Phone, Marks, Program, Section & Fee.</li>
+                <li><strong>5-Digit PIN Commit:</strong> Reply <code>CONFIRM [PIN]</code> to write into LMS (Session 2026-28 normalized).</li>
+              </ul>
+            </div>
+
+            {/* Guide Card 4: Fee Collection */}
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+              <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300 font-bold text-sm">
+                <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span>4. Fee Collection & Instant WhatsApp Receipts</span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Seamless financial ledger updates via voice or text:
+              </p>
+              <ul className="list-disc list-inside text-xs text-slate-600 dark:text-slate-300 space-y-1 pl-1">
+                <li><strong>Voice / Text Command:</strong> "Roll 102 fee 15000 jama ho gayi receipt 402 PIN 12345".</li>
+                <li><strong>Ledger Adjustment:</strong> Automatically updates <code>fee_received</code> & creates income record.</li>
+                <li><strong>Parent Receipt:</strong> Official fee deposit acknowledgement instantly dispatched to parent.</li>
+              </ul>
+            </div>
+
+            {/* Guide Card 5: Academics & Timetable */}
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+              <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300 font-bold text-sm">
+                <BookOpen className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <span>5. Academic Results & Timetables</span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Dynamic exam cards and schedules on demand:
+              </p>
+              <ul className="list-disc list-inside text-xs text-slate-600 dark:text-slate-300 space-y-1 pl-1">
+                <li><strong>Exam Marks:</strong> Voice query: "Ahmad Raza s/o Muhammad Akram ka result dikhao" outputs full test breakdown.</li>
+                <li><strong>Class Timetable:</strong> Faculty/Students can check: "Mera aaj ka timetable kya hai?" for periods & room numbers.</li>
+              </ul>
+            </div>
+
+            {/* Guide Card 6: Zero-Trust Security & Delegation */}
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+              <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300 font-bold text-sm">
+                <ShieldCheck className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                <span>6. Multi-Factor Security & Biometric Face ID</span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Zero-trust administrative authorization lifecycle:
+              </p>
+              <ul className="list-disc list-inside text-xs text-slate-600 dark:text-slate-300 space-y-1 pl-1">
+                <li><strong>OTP Handshake:</strong> Principal delegates rights &rarr; 6-digit OTP sent to staff WhatsApp.</li>
+                <li><strong>Password & PIN:</strong> Staff sets 8+ char password & 5-digit PIN (e.g. <code>SETUP Pass@123 PIN 48291</code>).</li>
+                <li><strong>Face Biometrics:</strong> Camera selfie enrolled in DB; challenged during doubted/suspicious transactions.</li>
               </ul>
             </div>
           </div>

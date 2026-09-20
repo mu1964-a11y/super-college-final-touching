@@ -1445,7 +1445,7 @@ _Administration Directorate, SGC Jahanian_`;
   }, [chatLogs, dashboardCategory, dashboardSearch]);
 
   return (
-    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
+    <div className="space-y-6 pb-10 w-full">
       
       {/* 1. TOP HEADER BANNER WITH EMBEDDED WHATSAPP GATEWAY BRIDGE */}
       <div className="relative overflow-hidden bg-gradient-to-r from-[#064e43] via-[#053d34] to-[#042822] text-white p-6 sm:p-7 rounded-3xl shadow-xl border border-white/10">

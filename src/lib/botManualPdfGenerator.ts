@@ -1,7 +1,11 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-export function generateBotUserManualPDF() {
+export function generateBotUserManualPDF(metadata?: {
+  campusName?: string;
+  principalName?: string;
+  contactNumber?: string;
+}) {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -15,6 +19,7 @@ export function generateBotUserManualPDF() {
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
+  const campus = metadata?.campusName || "Superior Group of Colleges — Jahanian Campus";
 
   // Helper for Header
   const addHeader = (title: string, subtitle: string) => {
@@ -27,17 +32,18 @@ export function generateBotUserManualPDF() {
 
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text("SUPERIOR GROUP OF COLLEGES — JAHANIAN CAMPUS", pageWidth / 2, 12, { align: "center" });
+    doc.setFontSize(14);
+    doc.text(campus.toUpperCase(), pageWidth / 2, 11, { align: "center" });
 
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setFont("helvetica", "bold");
     doc.setTextColor(230, 245, 240);
-    doc.text(title.toUpperCase(), pageWidth / 2, 19, { align: "center" });
+    doc.text(title.toUpperCase(), pageWidth / 2, 18, { align: "center" });
 
-    doc.setFontSize(8);
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "normal");
     doc.setTextColor(...goldAccent);
-    doc.text(subtitle, pageWidth / 2, 25, { align: "center" });
+    doc.text(subtitle, pageWidth / 2, 24.5, { align: "center" });
   };
 
   // Helper for Footer
@@ -48,19 +54,19 @@ export function generateBotUserManualPDF() {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    doc.text("Superior College Jahanian • Official AI Executive Operations Manual", 14, pageHeight - 5);
+    doc.text("Superior College Jahanian • Official AI Executive Operations & Technical Directive", 14, pageHeight - 5);
     doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - 14, pageHeight - 5, { align: "right" });
   };
 
   // ══════════════════════════════════════════════════════
-  // PAGE 1: COVER & EXECUTIVE SUMMARY
+  // PAGE 1: AI MODELS SPECIFICATION & ARCHITECTURE
   // ══════════════════════════════════════════════════════
   addHeader(
     "AI Executive Assistant & WhatsApp Bot Operations Manual",
-    "Comprehensive Security, Multi-Role Voice, Biometrics & Delegation Protocol"
+    "Architecture: Google Gemini 2.5 Flash (Audio/STT) & Gemini 2.5 Flash Vision (Multimodal OCR & Face ID)"
   );
 
-  let y = 38;
+  let y = 36;
 
   // Document Metadata Box
   doc.setFillColor(...lightBg);
@@ -69,278 +75,385 @@ export function generateBotUserManualPDF() {
 
   doc.setTextColor(...primaryTeal);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text("OFFICIAL EXECUTIVE DIRECTIVE & TECHNICAL SPECIFICATION", 18, y + 7);
+  doc.setFontSize(10.5);
+  doc.text("OFFICIAL TECHNICAL SPECIFICATION & OPERATIONAL DIRECTIVE", 18, y + 6.5);
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(...darkSlate);
-  doc.text("Document Ref: SGC-AI-OPS-2026-V2", 18, y + 14);
-  doc.text("Audience: Principal, Directors, Delegated Staff & Faculty", 18, y + 20);
-  doc.text(`Effective Date: ${new Date().toLocaleDateString("en-GB")}`, pageWidth - 70, y + 14);
-  doc.text("System Version: LMS AI Nexus 2.5", pageWidth - 70, y + 20);
+  doc.text("Document Ref: SGC-AI-OPS-2026-V3", 18, y + 13);
+  doc.text("Core AI Engine: Google Gemini 2.5 Flash (Audio STT + Vision OCR)", 18, y + 18.5);
+  doc.text("Multi-Device Gateway: Baileys WS Bridge (Port 5000)", 18, y + 24);
+  doc.text(`Effective Date: ${new Date().toLocaleDateString("en-GB")}`, pageWidth - 72, y + 13);
+  doc.text("Normalized Session: 2026-28", pageWidth - 72, y + 18.5);
+  doc.text("Security Standard: Multi-Factor Zero-Trust", pageWidth - 72, y + 24);
 
   y += 32;
 
   // Executive Overview Section
   doc.setTextColor(...primaryTeal);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.text("1. Executive Overview & System Architecture", 14, y);
+  doc.setFontSize(12);
+  doc.text("1. AI Models Infrastructure & Core Engine Stack", 14, y);
 
-  y += 5;
+  y += 4.5;
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(...darkSlate);
   const overviewText = 
-    "The Superior College Jahanian Autonomous WhatsApp AI Executive Agent is a state-of-the-art multimodal assistant designed to provide 24/7 intelligent institutional operations. Operating through official college WhatsApp channels with Gemini 2.5 Flash, the bot understands natural voice notes and text in Urdu, Roman Urdu, and English across all campus stakeholders (Students, Parents, Teachers, Admin Staff, and Principal).\n\n" +
-    "To ensure zero unauthorized operations, the system implements an air-tight, multi-factor security framework: Principal-controlled staff delegation, DB-matched Phone OTPs, 8+ character passwords, 5-digit operational approval PINs, and Biometric Face Verification powered by AI Vision.";
+    "The Superior College Jahanian Autonomous WhatsApp AI Executive Agent is powered by an enterprise dual-engine stack built directly on Google Gemini 2.5 Flash. It operates 24/7 as an intelligent institutional coworker across voice, visual documents, and database operations. The platform eliminates manual administrative overhead by processing spoken voice notes in Urdu, Roman Urdu, and English, scanning handwritten admission slips, automating parent absent alerts, and executing verified fee deposits.";
   
   const splitOverview = doc.splitTextToSize(overviewText, pageWidth - 28);
   doc.text(splitOverview, 14, y);
+  y += splitOverview.length * 4.2 + 3;
 
-  y += splitOverview.length * 4.5 + 4;
-
-  // Key Pillars Table
+  // AI Models Breakdown Table
   autoTable(doc, {
     startY: y,
-    head: [["Pillar", "Core Technology", "Operational Capability"]],
+    head: [["AI Subsystem", "Model / Protocol", "Exact Operational Function in College LMS"]],
     body: [
-      ["Multi-Role Voice Recognition", "Gemini 2.5 Flash Audio API", "Native comprehension of Urdu / Roman Urdu voice notes for all campus users."],
-      ["Principal Delegation", "Role-Based Access Control", "Principal delegates specific rights (Admissions, Fees, Attendance, Timetables)."],
-      ["Biometric Face Enrollment", "Gemini Vision Biometrics", "Enrolls camera selfie in DB as anchor for high-risk identity validation."],
-      ["5-Digit Operational PIN", "SHA-256 Hash Verification", "Day-to-day transaction approvals for new admissions & fee collection."],
-      ["Paper Document OCR", "Gemini 2.5 Multimodal Vision", "Converts photos of handwritten admission slips directly into LMS student records."],
+      [
+        "Voice Understanding (STT)",
+        "Google Gemini 2.5 Flash Audio API",
+        "Native multimodal comprehension of incoming voice notes (.ogg, .mp4, .m4a) in Roman Urdu, Spoken Urdu, and English. No third-party transcription required."
+      ],
+      [
+        "Document & Slip OCR",
+        "Google Gemini 2.5 Flash Vision API",
+        "Deep computer vision extraction of handwritten paper admission slips, matric marks, Bay-Form/CNIC numbers, and fee receipts directly from camera photos."
+      ],
+      [
+        "Biometric Face Engine",
+        "Gemini Vision Landmark Biometrics",
+        "High-security face comparison across facial geometry (eye spacing, nose bridge, jaw structure). Compares live selfie against enrolled anchor (>=65% match)."
+      ],
+      [
+        "Audio Fallback Protocol",
+        "OpenAI Whisper STT Dual-Stack",
+        "Secondary transcription failover ensuring zero interruption if primary voice channels experience packet degradation or latency."
+      ],
+      [
+        "WhatsApp Bridge",
+        "Baileys Multi-Device Socket",
+        "Persistent WebSocket connection supporting two-way real-time messaging, end-to-end media buffering, and dynamic QR authentication."
+      ],
+      [
+        "Database Layer",
+        "Supabase PostgreSQL + RLS",
+        "Real-time synchronized storage across students, admissions, fee ledgers, staff directory, biometric anchors, and audit logs."
+      ],
     ],
     theme: "striped",
-    headStyles: { fillColor: primaryTeal, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 9 },
-    bodyStyles: { fontSize: 8.5, textColor: darkSlate },
+    headStyles: { fillColor: primaryTeal, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.5 },
+    bodyStyles: { fontSize: 7.5, textColor: darkSlate },
     margin: { left: 14, right: 14 },
   });
 
-  y = (doc as any).lastAutoTable.finalY + 8;
+  y = (doc as any).lastAutoTable.finalY + 6;
 
-  // Section 2: Stakeholder Voice Capabilities
+  // Attendance Module Highlights
   doc.setTextColor(...primaryTeal);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.text("2. Multi-Role Voice Note Understanding Matrix", 14, y);
+  doc.setFontSize(11.5);
+  doc.text("2. Attendance Module & Automated Parent Notification Engine", 14, y);
 
-  y += 5;
+  y += 4;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.2);
+  doc.setTextColor(...darkSlate);
+  const attText = 
+    "• Daily Absent Alerts to Parents: As soon as teacher marks attendance in LMS, the bot automatically sends personalized WhatsApp messages to parents/guardians: 'Assalam o Alaikum! Apka beta [Name] (Roll: [ID]) aaj [Date] ko college se ghair hazir raha hai. Is mahine ki total chuttiyan: [N]'.\n" +
+    "• Voice Attendance Inquiries: Principal or faculty can send voice note: 'Aaj kitne students absent hain?' or 'Biology class ki attendance summary do'. Bot instantly calculates and replies with exact numbers.\n" +
+    "• Faculty Punctuality & Leave Ledger: Tracks staff check-in times and monthly absent deductions for automatic payroll processing.";
 
-  autoTable(doc, {
-    startY: y,
-    head: [["Stakeholder Role", "Permitted Voice Inquiries", "Security & Verification Rule"]],
-    body: [
-      ["Students & Parents", "Fee dues balance, test marks, monthly attendance, admission queries for 2026-28.", "Name + Father Name or Roll Number check; private info protected."],
-      ["Teachers & Faculty", "Daily / weekly lecture timetable, personal attendance, salary advance balance.", "Phone matched against DB staff record or verified via staff PIN."],
-      ["Delegated Staff", "Handwritten admission submissions, fee collection recording, absent alerts.", "5-Digit PIN required for each financial or student database mutation."],
-      ["Principal / Director", "Daily cash collection, fee defaulters, staff attendance briefing, instant delegation.", "Principal registered WhatsApp phone; unrestricted master authority."],
-    ],
-    theme: "grid",
-    headStyles: { fillColor: primaryTeal, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.5 },
-    bodyStyles: { fontSize: 8, textColor: darkSlate },
-    margin: { left: 14, right: 14 },
-  });
+  const splitAtt = doc.splitTextToSize(attText, pageWidth - 28);
+  doc.text(splitAtt, 14, y);
 
   addFooter(1, 4);
 
   // ══════════════════════════════════════════════════════
-  // PAGE 2: PRINCIPAL DELEGATION & ONBOARDING PROTOCOL
+  // PAGE 2: ADMISSIONS, FEES & ACADEMIC WORKFLOWS
   // ══════════════════════════════════════════════════════
   doc.addPage();
-  addHeader("Staff Delegation & Multi-Factor Security Protocol", "Zero-Trust Staff Enrollment, OTPs, PINs & Face Biometrics");
+  addHeader("Operational Workflows: Admissions, Fees & Academic Exams", "Gemini Vision Paper OCR, Instant Fee Ledger & Result Cards");
 
   y = 36;
 
   doc.setTextColor(...primaryTeal);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text("3. Step-by-Step Staff Delegation Workflow", 14, y);
+  doc.text("3. Paper / Handwritten Admission Form OCR (Gemini Vision)", 14, y);
 
-  y += 5;
+  y += 4.5;
+  const admText = 
+    "Staff members no longer need to type lengthy admission records on a computer. An admission can be completed in under 30 seconds straight from WhatsApp using Gemini 2.5 Flash Vision:";
+  const splitAdm = doc.splitTextToSize(admText, pageWidth - 28);
+  doc.text(splitAdm, 14, y);
+  y += splitAdm.length * 4.2 + 3;
 
   autoTable(doc, {
     startY: y,
-    head: [["Step", "Responsible Party", "Action & Communication", "Verification Mechanism"]],
+    head: [["Step", "Action Taken", "AI Model / Bot Process", "Database & LMS Outcome"]],
     body: [
-      ["1. Initiate Delegation", "Principal", "Selects staff member in Web App or sends WhatsApp command: 'delegate [Name] [Permissions] phone [Number]'.", "Principal executive phone validation."],
-      ["2. DB Record Check", "System Bot", "Matches Name, Phone, and CNIC against LMS Staff directory records.", "Database record cross-matching."],
-      ["3. OTP Dispatch", "System Bot", "Sends 6-digit one-time code to staff member's registered WhatsApp: 'VERIFY [OTP]'.", "Time-limited OTP (valid for 60 mins)."],
-      ["4. Credentials Setup", "Staff Member", "Replies with OTP, then sets 8+ char password and 5-digit PIN: 'SETUP [Password] PIN [12345]'.", "SHA-256 cryptographic hashing."],
-      ["5. Biometric Face Snap", "Staff Member", "Takes camera selfie and sends to bot. Image is stored in DB as biometric reference.", "AI facial geometry anchor creation."],
-      ["6. Final Activation", "Principal & Bot", "Principal receives confirmation alert. Staff account status changes to ACTIVE.", "Instant executive notification."],
+      [
+        "1. Photo Capture",
+        "Staff member snaps a clear photo of handwritten admission form / slip and sends to WhatsApp Bot.",
+        "Image buffered in memory; bot replies: '⏳ Scanning Admission Document via Gemini Vision...'",
+        "Temporary secure memory allocation."
+      ],
+      [
+        "2. Gemini Vision OCR",
+        "Gemini 2.5 Flash Vision parses document fields automatically.",
+        "Extracts Full Name, Father Name, Contact, CNIC/B-Form, Previous Marks, Program, Section, Total Fee Package.",
+        "Staged in pendingAdmissions cache with normalized Session 2026-28."
+      ],
+      [
+        "3. Verification Prompt",
+        "Bot presents structured summary to staff: 'Student: Ahmad Khan, Group: FSC Pre-Med, Fee: Rs. 65,000'.",
+        "Prompts staff for authorization: 'Confirm karne ke liye likhein: CONFIRM [5-digit-pin]'.",
+        "Guards against unauthorized mutations."
+      ],
+      [
+        "4. PIN Confirmation",
+        "Staff enters 5-digit PIN (e.g. 'CONFIRM 48291').",
+        "Cryptographic SHA-256 validation against delegated admin record.",
+        "Unique Student ID generated (e.g. SGC-26-842); written to admissions & students tables."
+      ],
+      [
+        "5. Notifications",
+        "Instant confirmation message sent to staff.",
+        "Bot dispatches automated WhatsApp alert to Principal: '📝 New Admission Enrolled via Bot'.",
+        "Student immediately appears in Fee Management, ID Cards, and Class Registers."
+      ],
     ],
     theme: "striped",
     headStyles: { fillColor: primaryTeal, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.5 },
-    bodyStyles: { fontSize: 8, textColor: darkSlate },
+    bodyStyles: { fontSize: 7.5, textColor: darkSlate },
     margin: { left: 14, right: 14 },
   });
 
-  y = (doc as any).lastAutoTable.finalY + 8;
+  y = (doc as any).lastAutoTable.finalY + 7;
 
-  // Section 4: Security Verification in Doubted Cases
+  // Section 4: Fee Collection Recording
   doc.setTextColor(...primaryTeal);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text("4. Biometric Face Verification (Doubted Cases & Security Challenges)", 14, y);
+  doc.text("4. Instant Fee Collection & Automatic Receipt Delivery", 14, y);
 
-  y += 5;
-  const doubtedText = 
-    "When an admin attempts high-risk actions (such as high-value fee adjustments, session re-authentications, PIN failures, or when the Principal activates 'Force Face Re-Auth' from the Web Console), the bot halts operations and requests an immediate live camera selfie.\n\n" +
-    "The Gemini Vision Biometric Engine compares the live selfie against the database reference snapshot across key facial landmarks (eye spacing, nose ridge, jaw structure). Only if facial confidence exceeds 65% is the operation permitted. If rejected, the account is immediately locked and the Principal receives an urgent alert.";
+  y += 4.5;
+  const feeDesc = 
+    "Authorized staff can record fee deposits on-the-spot via spoken voice note or short text command. The bot validates the operator's 5-digit PIN, updates the accounts ledger, and instantly delivers an official fee deposit slip to the parent's WhatsApp.";
+  const splitFeeDesc = doc.splitTextToSize(feeDesc, pageWidth - 28);
+  doc.text(splitFeeDesc, 14, y);
+  y += splitFeeDesc.length * 4.2 + 3;
 
-  const splitDoubted = doc.splitTextToSize(doubtedText, pageWidth - 28);
-  doc.text(splitDoubted, 14, y);
-
-  y += splitDoubted.length * 4.5 + 6;
-
-  // Security Challenge Table
   autoTable(doc, {
     startY: y,
-    head: [["Trigger Condition", "Security Challenge", "Threshold / Action", "Failure Consequence"]],
+    head: [["Mode", "Spoken / Typed Input Example", "Verification", "Instant Output Delivered"]],
     body: [
-      ["Routine Transactions (Admissions / Fees)", "5-Digit Operational PIN", "Exact SHA-256 hash match", "Operation rejected; 3 strikes trigger Face Lock."],
-      ["Failed PIN (2+ Attempts)", "Biometric Live Selfie", "Face similarity >= 65%", "Account suspended; Principal alerted."],
-      ["Principal 'Force Face Re-Auth'", "Biometric Live Selfie", "Face similarity >= 65%", "Blocked until Principal unlocks."],
-      ["Unrecognized Device / New SIM", "OTP + Biometric Live Selfie", "OTP match + Face match", "Immediate lockout and breach warning."],
+      [
+        "Voice Note",
+        "🎤 'Ahmad Raza roll 102 ki 15,000 fee jama ho gayi hai receipt 402 PIN 12345'",
+        "Gemini 2.5 STT parses speech -> Validates 5-Digit PIN",
+        "Updates fee_received in DB; dispatches official branded Fee Receipt to student/father WhatsApp."
+      ],
+      [
+        "Text Command",
+        "💬 'Fee received Rs 15000 for roll 102 receipt 402 PIN 12345'",
+        "Regex/NLP entity extraction -> Validates 5-Digit PIN",
+        "Updates fee_received in DB; sends fee receipt to parent; alerts Principal WhatsApp."
+      ],
+      [
+        "Balance Check",
+        "🎤 'Mera roll number 102 hai meri baqaya fees kitni hai?'",
+        "Student Phone/Roll cross-check",
+        "Outputs Total Package, Paid Amount, and Remaining Balance with due date."
+      ],
     ],
     theme: "grid",
     headStyles: { fillColor: primaryTeal, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.5 },
-    bodyStyles: { fontSize: 8, textColor: darkSlate },
+    bodyStyles: { fontSize: 7.5, textColor: darkSlate },
     margin: { left: 14, right: 14 },
   });
 
   addFooter(2, 4);
 
   // ══════════════════════════════════════════════════════
-  // PAGE 3: OPERATIONAL WORKFLOWS (ADMISSIONS & FEES)
+  // PAGE 3: STAFF DELEGATION & BIOMETRIC SECURITY
   // ══════════════════════════════════════════════════════
   doc.addPage();
-  addHeader("Operational Workflows: Paper Admissions & Fees", "AI Vision Document Parsing & Instant Financial Recording");
+  addHeader("Zero-Trust Security, Staff Delegation & Face Biometrics", "OTP Handshake, 5-Digit Operational PINs & Gemini Face Verification");
 
   y = 36;
 
   doc.setTextColor(...primaryTeal);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text("5. Paper / Handwritten Admission Form OCR Workflow", 14, y);
+  doc.text("5. Multi-Factor Staff Delegation Protocol", 14, y);
 
-  y += 5;
-  const ocrText = 
-    "Authorized staff members can register student admissions in under 30 seconds by simply photographing paper forms or handwritten slips and sending them to the WhatsApp Bot. The entire process follows strict confirmation rules:";
-
-  const splitOcr = doc.splitTextToSize(ocrText, pageWidth - 28);
-  doc.text(splitOcr, 14, y);
-  y += splitOcr.length * 4.5 + 4;
+  y += 4.5;
+  const delText = 
+    "To prevent administrative breaches and unauthorized data entry, staff members can ONLY execute operations if explicitly delegated by the Principal through the WhatsApp AI Center. The security lifecycle consists of 5 mandatory steps:";
+  const splitDel = doc.splitTextToSize(delText, pageWidth - 28);
+  doc.text(splitDel, 14, y);
+  y += splitDel.length * 4.2 + 3;
 
   autoTable(doc, {
     startY: y,
-    head: [["Stage", "Action Required", "System Output", "Database Effect"]],
+    head: [["Security Stage", "Initiator", "Protocol / WhatsApp Interaction", "Security Guarantee"]],
     body: [
-      ["1. Capture Photo", "Admin snaps a well-lit photo of the admission form / handwritten slip and sends via WhatsApp.", "Bot acknowledges receipt: '⏳ Scanning Admission Document...'", "Image buffered in secure temporary memory."],
-      ["2. AI Vision OCR", "Gemini 2.5 Flash extracts Name, Father Name, Phone, CNIC, Matric Marks, Program, Section, and Fee.", "Structured preview sent to admin with fee breakdown and student details.", "Admission staged in pendingAdmissions cache."],
-      ["3. PIN Confirmation", "Admin reviews preview and replies: 'CONFIRM [5-digit-pin]' (e.g. 'CONFIRM 12345').", "Bot validates PIN hash against delegated admin credentials.", "Validates operator authority."],
-      ["4. Live Database Write", "Bot generates Unique Student ID (e.g. SGC-26-419) and inserts into admissions & students tables.", "Confirmation delivered to Admin with ID; Principal alerted via WhatsApp.", "Instant appearance in LMS ID Cards & Registers."],
+      [
+        "1. Rights Delegation",
+        "Principal",
+        "Assigns staff member & specific rights (Admissions, Fee Collection, Attendance) in Web App or via WhatsApp: 'delegate [Name] [Permissions] phone [Number]'.",
+        "Only Principal's registered WhatsApp phone can authorize new staff."
+      ],
+      [
+        "2. 6-Digit OTP Handshake",
+        "Bot -> Staff",
+        "Bot verifies staff record in database and dispatches a 6-digit OTP to staff's WhatsApp: 'VERIFY [OTP]'.",
+        "Verifies physical possession of the registered SIM card (valid 60 mins)."
+      ],
+      [
+        "3. Password & PIN Setup",
+        "Staff -> Bot",
+        "Staff replies: 'SETUP [8+ Char Password] PIN [5-digit PIN]' (e.g. 'SETUP Superior@2026 PIN 48291').",
+        "Stored using irreversible SHA-256 cryptographic hashing. Only last 4 digits displayed."
+      ],
+      [
+        "4. Biometric Selfie Enrollment",
+        "Staff -> Bot",
+        "Staff snaps a direct phone camera selfie and sends to bot. Stored in DB as gold biometric anchor.",
+        "Provides permanent visual identity reference for future high-risk verification."
+      ],
+      [
+        "5. Principal Return Alert",
+        "Bot -> Principal",
+        "Bot automatically notifies Principal: '🔐 STAFF VERIFICATION ALERT: [Name] ([Phone]) has verified credentials. Account ACTIVE.'",
+        "Principal has complete real-time visibility over staff onboarding."
+      ],
     ],
     theme: "striped",
     headStyles: { fillColor: primaryTeal, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.5 },
-    bodyStyles: { fontSize: 8, textColor: darkSlate },
+    bodyStyles: { fontSize: 7.5, textColor: darkSlate },
     margin: { left: 14, right: 14 },
   });
 
-  y = (doc as any).lastAutoTable.finalY + 8;
+  y = (doc as any).lastAutoTable.finalY + 7;
 
-  // Section 6: Fee Collection Recording
+  // Section 6: Biometric Face Verification in Doubted Cases
   doc.setTextColor(...primaryTeal);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text("6. Fee Collection Recording via WhatsApp (Voice or Text)", 14, y);
+  doc.text("6. Biometric Face Verification in Doubted Cases", 14, y);
 
-  y += 5;
-  const feeText = 
-    "Staff with 'fee_collection' permission can record student fee payments on-the-fly via voice notes or text. The bot updates the student's ledger, adjusts remaining dues, and automatically sends an official deposit slip receipt to the student/parent.";
-
-  const splitFee = doc.splitTextToSize(feeText, pageWidth - 28);
-  doc.text(splitFee, 14, y);
-  y += splitFee.length * 4.5 + 4;
-
-  autoTable(doc, {
-    startY: y,
-    head: [["Method", "Example Voice / Text Command", "Bot Verification", "Automatic Output"]],
-    body: [
-      ["Voice Note", "🎤 'Ahmad Raza roll number 102 ki 15,000 fee jama ho gayi hai receipt 402 PIN 12345'", "Transcribes voice -> Extracts Roll, Amount, Receipt -> Validates 5-Digit PIN", "Updates fee_received in DB; sends WhatsApp receipt to Father."],
-      ["Text Command", "💬 'Fee received Rs 15000 for roll 102 receipt 402 PIN 12345'", "Parses text -> Matches student -> Validates 5-Digit PIN", "Updates fee_received in DB; sends WhatsApp receipt to Father."],
-    ],
-    theme: "grid",
-    headStyles: { fillColor: primaryTeal, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.5 },
-    bodyStyles: { fontSize: 8, textColor: darkSlate },
-    margin: { left: 14, right: 14 },
-  });
+  y += 4.5;
+  const bioText = 
+    "When an admin enters an incorrect PIN 2 times, attempts actions from an unrecognized session, or when the Principal clicks 'Force Face Re-Auth' in the Web Console, the bot halts execution and demands a live camera selfie.\n\n" +
+    "Gemini 2.5 Flash Vision evaluates facial geometry between the live selfie and the database enrolled photo. Facial similarity must meet or exceed 65%. If verification fails, the account is locked and an emergency breach warning is sent to the Principal.";
+  const splitBio = doc.splitTextToSize(bioText, pageWidth - 28);
+  doc.text(splitBio, 14, y);
 
   addFooter(3, 4);
 
   // ══════════════════════════════════════════════════════
-  // PAGE 4: COMMAND REFERENCE, AUDIT TRAIL & TROUBLESHOOTING
+  // PAGE 4: COMMAND REFERENCE & AUDIT MATRIX
   // ══════════════════════════════════════════════════════
   doc.addPage();
-  addHeader("Executive Command Cheat Sheet & Audit Compliance", "Reference Guide, Audit Trail Standards & Incident Resolution");
+  addHeader("Universal Commands Quick Reference & Audit Standards", "Multi-Role Cheat Sheet for Students, Parents, Faculty, Admins & Principal");
 
   y = 36;
 
   doc.setTextColor(...primaryTeal);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text("7. Universal Voice & Text Commands Quick Reference", 14, y);
+  doc.text("7. Universal Voice & Text Commands Cheat Sheet", 14, y);
 
-  y += 5;
+  y += 4.5;
 
   autoTable(doc, {
     startY: y,
-    head: [["Role", "User Voice / Text Phrase", "Bot Function"]],
+    head: [["Stakeholder", "Example Voice Note or Message", "Bot Execution & Output"]],
     body: [
-      ["Student / Parent", "'Mera roll number 419 hai, meri baqaya fees kitni hai?'", "Verifies identity; outputs package, paid fees, and pending balance."],
-      ["Student / Parent", "'Ahmad Khan s/o Muhammad Akram ka result dikhao'", "Fuzzy matches name + father name; displays exam marks table."],
-      ["Teacher", "'Mera aaj ka timetable kya hai?' / 'Monday timetable'", "Fetches scheduled periods, room numbers, and sections from staff_timetable."],
-      ["Teacher", "'Meri attendance aur advance salary ka record dikhao'", "Outputs monthly present/absent days and unrecovered advance salary."],
-      ["Admin", "'[Photo of admission slip]'", "Extracts admission fields via AI Vision OCR; prompts for PIN confirmation."],
-      ["Admin", "'CONFIRM 12345'", "Commits pending admission into Supabase LMS tables."],
-      ["Admin", "'Roll 102 fee 15000 jama ho gayi PIN 12345'", "Records fee payment; auto-delivers receipt to parent."],
-      ["Principal", "'Aaj ka institutional report dikhao'", "Delivers total strength, daily cash collection, staff punctuality summary."],
-      ["Principal", "'delegate Ahmad Khan permissions admissions phone 03001234567'", "Initiates staff access delegation and sends WhatsApp OTP."],
-      ["Principal", "'show delegated staff'", "Lists all active delegated staff, permissions, and onboarding status."],
+      [
+        "Students / Parents",
+        "🎤 'Mera roll number 204 hai meri fees ka status batao'",
+        "Verifies student record; outputs Total Package, Paid Fees, and Remaining Dues."
+      ],
+      [
+        "Students / Parents",
+        "🎤 'Ahmad Raza s/o Muhammad Akram ka result dikhao'",
+        "Fuzzy matches name + father name; formats and delivers full marksheet table."
+      ],
+      [
+        "Students / Parents",
+        "💬 'Meri is mahine kitni chuttiyan hain?'",
+        "Calculates present/absent days from daily attendance logs."
+      ],
+      [
+        "Faculty / Teachers",
+        "🎤 'Mera aaj ka timetable kya hai?' / 'Monday periods'",
+        "Fetches scheduled lectures, class sections, and room numbers from timetable."
+      ],
+      [
+        "Faculty / Teachers",
+        "💬 'Meri attendance aur advance salary kitni baqi hai?'",
+        "Outputs monthly attendance count and remaining unrecovered advance salary."
+      ],
+      [
+        "Delegated Admin",
+        "📸 [Camera photo of paper admission slip]",
+        "Gemini Vision extracts candidate details; prompts for 5-digit PIN."
+      ],
+      [
+        "Delegated Admin",
+        "💬 'CONFIRM 48291'",
+        "Enrolls candidate into LMS database with unique College ID (Session 2026-28)."
+      ],
+      [
+        "Delegated Admin",
+        "🎤 'Roll 102 fee 15000 jama receipt 402 PIN 12345'",
+        "Records fee payment; auto-delivers official deposit receipt to parent."
+      ],
+      [
+        "Principal",
+        "🎤 'Aaj ka institutional briefing report do'",
+        "Delivers live summary: Total Admissions, Daily Cash Collection, Staff Punctuality."
+      ],
+      [
+        "Principal",
+        "💬 'delegate Bashir permissions fees phone 03014455891'",
+        "Initiates staff delegation handshake and dispatches 6-digit WhatsApp OTP."
+      ],
+      [
+        "Principal",
+        "💬 'show delegated staff'",
+        "Lists all authorized staff members, assigned roles, PIN status, and biometric state."
+      ],
     ],
     theme: "striped",
     headStyles: { fillColor: primaryTeal, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
-    bodyStyles: { fontSize: 7.5, textColor: darkSlate },
+    bodyStyles: { fontSize: 7, textColor: darkSlate },
     margin: { left: 14, right: 14 },
   });
 
-  y = (doc as any).lastAutoTable.finalY + 8;
+  y = (doc as any).lastAutoTable.finalY + 6;
 
-  // Section 8: Audit Compliance & Troubleshooting
+  // Section 8: Technical Support & Directives
   doc.setTextColor(...primaryTeal);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("8. Real-time Audit Trail & Incident Troubleshooting", 14, y);
+  doc.setFontSize(11);
+  doc.text("8. Institutional Compliance & Audit Trail Standard", 14, y);
 
-  y += 5;
-
-  autoTable(doc, {
-    startY: y,
-    head: [["Issue / Scenario", "Root Cause", "Recommended Resolution"]],
-    body: [
-      ["Voice Note not understood", "Excessive background noise or low audio buffer.", "Re-record voice note in a quiet room or type query as text."],
-      ["OTP expired (60 mins)", "Staff did not complete verification in time.", "Principal re-delegates staff or triggers resend from Web Console."],
-      ["PIN rejected repeatedly", "Incorrect 5-digit PIN entered.", "After 2 failures, system prompts for Biometric Face Selfie to reset PIN."],
-      ["Face match failed", "Poor lighting, face covered, or unauthorized person.", "Retake camera selfie in good lighting facing camera directly."],
-      ["Emergency Lockout", "Suspected account compromise.", "Principal clicks 'Revoke Access' in Web Console; account is disabled instantly."],
-    ],
-    theme: "grid",
-    headStyles: { fillColor: primaryTeal, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
-    bodyStyles: { fontSize: 7.5, textColor: darkSlate },
-    margin: { left: 14, right: 14 },
-  });
+  y += 4;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...darkSlate);
+  const compText = 
+    "Every incoming voice note transcript, document image, PIN verification, and biometric challenge is permanently logged in the college audit trail (`bot_audit_logs`). The Principal can inspect any historical transaction with full audio transcript, image preview, operator timestamp, and security level from the WhatsApp Center Executive Console.\n\n" +
+    "For technical assistance, gateway reconnection, or emergency staff revocation, contact the Directorate of Information Technology or access Settings > Sub-Admins in the Superior College Jahanian LMS.";
+  const splitComp = doc.splitTextToSize(compText, pageWidth - 28);
+  doc.text(splitComp, 14, y);
 
   addFooter(4, 4);
 
