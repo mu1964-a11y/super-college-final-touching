@@ -3157,6 +3157,28 @@ _Iske baad camera se apni ek saaf selfie photo bhej dein._`;
         }
         await this.saveDelegatedAdmins(supabase);
 
+        this.saveBotAuditLog({
+          senderPhone: standardPhone,
+          senderName: delegatedAdmin.name,
+          senderRole: "Admin",
+          messageType: "text",
+          actionType: "admin_verified",
+          transcript: `Admin ${delegatedAdmin.name} verified security credentials (PIN: ****${delegatedAdmin.pinLast4}). Status: ${delegatedAdmin.status}`,
+          status: "success",
+          verificationLevel: "pin_verified",
+          createdAt: new Date().toISOString()
+        });
+
+        try {
+          const reportCfg = await this.getAutomatedReportConfig();
+          if (reportCfg.principalPhone && reportCfg.principalPhone !== standardPhone) {
+            await this.sendMessage(
+              reportCfg.principalPhone,
+              `🔐 *STAFF VERIFICATION ALERT:*\nStaff member *${delegatedAdmin.name}* (${delegatedAdmin.phone}) ne credentials verify kar liye hain.\n• PIN Status: Verified (Last 4: *${delegatedAdmin.pinLast4}*)\n• Face ID: ${delegatedAdmin.faceSnapshotUrl ? "Enrolled ✅" : "Pending Selfie ⚠️"}\n• Account Status: *${delegatedAdmin.status.toUpperCase()}*`
+            );
+          }
+        } catch (e) {}
+
         const replyMsg = delegatedAdmin.status === "active"
           ? `🎉 *ONBOARDING COMPLETE!*
 Aapka password, 5-digit PIN (*${pin}*), aur Face Biometric Snapshot register ho chuke hain. Aapka account ab *ACTIVE* hai.`
@@ -3178,6 +3200,29 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
           delegatedAdmin.status = "active";
         }
         await this.saveDelegatedAdmins(supabase);
+
+        this.saveBotAuditLog({
+          senderPhone: standardPhone,
+          senderName: delegatedAdmin.name,
+          senderRole: "Admin",
+          messageType: "text",
+          actionType: "admin_verified",
+          transcript: `Admin ${delegatedAdmin.name} saved 5-digit PIN (****${delegatedAdmin.pinLast4}). Status: ${delegatedAdmin.status}`,
+          status: "success",
+          verificationLevel: "pin_verified",
+          createdAt: new Date().toISOString()
+        });
+
+        try {
+          const reportCfg = await this.getAutomatedReportConfig();
+          if (reportCfg.principalPhone && reportCfg.principalPhone !== standardPhone) {
+            await this.sendMessage(
+              reportCfg.principalPhone,
+              `🔐 *STAFF PIN VERIFIED:*\nStaff member *${delegatedAdmin.name}* (${delegatedAdmin.phone}) ne 5-digit PIN set kar liya hai (PIN: *${delegatedAdmin.pinLast4}*). Face Biometric Selfie baqi hai.`
+            );
+          }
+        } catch (e) {}
+
         return await sendReply(`✅ *5-Digit PIN (${pin}) Saved!* Ab camera selfie bhejein biometric verification ke liye.`, "Admin PIN Saved");
       }
     }
@@ -3332,6 +3377,16 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
                 verificationLevel: "pin_verified",
                 createdAt: new Date().toISOString()
               });
+
+              try {
+                const reportCfg = await this.getAutomatedReportConfig();
+                if (reportCfg.principalPhone && reportCfg.principalPhone !== standardPhone) {
+                  await this.sendMessage(
+                    reportCfg.principalPhone,
+                    `💰 *FEE DEPOSITED VIA BOT:*\n• Student: *${st.full_name}* (ID: *${st.id}*)\n• Amount Received: *Rs. ${amount.toLocaleString()}*\n• Collected By: *${delegatedAdmin.name}* (PIN Verified)\n• Total Paid: Rs. ${updatedFee.toLocaleString()}`
+                  );
+                }
+              } catch (e) {}
 
               if (st.contact) {
                 const receiptMsg = 
