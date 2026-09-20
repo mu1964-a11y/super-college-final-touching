@@ -291,8 +291,8 @@ export default function App() {
     const savedLogo = safeLocalStorage.getItem('college_logo');
     const savedName = safeLocalStorage.getItem('college_name');
     return {
-      name: savedName || "Superior College",
-      logo: savedLogo || null,
+      name: savedName || "Superior College Jahanian",
+      logo: savedLogo || "/superior-logo.png",
     };
   });
 
@@ -377,19 +377,21 @@ export default function App() {
             data.config?.logo ||
             data.config?.logo_url;
             
-          const finalName = data.college_name || data.name || "Superior College";
+          const finalName = data.college_name || data.name || "Superior College Jahanian";
+          const resolvedLogo = logoSource || "/superior-logo.png";
           setBrandingSettings({
             name: finalName,
-            logo: logoSource || null,
+            logo: resolvedLogo,
           });
           
-          if (logoSource) safeLocalStorage.setItem('college_logo', logoSource);
+          safeLocalStorage.setItem('college_logo', resolvedLogo);
           safeLocalStorage.setItem('college_name', finalName);
-
-          // Debugging help - if logo is still not showing but we have data
-          if (!logoSource) {
-            console.warn("Settings found but no logo source identified:", data);
-          }
+          document.title = `${finalName} - Portal`;
+          
+          try {
+            const favicon = document.querySelector("link[rel*='icon']") as HTMLLinkElement;
+            if (favicon) favicon.href = resolvedLogo;
+          } catch (e) {}
         } else {
           console.log("No branding settings record found in database.");
         }

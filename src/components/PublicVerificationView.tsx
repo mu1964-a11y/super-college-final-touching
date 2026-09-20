@@ -189,7 +189,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
   });
 
   const [collegeLogo, setCollegeLogo] = useState<string | null>(() => {
-    return typeof window !== 'undefined' ? safeLocalStorage.getItem('college_logo') : null;
+    return typeof window !== 'undefined' ? (safeLocalStorage.getItem('college_logo') || '/superior-logo.png') : '/superior-logo.png';
   });
   const [collegeName, setCollegeName] = useState<string>(() => {
     return typeof window !== 'undefined' ? (safeLocalStorage.getItem('college_name') || 'Superior College Jahanian') : 'Superior College Jahanian';
