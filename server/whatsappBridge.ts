@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import fs from "fs";
 import path from "path";
 import { GoogleGenAI } from "@google/genai";
+import crypto from "crypto";
 
 const makeWASocket = (baileys.default || baileys.makeWASocket) as any;
 const { useMultiFileAuthState, DisconnectReason } = baileys;
@@ -15,6 +16,42 @@ export interface WhatsAppStatus {
   connectedName: string | null;
   connectedAt: string | null;
   lastError: string | null;
+}
+
+export interface BotDelegatedAdmin {
+  id: string;
+  staffId?: string;
+  name: string;
+  phone: string;
+  cnic?: string;
+  rolePermissions: string[]; // ["admissions", "fee_collection", "attendance", "timetable", "all"]
+  passwordHash?: string;
+  passwordLast4?: string;
+  pinHash?: string;
+  pinLast4?: string;
+  faceSnapshotUrl?: string;
+  otpCode?: string;
+  otpExpiresAt?: number;
+  status: "pending_otp" | "pending_security" | "active" | "suspended";
+  requiresFaceReauth?: boolean;
+  delegatedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BotAuditLog {
+  id: string;
+  senderPhone: string;
+  senderName?: string;
+  senderRole: "Principal" | "Admin" | "Teacher" | "Student" | "Parent" | "Guest";
+  messageType: "text" | "voice" | "image" | "document";
+  actionType: string;
+  transcript?: string;
+  mediaUrl?: string;
+  details?: any;
+  status: "success" | "pending_pin" | "challenged" | "rejected" | "failed";
+  verificationLevel: "none" | "student_verified" | "pin_verified" | "face_verified";
+  createdAt: string;
 }
 
 export interface VerifiedUser {
@@ -173,10 +210,20 @@ class WhatsAppBridgeService {
   private scheduledReportsTimer: NodeJS.Timeout | null = null;
   private cachedSupabase: any = null;
 
+  // AI Executive Assistant & Delegated Admins Properties
+  private delegatedAdminsFile: string;
+  private delegatedAdmins: Map<string, BotDelegatedAdmin> = new Map();
+  private botAuditLogsFile: string;
+  private botAuditLogs: BotAuditLog[] = [];
+  private pendingAdmissions: Map<string, any> = new Map();
+  private adminAuthSessions: Map<string, { lastUnlocked: number; pinVerified: boolean; faceVerified: boolean }> = new Map();
+
   constructor() {
     this.authDir = path.join(process.cwd(), ".whatsapp_auth");
     this.chatLogsFile = path.join(process.cwd(), ".whatsapp_chat_logs.json");
     this.verifiedUsersFile = path.join(process.cwd(), ".whatsapp_verified_users.json");
+    this.delegatedAdminsFile = path.join(process.cwd(), ".whatsapp_delegated_admins.json");
+    this.botAuditLogsFile = path.join(process.cwd(), ".whatsapp_bot_audit.json");
     if (!fs.existsSync(this.authDir)) {
       try {
         fs.mkdirSync(this.authDir, { recursive: true });
@@ -187,6 +234,8 @@ class WhatsAppBridgeService {
     this.loadLidMappings();
     this.loadChatLogs();
     this.loadVerifiedUsers();
+    this.loadDelegatedAdmins();
+    this.loadBotAuditLogs();
     this.startScheduledReportsDaemon();
   }
 
@@ -452,6 +501,449 @@ class WhatsAppBridgeService {
     this.verifiedUsers.set(norm, verified);
     await this.saveVerifiedUsers(supabase);
     return true;
+  }
+
+  // --- Delegated Admins Storage & Security Management ---
+  private loadDelegatedAdmins() {
+    try {
+      if (fs.existsSync(this.delegatedAdminsFile)) {
+        const raw = fs.readFileSync(this.delegatedAdminsFile, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          for (const a of parsed) {
+            const norm = this.normalizePhoneNumber(a.phone);
+            if (norm) this.delegatedAdmins.set(norm, a);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[WhatsApp Bridge] Error loading delegated admins file:", e);
+    }
+  }
+
+  private saveDelegatedAdminsLocal() {
+    try {
+      const list = Array.from(this.delegatedAdmins.values());
+      fs.writeFileSync(this.delegatedAdminsFile, JSON.stringify(list, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("[WhatsApp Bridge] Error saving delegated admins locally:", e);
+    }
+  }
+
+  public async saveDelegatedAdmins(supabase?: any) {
+    this.saveDelegatedAdminsLocal();
+    const sb = supabase || await this.getSupabase();
+    if (sb) {
+      try {
+        const list = Array.from(this.delegatedAdmins.values());
+        for (const admin of list) {
+          try {
+            await sb.from("bot_delegated_admins").upsert({
+              id: admin.id,
+              staff_id: admin.staffId,
+              name: admin.name,
+              phone: admin.phone,
+              cnic: admin.cnic,
+              role_permissions: admin.rolePermissions,
+              passcode_hash: admin.passwordHash,
+              pin_last4: admin.pinLast4,
+              face_snapshot_url: admin.faceSnapshotUrl,
+              otp_code: admin.otpCode,
+              otp_expires_at: admin.otpExpiresAt ? new Date(admin.otpExpiresAt).toISOString() : null,
+              status: admin.status,
+              requires_face_reauth: admin.requiresFaceReauth,
+              delegated_by: admin.delegatedBy,
+              updated_at: new Date().toISOString()
+            }, { onConflict: "phone" });
+          } catch (e) {
+            // Table might not exist yet; proceed to config fallback
+          }
+        }
+        const { data: settings } = await sb.from("settings").select("id, config").limit(1).maybeSingle();
+        if (settings) {
+          const currentConfig = settings.config || {};
+          await sb.from("settings").update({
+            config: {
+              ...currentConfig,
+              whatsappDelegatedAdmins: list
+            }
+          }).eq("id", settings.id);
+        }
+      } catch (err) {
+        console.warn("[WhatsApp Bridge] Error persisting delegated admins in DB:", err);
+      }
+    }
+  }
+
+  public async syncDelegatedAdminsWithSupabase(supabase?: any) {
+    try {
+      const sb = supabase || await this.getSupabase();
+      if (!sb) return;
+      try {
+        const { data: rows } = await sb.from("bot_delegated_admins").select("*");
+        if (rows && rows.length > 0) {
+          for (const r of rows) {
+            const norm = this.normalizePhoneNumber(r.phone);
+            if (norm) {
+              this.delegatedAdmins.set(norm, {
+                id: r.id,
+                staffId: r.staff_id,
+                name: r.name,
+                phone: norm,
+                cnic: r.cnic,
+                rolePermissions: r.role_permissions || [],
+                passwordHash: r.passcode_hash,
+                pinLast4: r.pin_last4,
+                faceSnapshotUrl: r.face_snapshot_url,
+                otpCode: r.otp_code,
+                otpExpiresAt: r.otp_expires_at ? new Date(r.otp_expires_at).getTime() : undefined,
+                status: r.status || "pending_otp",
+                requiresFaceReauth: r.requires_face_reauth || false,
+                delegatedBy: r.delegated_by,
+                createdAt: r.created_at || new Date().toISOString(),
+                updatedAt: r.updated_at || new Date().toISOString()
+              });
+            }
+          }
+          this.saveDelegatedAdminsLocal();
+          return;
+        }
+      } catch (e) {}
+
+      const { data: settings } = await sb.from("settings").select("id, config").limit(1).maybeSingle();
+      if (settings && settings.config?.whatsappDelegatedAdmins) {
+        const cloudList = settings.config.whatsappDelegatedAdmins || [];
+        for (const a of cloudList) {
+          const norm = this.normalizePhoneNumber(a.phone);
+          if (norm && !this.delegatedAdmins.has(norm)) {
+            this.delegatedAdmins.set(norm, a);
+          }
+        }
+        this.saveDelegatedAdminsLocal();
+      }
+    } catch (err) {
+      console.warn("[WhatsApp Bridge] Error syncing delegated admins:", err);
+    }
+  }
+
+  public getDelegatedAdminsList(): BotDelegatedAdmin[] {
+    return Array.from(this.delegatedAdmins.values());
+  }
+
+  public async delegateAdmin(data: {
+    staffId?: string;
+    name: string;
+    phone: string;
+    cnic?: string;
+    rolePermissions: string[];
+    delegatedBy?: string;
+  }, supabase?: any): Promise<{ success: boolean; admin?: BotDelegatedAdmin; error?: string }> {
+    const norm = this.normalizePhoneNumber(data.phone);
+    if (!norm) return { success: false, error: "Invalid phone number format." };
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const existing = this.delegatedAdmins.get(norm);
+    const newAdmin: BotDelegatedAdmin = {
+      id: existing?.id || `del-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      staffId: data.staffId || existing?.staffId,
+      name: data.name,
+      phone: norm,
+      cnic: data.cnic || existing?.cnic,
+      rolePermissions: data.rolePermissions || existing?.rolePermissions || ["admissions"],
+      otpCode: otp,
+      otpExpiresAt: Date.now() + 60 * 60 * 1000,
+      status: "pending_otp",
+      requiresFaceReauth: false,
+      delegatedBy: data.delegatedBy || "Principal",
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      passwordHash: existing?.passwordHash,
+      passwordLast4: existing?.passwordLast4,
+      pinHash: existing?.pinHash,
+      pinLast4: existing?.pinLast4,
+      faceSnapshotUrl: existing?.faceSnapshotUrl
+    };
+
+    this.delegatedAdmins.set(norm, newAdmin);
+    await this.saveDelegatedAdmins(supabase);
+
+    const rolesList = newAdmin.rolePermissions.join(", ");
+    const inviteMsg = 
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
+🔐 *STAFF ACCESS DELEGATION NOTICE*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum *${newAdmin.name}*!
+
+Principal sb ne aapko Superior College LMS WhatsApp Bot par darj zail module access delegate ki hai:
+📋 *Assigned Modules:* ${rolesList.toUpperCase()}
+📱 *Registered Number:* ${newAdmin.phone}
+
+Aapka Verification Code (OTP) hai:
+🔑 *${otp}*
+_(Yeh code 60 minute ke liye valid hai)_
+
+Is access ko activate karne ke liye isi chat par reply karein:
+*VERIFY ${otp}*`;
+
+    await this.sendMessage(norm, inviteMsg);
+
+    this.saveBotAuditLog({
+      senderPhone: norm,
+      senderName: newAdmin.name,
+      senderRole: "Admin",
+      messageType: "text",
+      actionType: "delegation_invited",
+      transcript: `Staff access delegated by ${newAdmin.delegatedBy} with permissions: ${rolesList}`,
+      status: "success",
+      verificationLevel: "none",
+      createdAt: new Date().toISOString()
+    });
+
+    return { success: true, admin: newAdmin };
+  }
+
+  public async revokeDelegatedAdmin(phone: string, supabase?: any): Promise<boolean> {
+    const norm = this.normalizePhoneNumber(phone);
+    if (!norm) return false;
+    const admin = this.delegatedAdmins.get(norm);
+    if (admin) {
+      admin.status = "suspended";
+      admin.updatedAt = new Date().toISOString();
+      this.delegatedAdmins.set(norm, admin);
+      await this.saveDelegatedAdmins(supabase);
+      
+      this.saveBotAuditLog({
+        senderPhone: norm,
+        senderName: admin.name,
+        senderRole: "Admin",
+        messageType: "text",
+        actionType: "delegation_revoked",
+        transcript: `Access revoked / suspended for ${admin.name}`,
+        status: "success",
+        verificationLevel: "none",
+        createdAt: new Date().toISOString()
+      });
+
+      await this.sendMessage(norm, `⛔ *ACCESS SUSPENDED*\nSuperior College WhatsApp Executive Bot par aapki access suspend kar di gayi hai.`);
+      return true;
+    }
+    return false;
+  }
+
+  public async triggerFaceReauth(phone: string, supabase?: any): Promise<boolean> {
+    const norm = this.normalizePhoneNumber(phone);
+    if (!norm) return false;
+    const admin = this.delegatedAdmins.get(norm);
+    if (admin) {
+      admin.requiresFaceReauth = true;
+      admin.updatedAt = new Date().toISOString();
+      this.delegatedAdmins.set(norm, admin);
+      await this.saveDelegatedAdmins(supabase);
+
+      await this.sendMessage(norm, `🚨 *SECURITY CHALLENGE*\nPrincipal office ki janib se aapke account par biometric Face Re-verification challenge lagaya gaya hai. Baraye meherbani apni camera selfie bhejein.`);
+      return true;
+    }
+    return false;
+  }
+
+  // --- Bot Audit Logs Methods ---
+  private loadBotAuditLogs() {
+    try {
+      if (fs.existsSync(this.botAuditLogsFile)) {
+        const raw = fs.readFileSync(this.botAuditLogsFile, "utf-8");
+        this.botAuditLogs = JSON.parse(raw || "[]");
+      }
+    } catch (e) {
+      this.botAuditLogs = [];
+    }
+  }
+
+  public saveBotAuditLog(log: Omit<BotAuditLog, "id">) {
+    const item: BotAuditLog = {
+      id: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      ...log
+    };
+    this.botAuditLogs.unshift(item);
+    if (this.botAuditLogs.length > 500) {
+      this.botAuditLogs = this.botAuditLogs.slice(0, 500);
+    }
+    try {
+      fs.writeFileSync(this.botAuditLogsFile, JSON.stringify(this.botAuditLogs, null, 2), "utf-8");
+    } catch (e) {}
+
+    this.getSupabase().then((sb: any) => {
+      if (sb) {
+        sb.from("bot_audit_logs").insert({
+          sender_phone: item.senderPhone,
+          sender_name: item.senderName,
+          sender_role: item.senderRole,
+          message_type: item.messageType,
+          action_type: item.actionType,
+          transcript: item.transcript,
+          media_url: item.mediaUrl,
+          details: item.details || {},
+          status: item.status,
+          verification_level: item.verificationLevel
+        }).then(() => {}).catch(() => {});
+      }
+    });
+  }
+
+  public getBotAuditLogs(limit: number = 100): BotAuditLog[] {
+    return this.botAuditLogs.slice(0, limit);
+  }
+
+  // --- Multimodal Voice & Biometric Face Verification Helpers ---
+  public async transcribeAudioBuffer(audioBuffer: Buffer, mimetype: string = "audio/ogg"): Promise<string> {
+    const ai = this.getGeminiClient();
+    if (!ai) return "";
+    try {
+      const cleanMime = (mimetype || "audio/ogg").split(";")[0].trim();
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                inlineData: {
+                  mimeType: cleanMime,
+                  data: audioBuffer.toString("base64"),
+                },
+              },
+              {
+                text: "Accurately transcribe this WhatsApp voice note audio. It is from a college student, parent, faculty teacher, or principal of Superior College Jahanian. It may be spoken in Roman Urdu, spoken Urdu, Hinglish, or English. Return ONLY the direct transcription in English or Roman Urdu without preamble, quotation marks, or explanations.",
+              },
+            ],
+          },
+        ],
+      });
+      return response.text?.trim() || "";
+    } catch (err: any) {
+      console.error("[WhatsApp Bot Audio] Error transcribing voice note:", err);
+      return "";
+    }
+  }
+
+  public async compareFaceWithEnrolled(enrolledBase64OrUrl: string, liveBuffer: Buffer): Promise<{ isMatch: boolean; confidence: number; reason: string }> {
+    const ai = this.getGeminiClient();
+    if (!ai) return { isMatch: false, confidence: 0, reason: "AI service unavailable" };
+
+    try {
+      let enrolledBase64 = enrolledBase64OrUrl;
+      let enrolledMime = "image/jpeg";
+      if (enrolledBase64OrUrl.startsWith("data:")) {
+        const parts = enrolledBase64OrUrl.split(",");
+        const mimeMatch = enrolledBase64OrUrl.match(/data:([^;]+);/);
+        if (mimeMatch) enrolledMime = mimeMatch[1];
+        enrolledBase64 = parts[1];
+      }
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                inlineData: {
+                  mimeType: enrolledMime,
+                  data: enrolledBase64,
+                },
+              },
+              {
+                inlineData: {
+                  mimeType: "image/jpeg",
+                  data: liveBuffer.toString("base64"),
+                },
+              },
+              {
+                text: `You are an elite biometric face verification auditor for Superior College Jahanian.
+Image 1 is the authorized staff member's registered biometric face photo from the database.
+Image 2 is the live camera selfie received on WhatsApp right now.
+Compare both facial features (eyes, nose, jawline, facial structure).
+Return STRICT JSON format only:
+{
+  "isMatch": true or false,
+  "confidence": number between 0 and 100,
+  "reason": "short explanation in Roman Urdu or English"
+}`,
+              },
+            ],
+          },
+        ],
+      });
+
+      const raw = response.text?.trim() || "";
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          isMatch: Boolean(parsed.isMatch && parsed.confidence >= 65),
+          confidence: Number(parsed.confidence || 0),
+          reason: parsed.reason || "Biometric verification evaluated"
+        };
+      }
+    } catch (e: any) {
+      console.error("[WhatsApp Bot Biometrics] Face comparison error:", e);
+    }
+    return { isMatch: false, confidence: 0, reason: "Verification failed to evaluate" };
+  }
+
+  public async extractAdmissionFromImage(imageBuffer: Buffer, mimetype: string = "image/jpeg"): Promise<any> {
+    const ai = this.getGeminiClient();
+    if (!ai) return null;
+
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                inlineData: {
+                  mimeType: mimetype.split(";")[0],
+                  data: imageBuffer.toString("base64"),
+                },
+              },
+              {
+                text: `You are an expert OCR clerk for Superior College Jahanian admissions.
+Analyze this photo of an admission form, handwritten slip, or student application document.
+Extract all relevant student details.
+Return STRICT JSON ONLY:
+{
+  "fullName": "Student's Full Name",
+  "fatherName": "Father's Full Name",
+  "contact": "Contact phone number (e.g. 03001234567)",
+  "fatherContact": "Father phone number",
+  "bayFormNo": "CNIC or B-Form number",
+  "previousMarks": number or null,
+  "previousInstitute": "school name or null",
+  "category": "Boys Campus or Girls Campus",
+  "groupName": "FSc Pre-Medical, FSc Pre-Engineering, ICS, I.Com, or FA",
+  "section": "A, B, C or null",
+  "totalPackage": number,
+  "admissionFee": number,
+  "paymentPlan": "Monthly or Lump Sum or Installments",
+  "address": "Area, City, or Village",
+  "confidence": number
+}`,
+              },
+            ],
+          },
+        ],
+      });
+
+      const text = response.text?.trim() || "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+    } catch (e) {
+      console.error("[WhatsApp Bot OCR] Error extracting admission from image:", e);
+    }
+    return null;
   }
 
   public getFacultyMenuText(user: VerifiedUser): string {
@@ -1257,6 +1749,259 @@ _Administration, Superior College Jahanian_`;
     return confirmationMsg;
   }
 
+  // Handle incoming WhatsApp Audio / Voice Notes across all roles
+  public async handleIncomingAudioMessage(
+    msg: any,
+    senderJid: string,
+    rawNumber: string,
+    pushName?: string
+  ): Promise<void> {
+    const audioMsg = msg.message?.audioMessage;
+    if (!audioMsg) return;
+
+    let buffer: Buffer;
+    try {
+      const downloadFn = baileys.downloadContentFromMessage || (baileys as any).default?.downloadContentFromMessage;
+      if (!downloadFn) throw new Error("downloadContentFromMessage not available");
+      const stream = await downloadFn(audioMsg, "audio");
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+      }
+      buffer = Buffer.concat(chunks);
+    } catch (dlErr: any) {
+      console.error("[WhatsApp Bot Audio] Download error:", dlErr);
+      if (this.sock) {
+        await this.sock.sendMessage(senderJid, { text: "⚠️ Voice note download nahi ho saka. Baraye meherbani dobara send karein." });
+      }
+      return;
+    }
+
+    const transcription = await this.transcribeAudioBuffer(buffer, audioMsg.mimetype || "audio/ogg");
+    if (!transcription || transcription.trim().length === 0) {
+      const failMsg = "🎤 Voice note samajh nahi aa saka. Baraye meherbani saaf aawaz mein dobara record karein ya text message bhej dein.";
+      if (this.sock) await this.sock.sendMessage(senderJid, { text: failMsg });
+      return;
+    }
+
+    console.log(`[WhatsApp Bot Voice Note Transcribed] "${transcription}" from ${rawNumber}`);
+
+    this.saveChatLog({
+      phone: rawNumber,
+      senderName: pushName,
+      direction: "incoming",
+      text: `🎤 [Voice Note]: "${transcription}"`,
+    });
+
+    this.saveBotAuditLog({
+      senderPhone: rawNumber,
+      senderName: pushName || "User",
+      senderRole: "Guest",
+      messageType: "voice",
+      actionType: "voice_inquiry",
+      transcript: transcription,
+      status: "success",
+      verificationLevel: "none",
+      createdAt: new Date().toISOString()
+    });
+
+    await this.handleIncomingBotQuery(senderJid, transcription, rawNumber, pushName, { isVoice: true });
+  }
+
+  // Multimodal image handler (Biometric Face ID, Admission Slips OCR, Student Photos)
+  public async handleIncomingMultimodalImage(
+    msg: any,
+    senderJid: string,
+    rawNumber: string,
+    caption: string,
+    pushName?: string
+  ): Promise<void> {
+    const imageMsg = msg.message?.imageMessage;
+    if (!imageMsg) return;
+
+    let buffer: Buffer;
+    try {
+      const downloadFn = baileys.downloadContentFromMessage || (baileys as any).default?.downloadContentFromMessage;
+      if (!downloadFn) throw new Error("downloadContentFromMessage not available");
+      const stream = await downloadFn(imageMsg, "image");
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+      }
+      buffer = Buffer.concat(chunks);
+    } catch (dlErr: any) {
+      console.error("[WhatsApp Bot Image] Download error:", dlErr);
+      if (this.sock) await this.sock.sendMessage(senderJid, { text: "⚠️ Image download nahi ho saki. Baraye meherbani dobara send karein." });
+      return;
+    }
+
+    const normPhone = this.normalizePhoneNumber(rawNumber);
+    const admin = this.delegatedAdmins.get(normPhone);
+
+    // Case 1: Delegated Admin in pending_security stage -> saving face biometric snapshot
+    if (admin && admin.status === "pending_security") {
+      const dataUrl = `data:image/jpeg;base64,${buffer.toString("base64")}`;
+      admin.faceSnapshotUrl = dataUrl;
+      admin.updatedAt = new Date().toISOString();
+
+      if (admin.pinHash && admin.passwordHash) {
+        admin.status = "active";
+      }
+
+      await this.saveDelegatedAdmins();
+
+      const successMsg = 
+`✅ *BIOMETRIC FACE SNAPSHOT RECORDED!*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Mubarak ho *${admin.name}*!
+Aapka Camera Face Biometric ID kamyabi se record ho chuka hai.
+
+${admin.status === "active" ? 
+`🎉 *ACCOUNT FULLY ACTIVATED!*
+Aapko darj zail modules ki live access mil chuki hai:
+📋 *Permissions:* ${(admin.rolePermissions || []).join(", ").toUpperCase()}
+
+Ab aap WhatsApp par kisi bhi admission slip ki picture bhej kar admission kar sakte hain ya fees record kar sakte hain.`
+:
+`⚠️ *PIN & Password Baqi Hai:*
+Apna 8+ character password aur 5-digit PIN set karne ke liye likhein:
+*SETUP [Password] PIN [5-digit-pin]*
+(Maslan: *SETUP Superior@2026 PIN 48291*)`}`;
+
+      if (this.sock) await this.sock.sendMessage(senderJid, { text: successMsg });
+
+      this.saveBotAuditLog({
+        senderPhone: normPhone,
+        senderName: admin.name,
+        senderRole: "Admin",
+        messageType: "image",
+        actionType: "face_enrolled",
+        transcript: "Biometric face snapshot enrolled successfully",
+        mediaUrl: dataUrl.slice(0, 80) + "...",
+        status: "success",
+        verificationLevel: "face_verified",
+        createdAt: new Date().toISOString()
+      });
+
+      const config = await this.getAutomatedReportConfig();
+      if (config.principalPhone && config.principalPhone !== normPhone) {
+        await this.sendMessage(config.principalPhone, `🔐 *STAFF ONBOARDING ALERT:*\nStaff member *${admin.name}* (${admin.phone}) ne WhatsApp Biometric Face Snapshot register kar liya hai. Status: *${admin.status.toUpperCase()}*.`);
+      }
+      return;
+    }
+
+    // Case 2: Delegated Admin challenged for Face Re-Authentication (Doubted Case / High Risk)
+    if (admin && admin.requiresFaceReauth && admin.faceSnapshotUrl) {
+      const comparison = await this.compareFaceWithEnrolled(admin.faceSnapshotUrl, buffer);
+      if (comparison.isMatch) {
+        admin.requiresFaceReauth = false;
+        admin.updatedAt = new Date().toISOString();
+        await this.saveDelegatedAdmins();
+
+        const passMsg = 
+`✅ *BIOMETRIC FACE MATCH VERIFIED!*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum *${admin.name}*!
+Face Biometric Match: *${comparison.confidence}%* (High Confidence).
+Aapka session unlock ho chuka hai aur security verification complete hai. Shukriya!`;
+
+        if (this.sock) await this.sock.sendMessage(senderJid, { text: passMsg });
+
+        this.saveBotAuditLog({
+          senderPhone: normPhone,
+          senderName: admin.name,
+          senderRole: "Admin",
+          messageType: "image",
+          actionType: "face_verified",
+          transcript: `Face verified with confidence ${comparison.confidence}%: ${comparison.reason}`,
+          status: "success",
+          verificationLevel: "face_verified",
+          createdAt: new Date().toISOString()
+        });
+      } else {
+        const failMsg = 
+`❌ *BIOMETRIC FACE VERIFICATION FAILED!*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Aapki live selfie database ke registered biometric profile se match nahi hui (Confidence: ${comparison.confidence}%).
+Reason: ${comparison.reason}
+
+Security alert Principal Office ko transmit kar diya gaya hai.`;
+
+        if (this.sock) await this.sock.sendMessage(senderJid, { text: failMsg });
+
+        this.saveBotAuditLog({
+          senderPhone: normPhone,
+          senderName: admin.name,
+          senderRole: "Admin",
+          messageType: "image",
+          actionType: "face_rejected",
+          transcript: `Face verification failed (Confidence: ${comparison.confidence}%): ${comparison.reason}`,
+          status: "failed",
+          verificationLevel: "none",
+          createdAt: new Date().toISOString()
+        });
+
+        const config = await this.getAutomatedReportConfig();
+        if (config.principalPhone) {
+          await this.sendMessage(config.principalPhone, `🚨 *SECURITY INCIDENT ALERT:*\nStaff account *${admin.name}* (${admin.phone}) par Biometric Face Verification FAIL ho gaya hai! Confidence: ${comparison.confidence}%. Action blocked.`);
+        }
+      }
+      return;
+    }
+
+    // Case 3: Delegated Admin with admissions permission sending photo of an admission form / slip
+    if (admin && admin.status === "active" && (admin.rolePermissions.includes("admissions") || admin.rolePermissions.includes("all"))) {
+      if (this.sock) await this.sock.sendMessage(senderJid, { text: "⏳ *Scanning Admission Document...* AI document extraction jari hai, baraye meherbani chand second intezar karein." });
+
+      const extracted = await this.extractAdmissionFromImage(buffer, imageMsg.mimetype || "image/jpeg");
+      if (extracted && extracted.fullName && extracted.fullName.length >= 2) {
+        this.pendingAdmissions.set(normPhone, {
+          ...extracted,
+          rawImageBuffer: buffer,
+          stagedAt: Date.now()
+        });
+
+        const previewMsg = 
+`📋 *ADMISSION DETAILS EXTRACTED (AI VISION)*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Student Name:* *${extracted.fullName}*
+• *Father Name:* ${extracted.fatherName || "N/A"}
+• *Contact Mobile:* ${extracted.contact || "N/A"}
+• *Father Mobile:* ${extracted.fatherContact || extracted.contact || "N/A"}
+• *CNIC / B-Form:* ${extracted.bayFormNo || "N/A"}
+• *Program / Group:* *${extracted.groupName || "Intermediate"}*
+• *Campus:* ${extracted.category || "General"}
+• *Matric Marks:* ${extracted.previousMarks ? `${extracted.previousMarks} Marks` : "N/A"}
+• *Finalized Package:* *Rs. ${(extracted.totalPackage || 60000).toLocaleString()}*
+• *Admission Fee:* Rs. ${(extracted.admissionFee || 10000).toLocaleString()}
+• *Address:* ${extracted.address || "Jahanian"}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡ *ACTION REQUIRED:*
+Is admission ko LMS Database mein save karne ke liye apna 5-digit PIN reply karein:
+*CONFIRM [PIN]* (maslan: *CONFIRM 12345*)`;
+
+        if (this.sock) await this.sock.sendMessage(senderJid, { text: previewMsg });
+
+        this.saveBotAuditLog({
+          senderPhone: normPhone,
+          senderName: admin.name,
+          senderRole: "Admin",
+          messageType: "document",
+          actionType: "admission_scanned",
+          transcript: `Admission slip scanned for student ${extracted.fullName} (Program: ${extracted.groupName})`,
+          details: extracted,
+          status: "pending_pin",
+          verificationLevel: "none",
+          createdAt: new Date().toISOString()
+        });
+        return;
+      }
+    }
+
+    // Case 4: Default -> Student profile photo update handler
+    await this.handleIncomingStudentPhoto(msg, senderJid, rawNumber, caption, pushName);
+  }
+
   // Handle incoming student photo received via WhatsApp
   public async handleIncomingStudentPhoto(
     msg: any,
@@ -1541,6 +2286,7 @@ _Reply aate hi tasveer foran profile par update kar di jayegi._`;
             }
 
             const isImage = Boolean(msg.message.imageMessage);
+            const isAudio = Boolean(msg.message.audioMessage);
             const text = (
               msg.message.conversation ||
               msg.message.extendedTextMessage?.text ||
@@ -1548,13 +2294,16 @@ _Reply aate hi tasveer foran profile par update kar di jayegi._`;
               ""
             ).trim();
 
-            if (!text && !isImage) continue;
+            if (!text && !isImage && !isAudio) continue;
 
             // Resolve true phone number (Pakistani / International MSISDN)
             const realPhone = await this.resolvePhoneNumber(rawJid, msg.key);
-            console.log(`[WhatsApp Bot] Incoming message from ${rawJid} (Resolved Phone: ${realPhone}, PushName: ${msg.pushName || "N/A"}, isImage: ${isImage}): "${text}"`);
-            if (isImage) {
-              await this.handleIncomingStudentPhoto(msg, rawJid, realPhone, text, msg.pushName);
+            console.log(`[WhatsApp Bot] Incoming message from ${rawJid} (Resolved Phone: ${realPhone}, PushName: ${msg.pushName || "N/A"}, isImage: ${isImage}, isAudio: ${isAudio}): "${text}"`);
+            
+            if (isAudio) {
+              await this.handleIncomingAudioMessage(msg, rawJid, realPhone, msg.pushName);
+            } else if (isImage) {
+              await this.handleIncomingMultimodalImage(msg, rawJid, realPhone, text, msg.pushName);
             } else {
               await this.handleIncomingBotQuery(rawJid, text, realPhone, msg.pushName);
             }
@@ -2234,7 +2983,8 @@ College Key Info:
     senderJid: string, 
     text: string, 
     actualPhone?: string,
-    pushName?: string
+    pushName?: string,
+    options?: { isVoice?: boolean }
   ): Promise<string> {
     const rawNumber = actualPhone || await this.resolvePhoneNumber(senderJid);
     const cleanQuery = text.toLowerCase().trim();
@@ -2290,6 +3040,10 @@ College Key Info:
     const sendReply = async (replyText: string, logType: string, verifiedStudentName?: string) => {
       let finalReply = replyText;
 
+      if (options?.isVoice && !finalReply.startsWith("🎤")) {
+        finalReply = `🎤 *Voice Note Transcribed:* "${text}"\n\n${finalReply}`;
+      }
+
       const userSaidSalam = 
         cleanQuery.includes("salam") || 
         cleanQuery.includes("assalam") || 
@@ -2299,7 +3053,6 @@ College Key Info:
 
       // Salam Rule: Only send Salam on the 1st message of a session, OR if user explicitly greeted with Salam now.
       if (session!.salamSent && !userSaidSalam) {
-        // Strip any leading Salam greeting
         finalReply = finalReply
           .replace(/^(Assalam-o-Alaikum[!.,\s🌸🏛️]*\n*|Walaikum Assalam[!.,\s🌸🏛️]*\n*)/i, "")
           .trim();
@@ -2328,9 +3081,348 @@ College Key Info:
       return finalReply;
     };
 
-    // Sync verified users from Supabase
+    // Sync verified users & delegated admins from Supabase
     await this.syncVerifiedUsersWithSupabase(supabase);
+    await this.syncDelegatedAdminsWithSupabase(supabase);
     const standardPhone = this.normalizePhoneNumber(rawNumber);
+
+    const delegatedAdmin = this.delegatedAdmins.get(standardPhone);
+    const automatedConfig = await this.getAutomatedReportConfig(supabase);
+    const isPrincipal = standardPhone === this.normalizePhoneNumber(automatedConfig.principalPhone);
+
+    // ─── 0. DELEGATED ADMIN ONBOARDING (OTP / PASSWORD / 5-DIGIT PIN) ───
+    if (delegatedAdmin && delegatedAdmin.status === "pending_otp") {
+      const otpDigits = cleanQuery.replace(/\D/g, "");
+      if (otpDigits.length === 6 && delegatedAdmin.otpCode) {
+        if (delegatedAdmin.otpExpiresAt && Date.now() > delegatedAdmin.otpExpiresAt) {
+          return await sendReply("⏳ Aapka verification OTP code expire ho chuka hai. Principal office se dobara access request karein.", "Admin OTP Expired");
+        }
+        if (otpDigits === delegatedAdmin.otpCode) {
+          delegatedAdmin.status = "pending_security";
+          delegatedAdmin.otpCode = undefined;
+          delegatedAdmin.updatedAt = new Date().toISOString();
+          await this.saveDelegatedAdmins(supabase);
+
+          this.saveBotAuditLog({
+            senderPhone: standardPhone,
+            senderName: delegatedAdmin.name,
+            senderRole: "Admin",
+            messageType: options?.isVoice ? "voice" : "text",
+            actionType: "otp_verified",
+            transcript: "Delegated admin OTP verified",
+            status: "success",
+            verificationLevel: "pin_verified",
+            createdAt: new Date().toISOString()
+          });
+
+          const onboardPrompt = 
+`✅ *OTP CODE VERIFIED SUCCESSFULLY!*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Khush-amdeed *${delegatedAdmin.name}*!
+
+Principal sb ne aapko darj zail module access di hai:
+📋 *Permissions:* ${(delegatedAdmin.rolePermissions || []).join(", ").toUpperCase()}
+
+Ab apna 8+ character secure password aur 5-digit PIN set karein.
+Is format mein reply karein:
+*SETUP [Password] PIN [5-digit-pin]*
+(Maslan: *SETUP Superior@2026 PIN 48291*)
+
+_Iske baad camera se apni ek saaf selfie photo bhej dein._`;
+          return await sendReply(onboardPrompt, "Admin Security Setup Prompt");
+        } else {
+          return await sendReply("❌ Galat OTP code. Baraye meherbani sahi 6-digit OTP code darj karein.", "Admin Invalid OTP");
+        }
+      }
+    }
+
+    if (delegatedAdmin && delegatedAdmin.status === "pending_security") {
+      const pinMatch = cleanQuery.match(/pin\s*[:=-]?\s*(\d{5})/i);
+      const setupMatch = cleanQuery.match(/setup\s+([^\s]+)\s+pin\s*[:=-]?\s*(\d{5})/i);
+
+      if (setupMatch) {
+        const password = setupMatch[1];
+        const pin = setupMatch[2];
+        const pwHash = crypto.createHash("sha256").update(password).digest("hex");
+        const pinHash = crypto.createHash("sha256").update(pin).digest("hex");
+
+        delegatedAdmin.passwordHash = pwHash;
+        delegatedAdmin.passwordLast4 = password.slice(-4);
+        delegatedAdmin.pinHash = pinHash;
+        delegatedAdmin.pinLast4 = pin;
+        delegatedAdmin.updatedAt = new Date().toISOString();
+
+        if (delegatedAdmin.faceSnapshotUrl) {
+          delegatedAdmin.status = "active";
+        }
+        await this.saveDelegatedAdmins(supabase);
+
+        const replyMsg = delegatedAdmin.status === "active"
+          ? `🎉 *ONBOARDING COMPLETE!*
+Aapka password, 5-digit PIN (*${pin}*), aur Face Biometric Snapshot register ho chuke hain. Aapka account ab *ACTIVE* hai.`
+          : `🔐 *SECURITY CREDENTIALS SAVED!*
+Password aur 5-digit PIN (*${pin}*) save ho gaya hai.
+
+📸 *Aakhri Step (Biometric Face ID):*
+Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake biometric ID register ho sake.`;
+        return await sendReply(replyMsg, "Admin Credentials Saved");
+      } else if (pinMatch && !delegatedAdmin.pinHash) {
+        const pin = pinMatch[1];
+        delegatedAdmin.pinHash = crypto.createHash("sha256").update(pin).digest("hex");
+        delegatedAdmin.pinLast4 = pin;
+        if (!delegatedAdmin.passwordHash) {
+          delegatedAdmin.passwordHash = crypto.createHash("sha256").update(pin + "_default").digest("hex");
+          delegatedAdmin.passwordLast4 = "PIN*";
+        }
+        if (delegatedAdmin.faceSnapshotUrl) {
+          delegatedAdmin.status = "active";
+        }
+        await this.saveDelegatedAdmins(supabase);
+        return await sendReply(`✅ *5-Digit PIN (${pin}) Saved!* Ab camera selfie bhejein biometric verification ke liye.`, "Admin PIN Saved");
+      }
+    }
+
+    // ─── 0b. CONFIRM PENDING ADMISSION VIA 5-DIGIT PIN ───
+    const pendingAdm = this.pendingAdmissions.get(standardPhone);
+    if (delegatedAdmin && delegatedAdmin.status === "active" && pendingAdm) {
+      const confirmMatch = cleanQuery.match(/(?:confirm|pin|ok|save|done)\s*[:=-]?\s*(\d{5})/i);
+      const rawDigits5 = cleanQuery.replace(/\D/g, "");
+      const pinCandidate = confirmMatch ? confirmMatch[1] : rawDigits5.length === 5 ? rawDigits5 : null;
+
+      if (pinCandidate) {
+        const testHash = crypto.createHash("sha256").update(pinCandidate).digest("hex");
+        if (delegatedAdmin.pinHash && testHash === delegatedAdmin.pinHash) {
+          try {
+            const newId = `SGC-26-${Math.floor(100 + Math.random() * 900)}`;
+            const admRecord = {
+              id: newId,
+              student_id: newId,
+              college_no: newId,
+              full_name: pendingAdm.fullName,
+              father_name: pendingAdm.fatherName || "N/A",
+              contact_number: pendingAdm.contact || standardPhone,
+              father_contact: pendingAdm.fatherContact || pendingAdm.contact || standardPhone,
+              bay_form_no: pendingAdm.bayFormNo || "",
+              previous_marks: pendingAdm.previousMarks ? Number(pendingAdm.previousMarks) : null,
+              previous_institute: pendingAdm.previousInstitute || "",
+              category: pendingAdm.category || "General",
+              group_name: pendingAdm.groupName || "Intermediate",
+              section: pendingAdm.section || "A",
+              total_fee_finalized: Number(pendingAdm.totalPackage || 60000),
+              total_package: Number(pendingAdm.totalPackage || 60000),
+              admission_fee: Number(pendingAdm.admissionFee || 10000),
+              fee_received: Number(pendingAdm.admissionFee || 10000),
+              payment_plan: pendingAdm.paymentPlan || "Monthly",
+              address: pendingAdm.address || "Jahanian",
+              date: new Date().toISOString().slice(0, 10),
+              session: "2026-28",
+            };
+
+            await supabase.from("admissions").insert(admRecord);
+            try {
+              await supabase.from("students").insert({
+                id: newId,
+                college_no: newId,
+                full_name: pendingAdm.fullName,
+                father_name: pendingAdm.fatherName || "N/A",
+                contact: pendingAdm.contact || standardPhone,
+                category: pendingAdm.category || "General",
+                group: pendingAdm.groupName || "Intermediate",
+                section: pendingAdm.section || "A",
+                total_package: Number(pendingAdm.totalPackage || 60000),
+                fee_received: Number(pendingAdm.admissionFee || 10000),
+                session: "2026-28",
+                address: pendingAdm.address || "Jahanian",
+              });
+            } catch (e) {}
+
+            this.pendingAdmissions.delete(standardPhone);
+
+            this.saveBotAuditLog({
+              senderPhone: standardPhone,
+              senderName: delegatedAdmin.name,
+              senderRole: "Admin",
+              messageType: options?.isVoice ? "voice" : "text",
+              actionType: "admission_created",
+              transcript: `Admission created for ${admRecord.full_name} (${admRecord.id})`,
+              details: admRecord,
+              status: "success",
+              verificationLevel: "pin_verified",
+              createdAt: new Date().toISOString()
+            });
+
+            if (automatedConfig.principalPhone && automatedConfig.principalPhone !== standardPhone) {
+              await this.sendMessage(
+                automatedConfig.principalPhone,
+                `📝 *NEW ADMISSION VIA BOT:*\n• Student: *${admRecord.full_name}* (ID: *${newId}*)\n• Program: *${admRecord.group_name}* (${admRecord.section})\n• Package: Rs. ${admRecord.total_package.toLocaleString()}\n• By: *${delegatedAdmin.name}* (PIN Verified)`
+              );
+            }
+
+            const successAdmMsg = 
+`✅ *ADMISSION REGISTERED IN LMS DATABASE!*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Student Name:* *${admRecord.full_name}*
+• *Assigned ID / Roll:* *${newId}*
+• *Program & Sec:* ${admRecord.group_name} (${admRecord.section})
+• *Session:* 2026-28
+• *Total Package:* Rs. ${admRecord.total_package.toLocaleString()}
+• *Fee Received:* Rs. ${admRecord.fee_received.toLocaleString()}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🎉 Record college database mein live sync ho chuka hai.`;
+            return await sendReply(successAdmMsg, "Admission Registered Successfully");
+          } catch (dbErr: any) {
+            console.error("[WhatsApp Bot] Failed to insert admission:", dbErr);
+            return await sendReply("❌ Database error. Admission save nahi ho saka.", "Admission DB Error");
+          }
+        } else {
+          return await sendReply("❌ *PIN Ghalt Hai!* Baraye meherbani sahi 5-digit PIN darj karein.", "Invalid PIN");
+        }
+      }
+    }
+
+    // ─── 0c. RECORD FEE COLLECTION VIA VOICE OR TEXT ───
+    if (delegatedAdmin && delegatedAdmin.status === "active" && (delegatedAdmin.rolePermissions.includes("fee_collection") || delegatedAdmin.rolePermissions.includes("all"))) {
+      const isFeeCommand = cleanQuery.includes("fee") && (cleanQuery.includes("jama") || cleanQuery.includes("received") || cleanQuery.includes("pay") || cleanQuery.includes("paid") || cleanQuery.includes("collect"));
+      if (isFeeCommand) {
+        const pinMatch = cleanQuery.match(/pin\s*[:=-]?\s*(\d{5})/i);
+        const amountMatch = cleanQuery.match(/(?:rs\.?|amount|rupay|fee)?\s*(\d{3,6})\s*(?:rs|rupay|jama|paid|received)?/i);
+        const rollMatch = cleanQuery.match(/(?:roll|id|student|sgc-26-)?\s*(\d{2,4}|sgc-26-\d{3})/i);
+
+        if (pinMatch && amountMatch && rollMatch) {
+          const pin = pinMatch[1];
+          const testHash = crypto.createHash("sha256").update(pin).digest("hex");
+          if (delegatedAdmin.pinHash && testHash === delegatedAdmin.pinHash) {
+            const amount = Number(amountMatch[1]);
+            const targetRoll = rollMatch[1];
+
+            const { data: stMatches } = await supabase
+              .from("students")
+              .select("*")
+              .or(`id.ilike.%${targetRoll}%,college_no.ilike.%${targetRoll}%`)
+              .limit(1);
+
+            if (stMatches && stMatches.length > 0) {
+              const st = stMatches[0];
+              const updatedFee = Number(st.fee_received || 0) + amount;
+
+              await supabase
+                .from("students")
+                .update({ fee_received: updatedFee })
+                .eq("id", st.id);
+
+              try {
+                await supabase.from("incomes").insert({
+                  source: `Student Fee: ${st.full_name} (${st.id})`,
+                  amount,
+                  category: "Tuition Fee",
+                  date: new Date().toISOString().slice(0, 10),
+                  notes: `Received via WhatsApp Bot by ${delegatedAdmin.name}`
+                });
+              } catch (e) {}
+
+              this.saveBotAuditLog({
+                senderPhone: standardPhone,
+                senderName: delegatedAdmin.name,
+                senderRole: "Admin",
+                messageType: options?.isVoice ? "voice" : "text",
+                actionType: "fee_recorded",
+                transcript: `Fee Rs. ${amount} collected for ${st.full_name} (${st.id})`,
+                details: { studentId: st.id, amount, updatedFee },
+                status: "success",
+                verificationLevel: "pin_verified",
+                createdAt: new Date().toISOString()
+              });
+
+              if (st.contact) {
+                const receiptMsg = 
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
+🧾 *OFFICIAL FEE DEPOSIT ACKNOWLEDGEMENT*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Dear *${st.full_name}* (Roll No: *${st.id}*)!
+
+Aapki fee *Rs. ${amount.toLocaleString()}* college accounts mein jama ho chuki hai.
+• Total Paid: *Rs. ${updatedFee.toLocaleString()}*
+• Total Package: Rs. ${(st.total_package || 0).toLocaleString()}
+• Remaining Balance: *Rs. ${Math.max(0, (st.total_package || 0) - updatedFee).toLocaleString()}*
+
+Shukriya!
+_Directorate of Accounts, Superior College Jahanian_`;
+                await this.sendMessage(st.contact, receiptMsg);
+              }
+
+              const adminReply = 
+`✅ *FEE RECORDED SUCCESSFULLY!*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Student:* *${st.full_name}* (ID: *${st.id}*)
+• *Amount Received:* *Rs. ${amount.toLocaleString()}*
+• *Total Received:* Rs. ${updatedFee.toLocaleString()}
+• *Operator:* *${delegatedAdmin.name}* (PIN Verified)
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Student ko official fee receipt WhatsApp deliver kar di gayi hai.`;
+              return await sendReply(adminReply, "Fee Collection Recorded");
+            } else {
+              return await sendReply(`⚠️ Roll/ID "${targetRoll}" database mein nahi mila.`, "Student Not Found");
+            }
+          } else {
+            return await sendReply("❌ 5-Digit PIN ghalt hai. Fee record nahi ki gayi.", "Invalid PIN");
+          }
+        }
+      }
+    }
+
+    // ─── 0d. PRINCIPAL COMMANDS VIA WHATSAPP ───
+    if (isPrincipal) {
+      if (cleanQuery.includes("delegate") && cleanQuery.includes("phone")) {
+        const phoneMatch = cleanQuery.match(/phone\s*[:=-]?\s*([0-9+]+)/i);
+        const nameMatch = text.match(/delegate\s+([a-zA-Z\s]+?)(?=\s+permissions|\s+phone|\s+role|$)/i);
+        const permAdmissions = cleanQuery.includes("admission");
+        const permFee = cleanQuery.includes("fee");
+        const permAttendance = cleanQuery.includes("attendance");
+        const permTimetable = cleanQuery.includes("timetable");
+
+        const permissions: string[] = [];
+        if (permAdmissions) permissions.push("admissions");
+        if (permFee) permissions.push("fee_collection");
+        if (permAttendance) permissions.push("attendance");
+        if (permTimetable) permissions.push("timetable");
+        if (permissions.length === 0) permissions.push("admissions");
+
+        if (phoneMatch && nameMatch) {
+          const targetPhone = phoneMatch[1];
+          const targetName = nameMatch[1].trim();
+
+          const result = await this.delegateAdmin({
+            name: targetName,
+            phone: targetPhone,
+            rolePermissions: permissions,
+            delegatedBy: "Principal",
+          }, supabase);
+
+          if (result.success) {
+            const resp = 
+`🏛️ *STAFF DELEGATION INITIATED*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Staff Member:* *${targetName}*
+• *Mobile Number:* ${result.admin?.phone}
+• *Assigned Modules:* *${permissions.join(", ").toUpperCase()}*
+• *Generated OTP:* *${result.admin?.otpCode}*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Staff member ko WhatsApp par invitation deliver ho chuka hai.`;
+            return await sendReply(resp, "Principal Delegation Created");
+          }
+        }
+      } else if (cleanQuery === "show delegated staff" || cleanQuery === "delegated staff" || cleanQuery === "staff delegation list") {
+        const list = this.getDelegatedAdminsList();
+        if (list.length === 0) {
+          return await sendReply("Abhi tak koi staff member delegate nahi kiya gaya.", "Delegated Staff Empty");
+        }
+        const strList = list.map((a, idx) => {
+          return `${idx + 1}. *${a.name}* (${a.phone})\n   • Status: *${a.status.toUpperCase()}*\n   • Permissions: ${(a.rolePermissions || []).join(", ")}\n   • PIN: *${a.pinLast4 ? `****${a.pinLast4}` : "Not set"}*`;
+        }).join("\n\n");
+
+        return await sendReply(`📋 *ACTIVE DELEGATED STAFF ROSTER:*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n${strList}`, "Delegated Staff List");
+      }
+    }
 
     // ─── A. CHECK PENDING OTP VERIFICATION ───
     const pendingOtp = this.pendingOTPs.get(standardPhone);

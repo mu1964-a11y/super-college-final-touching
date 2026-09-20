@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
+import WhatsAppExecutiveConsole from "./WhatsAppExecutiveConsole";
 
 interface WhatsAppCenterViewProps {
   data: {
@@ -41,7 +42,7 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
   const globalSettings = data?.settings || {};
 
   // Active navigation tab
-  const [activeTab, setActiveTab] = useState<"messenger" | "broadcaster" | "bot_dashboard" | "automated_reports">("messenger");
+  const [activeTab, setActiveTab] = useState<"messenger" | "broadcaster" | "bot_dashboard" | "automated_reports" | "ai_executive">("messenger");
 
   // Automated Reports States
   const [reportConfig, setReportConfig] = useState<any>(null);
@@ -1834,6 +1835,23 @@ _Administration Directorate, SGC Jahanian_`;
             activeTab === "automated_reports" ? "bg-emerald-300 text-slate-950" : "bg-teal-500/10 text-teal-600 dark:text-teal-400"
           }`}>
             Auto-Digest
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("ai_executive")}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all relative ${
+            activeTab === "ai_executive" 
+              ? "bg-gradient-to-r from-[#064e43] to-[#085a4e] text-white shadow-md" 
+              : "text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white"
+          }`}
+        >
+          <ShieldCheck size={16} />
+          <span>AI Executive & Delegation</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+            activeTab === "ai_executive" ? "bg-amber-300 text-slate-950 font-black" : "bg-teal-500/10 text-teal-600 dark:text-teal-400 font-bold"
+          }`}>
+            Biometrics & OTP
           </span>
         </button>
       </div>
@@ -4158,6 +4176,26 @@ _Administration Directorate, SGC Jahanian_`;
               </button>
             </div>
 
+          </motion.div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 5: AI EXECUTIVE AGENT & STAFF DELEGATION (BIOMETRICS, OTP, PIN)       */}
+        {/* ========================================================================= */}
+        {activeTab === "ai_executive" && (
+          <motion.div
+            key="tab-ai-executive-console"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.15 }}
+            className="w-full"
+          >
+            <WhatsAppExecutiveConsole
+              staffList={staff}
+              studentsList={students}
+              globalSettings={globalSettings}
+            />
           </motion.div>
         )}
 

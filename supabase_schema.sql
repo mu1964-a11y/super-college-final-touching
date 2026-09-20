@@ -439,3 +439,47 @@ CREATE POLICY "Public Access" ON "notifications" FOR ALL USING (true) WITH CHECK
 ALTER TABLE "student_attendance" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public Access" ON "student_attendance" FOR ALL USING (true) WITH CHECK (true);
 
+-- 19. WhatsApp Bot Delegated Admins
+CREATE TABLE IF NOT EXISTS "bot_delegated_admins" (
+    "id" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "staff_id" TEXT,
+    "name" TEXT NOT NULL,
+    "phone" TEXT UNIQUE NOT NULL,
+    "cnic" TEXT,
+    "role_permissions" JSONB DEFAULT '[]'::jsonb, -- e.g. ["admissions", "fee_collection", "attendance", "timetable"]
+    "passcode_hash" TEXT,
+    "pin_last4" TEXT,
+    "face_snapshot_url" TEXT,
+    "voice_sample_url" TEXT,
+    "otp_code" TEXT,
+    "otp_expires_at" TIMESTAMP WITH TIME ZONE,
+    "status" TEXT DEFAULT 'pending_otp', -- pending_otp, pending_security, active, suspended
+    "requires_face_reauth" BOOLEAN DEFAULT false,
+    "delegated_by" TEXT,
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+    "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE "bot_delegated_admins" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "bot_delegated_admins" FOR ALL USING (true) WITH CHECK (true);
+
+-- 20. WhatsApp Bot Audit Logs
+CREATE TABLE IF NOT EXISTS "bot_audit_logs" (
+    "id" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "sender_phone" TEXT NOT NULL,
+    "sender_name" TEXT,
+    "sender_role" TEXT DEFAULT 'Guest', -- Principal, Admin, Teacher, Student, Parent, Guest
+    "message_type" TEXT DEFAULT 'text', -- text, voice, image, document
+    "action_type" TEXT NOT NULL, -- inquiry, admission_created, fee_recorded, timetable_view, login, face_verified, rejected
+    "transcript" TEXT,
+    "media_url" TEXT,
+    "details" JSONB DEFAULT '{}'::jsonb,
+    "status" TEXT DEFAULT 'success', -- success, pending_pin, challenged, rejected, failed
+    "verification_level" TEXT DEFAULT 'none', -- none, student_verified, pin_verified, face_verified
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE "bot_audit_logs" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "bot_audit_logs" FOR ALL USING (true) WITH CHECK (true);
+
+

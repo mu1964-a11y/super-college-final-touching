@@ -631,6 +631,66 @@ ${statsText}`,
       res.status(500).json({ error: err.message });
     }
   });
+  app.get("/api/whatsapp/delegated-admins", (req, res) => {
+    try {
+      const admins = whatsappBridge.getDelegatedAdminsList();
+      res.json({ success: true, admins });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/delegate-admin", async (req, res) => {
+    try {
+      const { staffId, name, phone, cnic, rolePermissions, delegatedBy } = req.body;
+      if (!name || !phone) {
+        return res.status(400).json({ error: "Staff Name and Phone Number are required." });
+      }
+      const result = await whatsappBridge.delegateAdmin({
+        staffId,
+        name,
+        phone,
+        cnic,
+        rolePermissions: rolePermissions || ["admissions"],
+        delegatedBy: delegatedBy || "Principal"
+      });
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/revoke-delegation", async (req, res) => {
+    try {
+      const { phone } = req.body;
+      if (!phone) {
+        return res.status(400).json({ error: "Phone number is required." });
+      }
+      const success = await whatsappBridge.revokeDelegatedAdmin(phone);
+      res.json({ success });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/trigger-face-reauth", async (req, res) => {
+    try {
+      const { phone } = req.body;
+      if (!phone) {
+        return res.status(400).json({ error: "Phone number is required." });
+      }
+      const success = await whatsappBridge.triggerFaceReauth(phone);
+      res.json({ success });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.get("/api/whatsapp/audit-logs", (req, res) => {
+    try {
+      const limit = Number(req.query.limit) || 100;
+      const logs = whatsappBridge.getBotAuditLogs(limit);
+      res.json({ success: true, logs });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
   app.get("/api/whatsapp/scheduled-reports/config", async (req, res) => {
     try {
       const config = await whatsappBridge.getAutomatedReportConfig();

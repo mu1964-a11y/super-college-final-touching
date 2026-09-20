@@ -747,6 +747,76 @@ College Metrics Data:
     }
   });
 
+  // 3i. Get Delegated Staff Admins List
+  app.get("/api/whatsapp/delegated-admins", (req, res) => {
+    try {
+      const admins = whatsappBridge.getDelegatedAdminsList();
+      res.json({ success: true, admins });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 3j. Delegate New Staff Member or Update Access
+  app.post("/api/whatsapp/delegate-admin", async (req, res) => {
+    try {
+      const { staffId, name, phone, cnic, rolePermissions, delegatedBy } = req.body;
+      if (!name || !phone) {
+        return res.status(400).json({ error: "Staff Name and Phone Number are required." });
+      }
+      const result = await whatsappBridge.delegateAdmin({
+        staffId,
+        name,
+        phone,
+        cnic,
+        rolePermissions: rolePermissions || ["admissions"],
+        delegatedBy: delegatedBy || "Principal",
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 3k. Revoke / Suspend Delegated Staff Access
+  app.post("/api/whatsapp/revoke-delegation", async (req, res) => {
+    try {
+      const { phone } = req.body;
+      if (!phone) {
+        return res.status(400).json({ error: "Phone number is required." });
+      }
+      const success = await whatsappBridge.revokeDelegatedAdmin(phone);
+      res.json({ success });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 3l. Challenge Staff for Biometric Face Re-Authentication
+  app.post("/api/whatsapp/trigger-face-reauth", async (req, res) => {
+    try {
+      const { phone } = req.body;
+      if (!phone) {
+        return res.status(400).json({ error: "Phone number is required." });
+      }
+      const success = await whatsappBridge.triggerFaceReauth(phone);
+      res.json({ success });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 3m. Get WhatsApp AI Bot Audit Trail
+  app.get("/api/whatsapp/audit-logs", (req, res) => {
+    try {
+      const limit = Number(req.query.limit) || 100;
+      const logs = whatsappBridge.getBotAuditLogs(limit);
+      res.json({ success: true, logs });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Scheduled Automated Reports API
   app.get("/api/whatsapp/scheduled-reports/config", async (req, res) => {
     try {
