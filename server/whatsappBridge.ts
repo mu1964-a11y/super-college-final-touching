@@ -3313,6 +3313,30 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
               );
             }
 
+            const baseUrl = process.env.VITE_APP_URL || process.env.APP_URL || 'https://portal.superiorjhn.com';
+            const admUrl = `${baseUrl}/?v=admission&id=${encodeURIComponent(newId)}`;
+
+            // Send notification to student/parent if contact exists
+            if (pendingAdm.contact && pendingAdm.contact !== standardPhone) {
+              const studentMsg = 
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
+🎓 *OFFICIAL ADMISSION CONFIRMATION*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Dear *${admRecord.full_name}*!
+
+Aapka admission Superior College Jahanian mein kamyabi se record ho chuka hai.
+• *Assigned ID:* *${newId}*
+• *Program:* ${admRecord.group_name} (${admRecord.section})
+• *Session:* 2026-28
+• *Fee Received:* Rs. ${admRecord.fee_received.toLocaleString()}
+
+📱 *Digital Admission Card & Slip:*
+${admUrl}
+
+Superior Group of Colleges Jahanian mein khushamdeed!`;
+              await this.sendMessage(pendingAdm.contact, studentMsg);
+            }
+
             const successAdmMsg = 
 `✅ *ADMISSION REGISTERED IN LMS DATABASE!*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3324,6 +3348,9 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
 • *Fee Received:* Rs. ${admRecord.fee_received.toLocaleString()}
 • *Channel:* *Via WhatsApp Bot (${delegatedAdmin.name})*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
+📱 *Live Digital Admission Card:*
+${admUrl}
+
 🎉 Record college database mein live sync ho chuka hai.`;
             return await sendReply(successAdmMsg, "Admission Registered Successfully");
           } catch (dbErr: any) {
@@ -3438,10 +3465,13 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
                 }
               } catch (e) {}
 
+              const baseUrl = process.env.VITE_APP_URL || process.env.APP_URL || 'https://portal.superiorjhn.com';
+              const receiptUrl = `${baseUrl}/?v=receipt&id=${encodeURIComponent(st.id)}&rcp=${encodeURIComponent(botReceiptId)}`;
+
               if (st.contact) {
                 const receiptMsg = 
 `🏛️ *SUPERIOR COLLEGE JAHANIAN*
-🧾 *OFFICIAL FEE DEPOSIT ACKNOWLEDGEMENT*
+🧾 *OFFICIAL DIGITAL FEE RECEIPT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Dear *${st.full_name}* (Roll No: *${st.id}*)!
 
@@ -3452,6 +3482,9 @@ Aapki fee *Rs. ${amount.toLocaleString()}* college accounts mein jama ho chuki h
 • Total Package: Rs. ${(st.total_package || 0).toLocaleString()}
 • Remaining Balance: *Rs. ${Math.max(0, (st.total_package || 0) - updatedFee).toLocaleString()}*
 • Receipt Ref: *${botReceiptId}*
+
+📱 *Digital Slip & Verification Link:*
+${receiptUrl}
 
 Shukriya!
 _Directorate of Accounts, Superior College Jahanian_`;
@@ -3466,8 +3499,12 @@ _Directorate of Accounts, Superior College Jahanian_`;
 • *Total Received:* Rs. ${updatedFee.toLocaleString()}
 • *Operator:* *${delegatedAdmin.name}* (PIN Verified)
 • *Channel:* *Via WhatsApp Bot*
+• *Receipt:* *${botReceiptId}*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Student ko official fee receipt WhatsApp deliver kar di gayi hai.`;
+📱 *Live Digital Slip:*
+${receiptUrl}
+
+Student ko official digital fee receipt deliver kar di gayi hai.`;
               return await sendReply(adminReply, "Fee Collection Recorded");
             } else {
               return await sendReply(`⚠️ Roll/ID "${targetRoll}" database mein nahi mila.`, "Student Not Found");

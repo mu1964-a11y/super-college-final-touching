@@ -35,6 +35,7 @@ import { safeLocalStorage } from '../utils/safeStorage';
 import { exportElementToImage, exportElementToPdf } from '../utils/documentExporter';
 import QRCode from 'qrcode';
 import { toast } from 'sonner';
+import MobileDigitalReceiptCard from './MobileDigitalReceiptCard';
 
 interface VerificationData {
   type: 'challan' | 'receipt' | 'statement' | 'admission' | 'result' | 'attendance' | 'card' | 'staff_payroll' | 'general' | 'student';
@@ -200,6 +201,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [zoomMode, setZoomMode] = useState<'fit' | 'actual'>('fit');
+  const [viewModeTab, setViewModeTab] = useState<'card' | 'slip'>(() => typeof window !== 'undefined' && window.innerWidth < 768 ? 'card' : 'slip');
   const [viewportWidth, setViewportWidth] = useState<number>(() => typeof window !== 'undefined' ? window.innerWidth : 1024);
   const [canvasHeight, setCanvasHeight] = useState<number>(0);
 
@@ -599,18 +601,21 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
 
   // Download high-resolution PNG image directly to gallery/PC
   const handleDownloadPNG = async () => {
-    if (!documentRef.current) return;
+    const targetEl = viewModeTab === 'card' 
+      ? (document.getElementById('mobile-digital-receipt-canvas') as HTMLElement) || documentRef.current 
+      : documentRef.current;
+    if (!targetEl) return;
     setIsDownloadingImage(true);
     const toastId = toast.loading('Generating ultra-high-resolution PNG image slip...');
-    const originalTransform = documentRef.current.style.transform;
-    const originalTransformOrigin = documentRef.current.style.transformOrigin;
+    const originalTransform = targetEl.style.transform;
+    const originalTransformOrigin = targetEl.style.transformOrigin;
     try {
-      // Temporarily remove CSS scale transform so export captures full 680px * 3 resolution
-      documentRef.current.style.transform = 'none';
-      documentRef.current.style.transformOrigin = 'initial';
+      // Temporarily remove CSS scale transform so export captures full resolution
+      targetEl.style.transform = 'none';
+      targetEl.style.transformOrigin = 'initial';
 
       const filename = cleanDocFilename();
-      await exportElementToImage(documentRef.current, filename, {
+      await exportElementToImage(targetEl, filename, {
         pixelRatio: 3,
         backgroundColor: '#ffffff'
       });
@@ -621,9 +626,9 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
       toast.dismiss(toastId);
       toast.error('Failed to generate image slip. You can also use Print / Save PDF.');
     } finally {
-      if (documentRef.current) {
-        documentRef.current.style.transform = originalTransform;
-        documentRef.current.style.transformOrigin = originalTransformOrigin;
+      if (targetEl) {
+        targetEl.style.transform = originalTransform;
+        targetEl.style.transformOrigin = originalTransformOrigin;
       }
       setIsDownloadingImage(false);
     }
@@ -631,17 +636,20 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
 
   // Download PDF Document
   const handleDownloadPDF = async () => {
-    if (!documentRef.current) return;
+    const targetEl = viewModeTab === 'card' 
+      ? (document.getElementById('mobile-digital-receipt-canvas') as HTMLElement) || documentRef.current 
+      : documentRef.current;
+    if (!targetEl) return;
     setIsDownloadingPdf(true);
     const toastId = toast.loading('Generating official PDF document...');
-    const originalTransform = documentRef.current.style.transform;
-    const originalTransformOrigin = documentRef.current.style.transformOrigin;
+    const originalTransform = targetEl.style.transform;
+    const originalTransformOrigin = targetEl.style.transformOrigin;
     try {
-      documentRef.current.style.transform = 'none';
-      documentRef.current.style.transformOrigin = 'initial';
+      targetEl.style.transform = 'none';
+      targetEl.style.transformOrigin = 'initial';
 
       const filename = cleanDocFilename();
-      await exportElementToPdf(documentRef.current, {
+      await exportElementToPdf(targetEl, {
         filename,
         format: 'a4',
         orientation: 'portrait',
@@ -656,9 +664,9 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
       toast.dismiss(toastId);
       toast.error('Failed to generate PDF.');
     } finally {
-      if (documentRef.current) {
-        documentRef.current.style.transform = originalTransform;
-        documentRef.current.style.transformOrigin = originalTransformOrigin;
+      if (targetEl) {
+        targetEl.style.transform = originalTransform;
+        targetEl.style.transformOrigin = originalTransformOrigin;
       }
       setIsDownloadingPdf(false);
     }
@@ -804,32 +812,64 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
               <span>Print</span>
             </Button>
 
-            {/* Mobile View Mode Toggle: Fit to Screen vs 100% Zoom */}
-            {isMobile && data.status === 'verified' && (
+            {/* View Mode Toggle: Mobile Digital Card vs A4 Voucher Slip */}
+            {data.status === 'verified' && (
+              <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-300 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setViewModeTab('card')}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black transition-all cursor-pointer flex items-center gap-1 ${
+                    viewModeTab === 'card'
+                      ? '!bg-[#085a4e] !text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="View Mobile Digital Receipt Card"
+                >
+                  <span>📱</span>
+                  <span>Digital Slip</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewModeTab('slip')}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black transition-all cursor-pointer flex items-center gap-1 ${
+                    viewModeTab === 'slip'
+                      ? '!bg-[#085a4e] !text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="View Official A4 Voucher Slip"
+                >
+                  <span>📄</span>
+                  <span>A4 Voucher</span>
+                </button>
+              </div>
+            )}
+
+            {/* Mobile View Mode Zoom Toggle: Fit to Screen vs 100% Zoom (only for A4 slip) */}
+            {isMobile && data.status === 'verified' && viewModeTab === 'slip' && (
               <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-300 shrink-0">
                 <button
                   type="button"
                   onClick={() => setZoomMode('fit')}
-                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black transition-all ${
+                  className={`px-2 py-1.5 rounded-lg text-[10.5px] font-black transition-all ${
                     zoomMode === 'fit'
                       ? '!bg-[#085a4e] !text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                   title="Fit whole document to mobile screen"
                 >
-                  📱 Fit
+                  Fit
                 </button>
                 <button
                   type="button"
                   onClick={() => setZoomMode('actual')}
-                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black transition-all ${
+                  className={`px-2 py-1.5 rounded-lg text-[10.5px] font-black transition-all ${
                     zoomMode === 'actual'
                       ? '!bg-[#085a4e] !text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                   title="View at 100% actual size (pan/scroll)"
                 >
-                  🔍 100%
+                  100%
                 </button>
               </div>
             )}
@@ -923,174 +963,40 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
       )}
 
       {/* ======================================================== */}
-      {/* MOBILE QUICK-VIEW DOSSIER CARD (sm:hidden) */}
-      {/* Instant high-readability overview on mobile screens */}
+      {/* STATE 3A: MOBILE DIGITAL RECEIPT CARD (Easypaisa / Telenor Card Style) */}
+      {/* 100% Smartphone Optimized with Direct Download & WhatsApp Share */}
       {/* ======================================================== */}
-      {data.status === 'verified' && student && (
-        <div 
-          className="sm:hidden w-full max-w-[680px] px-2 mb-3 print-hide"
-          style={{ colorScheme: 'light' }}
-        >
-          <div 
-            className="rounded-2xl p-4 shadow-xl border-2 border-[#085a4e]/40 overflow-hidden relative"
-            style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
-          >
-            {/* Header banner */}
-            <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-[#085a4e]/10 border border-[#085a4e]/30 flex items-center justify-center shrink-0">
-                  <ShieldCheck size={18} className="text-[#085a4e]" />
-                </div>
-                <div>
-                  <div className="text-[10px] font-black text-[#085a4e] uppercase tracking-wider">
-                    {collegeName || "Superior College Jahanian"}
-                  </div>
-                  <div className="text-xs font-black text-slate-900 leading-tight">
-                    {data.type === 'receipt' ? 'Fee Payment Receipt' :
-                     data.type === 'statement' ? 'Fee Account Statement' :
-                     data.type === 'admission' ? 'Admission Confirmation' :
-                     data.type === 'result' ? 'Academic Result Card' :
-                     data.type === 'attendance' ? 'Attendance Dossier' : 'Official Document Verification'}
-                  </div>
-                </div>
-              </div>
-              <span className="inline-flex items-center gap-1 text-[10.5px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 px-2 py-1 rounded-full border border-emerald-300 shrink-0">
-                <Check size={12} className="text-emerald-700 stroke-[3]" /> Verified
-              </span>
-            </div>
-
-            {/* Student identity quick pill */}
-            <div className="py-2.5 grid grid-cols-2 gap-2 text-xs border-b border-slate-100">
-              <div>
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Student</span>
-                <span className="font-black text-slate-950 text-sm block leading-tight">{student.fullName}</span>
-                <span className="text-[11px] text-slate-600 block">S/O {student.fatherName}</span>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Roll No / ID</span>
-                <span className="font-mono font-black text-[#085a4e] text-sm block leading-tight">{student.rollNo || student.id}</span>
-                <span className="text-[11px] font-bold text-slate-700 block">{student.group || student.category} {student.section ? `(Sec ${student.section})` : ''}</span>
-              </div>
-            </div>
-
-            {/* Key financial or academic numbers */}
-            {data.type === 'receipt' && (
-              <div className="pt-2.5">
-                <div 
-                  className="rounded-xl p-3 text-center border-2 border-emerald-300"
-                  style={{ backgroundColor: '#ecfdf5' }}
-                >
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-900 block">
-                    Amount Received / Paid
-                  </span>
-                  <span className="font-mono font-black text-emerald-950 text-2xl block mt-0.5" style={{ color: '#047857' }}>
-                    Rs. {receiptAmount.toLocaleString()}
-                  </span>
-                  <span className="text-[10.5px] font-bold text-emerald-800 block mt-0.5">
-                    Receipt #{receiptDisplayId} • {receiptMethod}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 mt-2 text-center text-xs">
-                  <div className="p-2 rounded-lg border border-slate-200" style={{ backgroundColor: '#f8fafc' }}>
-                    <span className="text-[9.5px] font-bold text-slate-600 uppercase block">Total Package</span>
-                    <span className="font-mono font-black text-slate-900 text-xs block">Rs. {totalPackageAmount.toLocaleString()}</span>
-                  </div>
-                  <div className="p-2 rounded-lg border border-rose-200" style={{ backgroundColor: '#fff1f2' }}>
-                    <span className="text-[9.5px] font-bold text-rose-800 uppercase block">Remaining Balance</span>
-                    <span className="font-mono font-black text-rose-950 text-xs block" style={{ color: '#9f1239' }}>Rs. {remainingBalanceAmount.toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {(data.type === 'statement' || data.type === 'challan') && (
-              <div className="pt-2.5 grid grid-cols-3 gap-1.5 text-center text-xs">
-                <div className="p-2 rounded-lg border border-slate-200" style={{ backgroundColor: '#f8fafc' }}>
-                  <span className="text-[9px] font-bold text-slate-600 uppercase block">Package</span>
-                  <span className="font-mono font-black text-slate-900 text-xs block">Rs. {totalPackageAmount.toLocaleString()}</span>
-                </div>
-                <div className="p-2 rounded-lg border border-emerald-200" style={{ backgroundColor: '#ecfdf5' }}>
-                  <span className="text-[9px] font-bold text-emerald-800 uppercase block">Paid</span>
-                  <span className="font-mono font-black text-emerald-950 text-xs block" style={{ color: '#047857' }}>Rs. {feeReceivedAmount.toLocaleString()}</span>
-                </div>
-                <div className="p-2 rounded-lg border border-rose-200" style={{ backgroundColor: '#fff1f2' }}>
-                  <span className="text-[9px] font-bold text-rose-800 uppercase block">Balance</span>
-                  <span className="font-mono font-black text-rose-950 text-xs block" style={{ color: '#9f1239' }}>Rs. {remainingBalanceAmount.toLocaleString()}</span>
-                </div>
-              </div>
-            )}
-
-            {data.type === 'admission' && (
-              <div className="pt-2.5 grid grid-cols-3 gap-1.5 text-center text-xs">
-                <div className="p-2 rounded-lg border border-slate-200" style={{ backgroundColor: '#f8fafc' }}>
-                  <span className="text-[9px] font-bold text-slate-600 uppercase block">Agreed Pkg</span>
-                  <span className="font-mono font-black text-slate-900 text-xs block">Rs. {totalPackageAmount.toLocaleString()}</span>
-                </div>
-                <div className="p-2 rounded-lg border border-emerald-200" style={{ backgroundColor: '#ecfdf5' }}>
-                  <span className="text-[9px] font-bold text-emerald-800 uppercase block">Deposited</span>
-                  <span className="font-mono font-black text-emerald-950 text-xs block" style={{ color: '#047857' }}>Rs. {feeReceivedAmount.toLocaleString()}</span>
-                </div>
-                <div className="p-2 rounded-lg border border-slate-200" style={{ backgroundColor: '#f8fafc' }}>
-                  <span className="text-[9px] font-bold text-slate-800 uppercase block">Session</span>
-                  <span className="font-mono font-black text-slate-950 text-xs block">{student.session || '2026-28'}</span>
-                </div>
-              </div>
-            )}
-
-            {data.type === 'result' && (
-              <div className="pt-2.5 grid grid-cols-3 gap-1.5 text-center text-xs">
-                <div className="p-2 rounded-lg border border-slate-200" style={{ backgroundColor: '#f8fafc' }}>
-                  <span className="text-[9px] font-bold text-slate-600 uppercase block">Tests</span>
-                  <span className="font-mono font-black text-slate-900 text-xs block">{data.academicRecords?.length || 0} Recorded</span>
-                </div>
-                <div className="p-2 rounded-lg border border-emerald-200" style={{ backgroundColor: '#ecfdf5' }}>
-                  <span className="text-[9px] font-bold text-emerald-800 uppercase block">Standing</span>
-                  <span className="font-mono font-black text-emerald-950 text-xs block" style={{ color: '#047857' }}>Active</span>
-                </div>
-                <div className="p-2 rounded-lg border border-slate-200" style={{ backgroundColor: '#f8fafc' }}>
-                  <span className="text-[9px] font-bold text-slate-800 uppercase block">Session</span>
-                  <span className="font-mono font-black text-slate-950 text-xs block">{student.session || '2026-28'}</span>
-                </div>
-              </div>
-            )}
-
-            {data.type === 'attendance' && (
-              <div className="pt-2.5 grid grid-cols-3 gap-1.5 text-center text-xs">
-                <div className="p-2 rounded-lg border border-slate-200" style={{ backgroundColor: '#f8fafc' }}>
-                  <span className="text-[9px] font-bold text-slate-600 uppercase block">Present</span>
-                  <span className="font-mono font-black text-emerald-800 text-xs block">{data.attendanceStats?.presentDays ?? 0} Days</span>
-                </div>
-                <div className="p-2 rounded-lg border border-rose-200" style={{ backgroundColor: '#fff1f2' }}>
-                  <span className="text-[9px] font-bold text-rose-800 uppercase block">Absent</span>
-                  <span className="font-mono font-black text-rose-900 text-xs block">{data.attendanceStats?.absentDays ?? 0} Days</span>
-                </div>
-                <div className="p-2 rounded-lg border border-emerald-200" style={{ backgroundColor: '#ecfdf5' }}>
-                  <span className="text-[9px] font-bold text-emerald-800 uppercase block">Rate</span>
-                  <span className="font-mono font-black text-emerald-950 text-xs block">{data.attendanceStats?.attendancePercent ?? 100}%</span>
-                </div>
-              </div>
-            )}
-
-            {/* Note pointing to official voucher below */}
-            <div className="mt-2.5 pt-2 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-500 font-medium">
-              <span>Official Physical Voucher below:</span>
-              <span className="text-[#085a4e] font-bold">Tap Download to save Image / PDF ➔</span>
-            </div>
-          </div>
+      {data.status === 'verified' && viewModeTab === 'card' && (
+        <div className="w-full flex justify-center pb-8 print-hide">
+          <MobileDigitalReceiptCard
+            type={data.type}
+            student={student}
+            receiptNo={data.receiptNo}
+            verifiedAt={data.verifiedAt}
+            collegeLogo={collegeLogo}
+            collegeName={collegeName}
+            qrCodeUrl={qrCodeDataUrl}
+            matchedTx={matchedTx}
+            totalPackageAmount={totalPackageAmount}
+            feeReceivedAmount={feeReceivedAmount}
+            remainingBalanceAmount={remainingBalanceAmount}
+            onSwitchToPrintView={() => setViewModeTab('slip')}
+            isPrintViewAvailable={true}
+          />
         </div>
       )}
 
       {/* ======================================================== */}
-      {/* STATE 3: VERIFIED OFFICIAL PHYSICAL SLIP / VOUCHER CANVAS */}
+      {/* STATE 3B: VERIFIED OFFICIAL PHYSICAL SLIP / VOUCHER CANVAS */}
       {/* Responsive Scaling Wrapper maintaining exact PC proportions */}
       {/* ======================================================== */}
       {data.status === 'verified' && (
         <div 
-          className={`w-full flex justify-center ${zoomMode === 'actual' ? 'overflow-x-auto pb-8' : 'overflow-hidden'}`}
+          className={`w-full flex justify-center ${viewModeTab === 'card' ? 'hidden print:flex' : ''} ${zoomMode === 'actual' ? 'overflow-x-auto pb-8' : 'overflow-hidden'}`}
           style={{
-            height: (isMobile && zoomMode === 'fit' && scale < 1 && scaledHeight > 0) ? `${scaledHeight}px` : 'auto',
-            minHeight: (isMobile && zoomMode === 'fit' && scale < 1 && scaledHeight > 0) ? `${scaledHeight}px` : 'auto',
-            marginBottom: (isMobile && zoomMode === 'fit' && scale < 1) ? '1.5rem' : '2rem'
+            height: (isMobile && zoomMode === 'fit' && scale < 1 && scaledHeight > 0 && viewModeTab === 'slip') ? `${scaledHeight}px` : 'auto',
+            minHeight: (isMobile && zoomMode === 'fit' && scale < 1 && scaledHeight > 0 && viewModeTab === 'slip') ? `${scaledHeight}px` : 'auto',
+            marginBottom: (isMobile && zoomMode === 'fit' && scale < 1 && viewModeTab === 'slip') ? '1.5rem' : '2rem'
           }}
         >
           <div

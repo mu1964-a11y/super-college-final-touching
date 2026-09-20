@@ -20,10 +20,12 @@ import { toast } from 'sonner';
 import { exportElementToPdf, exportElementToImage } from '../utils/documentExporter';
 import QRCode from 'qrcode';
 import { Admission } from '../types';
+import MobileDigitalReceiptCard from './MobileDigitalReceiptCard';
 
 export default function AdmissionSlip({ admission, settings }: { admission: Admission | any, settings: any }) {
   const slipRef = React.useRef<HTMLDivElement>(null);
   const [qrCodeUrl, setQrCodeUrl] = React.useState<string>('');
+  const [viewMode, setViewMode] = React.useState<'print' | 'card'>(() => typeof window !== 'undefined' && window.innerWidth < 768 ? 'card' : 'print');
 
   React.useEffect(() => {
     if (!admission) return;
@@ -124,24 +126,73 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
-      <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white">
-        <h3 className="text-xl font-serif font-bold text-superior-teal">Admission Form Preview</h3>
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={handlePrintClick} className="rounded-xl font-bold">
-            Print
-          </Button>
-          <Button className="bg-superior-teal text-white font-black rounded-xl hover:bg-superior-teal/90" onClick={downloadSlip}>
-            Download PDF Legal
-          </Button>
+      <div className="flex flex-col sm:flex-row justify-between items-center p-4 sm:p-6 border-b border-slate-100 bg-white gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <h3 className="text-xl font-serif font-bold text-superior-teal">Admission Form Preview</h3>
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setViewMode('card')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                viewMode === 'card'
+                  ? 'bg-[#085a4e] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>📱</span>
+              <span>Digital Mobile Card</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('print')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                viewMode === 'print'
+                  ? 'bg-[#085a4e] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>📄</span>
+              <span>A4 Print Slip</span>
+            </button>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {viewMode === 'print' && (
+            <>
+              <Button variant="outline" onClick={handlePrintClick} className="rounded-xl font-bold">
+                Print
+              </Button>
+              <Button className="bg-superior-teal text-white font-black rounded-xl hover:bg-superior-teal/90" onClick={downloadSlip}>
+                Download PDF Legal
+              </Button>
+            </>
+          )}
         </div>
       </div>
       
-      <div className="flex-1 overflow-auto p-4 bg-slate-100 flex justify-center preview-scroll-container">
-        <div 
-          ref={slipRef}
-          className="w-[794px] bg-white px-8 py-5 relative shadow-2xl overflow-hidden print-area flex flex-col gap-2"
-          style={{ width: '794px', fontFamily: "'Inter', sans-serif" }}
-        >
+      {viewMode === 'card' ? (
+        <div className="flex-1 overflow-auto p-4 flex justify-center preview-scroll-container">
+          <MobileDigitalReceiptCard
+            type="admission"
+            student={admission}
+            receiptNo={admission.receiptNo || admission.id}
+            collegeLogo={settings?.logo}
+            collegeName={settings?.collegeName}
+            qrCodeUrl={qrCodeUrl}
+            totalPackageAmount={Number(admission.totalPackage || admission.total_package || 0)}
+            feeReceivedAmount={Number(admission.feeReceived || admission.admissionFee || admission.fee_received || 0)}
+            remainingBalanceAmount={Math.max(0, Number(admission.totalPackage || admission.total_package || 0) - Number(admission.feeReceived || admission.admissionFee || admission.fee_received || 0))}
+            onSwitchToPrintView={() => setViewMode('print')}
+            isPrintViewAvailable={true}
+          />
+        </div>
+      ) : (
+        <div className="flex-1 overflow-auto p-4 bg-slate-100 flex justify-center preview-scroll-container">
+          <div 
+            ref={slipRef}
+            className="w-[794px] bg-white px-8 py-5 relative shadow-2xl overflow-hidden print-area flex flex-col gap-2"
+            style={{ width: '794px', fontFamily: "'Inter', sans-serif" }}
+          >
           {/* Header */}
           <div className="flex flex-col items-center mb-0.5">
             <div className="w-full flex items-center justify-center gap-5 mb-1">
@@ -426,6 +477,7 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

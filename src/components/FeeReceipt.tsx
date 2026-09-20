@@ -23,10 +23,12 @@ import { toast } from 'sonner';
 import { getUnifiedTransactions } from '../utils/fee';
 import { exportElementToPdf, exportElementToImage } from '../utils/documentExporter';
 import QRCode from 'qrcode';
+import MobileDigitalReceiptCard from './MobileDigitalReceiptCard';
 
 export default function FeeReceipt({ student, settings }: { student: any, settings: any }) {
   const receiptRef = React.useRef<HTMLDivElement>(null);
   const [qrCodeUrl, setQrCodeUrl] = React.useState<string>('');
+  const [viewMode, setViewMode] = React.useState<'print' | 'card'>(() => typeof window !== 'undefined' && window.innerWidth < 768 ? 'card' : 'print');
 
   React.useEffect(() => {
     if (!student) return;
@@ -140,24 +142,74 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
-      <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white">
-        <h3 className="text-xl font-serif font-bold text-superior-teal">Fee Receipt Preview</h3>
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={handlePrintClick} className="rounded-xl font-bold">
-            Print
-          </Button>
-          <Button className="bg-slate-800 text-white font-black rounded-xl hover:bg-slate-900 shadow-lg" onClick={downloadReceipt}>
-            Download PDF Legal
-          </Button>
+      <div className="flex flex-col sm:flex-row justify-between items-center p-4 sm:p-6 border-b border-slate-100 bg-white gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <h3 className="text-xl font-serif font-bold text-superior-teal">Fee Receipt Preview</h3>
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setViewMode('card')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                viewMode === 'card'
+                  ? 'bg-[#085a4e] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>📱</span>
+              <span>Digital Mobile Card</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('print')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                viewMode === 'print'
+                  ? 'bg-[#085a4e] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>📄</span>
+              <span>A4 Print Slip</span>
+            </button>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {viewMode === 'print' && (
+            <>
+              <Button variant="outline" onClick={handlePrintClick} className="rounded-xl font-bold">
+                Print
+              </Button>
+              <Button className="bg-slate-800 text-white font-black rounded-xl hover:bg-slate-900 shadow-lg" onClick={downloadReceipt}>
+                Download PDF Legal
+              </Button>
+            </>
+          )}
         </div>
       </div>
       
-      <div className="flex-1 overflow-auto p-4 flex justify-center preview-scroll-container">
-        <div 
-          ref={receiptRef}
-          className="w-[794px] min-h-[561px] h-fit bg-white p-6 relative shadow-2xl overflow-hidden print-area flex flex-col"
-          style={{ width: '794px', minHeight: '561px', fontFamily: "'Inter', sans-serif" }}
-        >
+      {viewMode === 'card' ? (
+        <div className="flex-1 overflow-auto p-4 flex justify-center preview-scroll-container">
+          <MobileDigitalReceiptCard
+            type="receipt"
+            student={student}
+            receiptNo={unifiedTransactions?.[0]?.receiptId}
+            collegeLogo={settings?.logo}
+            collegeName={settings?.collegeName}
+            qrCodeUrl={qrCodeUrl}
+            matchedTx={unifiedTransactions?.[0]}
+            totalPackageAmount={totalPackage}
+            feeReceivedAmount={feeReceived}
+            remainingBalanceAmount={outstanding}
+            onSwitchToPrintView={() => setViewMode('print')}
+            isPrintViewAvailable={true}
+          />
+        </div>
+      ) : (
+        <div className="flex-1 overflow-auto p-4 flex justify-center preview-scroll-container">
+          <div 
+            ref={receiptRef}
+            className="w-[794px] min-h-[561px] h-fit bg-white p-6 relative shadow-2xl overflow-hidden print-area flex flex-col"
+            style={{ width: '794px', minHeight: '561px', fontFamily: "'Inter', sans-serif" }}
+          >
           {/* Header */}
           <div className="flex flex-col items-center mb-0">
             <div className="w-full flex items-center justify-center gap-4 mb-1">
@@ -434,6 +486,7 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
