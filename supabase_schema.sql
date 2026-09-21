@@ -482,4 +482,55 @@ CREATE TABLE IF NOT EXISTS "bot_audit_logs" (
 ALTER TABLE "bot_audit_logs" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public Access" ON "bot_audit_logs" FOR ALL USING (true) WITH CHECK (true);
 
+-- 21. Dynamic AI College Knowledge Base (Rules, Policies, FAQs)
+CREATE TABLE IF NOT EXISTS "college_knowledge_base" (
+    "id" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "category" TEXT NOT NULL, -- Admissions, Fee & Dues, Scholarships, Campus Rules, Timings, Transport & Hostels, Exams
+    "title" TEXT NOT NULL,
+    "content" TEXT NOT NULL,
+    "keywords" JSONB DEFAULT '[]'::jsonb,
+    "is_active" BOOLEAN DEFAULT true,
+    "priority" INTEGER DEFAULT 0,
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+    "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE "college_knowledge_base" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "college_knowledge_base" FOR ALL USING (true) WITH CHECK (true);
+
+-- 22. AI Unanswered Queries Review Queue (For continuous bot self-improvement)
+CREATE TABLE IF NOT EXISTS "ai_unanswered_queries" (
+    "id" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "sender_phone" TEXT NOT NULL,
+    "sender_name" TEXT,
+    "query" TEXT NOT NULL,
+    "bot_confidence" NUMERIC DEFAULT 0,
+    "attempted_response" TEXT,
+    "approved_answer" TEXT,
+    "status" TEXT DEFAULT 'pending', -- pending, approved, dismissed
+    "admin_notes" TEXT,
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+    "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE "ai_unanswered_queries" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "ai_unanswered_queries" FOR ALL USING (true) WITH CHECK (true);
+
+-- 23. AI Contact Context & CRM Memory (For personalized conversations)
+CREATE TABLE IF NOT EXISTS "ai_contact_memories" (
+    "id" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "sender_phone" TEXT NOT NULL UNIQUE,
+    "sender_name" TEXT,
+    "student_id" TEXT,
+    "interaction_summary" TEXT,
+    "last_topic" TEXT,
+    "sentiment" TEXT DEFAULT 'neutral',
+    "last_interaction_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE "ai_contact_memories" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON "ai_contact_memories" FOR ALL USING (true) WITH CHECK (true);
+
+
 

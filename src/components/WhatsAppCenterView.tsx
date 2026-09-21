@@ -9,11 +9,12 @@ import {
   Reply, X, BarChart3, Activity, Download, Eye, DollarSign, Calendar,
   BookOpen, ShieldAlert, PieChart, Lock, Filter, Smartphone, HelpCircle,
   CheckCircle, Info, ChevronDown, Plus, CalendarCheck, TrendingUp, Bell,
-  Coffee, ChevronLeft, ArrowRight, Shield, Camera
+  Coffee, ChevronLeft, ArrowRight, Shield, Camera, Brain
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import WhatsAppExecutiveConsole from "./WhatsAppExecutiveConsole";
+import AiKnowledgeDesk from "./AiKnowledgeDesk";
 
 interface WhatsAppCenterViewProps {
   data: {
@@ -42,7 +43,7 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
   const globalSettings = data?.settings || {};
 
   // Active navigation tab
-  const [activeTab, setActiveTab] = useState<"messenger" | "broadcaster" | "bot_dashboard" | "automated_reports" | "ai_executive">("messenger");
+  const [activeTab, setActiveTab] = useState<"messenger" | "broadcaster" | "bot_dashboard" | "automated_reports" | "ai_executive" | "ai_knowledge_desk">("messenger");
 
   // Automated Reports States
   const [reportConfig, setReportConfig] = useState<any>(null);
@@ -1852,6 +1853,23 @@ _Administration Directorate, SGC Jahanian_`;
             activeTab === "ai_executive" ? "bg-amber-300 text-slate-950 font-black" : "bg-teal-500/10 text-teal-600 dark:text-teal-400 font-bold"
           }`}>
             Biometrics & OTP
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("ai_knowledge_desk")}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all relative ${
+            activeTab === "ai_knowledge_desk" 
+              ? "bg-gradient-to-r from-[#064e43] to-[#085a4e] text-white shadow-md" 
+              : "text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white"
+          }`}
+        >
+          <Brain size={16} />
+          <span>AI Brain & Knowledge Desk</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+            activeTab === "ai_knowledge_desk" ? "bg-emerald-300 text-slate-950 font-black" : "bg-teal-500/10 text-teal-600 dark:text-teal-400 font-bold"
+          }`}>
+            Self-Learning
           </span>
         </button>
       </div>
@@ -4196,6 +4214,21 @@ _Administration Directorate, SGC Jahanian_`;
               studentsList={students}
               globalSettings={globalSettings}
             />
+          </motion.div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 6: AI BRAIN & SELF-LEARNING KNOWLEDGE DESK                           */}
+        {/* ========================================================================= */}
+        {activeTab === "ai_knowledge_desk" && (
+          <motion.div
+            key="tab-ai-knowledge-desk"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="w-full pt-1"
+          >
+            <AiKnowledgeDesk />
           </motion.div>
         )}
 

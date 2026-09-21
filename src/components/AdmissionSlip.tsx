@@ -12,13 +12,14 @@ import {
   Clock, 
   AlertCircle,
   Shield,
-  FileText
+  FileText,
+  Send
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { exportElementToPdf, exportElementToImage } from '../utils/documentExporter';
-import QRCode from 'qrcode';
+import { generateBrandedQrCode, generateTamperProofHash } from '../lib/brandedQrCode';
 import { Admission } from '../types';
 import MobileDigitalReceiptCard from './MobileDigitalReceiptCard';
 
@@ -29,16 +30,28 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
 
   React.useEffect(() => {
     if (!admission) return;
+    let isMounted = true;
     const verifyId = admission.collegeNo || admission.studentId || admission.id || '';
     const origin = typeof window !== 'undefined' && window.location?.origin && window.location.protocol !== 'file:' ? window.location.origin : 'https://portal.superiorjhn.com';
-    const qrPayload = `${origin}/?verify=student&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(admission.collegeNo || '')}&student_id=${encodeURIComponent(admission.studentId || '')}&adm_id=${encodeURIComponent(admission.id || '')}`;
+    const hashSeed = `${verifyId}:${admission.collegeNo || ''}:${admission.id || ''}:admission`;
 
-    QRCode.toDataURL(qrPayload, {
-      width: 140,
-      margin: 1,
-      color: { dark: '#0f172a', light: '#ffffff' }
-    }).then(setQrCodeUrl).catch(console.error);
-  }, [admission]);
+    generateTamperProofHash(hashSeed).then(token => {
+      const qrPayload = `${origin}/?verify=student&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(admission.collegeNo || '')}&student_id=${encodeURIComponent(admission.studentId || '')}&adm_id=${encodeURIComponent(admission.id || '')}&token=${token}`;
+
+      generateBrandedQrCode(qrPayload, {
+        size: 300,
+        logoUrl: settings?.logo || '/superior-logo.png',
+        darkColor: '#085a4e',
+        lightColor: '#ffffff',
+      }).then(url => {
+        if (isMounted) setQrCodeUrl(url);
+      }).catch(console.error);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [admission, settings]);
 
   const getProgramInfo = () => {
     const group = (admission.group || admission.category || '').toLowerCase();
@@ -124,6 +137,63 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
     }
   };
 
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = React.useState(false);
+
+  const handleSendWhatsAppAdmission = async () => {
+    const parentPhone = admission?.contactNumber || admission?.contact_number || admission?.fatherContact || admission?.father_contact || admission?.contact;
+    if (!parentPhone) {
+      toast.error('No parent/student mobile number found in this admission record.');
+      return;
+    }
+    setIsSendingWhatsApp(true);
+    try {
+      const origin = typeof window !== 'undefined' && window.location?.origin && window.location.protocol !== 'file:'
+        ? window.location.origin 
+        : 'https://portal.superiorjhn.com';
+      const verifyId = admission.collegeNo || admission.studentId || admission.id || '';
+      const verifyUrl = `${origin}/?verify=student&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(admission.collegeNo || '')}&student_id=${encodeURIComponent(admission.studentId || '')}&adm_id=${encodeURIComponent(admission.id || '')}`;
+
+      const msg = 
+`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+🎓 *ADMISSION CONFIRMATION SLIP (PROVISIONAL)*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum!
+
+Superior College Jahanian mein mubarak ho! Student ki admission kamyabi se darj ho chuki hai:
+
+• *Student:* ${admission.fullName || admission.full_name || admission.name}
+• *Father:* ${admission.fatherName || admission.father_name || 'N/A'}
+• *College Roll / ID:* ${admission.collegeNo || admission.studentId || 'Pending'}
+• *Discipline:* ${admission.group || admission.category || 'Intermediate'} (${admission.section || 'A'})
+• *Academic Session:* ${admission.session || '2026-28'}
+• *Admission Fee Received:* Rs. ${Number(admission.feeReceived || admission.admissionFee || 0).toLocaleString()}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🔗 *Live Verified Digital Admission Slip:*
+${verifyUrl}
+
+_Institutional Admissions Directorate, Superior College Jahanian_`;
+
+      const res = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: parentPhone,
+          message: msg,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(`Verified admission card dispatched to WhatsApp (${parentPhone})!`);
+      } else {
+        toast.error(data.error || 'Failed to dispatch WhatsApp message. Ensure gateway is connected.');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Network error sending WhatsApp admission slip.');
+    } finally {
+      setIsSendingWhatsApp(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-slate-50">
       <div className="flex flex-col sm:flex-row justify-between items-center p-4 sm:p-6 border-b border-slate-100 bg-white gap-3">
@@ -140,7 +210,7 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
               }`}
             >
               <span>📱</span>
-              <span>Digital Mobile Card</span>
+              <span>Mobile Card</span>
             </button>
             <button
               type="button"
@@ -156,7 +226,17 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
             </button>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 1-Click WhatsApp Admission Button */}
+          <Button
+            onClick={handleSendWhatsAppAdmission}
+            disabled={isSendingWhatsApp}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+          >
+            <Send size={13} />
+            <span>{isSendingWhatsApp ? 'Sending...' : 'WhatsApp Card'}</span>
+          </Button>
+
           {viewMode === 'print' && (
             <>
               <Button variant="outline" onClick={handlePrintClick} className="rounded-xl font-bold">

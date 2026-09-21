@@ -2735,13 +2735,191 @@ _Reply aate hi tasveer foran profile par update kar di jayegi._`;
     "ansari", "rehman", "hassan", "hussain", "zia", "deen", "din", "khanum", "bibi"
   ]);
 
+  // =========================================================================
+  // DYNAMIC KNOWLEDGE BASE & SELF-LEARNING DESK
+  // =========================================================================
+  private cachedKnowledgeBase: { timestamp: number; items: any[]; formattedText: string } | null = null;
+
+  public async getActiveKnowledgeBase(supabaseClient?: any): Promise<any[]> {
+    try {
+      const now = Date.now();
+      if (this.cachedKnowledgeBase && now - this.cachedKnowledgeBase.timestamp < 60000) {
+        return this.cachedKnowledgeBase.items;
+      }
+      const supabase = supabaseClient || await this.getSupabase();
+      if (!supabase) return [];
+      const { data, error } = await supabase
+        .from("college_knowledge_base")
+        .select("*")
+        .eq("is_active", true)
+        .order("priority", { ascending: false });
+
+      if (error) {
+        console.warn("[Knowledge Base] Fetch error:", error);
+        return this.cachedKnowledgeBase ? this.cachedKnowledgeBase.items : [];
+      }
+
+      const items = data || [];
+      const formattedText = items.map((it: any) => 
+        `[CATEGORY: ${it.category?.toUpperCase() || 'GENERAL'} | TOPIC: ${it.title}]\n${it.content}`
+      ).join("\n\n");
+
+      this.cachedKnowledgeBase = { timestamp: now, items, formattedText };
+      return items;
+    } catch (e) {
+      console.warn("[Knowledge Base] Error:", e);
+      return [];
+    }
+  }
+
+  public async getActiveKnowledgeBaseSnippet(supabaseClient?: any): Promise<string> {
+    await this.getActiveKnowledgeBase(supabaseClient);
+    return this.cachedKnowledgeBase?.formattedText || "";
+  }
+
+  public async saveKnowledgeItem(item: any, supabaseClient?: any): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const supabase = supabaseClient || await this.getSupabase();
+      if (!supabase) return { success: false, error: "Database unavailable" };
+
+      this.cachedKnowledgeBase = null; // Invalidate cache
+
+      if (item.id) {
+        const { data, error } = await supabase
+          .from("college_knowledge_base")
+          .update({
+            category: item.category || "General",
+            title: item.title,
+            content: item.content,
+            keywords: item.keywords || [],
+            is_active: item.is_active !== false,
+            priority: Number(item.priority || 0),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", item.id)
+          .select()
+          .maybeSingle();
+        if (error) return { success: false, error: error.message };
+        return { success: true, data };
+      } else {
+        const { data, error } = await supabase
+          .from("college_knowledge_base")
+          .insert({
+            category: item.category || "General",
+            title: item.title,
+            content: item.content,
+            keywords: item.keywords || [],
+            is_active: item.is_active !== false,
+            priority: Number(item.priority || 0),
+          })
+          .select()
+          .maybeSingle();
+        if (error) return { success: false, error: error.message };
+        return { success: true, data };
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  public async deleteKnowledgeItem(id: string, supabaseClient?: any): Promise<boolean> {
+    try {
+      const supabase = supabaseClient || await this.getSupabase();
+      if (!supabase) return false;
+      this.cachedKnowledgeBase = null;
+      const { error } = await supabase.from("college_knowledge_base").delete().eq("id", id);
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  public async logUnansweredQuery(phone: string, senderName: string | undefined, query: string, attemptedReply: string, supabaseClient?: any) {
+    try {
+      const supabase = supabaseClient || await this.getSupabase();
+      if (!supabase) return;
+      await supabase.from("ai_unanswered_queries").insert({
+        sender_phone: phone,
+        sender_name: senderName || "Guest",
+        query: query.trim(),
+        attempted_response: attemptedReply,
+        status: "pending",
+      });
+    } catch (err) {
+      console.warn("[Knowledge Base] Error logging unanswered query:", err);
+    }
+  }
+
+  public async getUnansweredQueries(supabaseClient?: any): Promise<any[]> {
+    try {
+      const supabase = supabaseClient || await this.getSupabase();
+      if (!supabase) return [];
+      const { data, error } = await supabase
+        .from("ai_unanswered_queries")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) return [];
+      return data || [];
+    } catch {
+      return [];
+    }
+  }
+
+  public async resolveUnansweredQuery(
+    id: string, 
+    approvedAnswer: string, 
+    addToKnowledgeBase: boolean, 
+    category?: string, 
+    supabaseClient?: any
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const supabase = supabaseClient || await this.getSupabase();
+      if (!supabase) return { success: false, error: "Database unavailable" };
+
+      const { data: record, error: fetchErr } = await supabase
+        .from("ai_unanswered_queries")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (fetchErr || !record) return { success: false, error: "Query not found" };
+
+      await supabase
+        .from("ai_unanswered_queries")
+        .update({
+          approved_answer: approvedAnswer,
+          status: "approved",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      if (addToKnowledgeBase) {
+        await this.saveKnowledgeItem({
+          category: category || "FAQs",
+          title: record.query.slice(0, 60),
+          content: approvedAnswer,
+          keywords: [record.query.toLowerCase()],
+          is_active: true,
+          priority: 5,
+        }, supabase);
+      }
+
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }
+
   private async generateAiConversationalReply(
     userMessage: string,
     history: Array<{ role: "user" | "model"; text: string }>,
     fallbackResponse: string,
     customSystemInstruction?: string,
     quotedContext?: string,
-    imageAttachment?: { buffer: Buffer; mimeType: string; description?: string }
+    imageAttachment?: { buffer: Buffer; mimeType: string; description?: string },
+    senderPhone?: string,
+    senderName?: string
   ): Promise<string> {
     const ai = this.getGeminiClient();
     if (!ai) return fallbackResponse;
@@ -2812,17 +2990,40 @@ College Key Info:
         parts: userParts,
       });
 
+      const dynamicKb = await this.getActiveKnowledgeBaseSnippet();
+      let effectiveSystemInstruction = systemInstruction;
+      if (dynamicKb) {
+        effectiveSystemInstruction += `\n\n=== OFFICIAL DYNAMIC KNOWLEDGE BASE & CAMPUS POLICIES ===\n${dynamicKb}\n=== END KNOWLEDGE BASE ===\nStrictly prioritize the above official college policies and answers when responding to related queries.`;
+      }
+
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents,
         config: {
-          systemInstruction,
+          systemInstruction: effectiveSystemInstruction,
           temperature: 0.7,
         },
       });
 
       const reply = response.text?.trim();
-      if (reply) return reply;
+      if (reply) {
+        if (senderPhone) {
+          const lowerReply = reply.toLowerCase();
+          if (
+            lowerReply.includes("maloomat nahi") ||
+            lowerReply.includes("maloom nahi") ||
+            lowerReply.includes("ilm nahi") ||
+            lowerReply.includes("contact the office") ||
+            lowerReply.includes("office se rabta") ||
+            lowerReply.includes("dastiyab nahi") ||
+            lowerReply.includes("dastyab nahi") ||
+            lowerReply.includes("maloomaat nahi")
+          ) {
+            this.logUnansweredQuery(senderPhone, senderName, userMessage, reply);
+          }
+        }
+        return reply;
+      }
     } catch (err: any) {
       console.warn("[WhatsApp Bot Gemini] Fallback used due to:", err?.message || err);
     }
@@ -5113,9 +5314,16 @@ _Verification ke foran baad official record faraham kar diya jayega._`;
     }
 
     // 16. Default Fallback: Intelligent AI conversational response (Superior Nexus acts like ChatGPT for any question!)
-    const fallbackMessage = 
-      "Main *Superior Nexus* hoon, Superior College Jahanian ki AI Assistant. 🌸 Main admissions, fee records, results, timetables aur har qisam ke academic sawalat me aapki rehnumai ke liye hazir hoon. Kahiye, main aapki kya madad kar sakti hoon?";
-    const conversationalReply = await this.generateAiConversationalReply(text, session.history || [], fallbackMessage, undefined, options?.quotedText);
+    const conversationalReply = await this.generateAiConversationalReply(
+      text, 
+      session.history || [], 
+      fallbackMessage, 
+      undefined, 
+      options?.quotedText, 
+      undefined, 
+      standardPhone, 
+      (options as any)?.senderName
+    );
     return await sendReply(conversationalReply, "Conversational AI Fallback");
   }
 

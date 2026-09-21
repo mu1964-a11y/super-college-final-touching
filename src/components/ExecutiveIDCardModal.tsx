@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import QRCode from 'qrcode';
+import { generateBrandedQrCode } from '../lib/brandedQrCode';
 import { useReactToPrint } from 'react-to-print';
 import { exportElementToPdf, exportElementToImage } from '../utils/documentExporter';
 
@@ -65,13 +65,12 @@ export default function ExecutiveIDCardModal({
       : 'https://portal.superiorjhn.com';
     const qrPayload = `${origin}/?verify=card&id=${encodeURIComponent(verifyId)}&type=${encodeURIComponent(entity.type)}`;
 
-    QRCode.toDataURL(qrPayload, {
-      width: 180,
-      margin: 1,
-      color: {
-        dark: '#08332c',
-        light: '#ffffff'
-      }
+    generateBrandedQrCode(qrPayload, {
+      size: 260,
+      logoUrl: '/superior-logo.png',
+      darkColor: '#08332c',
+      lightColor: '#ffffff',
+      includeGoldBorder: true,
     })
       .then(url => setQrDataUrl(url))
       .catch(err => console.error("QR Code generation error:", err));

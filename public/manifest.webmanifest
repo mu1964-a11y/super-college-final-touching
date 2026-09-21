@@ -1,0 +1,25 @@
+{
+  "name": "Superior College Jahanian ERP",
+  "short_name": "SCJ ERP",
+  "description": "Official Management & LMS Portal of Superior Group of Colleges Jahanian",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#064e43",
+  "icons": [
+    {
+      "src": "/superior-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/superior-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

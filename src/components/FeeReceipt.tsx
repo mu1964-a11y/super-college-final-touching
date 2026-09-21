@@ -6,7 +6,8 @@ import {
   CreditCard, 
   AlertCircle,
   CheckCircle2,
-  User
+  User,
+  Send
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -22,7 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { getUnifiedTransactions } from '../utils/fee';
 import { exportElementToPdf, exportElementToImage } from '../utils/documentExporter';
-import QRCode from 'qrcode';
+import { generateBrandedQrCode, generateTamperProofHash } from '../lib/brandedQrCode';
 import MobileDigitalReceiptCard from './MobileDigitalReceiptCard';
 
 export default function FeeReceipt({ student, settings }: { student: any, settings: any }) {
@@ -32,16 +33,27 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
 
   React.useEffect(() => {
     if (!student) return;
+    let isMounted = true;
     const verifyId = student.id || student.rollNo || student.studentId || '';
     const origin = typeof window !== 'undefined' && window.location?.origin && window.location.protocol !== 'file:' ? window.location.origin : 'https://portal.superiorjhn.com';
-    const qrPayload = `${origin}/?verify=receipt&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(student.rollNo || '')}`;
+    const hashSeed = `${verifyId}:${student.rollNo || ''}:${student.feeReceived || student.fee_received || 0}:receipt`;
 
-    QRCode.toDataURL(qrPayload, {
-      width: 120,
-      margin: 1,
-      color: { dark: '#0f172a', light: '#ffffff' }
-    }).then(setQrCodeUrl).catch(console.error);
-  }, [student]);
+    generateTamperProofHash(hashSeed).then(token => {
+      const qrPayload = `${origin}/?verify=receipt&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(student.rollNo || '')}&token=${token}`;
+      generateBrandedQrCode(qrPayload, {
+        size: 300,
+        logoUrl: settings?.logo || '/superior-logo.png',
+        darkColor: '#085a4e',
+        lightColor: '#ffffff',
+      }).then(url => {
+        if (isMounted) setQrCodeUrl(url);
+      }).catch(console.error);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [student, settings]);
 
   const getProgramInfo = () => {
     const group = (student.group || student.category || '').toLowerCase();
@@ -140,6 +152,63 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
   
   const outstanding = totalPackage - feeReceived;
 
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = React.useState(false);
+
+  const handleSendWhatsAppReceipt = async () => {
+    const parentPhone = student?.contact || student?.fatherContact || student?.father_contact || student?.phone;
+    if (!parentPhone) {
+      toast.error('No parent mobile number found for this student record.');
+      return;
+    }
+    setIsSendingWhatsApp(true);
+    try {
+      const origin = typeof window !== 'undefined' && window.location?.origin && window.location.protocol !== 'file:'
+        ? window.location.origin 
+        : 'https://portal.superiorjhn.com';
+      const verifyId = student.id || student.rollNo || student.studentId || '';
+      const receiptId = unifiedTransactions?.[0]?.receiptId || (student.rollNo ? `REC-${student.rollNo}` : `TX-${Date.now().toString().slice(-6)}`);
+      const verifyUrl = `${origin}/?verify=receipt&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(student.rollNo || '')}`;
+
+      const msg = 
+`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+🧾 *OFFICIAL FEE DEPOSIT RECEIPT*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum!
+
+• *Student:* ${student.fullName || student.name} (${student.rollNo || 'N/A'})
+• *Father:* ${student.fatherName || student.father_name || 'N/A'}
+• *Discipline:* ${student.group || student.category || 'Intermediate'} (${student.section || 'A'})
+• *Receipt No:* #${receiptId}
+• *Fee Received:* Rs. ${feeReceived.toLocaleString()}
+• *Remaining Dues:* ${outstanding > 0 ? `Rs. ${outstanding.toLocaleString()}` : 'Cleared (NIL)'}
+• *Date:* ${new Date().toLocaleDateString('en-PK')}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🔗 *Live Verified Digital Voucher Slip:*
+${verifyUrl}
+
+_Official Accounts & AI Registry, Superior College Jahanian_`;
+
+      const res = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: parentPhone,
+          message: msg,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(`Verified receipt dispatched to Parent WhatsApp (${parentPhone})!`);
+      } else {
+        toast.error(data.error || 'Failed to dispatch WhatsApp message. Ensure gateway is connected.');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Network error sending WhatsApp receipt.');
+    } finally {
+      setIsSendingWhatsApp(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-slate-50">
       <div className="flex flex-col sm:flex-row justify-between items-center p-4 sm:p-6 border-b border-slate-100 bg-white gap-3">
@@ -156,7 +225,7 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
               }`}
             >
               <span>📱</span>
-              <span>Digital Mobile Card</span>
+              <span>Mobile Card</span>
             </button>
             <button
               type="button"
@@ -172,7 +241,17 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
             </button>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 1-Click WhatsApp Slip Button */}
+          <Button
+            onClick={handleSendWhatsAppReceipt}
+            disabled={isSendingWhatsApp}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+          >
+            <Send size={13} />
+            <span>{isSendingWhatsApp ? 'Sending...' : 'WhatsApp Slip'}</span>
+          </Button>
+
           {viewMode === 'print' && (
             <>
               <Button variant="outline" onClick={handlePrintClick} className="rounded-xl font-bold">

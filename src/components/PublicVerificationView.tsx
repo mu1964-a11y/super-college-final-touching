@@ -33,8 +33,8 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { safeLocalStorage } from '../utils/safeStorage';
 import { exportElementToImage, exportElementToPdf } from '../utils/documentExporter';
-import QRCode from 'qrcode';
 import { toast } from 'sonner';
+import { generateBrandedQrCode } from '../lib/brandedQrCode';
 import MobileDigitalReceiptCard from './MobileDigitalReceiptCard';
 
 interface VerificationData {
@@ -267,19 +267,26 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
     };
   }, []);
 
-  // Generate live scannable QR Code for the exact current URL
+  // Generate live scannable Branded QR Code for the exact current URL
   useEffect(() => {
+    let isMounted = true;
     if (typeof window !== 'undefined' && data.status === 'verified') {
-      QRCode.toDataURL(window.location.href, {
-        margin: 1,
-        width: 140,
-        color: {
-          dark: '#085a4e',
-          light: '#ffffff'
-        }
-      }).then(url => setQrCodeDataUrl(url)).catch(() => {});
+      generateBrandedQrCode(window.location.href, {
+        size: 300,
+        logoUrl: branding.logo || '/superior-logo.png',
+        darkColor: '#085a4e',
+        lightColor: '#ffffff',
+        includeGoldBorder: true,
+      })
+        .then(url => {
+          if (isMounted) setQrCodeDataUrl(url);
+        })
+        .catch(() => {});
     }
-  }, [data.id, data.type, data.receiptNo, data.status]);
+    return () => {
+      isMounted = false;
+    };
+  }, [data.id, data.type, data.receiptNo, data.status, branding.logo]);
 
   // Universal verification query
   async function performVerification(

@@ -737,6 +737,53 @@ ${statsText}`,
       res.status(500).json({ error: err.message });
     }
   });
+  app.get("/api/whatsapp/knowledge-base", async (req, res) => {
+    try {
+      const items = await whatsappBridge.getActiveKnowledgeBase();
+      res.json({ success: true, items });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/knowledge-base", async (req, res) => {
+    try {
+      const result = await whatsappBridge.saveKnowledgeItem(req.body);
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.delete("/api/whatsapp/knowledge-base/:id", async (req, res) => {
+    try {
+      const success = await whatsappBridge.deleteKnowledgeItem(req.params.id);
+      res.json({ success });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.get("/api/whatsapp/unanswered-queries", async (req, res) => {
+    try {
+      const queries = await whatsappBridge.getUnansweredQueries();
+      res.json({ success: true, queries });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/whatsapp/unanswered-queries/resolve", async (req, res) => {
+    try {
+      const { id, approvedAnswer, addToKnowledgeBase = true, category = "FAQs" } = req.body;
+      if (!id || !approvedAnswer) {
+        return res.status(400).json({ error: "ID and approvedAnswer are required." });
+      }
+      const result = await whatsappBridge.resolveUnansweredQuery(id, approvedAnswer, addToKnowledgeBase, category);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
   app.post("/api/whatsapp/send", async (req, res) => {
     try {
       const { phone, message } = req.body;

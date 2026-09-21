@@ -25,7 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { exportElementToImage, exportElementToPdf } from '../utils/documentExporter';
 import { toast } from 'sonner';
-import QRCode from 'qrcode';
+import { generateBrandedQrCode, generateTamperProofHash } from '../lib/brandedQrCode';
 
 export interface MobileDigitalReceiptProps {
   type: 'receipt' | 'admission' | 'statement' | 'challan' | 'result' | 'attendance' | 'student' | 'card' | 'general';
@@ -155,24 +155,43 @@ export default function MobileDigitalReceiptCard({
 
   const headerInfo = getHeaderInfo();
 
-  // Generate live scannable QR Code if not provided
+  // Generate live scannable Branded QR Code with Center Logo & Security Hash
   useEffect(() => {
-    if (qrCodeUrl) {
-      setInternalQrCode(qrCodeUrl);
-      return;
-    }
-    const origin = typeof window !== 'undefined' && window.location?.origin && window.location.protocol !== 'file:'
-      ? window.location.origin 
-      : 'https://portal.superiorjhn.com';
+    let isMounted = true;
     const verifyId = std.rollNo || std.collegeNo || std.id || receiptNo || '';
-    const payload = `${origin}/?verify=${type}&id=${encodeURIComponent(verifyId)}&ref=${encodeURIComponent(displayReceiptId)}`;
-    
-    QRCode.toDataURL(payload, {
-      margin: 1,
-      width: 140,
-      color: { dark: '#085a4e', light: '#ffffff' }
-    }).then(setInternalQrCode).catch(() => {});
-  }, [qrCodeUrl, std, receiptNo, type, displayReceiptId]);
+    const hashSeed = `${verifyId}:${displayReceiptId}:${paidAmount}:${stdSession}:${type}`;
+
+    generateTamperProofHash(hashSeed).then((token) => {
+      if (!isMounted) return;
+      setSecurityToken(token);
+
+      if (qrCodeUrl) {
+        setInternalQrCode(qrCodeUrl);
+        return;
+      }
+
+      const origin = typeof window !== 'undefined' && window.location?.origin && window.location.protocol !== 'file:'
+        ? window.location.origin 
+        : 'https://portal.superiorjhn.com';
+      const payload = `${origin}/?verify=${type}&id=${encodeURIComponent(verifyId)}&ref=${encodeURIComponent(displayReceiptId)}&token=${token}`;
+      
+      generateBrandedQrCode(payload, {
+        size: 320,
+        logoUrl: collegeLogo || '/superior-logo.png',
+        darkColor: '#085a4e',
+        lightColor: '#ffffff',
+        includeGoldBorder: true,
+      }).then((dataUrl) => {
+        if (isMounted) setInternalQrCode(dataUrl);
+      }).catch((err) => {
+        console.warn('[Receipt] QR generation error:', err);
+      });
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [qrCodeUrl, std, receiptNo, type, displayReceiptId, paidAmount, stdSession, collegeLogo]);
 
   // Handle Share (Native Web Share API or WhatsApp link)
   const handleShare = async () => {
@@ -190,7 +209,7 @@ export default function MobileDigitalReceiptCard({
 • *Amount:* Rs. ${receiptAmount.toLocaleString()}
 • *Balance Due:* ${balanceAmount > 0 ? `Rs. ${balanceAmount.toLocaleString()}` : 'Cleared (NIL)'}
 • *Receipt No:* #${displayReceiptId}
-• *Date:* ${currentVerifiedAt}
+${securityToken ? `• *Security Hash:* ${securityToken}\n` : ''}• *Date:* ${currentVerifiedAt}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🔗 *Live Digital Verification Slip:*
 ${origin}`;
@@ -562,6 +581,11 @@ ${origin}`;
 
           <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[9px] text-slate-400 font-mono">
             <span>REF: {displayReceiptId}</span>
+            {securityToken && (
+              <span className="text-emerald-700 dark:text-emerald-400 font-bold tracking-wider">
+                HASH: {securityToken}
+              </span>
+            )}
             <span>Computer Generated Official Voucher</span>
           </div>
         </div>
