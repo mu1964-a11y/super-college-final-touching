@@ -18,6 +18,7 @@ import {
   Eye,
   EyeOff,
   Shield,
+  Bot,
   Zap,
   Database,
   LogOut,
@@ -1207,20 +1208,36 @@ export default function App() {
 
           {/* Institutional Branding */}
           <div className="space-y-1 mb-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[9px] font-black uppercase tracking-[0.25em] text-[#085a4e] shadow-xs">
-              <Sparkles size={10} />
-              <span>Superior College Jahanian</span>
+            <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-black uppercase tracking-wider text-[#085a4e] shadow-xs">
+              <Sparkles size={11} className="text-amber-500 animate-pulse" />
+              <span>Enterprise ERP & AI Portal • Session 2026-28</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight pt-1">
+            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight pt-1 font-serif">
               {brandingSettings.name || "Superior College Jahanian"}
             </h2>
-            <p className="text-[11px] font-bold text-emerald-700 tracking-wide">
-              Jahanian Main Campus • Academic Operating Cloud
+            <p className="text-xs font-bold text-emerald-800 tracking-wide mt-0.5">
+              Jahanian Main Campus • Intelligent Academic Operating Cloud
             </p>
+
+            {/* New Features Strip: AI, WhatsApp & Verified Digital Records */}
+            <div className="flex flex-wrap items-center justify-center gap-1.5 pt-3 pb-1">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-900">
+                <Bot size={12} className="text-emerald-600 shrink-0" />
+                <span>Nexus AI 360°</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-teal-500/10 border border-teal-500/20 text-[10px] font-bold text-teal-900">
+                <MessageCircle size={12} className="text-teal-600 shrink-0" />
+                <span>WhatsApp Gateway</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[10px] font-bold text-amber-900">
+                <QrCode size={12} className="text-amber-700 shrink-0" />
+                <span>Verified Digital Slips</span>
+              </span>
+            </div>
           </div>
 
           {/* Dynamic Progress Indicator */}
-          <div className="w-full max-w-xs mt-4 pt-2">
+          <div className="w-full max-w-xs mt-3 pt-1">
             <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200/80 relative">
               <motion.div
                 animate={{ x: ["-100%", "100%"] }}
@@ -1229,14 +1246,16 @@ export default function App() {
               />
             </div>
             <p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mt-2.5">
-              {authLoading ? "Verifying Credentials & Workspace..." : "Connecting to Secure Academic Environment..."}
+              {authLoading
+                ? "Verifying Credentials & Workspace..."
+                : "Synchronizing Nexus AI, WhatsApp & Academic Cloud..."}
             </p>
           </div>
 
           {/* Footer Security Pill */}
-          <div className="flex items-center gap-1.5 mt-6 text-slate-400 text-[10px] uppercase font-bold tracking-widest">
+          <div className="flex items-center gap-1.5 mt-5 text-slate-400 text-[10px] uppercase font-bold tracking-widest">
             <Shield size={12} className="text-[#085a4e]" />
-            <span>256-Bit TLS 1.3 Certified • Institutional Gateway</span>
+            <span>256-Bit TLS 1.3 Certified • AI & WhatsApp Enabled Gateway</span>
           </div>
         </motion.div>
       </div>
