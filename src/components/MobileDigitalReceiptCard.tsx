@@ -62,6 +62,7 @@ export default function MobileDigitalReceiptCard({
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [internalQrCode, setInternalQrCode] = useState<string>(qrCodeUrl || '');
+  const [securityToken, setSecurityToken] = useState<string>('');
 
   const std = student || {};
   const stdName = std.fullName || std.full_name || std.name || 'Student';
@@ -545,7 +546,7 @@ ${origin}`;
         <div className="pt-2 border-t border-slate-200/80 my-3">
           <div className="flex items-center gap-3">
             {/* Scannable Live QR */}
-            <div className="w-20 h-20 bg-white p-1 rounded-xl border border-slate-200 shadow-xs shrink-0 flex items-center justify-center overflow-hidden">
+            <div className="w-24 h-24 sm:w-28 sm:h-28 bg-white p-1 rounded-2xl border border-slate-200 shadow-sm shrink-0 flex items-center justify-center overflow-hidden">
               {internalQrCode ? (
                 <img src={internalQrCode} alt="Security QR Code" className="w-full h-full object-contain" />
               ) : (

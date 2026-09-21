@@ -519,23 +519,25 @@ _Official Accounts & AI Registry, Superior College Jahanian_`;
             </div>
 
             {/* Official Online Verification QR Code */}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl">
+            <div className="flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl">
               {qrCodeUrl ? (
                 <img 
                   src={qrCodeUrl} 
                   alt="Verify QR" 
-                  className="w-11 h-11 border border-slate-300 rounded p-0.5 bg-white shrink-0" 
-                  style={{ width: '44px', height: '44px', objectFit: 'contain' }}
-                  width={44}
-                  height={44}
+                  className="border border-slate-300 rounded-lg p-1 bg-white shrink-0 shadow-xs" 
+                  style={{ width: '74px', height: '74px', objectFit: 'contain' }}
+                  width={74}
+                  height={74}
                 />
               ) : (
-                <div className="w-11 h-11 bg-slate-200 rounded animate-pulse shrink-0" style={{ width: '44px', height: '44px' }} />
+                <div className="w-[74px] h-[74px] bg-slate-200 rounded-lg animate-pulse shrink-0" style={{ width: '74px', height: '74px' }} />
               )}
-              <div className="text-left text-[8px] leading-tight">
-                <span className="font-black text-slate-800 uppercase block">Scan to Verify 🛡️</span>
-                <span className="text-slate-500 font-medium">Official College Portal</span>
-                <span className="font-mono text-[7px] text-emerald-700 block mt-0.5">SGC-VERIFIED</span>
+              <div className="text-left text-[9px] leading-tight">
+                <span className="font-black text-slate-800 uppercase block text-[10px]">Scan to Verify 🛡️</span>
+                <span className="text-slate-500 font-semibold block mt-0.5">Official College Portal</span>
+                <span className="font-mono text-[8px] text-emerald-800 font-bold block mt-1 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 w-fit">
+                  SGC-AUTHENTIC
+                </span>
               </div>
             </div>
 

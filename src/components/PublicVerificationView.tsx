@@ -272,8 +272,8 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
     let isMounted = true;
     if (typeof window !== 'undefined' && data.status === 'verified') {
       generateBrandedQrCode(window.location.href, {
-        size: 300,
-        logoUrl: branding.logo || '/superior-logo.png',
+        size: 320,
+        logoUrl: collegeLogo || '/superior-logo.png',
         darkColor: '#085a4e',
         lightColor: '#ffffff',
         includeGoldBorder: true,
@@ -286,7 +286,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
     return () => {
       isMounted = false;
     };
-  }, [data.id, data.type, data.receiptNo, data.status, branding.logo]);
+  }, [data.id, data.type, data.receiptNo, data.status, collegeLogo]);
 
   // Universal verification query
   async function performVerification(

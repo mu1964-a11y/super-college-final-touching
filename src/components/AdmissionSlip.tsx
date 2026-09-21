@@ -36,10 +36,10 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
     const hashSeed = `${verifyId}:${admission.collegeNo || ''}:${admission.id || ''}:admission`;
 
     generateTamperProofHash(hashSeed).then(token => {
-      const qrPayload = `${origin}/?verify=student&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(admission.collegeNo || '')}&student_id=${encodeURIComponent(admission.studentId || '')}&adm_id=${encodeURIComponent(admission.id || '')}&token=${token}`;
+      const qrPayload = `${origin}/?verify=admission&id=${encodeURIComponent(verifyId)}&ref=${encodeURIComponent(admission.id || '')}&token=${token}`;
 
       generateBrandedQrCode(qrPayload, {
-        size: 300,
+        size: 360,
         logoUrl: settings?.logo || '/superior-logo.png',
         darkColor: '#085a4e',
         lightColor: '#ffffff',
@@ -506,14 +506,14 @@ _Institutional Admissions Directorate, Superior College Jahanian_`;
           <div className="pt-2 border-t-2 border-slate-200 flex justify-between items-end mt-1">
             <div className="flex items-center gap-3">
               {qrCodeUrl && (
-                <div className="border border-slate-300 p-1 rounded-xl bg-white shadow-xs shrink-0" style={{ width: '60px', height: '60px' }}>
+                <div className="border border-slate-300 p-1 rounded-xl bg-white shadow-xs shrink-0" style={{ width: '76px', height: '76px' }}>
                   <img 
                     src={qrCodeUrl} 
                     alt="Universal QR Verification" 
                     className="w-full h-full object-contain" 
-                    style={{ width: '52px', height: '52px', objectFit: 'contain' }}
-                    width={52}
-                    height={52}
+                    style={{ width: '68px', height: '68px', objectFit: 'contain' }}
+                    width={68}
+                    height={68}
                   />
                 </div>
               )}

@@ -57,11 +57,11 @@ export async function generateBrandedQrCode(
   options: BrandedQrOptions = {}
 ): Promise<string> {
   const {
-    size = 350,
+    size = 400,
     logoUrl = '/superior-logo.png',
     darkColor = '#085a4e',
     lightColor = '#ffffff',
-    margin = 2,
+    margin = 1,
     includeGoldBorder = true,
   } = options;
 
@@ -103,8 +103,8 @@ export async function generateBrandedQrCode(
 
     const renderLogo = () => {
       try {
-        // Logo takes ~22% of total QR size (well within the 30% Level 'H' tolerance)
-        const logoSize = Math.round(size * 0.22);
+        // Logo takes ~20% of total QR size (well within the 30% Level 'H' tolerance)
+        const logoSize = Math.round(size * 0.20);
         const x = (size - logoSize) / 2;
         const y = (size - logoSize) / 2;
         const radius = logoSize / 2;
@@ -115,7 +115,7 @@ export async function generateBrandedQrCode(
 
         // 2a. Draw circular white quiet-zone backdrop
         ctx.beginPath();
-        ctx.arc(centerX, centerY, radius + 4, 0, Math.PI * 2);
+        ctx.arc(centerX, centerY, radius + 5, 0, Math.PI * 2);
         ctx.fillStyle = '#ffffff';
         ctx.fill();
 
