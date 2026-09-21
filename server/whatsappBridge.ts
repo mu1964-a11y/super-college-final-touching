@@ -353,6 +353,7 @@ class WhatsAppBridgeService {
     phone: string;
     direction: "incoming" | "outgoing";
     senderName?: string;
+    senderRole?: string;
     text: string;
     verifiedStudent?: string;
   }) {
@@ -1400,12 +1401,121 @@ _Superior College Staff Portal_`;
             },
           }).eq("id", settings.id);
         }
+
+        // Live memory binding for Principal role without needing server restart
+        if (merged.principalPhone) {
+          const normPrincipal = this.normalizePhoneNumber(merged.principalPhone);
+          if (normPrincipal) {
+            this.verifiedUsers.set(normPrincipal, {
+              phone: normPrincipal,
+              role: "Principal",
+              staffId: "PRINCIPAL",
+              name: merged.principalName || "Principal / Executive Leadership",
+              designation: merged.principalName || "Principal / Executive Leadership",
+              linkedAt: new Date().toISOString(),
+            });
+            console.log(`[WhatsApp Bot] Principal desk live-bound to phone: ${normPrincipal} (${merged.principalName})`);
+          }
+        }
+
         return merged;
       }
     } catch (e) {
       console.warn("[Scheduled Reports] Error saving automated report config:", e);
     }
     return DEFAULT_AUTOMATED_REPORT_CONFIG;
+  }
+
+  // Helper to check if a phone number belongs to the Principal / Super Admin
+  public async isPrincipalNumber(phone: string, supabaseClient?: any): Promise<{ isPrincipal: boolean; name: string; title: string }> {
+    const norm = this.normalizePhoneNumber(phone);
+    if (!norm || norm.length < 9) return { isPrincipal: false, name: "", title: "" };
+
+    const supabase = supabaseClient || await this.getSupabase();
+
+    // 1. Check automated reports config (configured in Principal Auto-Reports tab)
+    try {
+      const automatedConfig = await this.getAutomatedReportConfig(supabase);
+      if (automatedConfig?.principalPhone) {
+        const normPrincipal = this.normalizePhoneNumber(automatedConfig.principalPhone);
+        if (normPrincipal && (normPrincipal === norm || norm.endsWith(normPrincipal.slice(-9)))) {
+          return {
+            isPrincipal: true,
+            name: automatedConfig.principalName || "Principal / Executive Leadership",
+            title: automatedConfig.principalName || "Principal / Executive Leadership",
+          };
+        }
+      }
+    } catch (e) {}
+
+    // 2. Check settings table config (fallback locations)
+    if (supabase) {
+      try {
+        const { data: settings } = await supabase.from("settings").select("config").limit(1).maybeSingle();
+        const cfg = settings?.config;
+        if (cfg?.principalPhone) {
+          const normCfg = this.normalizePhoneNumber(cfg.principalPhone);
+          if (normCfg && (normCfg === norm || norm.endsWith(normCfg.slice(-9)))) {
+            return {
+              isPrincipal: true,
+              name: cfg.principalName || "Principal",
+              title: "Principal / Executive Leadership",
+            };
+          }
+        }
+        if (cfg?.adminPhone) {
+          const normAdmin = this.normalizePhoneNumber(cfg.adminPhone);
+          if (normAdmin && (normAdmin === norm || norm.endsWith(normAdmin.slice(-9)))) {
+            return {
+              isPrincipal: true,
+              name: "Super Admin",
+              title: "Principal / Super Admin",
+            };
+          }
+        }
+      } catch (e) {}
+
+      // 3. Check staff table for Principal or Director role
+      try {
+        const { data: staffList } = await supabase.from("staff").select("full_name, role, designation, contact, phone");
+        if (staffList && staffList.length > 0) {
+          const match = staffList.find((s: any) => {
+            const sPhone = this.normalizePhoneNumber(s.contact || s.phone);
+            const role = (s.role || "").toLowerCase();
+            const desig = (s.designation || "").toLowerCase();
+            const isHead = role.includes("principal") || role.includes("director") || desig.includes("principal") || desig.includes("director");
+            return isHead && sPhone && (sPhone === norm || norm.endsWith(sPhone.slice(-9)));
+          });
+          if (match) {
+            return {
+              isPrincipal: true,
+              name: match.full_name || "Principal",
+              title: match.designation || match.role || "Principal",
+            };
+          }
+        }
+      } catch (e) {}
+
+      // 4. Check permissions table for Super Admin
+      try {
+        const { data: perms } = await supabase.from("permissions").select("display_name, contact, phone, is_admin").eq("is_admin", true);
+        if (perms && perms.length > 0) {
+          const match = perms.find((p: any) => {
+            const pPhone = this.normalizePhoneNumber(p.contact || p.phone);
+            return pPhone && (pPhone === norm || norm.endsWith(pPhone.slice(-9)));
+          });
+          if (match) {
+            return {
+              isPrincipal: true,
+              name: match.display_name || "Principal / Super Admin",
+              title: "Principal / Super Admin",
+            };
+          }
+        }
+      } catch (e) {}
+    }
+
+    return { isPrincipal: false, name: "", title: "" };
   }
 
   // 1. Generate Daily Flash Report for the Principal
@@ -2642,12 +2752,21 @@ _Reply aate hi tasveer foran profile par update kar di jayegi._`;
             const realPhone = await this.resolvePhoneNumber(rawJid, msg.key);
             console.log(`[WhatsApp Bot] Incoming message from ${rawJid} (Resolved Phone: ${realPhone}, PushName: ${msg.pushName || "N/A"}, isImage: ${isImage}, isAudio: ${isAudio}, quotedText: "${quotedText}"): "${text}"`);
             
-            if (isAudio) {
-              await this.handleIncomingAudioMessage(msg, rawJid, realPhone, msg.pushName, { quotedText });
-            } else if (isImage) {
-              await this.handleIncomingMultimodalImage(msg, rawJid, realPhone, text, msg.pushName, quotedText);
-            } else {
-              await this.handleIncomingBotQuery(rawJid, text, realPhone, msg.pushName, { quotedText });
+            try {
+              if (isAudio) {
+                await this.handleIncomingAudioMessage(msg, rawJid, realPhone, msg.pushName, { quotedText });
+              } else if (isImage) {
+                await this.handleIncomingMultimodalImage(msg, rawJid, realPhone, text, msg.pushName, quotedText);
+              } else {
+                await this.handleIncomingBotQuery(rawJid, text, realPhone, msg.pushName, { quotedText });
+              }
+            } catch (queryErr: any) {
+              console.error(`[WhatsApp Bot] Error processing message from ${realPhone}:`, queryErr);
+              const fallbackNotice = "Assalam-o-Alaikum! Superior Nexus hazir hai. Kahiye main aapki kya madad kar sakti hoon? Admissions, Fees, ya Results ke baray mein sawal pooch sakte hain.";
+              try {
+                if (this.sock) await this.sock.sendMessage(rawJid, { text: fallbackNotice });
+                this.saveChatLog({ phone: realPhone, direction: "outgoing", text: fallbackNotice });
+              } catch (fErr) {}
             }
           }
         } catch (botErr: any) {
@@ -2996,7 +3115,9 @@ College Key Info:
         effectiveSystemInstruction += `\n\n=== OFFICIAL DYNAMIC KNOWLEDGE BASE & CAMPUS POLICIES ===\n${dynamicKb}\n=== END KNOWLEDGE BASE ===\nStrictly prioritize the above official college policies and answers when responding to related queries.`;
       }
 
-      const response = await ai.models.generateContent({
+      // Safety timeout (8s) to prevent bot hanging on slow Gemini response
+      const timeoutMs = 8000;
+      const apiPromise = ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents,
         config: {
@@ -3004,6 +3125,11 @@ College Key Info:
           temperature: 0.7,
         },
       });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Gemini generation timed out after 8s")), timeoutMs)
+      );
+
+      const response = await Promise.race([apiPromise, timeoutPromise]) as any;
 
       const reply = response.text?.trim();
       if (reply) {
@@ -3661,7 +3787,250 @@ College Key Info:
 
     const delegatedAdmin = this.delegatedAdmins.get(standardPhone);
     const automatedConfig = await this.getAutomatedReportConfig(supabase);
-    const isPrincipal = standardPhone === this.normalizePhoneNumber(automatedConfig.principalPhone);
+    const principalInfo = await this.isPrincipalNumber(standardPhone, supabase);
+    const isPrincipal = principalInfo.isPrincipal;
+
+    // Auto-bind verified Principal session with zero OTP
+    if (isPrincipal && !this.verifiedUsers.has(standardPhone)) {
+      this.verifiedUsers.set(standardPhone, {
+        phone: standardPhone,
+        role: "Principal",
+        staffId: "PRINCIPAL",
+        name: principalInfo.name || "Principal / Executive Leadership",
+        designation: principalInfo.title || "Principal / Executive Leadership",
+        linkedAt: new Date().toISOString(),
+      });
+    }
+
+    // ─── 00. IMMEDIATE FAST PING / PUNCTUATION HANDLER (< 200ms) ───
+    const isPingOrShort = 
+      cleanQuery === "?" || 
+      cleanQuery === "??" || 
+      cleanQuery === "???" || 
+      cleanQuery === "reply" || 
+      cleanQuery === "reply?" || 
+      cleanQuery === "jawab" || 
+      cleanQuery === "jawab do" || 
+      cleanQuery === "kahan ho" ||
+      cleanQuery === "bolo";
+
+    if (isPingOrShort) {
+      const pingText = isPrincipal
+        ? `🏛️ *ASSALAM-O-ALAIKUM RESPECTED PRINCIPAL SIR!* (${principalInfo.name})\n\nSuperior Nexus bilkul hazir hai. Kahiye main aapki kya madad kar sakti hoon? Flash report, staff attendance, ya kisi student ka record dekhna chahte hain?`
+        : `Jee! Main hazir hoon. 🌸 Superior College Jahanian Helpdesk par khush-amdeed.\n\nKahiye main aapki kya madad kar sakti hoon? (Admissions, Fee Status, ya Exam Results ke baray mein sawal pooch sakte hain).`;
+      return await sendReply(pingText, "Fast Ping Reply");
+    }
+
+    // ─── 00b. PRINCIPAL EXECUTIVE LEADERSHIP DESK (ZERO OTP ACTIVE) ───
+    if (isPrincipal) {
+      const isPrincipalGreetingOrIdentity = 
+        cleanQuery === "menu" || 
+        cleanQuery === "help" || 
+        cleanQuery === "options" || 
+        cleanQuery === "0" || 
+        cleanQuery === "shuru" || 
+        cleanQuery === "hi" || 
+        cleanQuery === "hello" || 
+        cleanQuery === "salam" || 
+        cleanQuery === "assalam" || 
+        cleanQuery === "aoa" || 
+        cleanQuery.includes("kaise ho") || 
+        cleanQuery.includes("kese ho") || 
+        cleanQuery.includes("kedse ho") || 
+        cleanQuery.includes("kia hal") || 
+        cleanQuery.includes("kya hal") || 
+        cleanQuery.includes("principal hoon") || 
+        cleanQuery.includes("principle hoon") || 
+        cleanQuery.includes("principal hun") || 
+        cleanQuery.includes("principle hun") || 
+        cleanQuery.includes("mera role") || 
+        cleanQuery.includes("kon hoon") || 
+        cleanQuery.includes("who am i");
+
+      if (isPrincipalGreetingOrIdentity) {
+        const principalWelcome = 
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
+👑 *EXECUTIVE PRINCIPAL DESK*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum Mohtaram *${principalInfo.name}*!
+Aapka WhatsApp number (*${standardPhone}*) College Leadership Desk ke tor par *Direct Verified (Zero OTP)* active hai. ✅
+
+Matlooba institutional maloomat ya action ke liye number likhein:
+
+1️⃣ *Aaj Ki Daily Flash Summary* (Enrolment, Today's Collection, Key Stats)
+2️⃣ *Staff Attendance & Punctuality* (Teaching & Non-Teaching hazri)
+3️⃣ *Fee Collection & Ledger Digest* (Roznamcha Inflow & Defaulters)
+4️⃣ *Student Dossier Search* (Kisi bhi student ka Name ya Roll No likhein)
+5️⃣ *Staff Delegation* ("show delegated staff" ya "delegate [Name] phone [03...]")
+6️⃣ *Campus Information & Inquiries*
+
+_Tip: Aap Roman Urdu ya English mein koi bhi sawal pooch sakte hain ya direct command de sakte hain._`;
+        return await sendReply(principalWelcome, "Principal Executive Welcome", principalInfo.name);
+      }
+
+      // Option 1: Flash Report / Summary / Overview
+      if (
+        cleanQuery === "1" || 
+        cleanQuery.startsWith("1.") || 
+        cleanQuery.includes("flash") || 
+        cleanQuery.includes("daily report") || 
+        cleanQuery.includes("summary") || 
+        cleanQuery.includes("overview") || 
+        cleanQuery.includes("total student") || 
+        cleanQuery.includes("strength") ||
+        cleanQuery.includes("aaj ki report")
+      ) {
+        const flashReport = await this.generateDailyFlashReport(supabase, automatedConfig.daily);
+        return await sendReply(flashReport, "Principal Flash Report", principalInfo.name);
+      }
+
+      // Option 2: Staff Attendance
+      if (
+        cleanQuery === "2" || 
+        cleanQuery.startsWith("2.") || 
+        cleanQuery.includes("staff attendance") || 
+        cleanQuery.includes("teachers attendance") || 
+        cleanQuery.includes("staff hazri") || 
+        cleanQuery.includes("teachers hazri") || 
+        cleanQuery === "attendance" || 
+        cleanQuery === "hazri"
+      ) {
+        const today = new Date().toISOString().slice(0, 10);
+        const { data: staffList } = await supabase.from("staff").select("id, full_name, role, designation");
+        const { data: staffAtt } = await supabase.from("staff_attendance").select("*").eq("date", today);
+        const totalStaff = staffList?.length || 0;
+        let presentCount = 0;
+        let absentCount = 0;
+        let lateCount = 0;
+        const absentNames: string[] = [];
+        const lateNames: string[] = [];
+        const attMap = new Map();
+        for (const a of (staffAtt || [])) attMap.set(a.staff_id, a);
+
+        for (const st of (staffList || [])) {
+          const a = attMap.get(st.id);
+          if (!a || a.status === "Absent") {
+            absentCount++;
+            absentNames.push(st.full_name || "Staff");
+          } else if (a.status === "Late") {
+            lateCount++;
+            const t = a.check_in ? ` (${a.check_in.slice(0, 5)})` : "";
+            lateNames.push(`${st.full_name || "Staff"}${t}`);
+          } else {
+            presentCount++;
+          }
+        }
+
+        const attReport = 
+`👥 *SUPERIOR COLLEGE JAHANIAN*
+📋 *DAILY STAFF ATTENDANCE SUMMARY*
+Date: *${new Date().toLocaleDateString('en-GB')}*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• Total Staff Strength: *${totalStaff}*
+• Present: *${presentCount}* ✅
+• Absent: *${absentCount}* ❌
+• Late Arrivals: *${lateCount}* ⚠️
+
+${absentNames.length > 0 ? `❌ *Absent Staff:* ${absentNames.slice(0, 8).join(", ")}${absentNames.length > 8 ? ` (+${absentNames.length - 8} more)` : ""}\n` : "✅ *All staff members marked present.*\n"}
+${lateNames.length > 0 ? `⚠️ *Late Arrivals:* ${lateNames.slice(0, 6).join(", ")}\n` : ""}
+_Reports synchronized with College Biometric & Staff Ledger._`;
+        return await sendReply(attReport, "Principal Staff Attendance", principalInfo.name);
+      }
+
+      // Option 3: Fee Collection & Defaulters
+      if (
+        cleanQuery === "3" || 
+        cleanQuery.startsWith("3.") || 
+        cleanQuery.includes("fee") || 
+        cleanQuery.includes("collection") || 
+        cleanQuery.includes("ledger") || 
+        cleanQuery.includes("defaulter") || 
+        cleanQuery.includes("recovery")
+      ) {
+        const report = await this.getInstitutionalReport(supabase, principalInfo.name);
+        return await sendReply(report, "Principal Fee Collection Report", principalInfo.name);
+      }
+
+      // Delegation Commands for Principal
+      if (cleanQuery.includes("delegate") && cleanQuery.includes("phone")) {
+        const phoneMatch = cleanQuery.match(/phone\s*[:=-]?\s*([0-9+]+)/i);
+        const nameMatch = text.match(/delegate\s+([a-zA-Z\s]+?)(?=\s+permissions|\s+phone|\s+role|$)/i);
+        const permAdmissions = cleanQuery.includes("admission");
+        const permFee = cleanQuery.includes("fee");
+        const permAttendance = cleanQuery.includes("attendance");
+        const permTimetable = cleanQuery.includes("timetable");
+
+        const permissions: string[] = [];
+        if (permAdmissions) permissions.push("admissions");
+        if (permFee) permissions.push("fee_collection");
+        if (permAttendance) permissions.push("attendance");
+        if (permTimetable) permissions.push("timetable");
+        if (permissions.length === 0) permissions.push("admissions");
+
+        if (phoneMatch && nameMatch) {
+          const targetPhone = phoneMatch[1];
+          const targetName = nameMatch[1].trim();
+
+          const result = await this.delegateAdmin({
+            name: targetName,
+            phone: targetPhone,
+            rolePermissions: permissions,
+            delegatedBy: "Principal",
+          }, supabase);
+
+          if (result.success) {
+            const resp = 
+`🏛️ *STAFF DELEGATION INITIATED*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Staff Member:* *${targetName}*
+• *Mobile Number:* ${result.admin?.phone}
+• *Assigned Modules:* *${permissions.join(", ").toUpperCase()}*
+• *Generated OTP:* *${result.admin?.otpCode}*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Staff member ko WhatsApp par invitation deliver ho chuka hai.`;
+            return await sendReply(resp, "Principal Delegation Created", principalInfo.name);
+          }
+        }
+      } else if (cleanQuery === "show delegated staff" || cleanQuery === "delegated staff" || cleanQuery === "staff delegation list" || cleanQuery === "5" || cleanQuery.startsWith("5.")) {
+        const list = this.getDelegatedAdminsList();
+        if (list.length === 0) {
+          return await sendReply("Abhi tak koi staff member delegate nahi kiya gaya.", "Delegated Staff Empty", principalInfo.name);
+        }
+        const strList = list.map((a, idx) => {
+          return `${idx + 1}. *${a.name}* (${a.phone})\n   • Status: *${a.status.toUpperCase()}*\n   • Permissions: ${(a.rolePermissions || []).join(", ")}\n   • PIN: *${a.pinLast4 ? `****${a.pinLast4}` : "Not set"}*`;
+        }).join("\n\n");
+
+        return await sendReply(`📋 *ACTIVE DELEGATED STAFF ROSTER:*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n${strList}`, "Delegated Staff List", principalInfo.name);
+      }
+
+      // Option 4 / Student Dossier for Principal
+      const dossier = await this.getTeacherStudentDossier(supabase, text);
+      if (dossier) {
+        return await sendReply(dossier, "Principal Student Dossier", principalInfo.name);
+      }
+
+      // Conversational AI for Principal
+      const principalSystemPrompt = `You are Superior Nexus, the intelligent executive AI assistant for Superior College Jahanian.
+You are currently speaking directly with the College Principal / Executive Leadership:
+• Name: ${principalInfo.name}
+• Title: ${principalInfo.title}
+• Registered Phone: ${standardPhone}
+
+EXECUTIVE PERSONA RULES:
+1. Address them respectfully as "Mohtaram Principal Sahib" or "Respected Principal Sir".
+2. Provide concise, high-level institutional clarity.
+3. Language: Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. NEVER write in Arabic script Urdu (اردو). Every single character must be Latin script.
+4. Persona: Professional, articulate, executive female assistant ("karti hoon", "bata sakti hoon").`;
+
+      const aiReply = await this.generateAiConversationalReply(
+        text, 
+        session.history || [], 
+        `Mohtaram Principal Sahib! Main Superior Nexus hazir hoon. Kahiye aaj kis administrative ya academic silsilay mein meri madad darkaar hai?`, 
+        principalSystemPrompt,
+        options?.quotedText
+      );
+      return await sendReply(aiReply, "Principal Conversational AI", principalInfo.name);
+    }
 
     // ─── 00. IN-PROGRESS ADMISSION WIZARD (DETAILS COLLECTION) ───
     if (session.stage === "AWAITING_ADMISSION_DETAILS") {
@@ -4667,6 +5036,21 @@ Baraye meherbani wo 4-digit code yahan reply karein:`;
       }
     }
 
+    // Notice for unverified users verbally claiming to be Principal
+    if (!matchedCandidate && (cleanQuery.includes("principal") || cleanQuery.includes("principle"))) {
+      const maskedPrincipal = automatedConfig?.principalPhone ? this.maskPhoneNumber(automatedConfig.principalPhone) : "0303-XXXX660";
+      const principalNotice = 
+`🔒 *EXECUTIVE ACCESS CONTROL*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Aapka WhatsApp number (*${standardPhone}*) College Database mein Principal Desk ke tor par verified nahi hai.
+
+Security policy ke tehat, Executive Leadership access sirf registered Principal mobile number (*${maskedPrincipal}*) par fa'al hai.
+
+Agar aap Principal hain, to baraye meherbani College Portal Settings > *Principal Auto-Reports* tab se apna mobile number confirm farmayein taake bot aapko auto-recognize kar sake.
+Helpline: 📞 *0301-4455891*`;
+      return await sendReply(principalNotice, "Principal Authority Check Mismatch");
+    }
+
     // ─── D. CHECK IF SENDER IS A REGISTERED STUDENT OR PARENT (ZERO OTP ACCESS) ───
     const registeredStudents = await this.findStudentsByRegisteredPhone(supabase, standardPhone);
     if (registeredStudents.length > 0) {
@@ -4782,6 +5166,7 @@ Baraye meherbani batayein aap kis student ka record dekhna chahte hain (1 ya 2 l
       session.targetStudentQuery = undefined;
       session.history = [];
       const resetMsg = "🔄 Session reset ho chuki hai. Main *Superior Nexus* hoon. Kahiye, main aapki kya madad kar sakti hoon? Aap kisi student ka Naam, Walid ka Naam, Class Section (maslan: MEPB), ya Roll Number likh sakte hain, ya koi bhi general sawal pooch sakte hain.";
+      return await sendReply(resetMsg, "Session Reset");
     }
 
     // 2. Explicit Menu Request (0, menu, options, help)
@@ -5314,6 +5699,7 @@ _Verification ke foran baad official record faraham kar diya jayega._`;
     }
 
     // 16. Default Fallback: Intelligent AI conversational response (Superior Nexus acts like ChatGPT for any question!)
+    const fallbackMessage = "Main *Superior Nexus* hoon, Superior College Jahanian ki official AI Virtual Assistant. 🌸 Baraye meherbani batayein main aapki kya madad kar sakti hoon? (Admissions, Fee Records, Exam Results, ya Timetable ke hawalay se pooch sakte hain).";
     const conversationalReply = await this.generateAiConversationalReply(
       text, 
       session.history || [], 

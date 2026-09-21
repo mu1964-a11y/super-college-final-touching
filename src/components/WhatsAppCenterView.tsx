@@ -9,7 +9,7 @@ import {
   Reply, X, BarChart3, Activity, Download, Eye, DollarSign, Calendar,
   BookOpen, ShieldAlert, PieChart, Lock, Filter, Smartphone, HelpCircle,
   CheckCircle, Info, ChevronDown, Plus, CalendarCheck, TrendingUp, Bell,
-  Coffee, ChevronLeft, ArrowRight, Shield, Camera, Brain
+  Coffee, ChevronLeft, ArrowRight, Shield, Camera, Brain, Crown
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
@@ -2022,39 +2022,109 @@ _Administration Directorate, SGC Jahanian_`;
                       </p>
                     </div>
                   ) : (
-                    filteredConversations.map(conv => {
-                      const isSelected = selectedChatPhone === conv.phone;
-                      const formattedTime = new Date(conv.lastTimestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                    (() => {
+                      const getSenderRoleBadge = (phone: string, direction: "incoming" | "outgoing", customRole?: string) => {
+                        if (direction === "outgoing") {
+                          return {
+                            label: "🏛️ Superior Nexus AI / Admin",
+                            colorClass: "text-emerald-900 dark:text-emerald-300 font-black",
+                            bgClass: "bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800",
+                            isPrincipal: false
+                          };
+                        }
 
-                      return (
-                        <div
-                          key={conv.phone}
-                          onClick={() => setSelectedChatPhone(conv.phone)}
-                          className={`p-3.5 transition cursor-pointer flex items-start gap-3 relative ${
-                            isSelected 
-                              ? "bg-emerald-50/90 dark:bg-emerald-950/40 border-l-4 border-[#064e43]" 
-                              : "hover:bg-slate-100/70 dark:hover:bg-slate-800/50"
-                          }`}
-                        >
-                          {/* Avatar */}
-                          <div className={`w-11 h-11 rounded-full flex items-center justify-center font-bold text-sm shrink-0 shadow-sm ${
-                            isSelected 
-                              ? "bg-[#064e43] text-white" 
-                              : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200"
-                          }`}>
-                            {conv.studentName ? conv.studentName.slice(0, 1).toUpperCase() : <User size={18} />}
-                          </div>
+                        const norm = (phone || "").replace(/\D/g, "");
+                        const princNorm = (reportConfig?.principalPhone || "").replace(/\D/g, "");
 
-                          {/* Contact Details */}
-                          <div className="flex-1 min-w-0 space-y-1">
-                            <div className="flex items-center justify-between">
-                              <h4 className="text-xs font-black text-slate-800 dark:text-white truncate">
-                                {conv.studentName || `+${conv.phone}`}
-                              </h4>
-                              <span className="text-[10px] text-slate-400 shrink-0 font-mono ml-1">
-                                {formattedTime}
-                              </span>
+                        if (
+                          (princNorm && (norm === princNorm || (norm.length >= 9 && princNorm.endsWith(norm.slice(-9))) || (princNorm.length >= 9 && norm.endsWith(princNorm.slice(-9))))) ||
+                          customRole === "Principal"
+                        ) {
+                          return {
+                            label: "👑 Principal / Executive Leadership",
+                            colorClass: "text-amber-800 dark:text-amber-300 font-black",
+                            bgClass: "bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800",
+                            isPrincipal: true
+                          };
+                        }
+
+                        const isDelegated = delegatedAdminsList?.some((a: any) => {
+                          const aNorm = (a.phone || "").replace(/\D/g, "");
+                          return aNorm && (norm === aNorm || (norm.length >= 9 && aNorm.endsWith(norm.slice(-9))));
+                        });
+                        if (isDelegated) {
+                          return {
+                            label: "👔 Delegated Staff Admin",
+                            colorClass: "text-blue-800 dark:text-blue-300 font-bold",
+                            bgClass: "bg-blue-100 dark:bg-blue-950/80 text-blue-800 dark:text-blue-300 border-blue-300 dark:border-blue-800",
+                            isPrincipal: false
+                          };
+                        }
+
+                        const matchedStaff = (staff || []).find((s: any) => {
+                          const sPhone = (s.contact || s.phone || "").replace(/\D/g, "");
+                          return sPhone && (norm === sPhone || (norm.length >= 9 && sPhone.endsWith(norm.slice(-9))));
+                        });
+                        if (matchedStaff) {
+                          return {
+                            label: `👨‍🏫 Faculty / Staff (${matchedStaff.fullName || matchedStaff.name || "Teacher"})`,
+                            colorClass: "text-purple-800 dark:text-purple-300 font-bold",
+                            bgClass: "bg-purple-100 dark:bg-purple-950/80 text-purple-800 dark:text-purple-300 border-purple-300 dark:border-purple-800",
+                            isPrincipal: false
+                          };
+                        }
+
+                        return {
+                          label: "Parent / Student / Visitor",
+                          colorClass: "text-slate-700 dark:text-slate-300 font-medium",
+                          bgClass: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700",
+                          isPrincipal: false
+                        };
+                      };
+
+                      return filteredConversations.map(conv => {
+                        const isSelected = selectedChatPhone === conv.phone;
+                        const formattedTime = new Date(conv.lastTimestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                        const roleBadge = getSenderRoleBadge(conv.phone, "incoming");
+
+                        return (
+                          <div
+                            key={conv.phone}
+                            onClick={() => setSelectedChatPhone(conv.phone)}
+                            className={`p-3.5 transition cursor-pointer flex items-start gap-3 relative ${
+                              isSelected 
+                                ? "bg-emerald-50/90 dark:bg-emerald-950/40 border-l-4 border-[#064e43]" 
+                                : "hover:bg-slate-100/70 dark:hover:bg-slate-800/50"
+                            }`}
+                          >
+                            {/* Avatar */}
+                            <div className={`w-11 h-11 rounded-full flex items-center justify-center font-bold text-sm shrink-0 shadow-sm ${
+                              roleBadge.isPrincipal
+                                ? "bg-amber-600 text-white"
+                                : isSelected 
+                                ? "bg-[#064e43] text-white" 
+                                : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200"
+                            }`}>
+                              {roleBadge.isPrincipal ? <Crown size={18} /> : conv.studentName ? conv.studentName.slice(0, 1).toUpperCase() : <User size={18} />}
                             </div>
+
+                            {/* Contact Details */}
+                            <div className="flex-1 min-w-0 space-y-1">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <h4 className="text-xs font-black text-slate-800 dark:text-white truncate">
+                                    {roleBadge.isPrincipal ? (reportConfig?.principalName || "Principal / Executive Leadership") : (conv.studentName || `+${conv.phone}`)}
+                                  </h4>
+                                  {roleBadge.isPrincipal && (
+                                    <span className="bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 text-[9px] font-black px-1.5 py-0.2 rounded-full border border-amber-300 dark:border-amber-700 flex items-center gap-0.5 shrink-0">
+                                      <Crown size={9} /> Principal
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-slate-400 shrink-0 font-mono ml-1">
+                                  {formattedTime}
+                                </span>
+                              </div>
 
                             <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400 flex items-center gap-1 truncate">
                               +{conv.phone}
@@ -2082,7 +2152,8 @@ _Administration Directorate, SGC Jahanian_`;
                           </div>
                         </div>
                       );
-                    })
+                    });
+                  })()
                   )}
                 </div>
               </div>
@@ -2097,6 +2168,10 @@ _Administration Directorate, SGC Jahanian_`;
                     {/* Active Chat Header */}
                     {(() => {
                       const activeConv = groupedConversations.find(c => c.phone === selectedChatPhone);
+                      const norm = (selectedChatPhone || "").replace(/\D/g, "");
+                      const princNorm = (reportConfig?.principalPhone || "").replace(/\D/g, "");
+                      const isPrincipalChat = Boolean(princNorm && (norm === princNorm || (norm.length >= 9 && princNorm.endsWith(norm.slice(-9))) || (princNorm.length >= 9 && norm.endsWith(princNorm.slice(-9)))));
+
                       return (
                         <div className="p-3.5 bg-[#f0f2f5] dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between shrink-0 shadow-sm">
                           <div className="flex items-center gap-3">
@@ -2108,22 +2183,29 @@ _Administration Directorate, SGC Jahanian_`;
                               <ArrowLeft size={18} />
                             </button>
 
-                            <div className="w-10 h-10 rounded-full bg-[#064e43] text-white flex items-center justify-center font-bold text-sm shadow shrink-0">
-                              {activeConv?.studentName ? activeConv.studentName.slice(0, 1).toUpperCase() : <User size={18} />}
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shadow shrink-0 ${
+                              isPrincipalChat ? "bg-amber-600 text-white shadow-amber-500/20" : "bg-[#064e43] text-white"
+                            }`}>
+                              {isPrincipalChat ? <Crown size={18} /> : activeConv?.studentName ? activeConv.studentName.slice(0, 1).toUpperCase() : <User size={18} />}
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2 truncate">
                                 <h3 className="text-sm font-black text-slate-800 dark:text-white truncate">
-                                  {activeConv?.studentName || `Parent / Contact`}
+                                  {isPrincipalChat ? (reportConfig?.principalName || "Principal / Executive Leadership") : (activeConv?.studentName || `Parent / Contact`)}
                                 </h3>
-                                {activeConv?.verifiedStudent && (
+                                {isPrincipalChat ? (
+                                  <span className="bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 border border-amber-300 dark:border-amber-700 shrink-0 shadow-xs">
+                                    <Crown size={11} /> Executive Principal
+                                  </span>
+                                ) : activeConv?.verifiedStudent ? (
                                   <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-emerald-200 dark:border-emerald-800 shrink-0">
                                     <ShieldCheck size={11} /> Verified
                                   </span>
-                                )}
+                                ) : null}
                               </div>
                               <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate">
                                 +{selectedChatPhone}
+                                {isPrincipalChat && <span className="font-sans text-amber-700 dark:text-amber-400 font-bold ml-1.5">• 24/7 Executive Desk</span>}
                                 {activeConv?.fatherName && <span className="font-sans text-slate-600 dark:text-slate-300 ml-1.5">• Walid: {activeConv.fatherName}</span>}
                                 {activeConv?.className && <span className="font-sans text-slate-600 dark:text-slate-300 ml-1.5">• Class: {activeConv.className}</span>}
                               </p>
@@ -2166,7 +2248,25 @@ _Administration Directorate, SGC Jahanian_`;
                         activeConversationMessages.map((msg: any) => {
                           const isOutgoing = msg.direction === "outgoing";
                           const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-                          const senderName = isOutgoing ? "Superior Nexus Bot / Admin" : "Parent / Student";
+
+                          // Detect dynamic role
+                          const norm = (selectedChatPhone || "").replace(/\D/g, "");
+                          const princNorm = (reportConfig?.principalPhone || "").replace(/\D/g, "");
+                          const isPrinc = Boolean(princNorm && (norm === princNorm || (norm.length >= 9 && princNorm.endsWith(norm.slice(-9))) || (princNorm.length >= 9 && norm.endsWith(princNorm.slice(-9))))) || msg.senderRole === "Principal";
+
+                          const senderLabel = isOutgoing 
+                            ? "🏛️ Superior Nexus AI / Admin" 
+                            : isPrinc 
+                            ? "👑 Principal / Executive Leadership" 
+                            : "Parent / Student / Visitor";
+
+                          const senderColor = isOutgoing 
+                            ? "text-emerald-900 dark:text-emerald-300 font-black" 
+                            : isPrinc 
+                            ? "text-amber-800 dark:text-amber-300 font-black" 
+                            : "text-slate-800 dark:text-slate-200 font-bold";
+
+                          const senderName = isOutgoing ? "Superior Nexus Bot / Admin" : senderLabel;
 
                           return (
                             <div
@@ -2179,6 +2279,8 @@ _Administration Directorate, SGC Jahanian_`;
                                 className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-3.5 shadow-sm relative text-xs leading-relaxed space-y-1.5 ${
                                   isOutgoing
                                     ? "bg-[#d9fdd3] dark:bg-[#054640] text-slate-900 dark:text-slate-100 rounded-tr-none border border-[#b2e59e]/60 dark:border-emerald-700/50"
+                                    : isPrinc
+                                    ? "bg-amber-50/80 dark:bg-amber-950/30 text-slate-900 dark:text-slate-100 rounded-tl-none border border-amber-200 dark:border-amber-800/60"
                                     : "bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-tl-none border border-slate-200 dark:border-slate-700"
                                 }`}
                               >
@@ -2219,8 +2321,8 @@ _Administration Directorate, SGC Jahanian_`;
 
                                 {/* Sender Label */}
                                 <div className="flex items-center justify-between gap-2 pb-0.5 border-b border-black/5 dark:border-white/5 text-[10px]">
-                                  <span className={`font-black ${isOutgoing ? "text-emerald-900 dark:text-emerald-300" : "text-amber-800 dark:text-amber-300"}`}>
-                                    {isOutgoing ? "🏛️ Superior Nexus AI / Admin" : "Parent / Student"}
+                                  <span className={senderColor}>
+                                    {senderLabel}
                                   </span>
                                   {msg.verifiedStudent && (
                                     <span className="text-[9px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-1.5 py-0.2 rounded font-bold border border-emerald-300 dark:border-emerald-800">
@@ -3834,15 +3936,51 @@ _Administration Directorate, SGC Jahanian_`;
                 </div>
               </div>
 
-              <div className="mt-5 flex justify-end">
-                <button
-                  onClick={() => saveReportConfig(reportConfig)}
-                  disabled={isSavingReportConfig}
-                  className="px-5 py-2.5 bg-[#064e43] hover:bg-[#053d34] text-white font-bold text-xs rounded-xl transition shadow-md flex items-center gap-2 active:scale-95 disabled:opacity-50"
-                >
-                  {isSavingReportConfig ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
-                  Save Recipient Details
-                </button>
+              {/* Bot Authority Binding Live Status Box */}
+              <div className="mt-5 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-teal-500/10 border border-amber-300/40 dark:border-amber-700/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-800 dark:text-amber-300 flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                    <Crown size={18} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-slate-800 dark:text-white">
+                        AI Executive Bot Authority Binding:
+                      </span>
+                      {reportConfig?.principalPhone ? (
+                        <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800 flex items-center gap-1 shadow-xs">
+                          <CheckCircle2 size={11} className="text-emerald-600" /> Active & Live-Bound (Zero OTP)
+                        </span>
+                      ) : (
+                        <span className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-300">
+                          Pending Configuration
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                      {reportConfig?.principalPhone ? (
+                        <>
+                          The mobile number <strong className="font-mono text-emerald-800 dark:text-emerald-300">+{reportConfig.principalPhone}</strong> is automatically recognized by <strong>Superior Nexus AI</strong> as the Principal. When messaging from this WhatsApp, all institutional summaries, daily flash digests, staff attendance snapshots, and administrative delegation tools are immediately accessible with <strong>Zero OTP required</strong>.
+                        </>
+                      ) : (
+                        <>
+                          Enter the Principal's WhatsApp number above and click <strong>Save Recipient Details</strong> to bind executive authority to Superior Nexus Bot.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                  <button
+                    onClick={() => saveReportConfig(reportConfig)}
+                    disabled={isSavingReportConfig}
+                    className="px-5 py-2.5 bg-[#064e43] hover:bg-[#053d34] text-white font-bold text-xs rounded-xl transition shadow-md flex items-center gap-2 active:scale-95 disabled:opacity-50"
+                  >
+                    {isSavingReportConfig ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                    Save & Bind Recipient
+                  </button>
+                </div>
               </div>
             </div>
 
