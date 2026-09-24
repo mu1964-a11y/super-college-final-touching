@@ -299,6 +299,7 @@ export default function App() {
 
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [dossierStudent, setDossierStudent] = useState<any | null>(null);
+  const [dossierInitialTab, setDossierInitialTab] = useState<'profile' | 'financials' | 'academic' | 'whatsapp'>('profile');
 
   // Global Ctrl+K / Cmd+K keyboard shortcut listener for Spotlight Search
   React.useEffect(() => {
@@ -2491,7 +2492,8 @@ export default function App() {
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
         data={filteredData}
-        onSelectStudent={(student) => {
+        onSelectStudent={(student, tab) => {
+          setDossierInitialTab(tab || 'profile');
           setDossierStudent(student);
         }}
         onNavigate={(page, filter) => handleNavClick(page as Page, filter)}
@@ -2503,6 +2505,7 @@ export default function App() {
         isOpen={Boolean(dossierStudent)}
         onClose={() => setDossierStudent(null)}
         data={filteredData}
+        initialTab={dossierInitialTab}
         onOpenWhatsApp={(phone) => {
           handleNavClick("whatsapp-center");
         }}

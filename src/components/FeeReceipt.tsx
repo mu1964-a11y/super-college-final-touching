@@ -427,7 +427,17 @@ _Official Accounts & AI Registry, Superior College Jahanian_`;
                 {unifiedTransactions.slice(0, 4).map((tx: any, idx: number) => (
                   <div key={tx.id || idx} className="flex items-center justify-between py-1 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
                     <div className="w-1/4 text-[9px] font-mono font-bold text-slate-700 flex flex-col">
-                      <span>{new Date(tx.date).toLocaleDateString()}</span>
+                      <span>{new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                      {(() => {
+                        let time = '';
+                        if (tx.createdAt || tx.created_at) time = new Date(tx.createdAt || tx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                        else if (typeof tx.date === 'string' && (tx.date.includes('T') || tx.date.includes(':'))) time = new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                        else if (typeof tx.id === 'string' && tx.id.startsWith('tx-')) {
+                          const ts = Number(tx.id.replace('tx-', '').split('-')[0]);
+                          if (!isNaN(ts) && ts > 1600000000000 && ts < 2500000000000) time = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                        }
+                        return time ? <span className="text-[8px] text-teal-700 font-semibold">{time}</span> : null;
+                      })()}
                     </div>
                     <div className="w-1/4 text-[9px] font-mono text-slate-500 font-semibold">{tx.receiptId || tx.id}</div>
                     <div className="w-1/4 text-[9px] font-bold text-slate-800 flex flex-col">

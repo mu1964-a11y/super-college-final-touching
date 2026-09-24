@@ -14,6 +14,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { getUnifiedTransactions } from '../utils/fee';
 import { getDocumentLink } from '../lib/whatsappAutomation';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface StudentDossier360Props {
@@ -22,6 +23,8 @@ interface StudentDossier360Props {
   onClose: () => void;
   data: any;
   onOpenWhatsApp?: (phone: string) => void;
+  initialTab?: 'profile' | 'financials' | 'academic' | 'whatsapp';
+  autoOpenChallan?: boolean;
 }
 
 export default function StudentDossier360({
@@ -30,9 +33,20 @@ export default function StudentDossier360({
   onClose,
   data,
   onOpenWhatsApp,
+  initialTab = 'profile',
+  autoOpenChallan = false,
 }: StudentDossier360Props) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'financials' | 'academic' | 'whatsapp'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'financials' | 'academic' | 'whatsapp'>(initialTab);
   const [isChallanOpen, setIsChallanOpen] = useState(false);
+
+  React.useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+    if (autoOpenChallan) {
+      setIsChallanOpen(true);
+    }
+  }, [initialTab, autoOpenChallan, student]);
 
   if (!isOpen || !student) return null;
 
@@ -477,7 +491,30 @@ _Office of the Principal, Superior College Jahanian_`;
                                 Rs. {(tx.amount || 0).toLocaleString()}
                               </TableCell>
                               <TableCell className="text-xs font-mono text-slate-500">
-                                {tx.date ? new Date(tx.date).toLocaleDateString() : 'Recorded'}
+                                <div className="font-semibold text-slate-800 dark:text-slate-200">
+                                  {tx.date ? new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recorded'}
+                                </div>
+                                {(() => {
+                                  let timeDisplay = '';
+                                  if (tx.createdAt || tx.created_at) {
+                                    const d = new Date(tx.createdAt || tx.created_at);
+                                    if (!isNaN(d.getTime())) timeDisplay = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                                  } else if (typeof tx.date === 'string' && (tx.date.includes('T') || tx.date.includes(':'))) {
+                                    const d = new Date(tx.date);
+                                    if (!isNaN(d.getTime())) timeDisplay = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                                  } else if (typeof tx.id === 'string' && tx.id.startsWith('tx-')) {
+                                    const ts = Number(tx.id.replace('tx-', '').split('-')[0]);
+                                    if (!isNaN(ts) && ts > 1600000000000 && ts < 2500000000000) {
+                                      timeDisplay = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                                    }
+                                  }
+                                  return timeDisplay ? (
+                                    <div className="text-[10px] text-teal-600 dark:text-teal-400 font-medium flex items-center gap-1 mt-0.5">
+                                      <Clock size={10} />
+                                      {timeDisplay}
+                                    </div>
+                                  ) : null;
+                                })()}
                               </TableCell>
                               <TableCell>
                                 <Badge 
