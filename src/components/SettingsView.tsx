@@ -27,6 +27,7 @@ import {
   X,
   FileText,
   Plus,
+  Sparkles,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -50,19 +51,29 @@ import { INITIAL_SETTINGS } from '../constants';
 import { compressImage } from '../lib/imageUtils';
 
 export default function SettingsView({ data }: { data: any }) {
-  const { settings, updateSettings } = data;
+  const { settings, updateSettings, students = [], admissions = [] } = data || {};
   const [formData, setFormData] = useState<AppSettings>(settings || INITIAL_SETTINGS);
   const [isSaving, setIsSaving] = useState(false);
-  const [newSection, setNewSection] = useState({ program: 'Inter', class: '2025-2027', name: '', gender: 'Male' });
+  const [isSyncingSections, setIsSyncingSections] = useState(false);
+  const [newSection, setNewSection] = useState({ 
+    program: 'Inter', 
+    class: settings?.academicSession || '2026-28', 
+    name: '', 
+    gender: 'Male' 
+  });
 
-  // Sync with Firebase settings when they load or change
+  // Sync with Supabase settings when they load or change
   React.useEffect(() => {
     if (settings) {
       const fixedSettings = { ...settings };
       // Proactively fix bad default emerald colors from previous bug
       if (fixedSettings.themeColor === '#10b981') fixedSettings.themeColor = '#085a4e';
       if (fixedSettings.sidebarColor === '#0c2d2d') fixedSettings.sidebarColor = '#085a4e';
-      setFormData(prev => ({ ...prev, ...fixedSettings }));
+      setFormData(prev => ({ 
+        ...prev, 
+        ...fixedSettings,
+        predefinedSections: fixedSettings.predefinedSections || (fixedSettings as any)?.config?.predefinedSections || prev.predefinedSections || []
+      }));
     }
   }, [settings]);
 
@@ -104,19 +115,45 @@ export default function SettingsView({ data }: { data: any }) {
     }
   };
 
-  const handleAddSection = () => {
-    if (!newSection.name) {
+  const handleAddSection = async () => {
+    const trimmedName = newSection.name?.trim();
+    if (!trimmedName) {
       toast.error("Please enter a section name");
       return;
     }
-    setFormData(prev => ({
-      ...prev,
-      predefinedSections: [
-        ...(prev.predefinedSections || []),
-        { id: crypto.randomUUID(), ...newSection }
-      ]
-    }));
+
+    const currentSections = formData.predefinedSections || [];
+    const isDuplicate = currentSections.some(
+      s => (s.name || '').trim().toLowerCase() === trimmedName.toLowerCase() &&
+           s.gender === newSection.gender &&
+           s.class === newSection.class
+    );
+
+    if (isDuplicate) {
+      toast.error(`Section "${trimmedName}" already exists for ${newSection.gender === 'Male' ? 'Boys' : 'Girls'} (${newSection.class})`);
+      return;
+    }
+
+    const newSec = {
+      id: `sec-${newSection.gender === 'Male' ? 'b' : 'g'}-${trimmedName.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Date.now().toString(36)}`,
+      program: newSection.program,
+      class: newSection.class,
+      name: trimmedName,
+      gender: newSection.gender
+    };
+
+    const updatedSections = [...currentSections, newSec];
+    const updatedForm = { ...formData, predefinedSections: updatedSections };
+    setFormData(updatedForm);
     setNewSection(prev => ({ ...prev, name: '' }));
+
+    try {
+      await updateSettings(updatedForm);
+      toast.success(`Section "${trimmedName}" saved successfully!`);
+    } catch (e) {
+      console.error("Auto-save section error:", e);
+      toast.error("Failed to save section to database");
+    }
   };
 
   const handleUpdateNewSection = (field: string, value: string) => {
@@ -132,11 +169,87 @@ export default function SettingsView({ data }: { data: any }) {
     }));
   };
 
-  const handleRemoveSection = (id: string) => {
-    setFormData(prev => ({
-      ...prev,
-      predefinedSections: (prev.predefinedSections || []).filter(sec => sec.id !== id)
-    }));
+  const handleRemoveSection = async (id: string) => {
+    const secToRemove = (formData.predefinedSections || []).find(sec => sec.id === id);
+    const updatedSections = (formData.predefinedSections || []).filter(sec => sec.id !== id);
+    const updatedForm = { ...formData, predefinedSections: updatedSections };
+    setFormData(updatedForm);
+
+    try {
+      await updateSettings(updatedForm);
+      toast.success(`Section ${secToRemove ? `"${secToRemove.name}" ` : ''}deleted successfully!`);
+    } catch (e) {
+      console.error("Auto-save remove section error:", e);
+      toast.error("Failed to delete section from database");
+    }
+  };
+
+  const handleAutoSyncSections = async () => {
+    setIsSyncingSections(true);
+    try {
+      const existing = formData.predefinedSections || [];
+      const existingKeys = new Set(
+        existing.map(s => `${(s.name || '').trim().toLowerCase()}_${s.gender || 'Male'}_${s.class || '2026-28'}`)
+      );
+
+      const newSectionsToAdd: typeof existing = [];
+      const allRecords = [...(students || []), ...(admissions || [])];
+
+      for (const record of allRecords) {
+        const secName = (record.section || '').trim();
+        if (!secName || secName === '-' || secName.toLowerCase() === 'unassigned') continue;
+
+        // Determine gender
+        let gender = record.gender;
+        if (!gender) {
+          const cat = (record.category || '').toLowerCase();
+          if (cat.includes('girl') || cat.includes('female')) gender = 'Female';
+          else if (cat.includes('boy') || cat.includes('male')) gender = 'Male';
+          else if (secName.toUpperCase().endsWith('G')) gender = 'Female';
+          else if (secName.toUpperCase().endsWith('B')) gender = 'Male';
+          else gender = 'Male';
+        }
+
+        // Determine program
+        let program = 'Inter';
+        const groupLower = (record.group || record.category || '').toLowerCase();
+        if (groupLower.includes('dit')) program = 'DIT';
+        else if (groupLower.includes('bs')) program = 'BS';
+        else if (groupLower.includes('uk')) program = 'UKL3';
+
+        // Determine session / class
+        const session = record.session || formData.academicSession || '2026-28';
+
+        const key = `${secName.toLowerCase()}_${gender}_${session}`;
+        if (!existingKeys.has(key)) {
+          existingKeys.add(key);
+          newSectionsToAdd.push({
+            id: `sec-${gender === 'Male' ? 'b' : 'g'}-${secName.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+            program,
+            class: session,
+            name: secName,
+            gender
+          });
+        }
+      }
+
+      if (newSectionsToAdd.length === 0) {
+        toast.info("All active student sections are already registered in Predefined Sections.");
+        return;
+      }
+
+      const updatedSections = [...existing, ...newSectionsToAdd];
+      const updatedForm = { ...formData, predefinedSections: updatedSections };
+      setFormData(updatedForm);
+
+      await updateSettings(updatedForm);
+      toast.success(`Discovered and saved ${newSectionsToAdd.length} section(s) from student records!`);
+    } catch (e: any) {
+      console.error("Auto-sync sections error:", e);
+      toast.error("Failed to auto-sync sections: " + (e?.message || 'Unknown error'));
+    } finally {
+      setIsSyncingSections(false);
+    }
   };
 
   const handleSave = async () => {
@@ -153,7 +266,14 @@ export default function SettingsView({ data }: { data: any }) {
 
   const handleResetDefaults = async () => {
     if(confirm("Are you sure you want to reset all visual settings back to original defaults?")) {
-      const resetData = { ...formData, ...INITIAL_SETTINGS, contactNumber: formData.contactNumber, email: formData.email, address: formData.address };
+      const resetData = { 
+        ...formData, 
+        ...INITIAL_SETTINGS, 
+        contactNumber: formData.contactNumber, 
+        email: formData.email, 
+        address: formData.address,
+        predefinedSections: formData.predefinedSections || []
+      };
       setFormData(resetData);
       setIsSaving(true);
       try {
@@ -676,12 +796,25 @@ export default function SettingsView({ data }: { data: any }) {
               <div>
                 <CardTitle className="text-[11px] font-black uppercase tracking-widest text-superior-teal flex items-center gap-2">
                   <Layers size={16} /> Predefined Classes & Sections
+                  <Badge variant="outline" className="ml-2 font-bold text-xs bg-emerald-50 text-superior-teal border-emerald-200">
+                    {(formData.predefinedSections || []).length} Total
+                  </Badge>
                 </CardTitle>
-                <CardDescription className="text-xs font-bold text-slate-400 mt-1">Configure predefined sections to select from during admissions.</CardDescription>
+                <CardDescription className="text-xs font-bold text-slate-400 mt-1">Configure predefined sections to select from during admissions and reports.</CardDescription>
               </div>
-              <Button onClick={handleAddSection} className="h-10 px-4 rounded-xl font-bold bg-superior-teal text-white">
-                <Plus size={16} className="mr-2" /> Add Section
-              </Button>
+              <div className="flex items-center gap-3">
+                <Button 
+                  type="button"
+                  variant="outline" 
+                  onClick={handleAutoSyncSections} 
+                  disabled={isSyncingSections}
+                  className="h-10 px-4 rounded-xl font-bold border-emerald-300 text-superior-teal hover:bg-emerald-50 transition-all flex items-center gap-2 shadow-sm"
+                  title="Scan enrolled students to auto-detect and restore any missing sections"
+                >
+                  <Sparkles size={16} className={cn("text-superior-teal", isSyncingSections && "animate-spin")} />
+                  {isSyncingSections ? 'Syncing...' : 'Auto-Sync From Students'}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="p-8">
               
@@ -744,8 +877,8 @@ export default function SettingsView({ data }: { data: any }) {
                     />
                   </div>
                   <div className="flex-none">
-                    <Button onClick={handleAddSection} className="h-10 px-6 rounded-xl font-bold bg-superior-teal text-white w-full">
-                      Add
+                    <Button onClick={handleAddSection} className="h-10 px-6 rounded-xl font-bold bg-superior-teal text-white w-full flex items-center gap-2">
+                      <Plus size={16} /> Add Section
                     </Button>
                   </div>
                 </div>
@@ -754,15 +887,20 @@ export default function SettingsView({ data }: { data: any }) {
               {/* Preview Added Sections */}
               <div className="space-y-6">
                 <div>
-                  <h4 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-blue-500"></span> Boys Campus Sections
+                  <h4 className="text-sm font-bold text-slate-800 mb-3 flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-sm shadow-blue-500/50"></span> Boys Campus Sections
+                    </span>
+                    <Badge variant="secondary" className="bg-blue-50 text-blue-700 font-bold text-[10px]">
+                      {formData.predefinedSections?.filter(s => s.gender === 'Male').length || 0} Sections
+                    </Badge>
                   </h4>
                   <div className="flex flex-wrap gap-2">
                     {formData.predefinedSections?.filter(s => s.gender === 'Male').length === 0 && (
                       <p className="text-xs text-slate-400 py-2">No boys sections added.</p>
                     )}
                     {formData.predefinedSections?.filter(s => s.gender === 'Male').map((sec) => (
-                      <Badge key={sec.id} variant="secondary" className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border-none rounded-lg text-sm flex items-center gap-2">
+                      <Badge key={sec.id} variant="secondary" className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100 rounded-lg text-sm flex items-center gap-2 transition-all">
                         <span className="font-semibold">{sec.program}</span>
                         <span className="opacity-50">•</span>
                         <span>{sec.class}</span>
@@ -777,15 +915,20 @@ export default function SettingsView({ data }: { data: any }) {
                 </div>
 
                 <div>
-                  <h4 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-pink-500"></span> Girls Campus Sections
+                  <h4 className="text-sm font-bold text-slate-800 mb-3 flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-pink-500 shadow-sm shadow-pink-500/50"></span> Girls Campus Sections
+                    </span>
+                    <Badge variant="secondary" className="bg-pink-50 text-pink-700 font-bold text-[10px]">
+                      {formData.predefinedSections?.filter(s => s.gender === 'Female').length || 0} Sections
+                    </Badge>
                   </h4>
                   <div className="flex flex-wrap gap-2">
                     {formData.predefinedSections?.filter(s => s.gender === 'Female').length === 0 && (
                       <p className="text-xs text-slate-400 py-2">No girls sections added.</p>
                     )}
                     {formData.predefinedSections?.filter(s => s.gender === 'Female').map((sec) => (
-                      <Badge key={sec.id} variant="secondary" className="px-3 py-1.5 bg-pink-50 text-pink-700 hover:bg-pink-100 border-none rounded-lg text-sm flex items-center gap-2">
+                      <Badge key={sec.id} variant="secondary" className="px-3 py-1.5 bg-pink-50 text-pink-700 hover:bg-pink-100 border border-pink-100 rounded-lg text-sm flex items-center gap-2 transition-all">
                         <span className="font-semibold">{sec.program}</span>
                         <span className="opacity-50">•</span>
                         <span>{sec.class}</span>
@@ -802,12 +945,17 @@ export default function SettingsView({ data }: { data: any }) {
                 {/* Fallback for Co-ed / other */}
                 {(formData.predefinedSections?.filter(s => s.gender !== 'Male' && s.gender !== 'Female').length || 0) > 0 && (
                   <div>
-                    <h4 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-slate-500"></span> Other / Co-ed Sections
+                    <h4 className="text-sm font-bold text-slate-800 mb-3 flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-slate-500 shadow-sm shadow-slate-500/50"></span> Other / Co-ed Sections
+                      </span>
+                      <Badge variant="secondary" className="bg-slate-100 text-slate-700 font-bold text-[10px]">
+                        {formData.predefinedSections?.filter(s => s.gender !== 'Male' && s.gender !== 'Female').length || 0} Sections
+                      </Badge>
                     </h4>
                     <div className="flex flex-wrap gap-2">
                       {formData.predefinedSections?.filter(s => s.gender !== 'Male' && s.gender !== 'Female').map((sec) => (
-                        <Badge key={sec.id} variant="secondary" className="px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 border-none rounded-lg text-sm flex items-center gap-2">
+                        <Badge key={sec.id} variant="secondary" className="px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 rounded-lg text-sm flex items-center gap-2 transition-all">
                           <span className="font-semibold">{sec.program}</span>
                           <span className="opacity-50">•</span>
                           <span>{sec.class}</span>

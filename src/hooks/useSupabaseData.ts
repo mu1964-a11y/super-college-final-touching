@@ -447,7 +447,8 @@ export function useSupabaseData(user: any) {
         enableHighlighting: settingsData.enable_highlighting ?? settingsData.config?.enableHighlighting,
         admissionSlipCustomText: settingsData.admission_slip_custom_text ?? settingsData.config?.admissionSlipCustomText,
         feeReceiptCustomText: settingsData.fee_receipt_custom_text ?? settingsData.config?.feeReceiptCustomText,
-        predefinedSections: settingsData.config?.predefinedSections || []
+        predefinedSections: settingsData.predefined_sections || settingsData.config?.predefinedSections || [],
+        config: settingsData.config || {}
       } as any);
       if (permissionsData) setPermissions(permissionsData.map(p => ({
         ...p,
@@ -636,9 +637,12 @@ export function useSupabaseData(user: any) {
     setDeletedArchive(updated);
     try {
       if ((settings as any)?.id) {
+        const existingConfig = (settings as any)?.config || {};
+        const safeSections = (settings as any)?.predefinedSections || existingConfig.predefinedSections || [];
         await supabase.from('settings').update({
           config: {
-            ...((settings as any)?.config || {}),
+            ...existingConfig,
+            predefinedSections: safeSections,
             deletedArchive: updated
           },
           updated_at: new Date().toISOString()

@@ -24,6 +24,7 @@ export function useSettingsOperations(ctx: any) {
         enabled_modules: newSettings.enabledModules,
         updated_at: new Date().toISOString(),
         config: {
+          ...((settings as any)?.config || {}),
           sidebarColor: newSettings.sidebarColor,
           sidebarTextColor: newSettings.sidebarTextColor,
           headerColor: newSettings.headerColor,
@@ -38,7 +39,9 @@ export function useSettingsOperations(ctx: any) {
           admissionSlipCustomText: newSettings.admissionSlipCustomText,
           feeReceiptCustomText: newSettings.feeReceiptCustomText,
           logo: newSettings.logo,
-          predefinedSections: newSettings.predefinedSections
+          predefinedSections: newSettings.predefinedSections !== undefined 
+            ? newSettings.predefinedSections 
+            : ((settings as any)?.predefinedSections || (settings as any)?.config?.predefinedSections || [])
         }
       };
 

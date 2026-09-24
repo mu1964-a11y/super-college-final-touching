@@ -143,8 +143,20 @@ export default function AttendanceView({ data }: { data: any }) {
         sections = sections.filter((s: any) => s.gender === 'Female');
       }
     }
-    return Array.from(new Set(sections.map((s: any) => s.name).filter(Boolean))) as string[];
-  }, [data?.settings?.predefinedSections, classFilter]);
+    const predefinedNames = sections.map((s: any) => s.name).filter(Boolean);
+    const studentSections = (students || [])
+      .filter((s: any) => {
+        if (classFilter && classFilter !== 'all') {
+          const matchClass = s.category === classFilter || s.currentClass === classFilter || s.groupName === classFilter;
+          if (!matchClass) return false;
+        }
+        return true;
+      })
+      .map((s: any) => (s.section || '').trim())
+      .filter((sec: string) => sec && sec !== '-' && sec.toLowerCase() !== 'unassigned');
+
+    return Array.from(new Set([...predefinedNames, ...studentSections])).sort() as string[];
+  }, [data?.settings?.predefinedSections, classFilter, students]);
 
   const classOptions = [
     "Inter Part-1 Boys", "Inter Part-2 Boys", "Inter Part-1 Girls", "Inter Part-2 Girls", 

@@ -270,8 +270,17 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
       });
     }
 
-    return Array.from(new Set(sections.map((s: any) => s.name).filter(Boolean))) as string[];
-  }, [data?.settings?.predefinedSections, programFilter, genderFilter]);
+    const predefinedNames = sections.map((s: any) => s.name).filter(Boolean);
+    const activeStudentSections = (mergedStudents || [])
+      .filter((s: any) => {
+        if (genderFilter !== "all" && s.gender && s.gender !== genderFilter) return false;
+        return true;
+      })
+      .map((s: any) => (s.section || '').trim())
+      .filter((sec: string) => sec && sec !== '-' && sec.toLowerCase() !== 'unassigned');
+
+    return Array.from(new Set([...predefinedNames, ...activeStudentSections])).sort() as string[];
+  }, [data?.settings?.predefinedSections, programFilter, genderFilter, mergedStudents]);
 
   const filteredStudents = React.useMemo(() => {
     const searchClean = (debouncedSearch || '').trim().toLowerCase();
@@ -2101,6 +2110,9 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
                 {filteredSections.map(sec => (
                   <SelectItem key={sec.id} value={sec.name}>{sec.name} ({sec.class})</SelectItem>
                 ))}
+                {formData.section && formData.section !== 'Other' && !filteredSections.some(s => s.name === formData.section) && (
+                  <SelectItem key="current-sec" value={formData.section}>{formData.section} (Current)</SelectItem>
+                )}
                 <SelectItem value="Other">Other / Manual</SelectItem>
               </SelectContent>
             </Select>

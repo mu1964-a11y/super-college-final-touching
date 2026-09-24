@@ -1109,10 +1109,17 @@ export default function FeeManagementView({
       });
     }
 
-    return Array.from(
-      new Set(sections.map((s: any) => s.name).filter(Boolean))
-    ) as string[];
-  }, [data?.settings?.predefinedSections, groupFilter, genderFilter]);
+    const predefinedNames = sections.map((s: any) => s.name).filter(Boolean);
+    const studentSections = (students || [])
+      .filter((s: any) => {
+        if (genderFilter !== "all" && s.gender && s.gender !== genderFilter) return false;
+        return true;
+      })
+      .map((s: any) => (s.section || '').trim())
+      .filter((sec: string) => sec && sec !== '-' && sec.toLowerCase() !== 'unassigned');
+
+    return Array.from(new Set([...predefinedNames, ...studentSections])).sort() as string[];
+  }, [data?.settings?.predefinedSections, groupFilter, genderFilter, students]);
 
   const filteredStudents = useMemo(() => {
     return students.filter((s: any) => {
