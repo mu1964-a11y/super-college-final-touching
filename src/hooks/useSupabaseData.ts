@@ -394,7 +394,8 @@ export function useSupabaseData(user: any) {
         staffId: t.staff_id,
         startTime: t.start_time,
         endTime: t.end_time,
-        classRoom: t.class_room
+        classRoom: t.class_room,
+        section: t.section || (t.class_room?.match(/\(Sec\s+([^)]+)\)/i)?.[1]?.trim()) || ''
       })));
       if (studentAttendanceData) setStudentAttendance(studentAttendanceData.map(a => ({
         ...a,

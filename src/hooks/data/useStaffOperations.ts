@@ -159,14 +159,16 @@ export function useStaffOperations(ctx: any) {
 
   const addTimetableEntry = async (entry: any) => {
     try {
+      const validUuid = entry.id && entry.id.length === 36 ? entry.id : crypto.randomUUID();
       const { error } = await supabase.from('staff_timetable').insert({
-        id: entry.id && !entry.id.includes('-') && entry.id.length === 36 ? entry.id : undefined,
+        id: validUuid,
         staff_id: entry.staffId,
         day: entry.day,
         start_time: entry.startTime,
         end_time: entry.endTime,
         subject: entry.subject,
-        class_room: entry.classRoom + (entry.section ? ` (Sec ${entry.section})` : '')
+        class_room: entry.classRoom || 'Regular',
+        section: entry.section || ''
       });
       if (error) throw error;
       toast.success("Timetable entry added successfully");
@@ -178,11 +180,6 @@ export function useStaffOperations(ctx: any) {
 
   const removeTimetableEntry = async (id: string) => {
     try {
-      if (id.includes('-') && id.length !== 36) {
-        // Was a local ID, can't delete from supabase by uuid, do nothing or show error
-        toast.info("Removed local entry");
-        return;
-      }
       const { error } = await supabase.from('staff_timetable').delete().eq('id', id);
       if (error) throw error;
       toast.success("Timetable entry removed");
