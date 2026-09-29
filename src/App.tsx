@@ -81,6 +81,7 @@ import PortalGatewayView from "./components/PortalGatewayView";
 import WelcomeScreen from "./components/WelcomeScreen";
 import AcademicCanvasBackground from "./components/AcademicCanvasBackground";
 import PortalAuthCard from "./components/PortalAuthCard";
+import PremiumLoadingScreen from "./components/PremiumLoadingScreen";
 import { Search } from "lucide-react";
 
 import { Settings as SettingsIcon } from "lucide-react";
@@ -1173,93 +1174,11 @@ export default function App() {
 
   if (authLoading || (!user && !portalSession && !isBrandingLoaded) || ((user || portalSession) && data.loading)) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-white relative overflow-hidden font-sans select-none px-4">
-        {/* Academic Blueprint Canvas Background */}
-        <AcademicCanvasBackground logo={brandingSettings.logo} />
-
-        {/* Central Floating Crystal Card */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 15 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
-          className="relative z-10 w-full max-w-lg bg-white/90 border border-slate-200/90 rounded-[2.5rem] p-8 md:p-10 shadow-[0_25px_70px_rgba(8,90,78,0.12),inset_0_1px_1px_rgba(255,255,255,1)] backdrop-blur-2xl flex flex-col items-center text-center overflow-hidden"
-        >
-          {/* Top Emerald Accent Line */}
-          <div className="absolute top-0 inset-x-0 h-[2.5px] bg-gradient-to-r from-transparent via-[#085a4e]/50 to-transparent" />
-
-          {/* 3D Floating College Crest Medallion */}
-          <div className="relative mb-6 w-32 h-32 flex items-center justify-center perspective-[800px]">
-            <div className="absolute inset-1 rounded-full border border-emerald-500/30 shadow-[0_0_25px_rgba(8,90,78,0.2)] animate-pulse" />
-            <div className="w-28 h-28 rounded-full p-[4px] bg-gradient-to-tr from-[#8a651a] via-[#f7e096] to-[#b89437] shadow-xl flex items-center justify-center">
-              <div className="w-full h-full rounded-full bg-white flex items-center justify-center p-2.5 overflow-hidden">
-                {brandingSettings.logo ? (
-                  <img src={brandingSettings.logo} alt="Logo" className="w-full h-full object-cover rounded-full" />
-                ) : (
-                  <School size={48} className="text-[#085a4e]" />
-                )}
-              </div>
-            </div>
-            {/* Spinning Outer Ring */}
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 5, repeat: Infinity, ease: "linear" }}
-              className="absolute inset-[-4px] rounded-full border border-emerald-600/30 border-t-[#085a4e]"
-            />
-          </div>
-
-          {/* Institutional Branding */}
-          <div className="space-y-1 mb-2">
-            <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-black uppercase tracking-wider text-[#085a4e] shadow-xs">
-              <Sparkles size={11} className="text-amber-500 animate-pulse" />
-              <span>Enterprise ERP & AI Portal • Session 2026-28</span>
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight pt-1 font-serif">
-              {brandingSettings.name || "Superior College Jahanian"}
-            </h2>
-            <p className="text-xs font-bold text-emerald-800 tracking-wide mt-0.5">
-              Jahanian Main Campus • Intelligent Academic Operating Cloud
-            </p>
-
-            {/* New Features Strip: AI, WhatsApp & Verified Digital Records */}
-            <div className="flex flex-wrap items-center justify-center gap-1.5 pt-3 pb-1">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-900">
-                <Bot size={12} className="text-emerald-600 shrink-0" />
-                <span>Nexus AI 360°</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-teal-500/10 border border-teal-500/20 text-[10px] font-bold text-teal-900">
-                <MessageCircle size={12} className="text-teal-600 shrink-0" />
-                <span>WhatsApp Gateway</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[10px] font-bold text-amber-900">
-                <QrCode size={12} className="text-amber-700 shrink-0" />
-                <span>Verified Digital Slips</span>
-              </span>
-            </div>
-          </div>
-
-          {/* Dynamic Progress Indicator */}
-          <div className="w-full max-w-xs mt-3 pt-1">
-            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200/80 relative">
-              <motion.div
-                animate={{ x: ["-100%", "100%"] }}
-                transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
-                className="w-1/2 h-full bg-gradient-to-r from-[#085a4e] via-[#0a6d5f] to-[#c9a84c] rounded-full shadow-[0_0_10px_rgba(8,90,78,0.3)]"
-              />
-            </div>
-            <p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mt-2.5">
-              {authLoading
-                ? "Verifying Credentials & Workspace..."
-                : "Synchronizing Nexus AI, WhatsApp & Academic Cloud..."}
-            </p>
-          </div>
-
-          {/* Footer Security Pill */}
-          <div className="flex items-center gap-1.5 mt-5 text-slate-400 text-[10px] uppercase font-bold tracking-widest">
-            <Shield size={12} className="text-[#085a4e]" />
-            <span>256-Bit TLS 1.3 Certified • AI & WhatsApp Enabled Gateway</span>
-          </div>
-        </motion.div>
-      </div>
+      <PremiumLoadingScreen 
+        brandingSettings={brandingSettings}
+        authLoading={authLoading}
+        customMessage={authLoading ? "Verifying Credentials & Workspace..." : undefined}
+      />
     );
   }
 
@@ -1571,176 +1490,12 @@ export default function App() {
   }
 
   if (data.loading || loadingCountdown > 0) {
-    const percentMap: Record<number, number> = {
-      5: 18,
-      4: 42,
-      3: 68,
-      2: 88,
-      1: 96,
-      0: 100
-    };
-    const currentPercent = percentMap[loadingCountdown] || 15;
-    
-    const steps = [
-      { id: 1, label: "AUTHENTICATING", icon: UserCheck },
-      { id: 2, label: "VERIFYING", icon: Database },
-      { id: 3, label: "SECURING", icon: Shield },
-      { id: 4, label: "FINALIZING", icon: CheckCircle2 }
-    ];
-
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-white relative overflow-hidden font-sans select-none px-4">
-        {/* Architectural Academic Blueprint Canvas */}
-        <AcademicCanvasBackground logo={brandingSettings.logo} />
-
-        {/* Floating Master Crystal Pellet Card */}
-        <div className="relative z-10 w-full max-w-xl bg-white/95 border border-slate-200/90 rounded-[2.5rem] p-8 md:p-10 shadow-[0_25px_70px_rgba(8,90,78,0.12)] backdrop-blur-xl flex flex-col items-center overflow-hidden">
-          {/* Top Accent Line */}
-          <div className="absolute top-0 inset-x-0 h-[2.5px] bg-gradient-to-r from-transparent via-[#085a4e]/50 to-transparent" />
-
-          {/* Main Logo Sphere */}
-          <div className="relative mb-6 w-32 h-32 flex items-center justify-center">
-            {/* Glowing inner rings */}
-            <div className="absolute inset-1 rounded-full border border-emerald-500/30 shadow-[0_0_25px_rgba(8,90,78,0.2)] animate-pulse" />
-            <div className="absolute inset-0 rounded-full border-2 border-[#085a4e]/30 bg-gradient-to-tr from-[#085a4e] via-[#0a6d5f] to-[#c9a84c] shadow-lg p-[2px] overflow-hidden">
-              <div className="w-full h-full rounded-full bg-white flex items-center justify-center p-2.5 overflow-hidden">
-                {brandingSettings.logo ? (
-                  <img src={brandingSettings.logo} alt="Logo" className="w-full h-full object-cover rounded-full" />
-                ) : (
-                  <School size={56} className="text-[#085a4e]" />
-                )}
-              </div>
-            </div>
-            {/* Countdown HUD Center Overlaid */}
-            {loadingCountdown > 0 && (
-              <div className="absolute -bottom-1 -right-1 bg-slate-900 border border-emerald-500/60 rounded-full w-8 h-8 flex items-center justify-center z-20 shadow-md text-[#c9a84c] font-sans font-black text-xs">
-                {loadingCountdown}s
-              </div>
-            )}
-            
-            {/* Rotating Outer Rings */}
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
-              className="absolute inset-[-8px] rounded-full border border-emerald-600/30 border-t-[#085a4e]"
-            />
-            <motion.div
-              animate={{ rotate: -360 }}
-              transition={{ duration: 12, repeat: Infinity, ease: "linear" }}
-              className="absolute inset-[-16px] rounded-full border border-slate-200/60 border-b-emerald-600/30 pointer-events-none"
-            />
-          </div>
-
-          {/* Heading Text display */}
-          <div className="text-center space-y-1">
-            <h1 className="text-xs md:text-sm font-black text-emerald-800 tracking-[0.25em] uppercase">
-              {brandingSettings.name || "Superior College"}
-            </h1>
-            {!(brandingSettings.name || "").toLowerCase().includes("jahanian") && (
-              <h2 className="text-2xl md:text-3xl font-sans font-black text-slate-900 tracking-tight uppercase">
-                Jahanian Campus
-              </h2>
-            )}
-          </div>
-
-          {/* Graduation Cap Lines Divider */}
-          <div className="flex items-center gap-3 w-48 my-3 mx-auto">
-            <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent to-emerald-600/40" />
-            <GraduationCap className="text-[#085a4e] w-4 h-4 shrink-0" />
-            <div className="h-[1px] flex-1 bg-gradient-to-l from-transparent to-emerald-600/40" />
-          </div>
-
-          {/* Welcome subtitle message */}
-          {user && (
-            <motion.p
-              initial={{ opacity: 0, y: 5 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-xs md:text-sm text-slate-600 font-medium tracking-wide mb-5 text-center"
-            >
-              Welcome back, <span className="text-emerald-800 font-black">{user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Admin"}</span>! Logging you in...
-            </motion.p>
-          )}
-
-          {/* Crystal Pellet Stepper Card */}
-          <div className="w-full bg-[#f8fafc] border border-slate-200/80 rounded-2xl p-5 shadow-inner mt-2">
-            {/* Steps line horizontal layout */}
-            <div className="flex items-center justify-between relative mb-6 px-2">
-              {/* Connecting line behind icons */}
-              <div className="absolute top-[20px] left-8 right-8 h-[2px] bg-slate-200 z-0 rounded-full">
-                <motion.div
-                  className="h-full bg-gradient-to-r from-[#085a4e] via-[#0a6d5f] to-[#c9a84c]"
-                  initial={{ width: "0%" }}
-                  animate={{ width: `${Math.min(100, (Math.max(0, 5 - loadingCountdown - 1) / 3) * 100)}%` }}
-                  transition={{ duration: 0.5 }}
-                />
-              </div>
-
-              {steps.map((st) => {
-                const currentProgressIndex = 5 - loadingCountdown;
-                const isCompleted = currentProgressIndex >= st.id;
-                const isActive = currentProgressIndex === st.id - 1;
-
-                return (
-                  <div key={st.id} className="flex flex-col items-center z-10 relative flex-1">
-                    <motion.div
-                      animate={isActive ? { scale: [1, 1.08, 1] } : {}}
-                      transition={{ duration: 2, repeat: Infinity }}
-                      className={cn(
-                        "w-10 h-10 rounded-full border flex items-center justify-center transition-all duration-300 shadow-xs",
-                        isCompleted
-                          ? "bg-[#085a4e] border-[#085a4e] text-white"
-                          : isActive
-                          ? "bg-emerald-50 border-emerald-600 text-[#085a4e] shadow-[0_0_12px_rgba(8,90,78,0.3)]"
-                          : "bg-white border-slate-200 text-slate-400"
-                      )}
-                    >
-                      {isCompleted ? (
-                        <CheckCircle2 size={16} className="stroke-[3]" />
-                      ) : (
-                        <st.icon size={15} className={cn(isActive && "animate-pulse")} />
-                      )}
-                    </motion.div>
-                    <span
-                      className={cn(
-                        "text-[9px] font-black tracking-wider uppercase mt-2.5 transition-colors duration-300",
-                        isCompleted ? "text-[#085a4e]" : isActive ? "text-slate-900" : "text-slate-400"
-                      )}
-                    >
-                      {st.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Dynamic system percentage loader */}
-            <div className="space-y-1.5 px-1 mt-4">
-              <div className="flex justify-between items-center text-[10px] font-black tracking-widest text-slate-700 uppercase">
-                <span className="flex items-center gap-1.5 text-emerald-800">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                  Enterprise Core System
-                </span>
-                <span className="font-mono text-emerald-800">{currentPercent}%</span>
-              </div>
-              <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden border border-slate-200/80 relative">
-                <motion.div
-                  className="h-full bg-gradient-to-r from-[#085a4e] via-[#0a6d5f] to-[#c9a84c] shadow-[0_0_10px_rgba(8,90,78,0.3)] rounded-full"
-                  initial={{ width: "15%" }}
-                  animate={{ width: `${currentPercent}%` }}
-                  transition={{ duration: 0.5 }}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Shield safety caption */}
-          <div className="flex items-center gap-1.5 mt-6 text-slate-500 text-[10px] uppercase font-bold tracking-widest">
-            <Shield size={12} className="text-[#085a4e] shrink-0" />
-            <span>Secure TLS Connection • Superior Academic Cloud</span>
-          </div>
-
-        </div>
-      </div>
+      <PremiumLoadingScreen 
+        brandingSettings={brandingSettings}
+        countdown={loadingCountdown}
+        userName={user?.user_metadata?.full_name || user?.email?.split('@')[0]}
+      />
     );
   }
 
