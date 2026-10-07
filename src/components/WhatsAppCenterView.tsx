@@ -118,6 +118,7 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
   // Verified Faculty & Admin Users state
   const [verifiedUsersList, setVerifiedUsersList] = useState<any[]>([]);
   const [isLoadingVerifiedUsers, setIsLoadingVerifiedUsers] = useState(false);
+  const [delegatedAdminsList, setDelegatedAdminsList] = useState<any[]>([]);
   const [isLinkingFacultyModal, setIsLinkingFacultyModal] = useState(false);
   const [selectedStaffIdToLink, setSelectedStaffIdToLink] = useState("");
   const [manualLinkName, setManualLinkName] = useState("");
@@ -216,6 +217,16 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
     } catch {} finally {
       setIsLoadingVerifiedUsers(false);
     }
+  };
+
+  const fetchDelegatedAdmins = async () => {
+    try {
+      const res = await fetch("/api/whatsapp/delegated-admins");
+      if (res.ok) {
+        const d = await res.json();
+        setDelegatedAdminsList(d.admins || []);
+      }
+    } catch {}
   };
 
   const handleUnlinkUser = async (phone: string, name: string) => {
@@ -382,12 +393,14 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
     fetchChatLogs();
     fetchBotStats();
     fetchVerifiedUsers();
+    fetchDelegatedAdmins();
     fetchReportConfig();
     const iv = setInterval(() => {
       fetchStatus();
       fetchChatLogs();
       fetchBotStats();
       fetchVerifiedUsers();
+      fetchDelegatedAdmins();
     }, 4000);
     return () => clearInterval(iv);
   }, []);
@@ -2048,8 +2061,8 @@ _Administration Directorate, SGC Jahanian_`;
                           };
                         }
 
-                        const isDelegated = delegatedAdminsList?.some((a: any) => {
-                          const aNorm = (a.phone || "").replace(/\D/g, "");
+                        const isDelegated = Array.isArray(delegatedAdminsList) && delegatedAdminsList.some((a: any) => {
+                          const aNorm = (a?.phone || "").replace(/\D/g, "");
                           return aNorm && (norm === aNorm || (norm.length >= 9 && aNorm.endsWith(norm.slice(-9))));
                         });
                         if (isDelegated) {

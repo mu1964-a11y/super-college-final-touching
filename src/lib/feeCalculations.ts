@@ -1,4 +1,4 @@
-import { Installment, Student, Admission } from "@/types";
+import { Installment, Student, Admission } from "../types";
 
 /**
  * Generate cyclic monthly installments with a fixed day of the month (e.g., 10th of every month)
