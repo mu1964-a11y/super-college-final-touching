@@ -1763,7 +1763,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
                 <div className="text-right text-[10px]" style={{ color: '#475569' }}>
                   <strong className="block font-black uppercase text-[10px]" style={{ color: '#0f172a' }}>Superior College Jahanian</strong>
                   <span>Old Multan Road, Jahanian</span>
-                  <span className="block font-mono font-bold" style={{ color: '#085a4e' }}>Helpline: 0301-4455891</span>
+                  <span className="block font-mono font-bold" style={{ color: '#085a4e' }}>Helpline: {settings?.contactNumber || "0331-2211147"}</span>
                 </div>
               </div>
 

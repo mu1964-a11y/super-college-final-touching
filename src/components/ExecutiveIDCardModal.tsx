@@ -138,7 +138,7 @@ export default function ExecutiveIDCardModal({
 
   const collegeName = "SUPERIOR COLLEGE JAHANIAN";
   const campusAddress = "Canal Road, Jahanian";
-  const helplinePhone = "0301-4455891";
+  const helplinePhone = settings?.contactNumber || "0331-2211147";
   const logo = settings?.logo;
 
   // Theme styling based on entity type

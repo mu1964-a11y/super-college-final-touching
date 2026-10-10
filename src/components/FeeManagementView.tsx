@@ -2215,7 +2215,7 @@ export default function FeeManagementView({
 • *Remaining Balance:* Rs. ${Number(remainingBal).toLocaleString()}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ✅ Payment verified and recorded in college accounts ledger.
-📞 Accounts Desk: 0301-4455891
+📞 Accounts Desk: ${data?.settings?.contactNumber || "0331-2211147"}
 _Accounts & Finance Department, SGC Jahanian_`;
                           window.open(
                             `https://wa.me/?text=${encodeURIComponent(msg)}`,

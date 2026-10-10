@@ -371,7 +371,12 @@ export default function AdmissionsView({
     return filteredAdmissions.slice(start, end);
   }, [filteredAdmissions, currentPage]);
 
-  const getStatusBadge = (status: AdmissionStatus, isAdmitted: boolean) => {
+  const getStatusBadge = (
+    status: AdmissionStatus,
+    isAdmitted: boolean,
+    feeReceived?: number,
+    totalPackage?: number,
+  ) => {
     if (!isAdmitted)
       return (
         <Badge
@@ -381,6 +386,43 @@ export default function AdmissionsView({
           Pending
         </Badge>
       );
+
+    const received = Number(feeReceived || 0);
+    const total = Number(totalPackage || 0);
+
+    // Dynamic financial status check (ensures records match active fee filter)
+    if (total > 0 && received >= total) {
+      return (
+        <Badge
+          variant="outline"
+          className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 font-black text-[9px] uppercase tracking-wider px-2.5 py-0.5 rounded-full"
+        >
+          Full Paid
+        </Badge>
+      );
+    }
+
+    if (received > 0 && received < total) {
+      return (
+        <Badge
+          variant="outline"
+          className="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 font-black text-[9px] uppercase tracking-wider px-2.5 py-0.5 rounded-full"
+        >
+          Partial Paid
+        </Badge>
+      );
+    }
+
+    if (total > 0 && received === 0) {
+      return (
+        <Badge
+          variant="outline"
+          className="bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 font-black text-[9px] uppercase tracking-wider px-2.5 py-0.5 rounded-full"
+        >
+          Unpaid
+        </Badge>
+      );
+    }
 
     switch (status) {
       case "Full Paid":
@@ -425,7 +467,7 @@ export default function AdmissionsView({
             variant="outline"
             className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 font-black text-[9px] uppercase tracking-wider px-2.5 py-0.5 rounded-full"
           >
-            {status || "Pending"}
+            {status || "Confirmed"}
           </Badge>
         );
     }
@@ -1639,7 +1681,12 @@ export default function AdmissionsView({
                         ).toLocaleString()}
                       </TableCell>
                       <TableCell>
-                        {getStatusBadge(admission.status, admission.isAdmitted)}
+                        {getStatusBadge(
+                          admission.status,
+                          admission.isAdmitted,
+                          admission.feeReceived,
+                          admission.totalPackage || admission.totalFeeFinalized
+                        )}
                       </TableCell>
                       <TableCell className="text-right pr-6">
                         <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>

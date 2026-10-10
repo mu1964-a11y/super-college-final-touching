@@ -488,7 +488,7 @@ ${marksTableText}
 ${resultUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 *Instruction:* Board imtehanat mein aala position ke liye rozana revision aur regular attendance yaqeeni banayein.
-📞 Academic Helpdesk: 0301-4455891
+📞 Academic Helpdesk: ${data?.settings?.contactNumber || "0331-2211147"}
 _Canal Road, Jahanian | Superior College Jahanian_`;
 
     try {
@@ -597,7 +597,7 @@ ${marksTableText}
 ${resultUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 *Instruction:* Board imtehanat mein aala position ke liye rozana revision aur regular attendance yaqeeni banayein.
-📞 Academic Helpdesk: 0301-4455891
+📞 Academic Helpdesk: ${data?.settings?.contactNumber || "0331-2211147"}
 _Canal Road, Jahanian | Superior College Jahanian_`;
 
     try {
@@ -674,7 +674,7 @@ ${marksTableText}
 ${resultUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 *Instruction:* Board imtehanat mein aala position ke liye rozana revision aur regular attendance yaqeeni banayein.
-📞 Academic Helpdesk: 0301-4455891
+📞 Academic Helpdesk: ${data?.settings?.contactNumber || "0331-2211147"}
 _Canal Road, Jahanian | Superior College Jahanian_`;
 
       return {

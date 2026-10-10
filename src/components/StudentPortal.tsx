@@ -374,7 +374,7 @@ export default function StudentPortal({
                 </div>
 
                 <div className="p-3 bg-slate-100 rounded-xl flex items-center justify-between text-xs text-slate-600">
-                  <span className="font-semibold">Helpline: 0301-4455891</span>
+                  <span className="font-semibold">Helpline: {settings?.contactNumber || "0331-2211147"}</span>
                   <span className="font-bold text-superior-teal">Jahanian Campus</span>
                 </div>
               </Card>

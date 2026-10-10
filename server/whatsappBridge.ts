@@ -101,7 +101,7 @@ export interface AutomatedReportConfig {
 
 export const DEFAULT_AUTOMATED_REPORT_CONFIG: AutomatedReportConfig = {
   enabled: true,
-  principalPhone: "0301-4455891",
+  principalPhone: "0331-2211147",
   principalName: "Principal / Executive Leadership",
   daily: {
     enabled: true,
@@ -219,6 +219,7 @@ class WhatsAppBridgeService {
   private botAuditLogs: BotAuditLog[] = [];
   private pendingAdmissions: Map<string, any> = new Map();
   private adminAuthSessions: Map<string, { lastUnlocked: number; pinVerified: boolean; faceVerified: boolean }> = new Map();
+  public collegeHelpline: string = "0331-2211147";
 
   constructor() {
     this.authDir = path.join(process.cwd(), ".whatsapp_auth");
@@ -1378,6 +1379,117 @@ _Superior College Staff Portal_`;
     return DEFAULT_AUTOMATED_REPORT_CONFIG;
   }
 
+  // Helper to obtain official college helpline dynamically from database settings
+  public async getCollegeHelpline(supabaseClient?: any): Promise<string> {
+    try {
+      const supabase = supabaseClient || await this.getSupabase();
+      if (supabase) {
+        const { data: stg } = await supabase.from("settings").select("contact_number, config").limit(1).maybeSingle();
+        if (stg?.contact_number && stg.contact_number.trim() && !stg.contact_number.includes("0301-4455891")) {
+          this.collegeHelpline = stg.contact_number.trim();
+          return this.collegeHelpline;
+        }
+        const autoPhone = stg?.config?.automatedReports?.principalPhone;
+        if (autoPhone && autoPhone.trim() && !autoPhone.includes("0301-4455891")) {
+          this.collegeHelpline = autoPhone.trim();
+          return this.collegeHelpline;
+        }
+      }
+    } catch {}
+    this.collegeHelpline = "0331-2211147";
+    return this.collegeHelpline;
+  }
+
+  // Dedicated Real-Time Fee Collection Report for Today
+  public async getTodayFeeCollectionReport(supabase: any, adminName: string): Promise<string> {
+    const pkt = this.getPktDate();
+    const dateStr = pkt.dateStr;
+    const currentYearMonth = dateStr.slice(0, 7);
+
+    let todayFee = 0;
+    let cashFee = 0;
+    let bankFee = 0;
+    let txCount = 0;
+    const recentEntries: string[] = [];
+
+    try {
+      // 1. fee_transactions
+      const { data: feeTx } = await supabase.from("fee_transactions").select("*").eq("date", dateStr);
+      for (const tx of (feeTx || [])) {
+        const amt = Number(tx.amount || 0);
+        todayFee += amt;
+        txCount++;
+        const method = (tx.payment_method || "").toLowerCase();
+        if (method.includes("bank") || method.includes("online") || method.includes("cheque")) {
+          bankFee += amt;
+        } else {
+          cashFee += amt;
+        }
+        recentEntries.push(`• Rs. ${amt.toLocaleString()} - ${tx.student_name || tx.remarks || "Fee payment"} (${tx.payment_method || "Cash"})`);
+      }
+
+      // 2. incomes
+      const { data: incList } = await supabase.from("incomes").select("*").eq("date", dateStr);
+      for (const inc of (incList || [])) {
+        const amt = Number(inc.amount || 0);
+        todayFee += amt;
+        txCount++;
+        const method = (inc.payment_method || "").toLowerCase();
+        if (method.includes("bank") || method.includes("online")) {
+          bankFee += amt;
+        } else {
+          cashFee += amt;
+        }
+        recentEntries.push(`• Rs. ${amt.toLocaleString()} - ${inc.title || inc.description || "Income entry"}`);
+      }
+
+      // 3. income (legacy) if incomes was empty
+      if (!incList || incList.length === 0) {
+        const { data: incLegacy } = await supabase.from("income").select("*").eq("date", dateStr);
+        for (const inc of (incLegacy || [])) {
+          const amt = Number(inc.amount || 0);
+          todayFee += amt;
+          txCount++;
+          cashFee += amt;
+          recentEntries.push(`• Rs. ${amt.toLocaleString()} - ${inc.description || "Fee deposit"}`);
+        }
+      }
+    } catch (e) {
+      console.warn("Error getting today fee collection:", e);
+    }
+
+    // Monthly total for context
+    let monthCollection = 0;
+    try {
+      const { data: monthIncs } = await supabase.from("income").select("amount, date");
+      for (const inc of (monthIncs || [])) {
+        if ((inc.date || "").startsWith(currentYearMonth)) {
+          monthCollection += Number(inc.amount || 0);
+        }
+      }
+    } catch {}
+
+    const entriesText = recentEntries.length > 0 
+      ? `📝 *Aaj Ki Fee Entries (${recentEntries.length}):*\n${recentEntries.slice(0, 8).join("\n")}`
+      : `ℹ️ _Aaj (${pkt.displayDate}) abhi tak koi nayi fee counter entry darj nahi hui._`;
+
+    return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
+💰 *AAJ KI FEE COLLECTION REPORT*
+👑 Executive: *${adminName}*
+📅 Tareekh: *${pkt.displayDate}*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+💵 *Aaj Ki Kul Fee Collection:* *Rs. ${todayFee.toLocaleString()}*
+   • Cash Counter: *Rs. ${cashFee.toLocaleString()}*
+   • Bank / Online: *Rs. ${bankFee.toLocaleString()}*
+   • Kul Receipts / Entries: *${txCount}*
+
+📊 *Current Month (${currentYearMonth}) Collection:* *Rs. ${monthCollection.toLocaleString()}*
+
+${entriesText}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+_Realtime College Management System (LMS)_`;
+  }
+
   // Save Automated Report Configuration to Supabase settings
   public async saveAutomatedReportConfig(supabaseClient: any, newConfig: Partial<AutomatedReportConfig>): Promise<AutomatedReportConfig> {
     try {
@@ -2353,7 +2465,7 @@ Is admission ko LMS Database mein save karne ke liye apna 5-digit PIN reply kare
 • *Matric Marks:* ${extracted.previousMarks ? `${extracted.previousMarks} Marks` : "N/A"}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ✅ Document verify ho chuka hai. Admission finalize karne ya fees jamah karwane ke liye College Admissions Office tashreef layein ya rabta karein:
-📞 *0301-4455891*`;
+📞 *${this.collegeHelpline || "0331-2211147"}*`;
           if (this.sock) await this.sock.sendMessage(senderJid, { text: infoMsg });
           return;
         }
@@ -2367,7 +2479,7 @@ Is admission ko LMS Database mein save karne ke liye apna 5-digit PIN reply kare
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Aapki bheji gayi payment slip / receipt hamare system mein record kar li gayi hai.
 Accounts Department iski verification karke fee ledger update kar dega.
-Kisi bhi inquiry ke liye Accounts Office: 📞 *0301-4455891*`;
+Kisi bhi inquiry ke liye Accounts Office: 📞 *${this.collegeHelpline || "0331-2211147"}*`;
       if (this.sock) await this.sock.sendMessage(senderJid, { text: receiptMsg });
       this.saveChatLog({
         phone: rawNumber,
@@ -3072,7 +3184,7 @@ College Key Info:
 - Institution: Superior College Jahanian (SGC-J).
 - Programs: Intermediate 2026-28 (FSc Pre-Medical, FSc Pre-Engineering, ICS, I.Com, FA IT).
 - Location: Canal Road, Jahanian.
-- Helpline / Inquiries: 0301-4455891.
+- Helpline / Inquiries: ${this.collegeHelpline || "0331-2211147"}.
 - Timings: Mon-Sat 08:00 AM - 02:00 PM.
 - Separate purpose-built campuses for Boys and Girls.
 - Student Privacy: If sensitive personal student records (dues, marks, attendance) are requested, remind them that verification (Student Name + Father Name, or Roll Number) is required.`;
@@ -3192,8 +3304,8 @@ College Key Info:
   private formatAdmissionAsStudent(a: any) {
     return {
       id: a.student_id || a.id,
-      full_name: a.full_name,
-      father_name: a.father_name,
+      full_name: (a.full_name || "").trim(),
+      father_name: (a.father_name || "").trim(),
       college_no: a.college_no || "N/A",
       group: a.group_name || a.group || a.category,
       section: a.section,
@@ -3201,10 +3313,61 @@ College Key Info:
       fee_received: a.fee_received || 0,
       academic_part: a.academic_part || "Part-I",
       session: a.session || "2026-28",
-      contact: a.contact_number || a.father_contact || a.secondary_contact || "",
+      contact: a.contact_number || a.contact || "",
+      contact_number: a.contact_number || a.contact || "",
+      father_contact: a.father_contact || "",
+      secondary_contact: a.secondary_contact || "",
       bay_form_no: a.bay_form_no || "",
       attendance_present: 0,
       attendance_absent: 0,
+    };
+  }
+
+  // Identify exact registered role (Student vs Parent vs Guardian) based on matched phone attribute
+  public identifyPhoneRelation(student: any, phone: string): {
+    roleType: "student" | "parent" | "guardian";
+    roleLabel: string;
+    greetingSalutation: string;
+  } {
+    const std = this.normalizePhoneNumber(phone);
+    const last7 = std.slice(-7);
+
+    const fContact = this.normalizePhoneNumber(student.father_contact);
+    const sContact = this.normalizePhoneNumber(student.contact || student.contact_number);
+    const secContact = this.normalizePhoneNumber(student.secondary_contact);
+
+    const isFatherMatch = Boolean(fContact && (fContact === std || (last7.length >= 7 && fContact.endsWith(last7))));
+    const isStudentMatch = Boolean(sContact && (sContact === std || (last7.length >= 7 && sContact.endsWith(last7))));
+    const isSecMatch = Boolean(secContact && (secContact === std || (last7.length >= 7 && secContact.endsWith(last7))));
+
+    if (isFatherMatch && !isStudentMatch) {
+      return {
+        roleType: "parent",
+        roleLabel: `Parent / Walid of ${student.full_name}`,
+        greetingSalutation: `Mohtaram Walid Sahib (${student.father_name ? `Valed: ${student.father_name}` : `Parent of ${student.full_name}`})`,
+      };
+    }
+
+    if (isStudentMatch && !isFatherMatch) {
+      return {
+        roleType: "student",
+        roleLabel: `Student / Talib-e-Ilm (${student.full_name})`,
+        greetingSalutation: `Aziz Talib-e-Ilm *${student.full_name}*`,
+      };
+    }
+
+    if (isSecMatch && !isStudentMatch && !isFatherMatch) {
+      return {
+        roleType: "guardian",
+        roleLabel: `Guardian / Secondary Contact of ${student.full_name}`,
+        greetingSalutation: `Mohtaram Guardian (Family of *${student.full_name}*)`,
+      };
+    }
+
+    return {
+      roleType: "student",
+      roleLabel: `Student / Talib-e-Ilm (${student.full_name})`,
+      greetingSalutation: `Mohtaram *${student.full_name}*`,
     };
   }
 
@@ -3243,7 +3406,7 @@ College Key Info:
       const { data: students } = await supabase
         .from("students")
         .select("*")
-        .or(`contact.ilike.%${last7}%,contact.ilike.%${stripped}%,contact.ilike.%${hyphenated}%`)
+        .or(`contact.ilike.%${last7}%,father_contact.ilike.%${last7}%,secondary_contact.ilike.%${last7}%,contact.ilike.%${stripped}%,contact.ilike.%${hyphenated}%`)
         .limit(10);
 
       if (students) {
@@ -3704,13 +3867,14 @@ College Key Info:
       const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
       if (url && key) {
         supabase = createClient(url, key, { auth: { persistSession: false } });
+        await this.getCollegeHelpline(supabase);
       }
     } catch (dbInitErr) {
       console.error("[WhatsApp Bot] Could not init Supabase:", dbInitErr);
     }
 
     if (!supabase) {
-      const errReply = "Assalam-o-Alaikum! Superior College Jahanian Information Desk par khush-amdeed.\n\nHumara college database is waqt thora masroof hai. Baraye meherbani thori der baad dobara koshish karein ya seedha college office se rabta farmayein:\n📞 *0301-4455891*";
+      const errReply = `Assalam-o-Alaikum! Superior College Jahanian Information Desk par khush-amdeed.\n\nHumara college database is waqt thora masroof hai. Baraye meherbani thori der baad dobara koshish karein ya seedha college office se rabta farmayein:\n📞 *${this.collegeHelpline || "0331-2211147"}*`;
       if (this.sock) await this.sock.sendMessage(senderJid, { text: errReply });
       this.saveChatLog({
         phone: rawNumber,
@@ -3937,15 +4101,41 @@ _Reports synchronized with College Biometric & Staff Ledger._`;
         return await sendReply(attReport, "Principal Staff Attendance", principalInfo.name);
       }
 
-      // Option 3: Fee Collection & Defaulters
+      // Realtime Today's Fee Collection (Cash Counter & Online Inflow for Today)
+      const isTodayFeeQuery = 
+        cleanQuery.includes("aj ki collection") || 
+        cleanQuery.includes("aaj ki collection") || 
+        cleanQuery.includes("today collection") || 
+        cleanQuery.includes("today's collection") || 
+        cleanQuery.includes("aj ki fee") || 
+        cleanQuery.includes("aaj ki fee") || 
+        cleanQuery.includes("today fee") || 
+        cleanQuery.includes("collection of fee today") || 
+        cleanQuery.includes("fee collection today") || 
+        cleanQuery.includes("aj kitni collection") || 
+        cleanQuery.includes("aaj kitni collection") ||
+        (cleanQuery.includes("aj") && cleanQuery.includes("collection")) ||
+        (cleanQuery.includes("aaj") && cleanQuery.includes("collection")) ||
+        (cleanQuery.includes("today") && cleanQuery.includes("collection"));
+
+      if (isTodayFeeQuery) {
+        const todayReport = await this.getTodayFeeCollectionReport(supabase, principalInfo.name);
+        return await sendReply(todayReport, "Principal Today Fee Report", principalInfo.name);
+      }
+
+      // Option 3: Institutional Fee Digest & Defaulters Roster
       if (
         cleanQuery === "3" || 
         cleanQuery.startsWith("3.") || 
-        cleanQuery.includes("fee") || 
-        cleanQuery.includes("collection") || 
-        cleanQuery.includes("ledger") || 
+        cleanQuery === "fee" || 
+        cleanQuery === "fees" || 
+        cleanQuery === "collection" || 
+        cleanQuery === "ledger" || 
         cleanQuery.includes("defaulter") || 
-        cleanQuery.includes("recovery")
+        cleanQuery.includes("recovery") ||
+        cleanQuery.includes("monthly fee") ||
+        cleanQuery.includes("monthly collection") ||
+        cleanQuery.includes("ledger digest")
       ) {
         const report = await this.getInstitutionalReport(supabase, principalInfo.name);
         return await sendReply(report, "Principal Fee Collection Report", principalInfo.name);
@@ -4091,7 +4281,7 @@ Is admission ko LMS Database mein enter karne ke liye apna 5-digit PIN reply kar
 ✅ Student ka admission form record kar liya gaya hai aur Superior College Directorate of Admissions ko forward kar diya gaya hai.
 Application Inquiry ID: *SCJ-ADM-${Date.now().toString().slice(-4)}*
 
-College Admissions Helpline: 📞 *0301-4455891*`;
+College Admissions Helpline: 📞 *${this.collegeHelpline || "0331-2211147"}*`;
           return await sendReply(previewMsg, "Admission Lead Recorded", verifiedUser?.name);
         }
       } else {
@@ -4972,19 +5162,63 @@ LANGUAGE & TONE:
           return await sendReply(personalSummary, "Staff Personal Summary", verified.name);
         }
       } else {
-        const menuMsg = this.getFacultyMenuText(verified);
-        const welcomeMsg = 
+        const isShortStaffGreeting = 
+          cleanQuery === "salam" || 
+          cleanQuery === "assalam" || 
+          cleanQuery === "assalam o alaikum" || 
+          cleanQuery === "assalam-o-alaikum" || 
+          cleanQuery === "aoa" || 
+          cleanQuery === "hi" || 
+          cleanQuery === "hello" || 
+          cleanQuery === "0" || 
+          cleanQuery === "menu" || 
+          cleanQuery === "help" || 
+          cleanQuery === "start" || 
+          cleanQuery === "shuru";
+
+        if (isShortStaffGreeting) {
+          const menuMsg = this.getFacultyMenuText(verified);
+          const welcomeMsg = 
 `🏛️ *SUPERIOR COLLEGE JAHANIAN — FACULTY DESK*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Assalam-o-Alaikum Mohtaram *${verified.name}*!
-🏷️ *Role / Designation:* ${verified.designation || verified.role} ${verified.staffId ? `(${verified.staffId})` : ""}
+🏷️ *System Record:* Aapka mobile number hamare Staff Record mein darj hai:
+• *Role / Designation:* ${verified.designation || verified.role} ${verified.staffId ? `(${verified.staffId})` : ""}
 📱 *Registered Mobile:* ${standardPhone}
 
 ✅ *Direct Access Enabled (Zero OTP)*
 Aapka WhatsApp number College Faculty Database mein darj shuda hai.
 
 ${menuMsg}`;
-        return await sendReply(welcomeMsg, "Faculty Auto-Verified Welcome (Zero OTP)", verified.name);
+          return await sendReply(welcomeMsg, "Faculty Auto-Verified Welcome (Zero OTP)", verified.name);
+        } else {
+          // Conversational AI for Staff member
+          const facultySystemPrompt = `You are Superior Nexus, the intelligent executive AI assistant for Superior College Jahanian.
+You are chatting with a registered faculty/staff member:
+• Name: ${verified.name}
+• Role: ${verified.role}
+• Designation: ${verified.designation || verified.role}
+• Staff ID: ${verified.staffId || "N/A"}
+• Phone: ${standardPhone}
+
+RULES:
+1. Address them respectfully as "Mohtaram ${verified.name}".
+2. Reply intelligently, humanely, and articulately to whatever they say.
+3. Language: Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. Never use Arabic script.
+4. Persona: Professional female AI assistant ("karti hoon", "bata sakti hoon").`;
+
+          const aiReply = await this.generateAiConversationalReply(
+            text,
+            session.history || [],
+            `Mohtaram ${verified.name}! Main hazir hoon. Kahiye main aapki kya madad kar sakti hoon?`,
+            facultySystemPrompt,
+            options?.quotedText,
+            undefined,
+            standardPhone,
+            verified.name
+          );
+          return await sendReply(aiReply, "Faculty Conversational AI", verified.name);
+        }
       }
     }
 
@@ -5047,7 +5281,7 @@ Aapka WhatsApp number (*${standardPhone}*) College Database mein Principal Desk 
 Security policy ke tehat, Executive Leadership access sirf registered Principal mobile number (*${maskedPrincipal}*) par fa'al hai.
 
 Agar aap Principal hain, to baraye meherbani College Portal Settings > *Principal Auto-Reports* tab se apna mobile number confirm farmayein taake bot aapko auto-recognize kar sake.
-Helpline: 📞 *0301-4455891*`;
+Helpline: 📞 *${this.collegeHelpline || "0331-2211147"}*`;
       return await sendReply(principalNotice, "Principal Authority Check Mismatch");
     }
 
@@ -5056,6 +5290,7 @@ Helpline: 📞 *0301-4455891*`;
     if (registeredStudents.length > 0) {
       if (registeredStudents.length === 1) {
         const student = registeredStudents[0];
+        const ident = this.identifyPhoneRelation(student, standardPhone);
         session.stage = "VERIFIED";
         session.verifiedStudent = student;
         session.candidateStudent = undefined;
@@ -5063,10 +5298,10 @@ Helpline: 📞 *0301-4455891*`;
         session.accumulatedMatches = undefined;
 
         // Check if query is for fee, marks, attendance, or general record
-        const isFee = cleanQuery === "1" || cleanQuery.startsWith("1.") || cleanQuery.includes("fee") || cleanQuery.includes("dues") || cleanQuery.includes("baqaya") || cleanQuery.includes("fees");
-        const isMarks = cleanQuery === "2" || cleanQuery.startsWith("2.") || cleanQuery.includes("mark") || cleanQuery.includes("result") || cleanQuery.includes("test") || cleanQuery.includes("exam");
-        const isAtt = cleanQuery === "3" || cleanQuery.startsWith("3.") || cleanQuery.includes("attend") || cleanQuery.includes("hazir") || cleanQuery.includes("ghair") || cleanQuery.includes("absent") || cleanQuery.includes("hazri");
-        const isAll = cleanQuery === "4" || cleanQuery.startsWith("4.") || cleanQuery.includes("all") || cleanQuery.includes("report") || cleanQuery.includes("record") || cleanQuery.includes("dossier");
+        const isFee = cleanQuery === "1" || cleanQuery.startsWith("1.") || cleanQuery === "fee" || cleanQuery === "fees" || cleanQuery === "dues" || cleanQuery === "baqaya" || cleanQuery === "fee status";
+        const isMarks = cleanQuery === "2" || cleanQuery.startsWith("2.") || cleanQuery === "marks" || cleanQuery === "result" || cleanQuery === "test" || cleanQuery === "exam result";
+        const isAtt = cleanQuery === "3" || cleanQuery.startsWith("3.") || cleanQuery === "attendance" || cleanQuery === "hazri" || cleanQuery === "absent" || cleanQuery === "ghair hazir";
+        const isAll = cleanQuery === "4" || cleanQuery.startsWith("4.") || cleanQuery === "dossier" || cleanQuery === "all" || cleanQuery === "record";
 
         if (isFee || isMarks || isAtt || isAll) {
           const currentIntent = isFee ? "fee" : isMarks ? "marks" : isAtt ? "attendance" : "general";
@@ -5074,30 +5309,35 @@ Helpline: 📞 *0301-4455891*`;
           return await sendReply(detailsMsg, `Registered Student Direct Query (${currentIntent})`, student.full_name);
         }
 
-        // If user sent a greeting or menu request:
-        const isGreeting = 
-          cleanQuery.includes("salam") || 
-          cleanQuery.includes("assalam") || 
-          cleanQuery.includes("aoa") || 
+        // If user sent a strict greeting or menu request:
+        const isStrictGreeting = 
+          cleanQuery === "salam" || 
+          cleanQuery === "assalam" || 
+          cleanQuery === "assalam o alaikum" || 
+          cleanQuery === "assalam-o-alaikum" || 
+          cleanQuery === "aoa" || 
           cleanQuery === "hi" || 
           cleanQuery === "hello" || 
           cleanQuery === "0" || 
           cleanQuery === "menu" || 
           cleanQuery === "start" || 
-          cleanQuery === "shuru";
+          cleanQuery === "shuru" ||
+          cleanQuery === "help";
 
-        if (isGreeting) {
+        if (isStrictGreeting) {
           const studentWelcome = 
 `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 🌸 *STUDENT & PARENT DESK*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Assalam-o-Alaikum!
-Khush-amdeed Mohtaram (Parent of *${student.full_name}*)!
-🏷️ *Student:* ${student.full_name} (Roll: *${student.college_no || student.id || "N/A"}*, Class: ${student.group || student.section || "Intermediate"})
-📱 *Registered WhatsApp:* ${standardPhone}
+Khush-amdeed ${ident.greetingSalutation}!
+
+🏷️ *System Record:* Aapka mobile number hamare College Record mein darj hai:
+• *Registered As:* *${ident.roleLabel}*
+• *Student:* ${student.full_name} (Roll: *${student.college_no || student.id || "N/A"}*, Class: ${student.group || student.section || "Intermediate"})
+${student.father_name ? `• *Father Name:* ${student.father_name}\n` : ""}• *Registered WhatsApp:* ${standardPhone}
 
 ✅ *Direct Verified Access (Zero OTP Required)*
-Aapka number hamare College Record mein darj shuda hai.
 
 Aap seedha yeh maloomat hasil kar sakte hain:
 💵 *1. Fee Status & Dues*
@@ -5107,6 +5347,37 @@ Aap seedha yeh maloomat hasil kar sakte hain:
 
 _Kahiye, aaj aapko kya maloomat darkaar hain? (Aap 1, 2, 3 likh sakte hain ya seedha sawal pooch sakte hain)._`;
           return await sendReply(studentWelcome, "Registered Student Welcome (Zero OTP)", student.full_name);
+        } else {
+          // Intelligent Conversational AI for registered student / parent
+          const studentSystemPrompt = `You are Superior Nexus, the intelligent female AI assistant of Superior College Jahanian (SGC-J).
+You are currently speaking directly with a registered contact in the college database:
+• Registered Role: ${ident.roleLabel}
+• Student Name: ${student.full_name}
+• Father Name: ${student.father_name || "N/A"}
+• Roll Number: ${student.college_no || student.id || "N/A"}
+• Program/Class: ${student.group || student.section || "Intermediate"}
+• Fee Balance / Dues: Rs. ${(Number(student.total_package || 0) - Number(student.fee_received || 0)).toLocaleString()} (Received: Rs. ${Number(student.fee_received || 0).toLocaleString()} / Total: Rs. ${Number(student.total_package || 0).toLocaleString()})
+• Attendance: ${student.attendance_present || 0} Present, ${student.attendance_absent || 0} Absent
+
+CONVERSATIONAL RULES:
+1. Address them respectfully according to their role (${ident.greetingSalutation}).
+2. Understand what they are communicating in a warm, humanized, intelligent manner (like ChatGPT).
+3. If they are sending a natural update or response to staff (e.g., "sham ko edit kr k send kr dta hun", "theek hai sir", "kab aana hai"), acknowledge politely and humanely (e.g., "Walaikum Assalam! Jee bilkul, aap sham ko tasalli se edit kar ke bhej dein. JazakAllah!").
+4. If they ask about fees, classes, exams, or college policies, answer accurately using the student's info.
+5. Language: Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. NEVER write in Arabic script Urdu. Every character must be Latin script.
+6. Persona: Female AI assistant ("karti hoon", "bata sakti hoon").`;
+
+          const aiReply = await this.generateAiConversationalReply(
+            text,
+            session.history || [],
+            `Walaikum Assalam! Main Superior Nexus hazir hoon. Kahiye ${student.full_name} ke hawalay se main aapki kya madad kar sakti hoon?`,
+            studentSystemPrompt,
+            options?.quotedText,
+            undefined,
+            standardPhone,
+            student.full_name
+          );
+          return await sendReply(aiReply, "Registered Student Conversational AI", student.full_name);
         }
       } else {
         // Multiple Siblings under this phone
@@ -5186,40 +5457,45 @@ Baraye meherbani batayein aap kis student ka record dekhna chahte hain (1 ya 2 l
 
     // 3. Natural Human Greetings Detection (Emulates authentic, intelligent conversation)
     const isHiGreeting = 
-      /^(hi+|hey+|hy|hlo)(\s+.*)?$/i.test(cleanQuery) || 
       cleanQuery === "hi" || 
       cleanQuery === "hii" || 
       cleanQuery === "hiii" || 
       cleanQuery === "hey" || 
-      cleanQuery === "heyy";
+      cleanQuery === "heyy" ||
+      cleanQuery === "hello" || 
+      cleanQuery === "helo" ||
+      /^(hi+|hey+|hy|hello+)\s+(there|sir|madam|team|admin|bot)\s*$/i.test(cleanQuery);
 
     const isHelloGreeting = 
-      /^(hello+|helo+)(\s+.*)?$/i.test(cleanQuery) || 
       cleanQuery === "hello" || 
-      cleanQuery === "helo";
+      cleanQuery === "helo" ||
+      /^(hello+|helo+)\s+(there|sir|madam|team|admin|bot)\s*$/i.test(cleanQuery);
 
     const isSalamGreeting = 
-      cleanQuery.includes("salam") || 
-      cleanQuery.includes("assalam") || 
-      cleanQuery.includes("aoa") || 
+      cleanQuery === "salam" || 
+      cleanQuery === "assalam" || 
+      cleanQuery === "assalam o alaikum" || 
+      cleanQuery === "assalam-o-alaikum" || 
+      cleanQuery === "aoa" || 
       cleanQuery === "slam" || 
-      cleanQuery === "slm";
+      cleanQuery === "slm" ||
+      ((cleanQuery.startsWith("salam") || cleanQuery.startsWith("assalam") || cleanQuery.startsWith("aoa")) && cleanQuery.length <= 25);
 
     const isHalAhwalGreeting = 
-      cleanQuery.includes("kese ho") || 
+      (cleanQuery.includes("kese ho") || 
       cleanQuery.includes("kaise ho") || 
       cleanQuery.includes("kaise hain") || 
       cleanQuery.includes("kia hal") || 
       cleanQuery.includes("kya hal") || 
       cleanQuery.includes("sunao") || 
       cleanQuery.includes("theek ho") || 
-      cleanQuery.includes("how are you");
+      cleanQuery.includes("how are you")) && cleanQuery.length <= 35;
 
     const isGoodTimeGreeting = 
-      cleanQuery.includes("good morning") || 
+      (cleanQuery.includes("good morning") || 
       cleanQuery.includes("good afternoon") || 
       cleanQuery.includes("good evening") || 
-      cleanQuery.includes("subah bakhair");
+      cleanQuery.includes("subah bakhair")) && cleanQuery.length <= 30;
 
     if (isHiGreeting || isHelloGreeting || isSalamGreeting || isHalAhwalGreeting || isGoodTimeGreeting) {
       let baseGreetingReply = "";
@@ -5284,7 +5560,7 @@ Baraye meherbani batayein aap kis student ka record dekhna chahte hain (1 ya 2 l
 Inquiry No: *SCJ-${Date.now().toString().slice(-4)}*
 
 Admissions Directorate jald hi aapke is mobile number par rabta karega.
-Direct Helpline: 📞 *0301-4455891*`;
+Direct Helpline: 📞 *${this.collegeHelpline || "0331-2211147"}*`;
         return await sendReply(previewMsg, "Public Fast Lead Recorded");
       } else {
         const candNameMatch = cleanQuery.match(/(?:student\s+)?([a-zA-Z]{3,20})\s+(?:ka|ki|ke)?\s*(?:admission|dakhla)/i) ||
@@ -5350,7 +5626,7 @@ Intermediate ke darj zail programs mein admissions jari hain:
 • Safe College Transport Pick & Drop
 
 📍 *Campus Address:* Canal Road, Jahanian
-📞 *Admissions Helpline:* 0301-4455891
+📞 *Admissions Helpline:* ${this.collegeHelpline || "0331-2211147"}
 _Directorate of Admissions, SGC Jahanian_`;
       const reply = await this.generateAiConversationalReply(text, session.history || [], baseAdmission, undefined, options?.quotedText);
       return await sendReply(reply, "Admission Inquiry");
@@ -5470,7 +5746,7 @@ Baraye meherbani student ka Class Section (maslan: MEPB ya ICS) ya College mein 
             session.failedVerificationAttempts = 0;
             const stopMsg = 
 `Maazrat! Faraham karda maloomat database record se match nahi ho saki. 🔒
-Student privacy aur security policy ke tehat yeh verification stop kar di gayi hai. Agar aapko mazeed maloomat darkaar hon to college helpline *0301-4455891* par rabta karein ya naye sawal ke liye *menu* likhein.`;
+Student privacy aur security policy ke tehat yeh verification stop kar di gayi hai. Agar aapko mazeed maloomat darkaar hon to college helpline *${this.collegeHelpline || "0331-2211147"}* par rabta karein ya naye sawal ke liye *menu* likhein.`;
             return await sendReply(stopMsg, "Verification Aborted (Multiple Failed)");
           }
 
@@ -5550,7 +5826,7 @@ Hum *${session.verifiedStudent.full_name}* (Walid: ${session.verifiedStudent.fat
 `Maazrat! Faraham karda maloomat student ke record se mutabiqat nahi rakhti. 🔒
 Security aur privacy policies ke tehat hum kisi ghair-tasdeeq shuda fard ka data share nahi kar sakte.
 
-Yeh verification session stop kar di gayi hai. Agar aapko koi maloomat darkaar hon to college office (*0301-4455891*) par rabta karein ya dobara shuru karne ke liye *reset* ya *menu* likhein.`;
+Yeh verification session stop kar di gayi hai. Agar aapko koi maloomat darkaar hon to college office (*${this.collegeHelpline || "0331-2211147"}*) par rabta karein ya dobara shuru karne ke liye *reset* ya *menu* likhein.`;
             return await sendReply(stopMsg, "Verification Aborted (Security Stop)");
           }
 
@@ -5741,7 +6017,7 @@ _Tip: Aap kisi bhi student ka Naam ya Roll Number direct likh kar bhi bhej sakte
 • *Location:* Canal Road, Jahanian
 • *Office Timings:* 08:00 AM – 02:00 PM (Monday – Saturday)
 • *Academic Setup:* Separate Purpose-Built Boys & Girls Campuses
-• *Helpline:* 0301-4455891
+• *Helpline:* ${this.collegeHelpline || "0331-2211147"}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🔢 Main Menu ke liye *0* likh kar reply karein.`;
@@ -5752,8 +6028,8 @@ _Tip: Aap kisi bhi student ka Naam ya Roll Number direct likh kar bhi bhej sakte
     return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📞 *Administration & Executive Contacts*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-• *Principal Office / Inquiries:* 0301-4455891
-• *Accounts & Fee Section:* 0301-4455891
+• *Principal Office / Inquiries:* ${this.collegeHelpline || "0331-2211147"}
+• *Accounts & Fee Section:* ${this.collegeHelpline || "0331-2211147"}
 • *Visiting Hours:* 08:00 AM – 02:00 PM (Mon – Sat)
 • *Address:* Canal Road, Jahanian
 
@@ -5812,7 +6088,7 @@ Admissions, fee concessions ya academic guidance ke liye campus office tashreef 
 📊 *Online Fee Statement / Ledger:*
 ${statementUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-${dues > 0 ? "⚠️ *Note:* Baraye meherbani aakhri tareekh se qabal accounts desk par baqaya fee jama karwa kar computerised receipt hasil karein.\n" : "🎉 Alhamdolillah, tamam dues mukammal tor par clear hain.\n"}📞 Accounts Desk: 0301-4455891
+${dues > 0 ? "⚠️ *Note:* Baraye meherbani aakhri tareekh se qabal accounts desk par baqaya fee jama karwa kar computerised receipt hasil karein.\n" : "🎉 Alhamdolillah, tamam dues mukammal tor par clear hain.\n"}📞 Accounts Desk: ${this.collegeHelpline || "0331-2211147"}
 _Accounts & Finance Department, SGC Jahanian_${this.getMenuFooter()}`;
     }
 
@@ -5849,7 +6125,7 @@ ${marksText}
 ${resultUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 *Instruction:* Behtareen board results ke liye regular homework aur class revision par tawajjah dein.
-📞 Academic Helpdesk: 0301-4455891
+📞 Academic Helpdesk: ${this.collegeHelpline || "0331-2211147"}
 _Office of the Controller of Examinations, SGC Jahanian_${this.getMenuFooter()}`;
     }
 
@@ -5880,7 +6156,7 @@ _Office of the Controller of Examinations, SGC Jahanian_${this.getMenuFooter()}`
 ${attendanceUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ _Board requirements ke mutabiq 80% haziri imtehanat mein shamil hone ke liye lazmi hai._
-📞 Attendance Desk: 0301-4455891
+📞 Attendance Desk: ${this.collegeHelpline || "0331-2211147"}
 _Office of the Vice Principal (Discipline), SGC Jahanian_${this.getMenuFooter()}`;
     }
 
@@ -5921,7 +6197,7 @@ ${marksBrief}
 📋 *Complete Student Dossier:*
 ${dossierUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-📞 Campus Helpdesk: 0301-4455891
+📞 Campus Helpdesk: ${this.collegeHelpline || "0331-2211147"}
 _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
   }
 
@@ -6014,7 +6290,7 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
     if (!normalized || normalized.length < 10) {
       return {
         success: false,
-        error: `Invalid phone number format: '${phone}'. Required e.g. 0301-4455891 or 923014455891`,
+        error: `Invalid phone number format: '${phone}'. Required e.g. 0331-2211147 or 923312211147`,
       };
     }
 

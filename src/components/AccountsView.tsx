@@ -1428,7 +1428,7 @@ function DailyCashClosingTab({
 • *Reconciliation Audit:* ${varianceText}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 *Activity Volume:* ${todayIncomes.length} Inflows | ${todayExpenses.length} Outflows processed
-${closingRemarks ? `📌 *Closing Notes:* ${closingRemarks}\n` : ""}📞 Accounts Directorate: 0301-4455891
+${closingRemarks ? `📌 *Closing Notes:* ${closingRemarks}\n` : ""}📞 Accounts Directorate: ${data?.settings?.contactNumber || "0331-2211147"}
 _Accounts & Finance Department, SGC Jahanian_`;
 
     try {

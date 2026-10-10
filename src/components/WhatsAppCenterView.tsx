@@ -1020,10 +1020,11 @@ export default function WhatsAppCenterView({ data }: WhatsAppCenterViewProps) {
     setIsAiComposing(true);
     addLog("Querying SCJ Nexus AI for intelligent template compilation...");
     
+    const campusHelpline = globalSettings?.contactNumber || "0331-2211147";
     let promptInstruction = customAiPrompt.trim();
     
     if (prebuiltStyle === "fee_dues") {
-      promptInstruction = "Write an outstanding fee dues reminder template in polite Roman Urdu (Hinglish). Use header '🏛️ *SUPERIOR COLLEGE JAHANIAN*', line divider '━━━━━━━━━━━━━━━━━━━━━━━━━', bullet points with placeholders {{name}}, {{father}}, {{class}}, and {{dues}}. Keep it strictly to the point, dignified, signed off by '_Accounts & Finance Department, SGC Jahanian_' with phone '0301-4455891'. No rambling or conversational filler.";
+      promptInstruction = `Write an outstanding fee dues reminder template in polite Roman Urdu (Hinglish). Use header '🏛️ *SUPERIOR COLLEGE JAHANIAN*', line divider '━━━━━━━━━━━━━━━━━━━━━━━━━', bullet points with placeholders {{name}}, {{father}}, {{class}}, and {{dues}}. Keep it strictly to the point, dignified, signed off by '_Accounts & Finance Department, SGC Jahanian_' with phone '${campusHelpline}'. No rambling or conversational filler.`;
     } else if (prebuiltStyle === "announcement") {
       promptInstruction = "Write an official campus circular/holiday notice template for Superior College Jahanian. Use header '🏛️ *SUPERIOR COLLEGE JAHANIAN*', divider '━━━━━━━━━━━━━━━━━━━━━━━━━', placeholders {{name}} and {{class}}. Keep it strictly concise, executive, bilingual English/Roman Urdu, signed off by '_Office of the Principal, SGC Jahanian_'.";
     } else if (prebuiltStyle === "marks") {
@@ -1043,7 +1044,7 @@ Baraye meherbani student ki saaf passport-size tasveer isi WhatsApp chat mein fo
 
 Shukriya!
 _Office of the Principal, SGC Jahanian_
-📞 0301-4455891`
+📞 ${campusHelpline}`
       );
       toast.success(`Targeted students missing photos with ID Card template!`);
       setIsAiComposing(false);
@@ -1068,7 +1069,7 @@ Dear Parent/Guardian ({{father}}),
 • *Outstanding Dues:* *{{dues}}*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ *Instruction:* Baraye meherbani aakhri tareekh se qabal accounts desk par baqaya fee jama karwa kar computerised receipt hasil karein.
-📞 Accounts Desk: 0301-4455891
+📞 Accounts Desk: ${campusHelpline}
 _Accounts & Finance Department, SGC Jahanian_`;
       } else if (style === "marks") {
         return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
@@ -1083,7 +1084,7 @@ Dear Parent/Guardian ({{father}}),
 {{marks}}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 *Instruction:* Board imtehanat ki behtareen tayari ke liye regular revision aur attendance yaqeeni banayein.
-📞 Academic Helpdesk: 0301-4455891
+📞 Academic Helpdesk: ${campusHelpline}
 _Office of the Controller of Examinations, SGC Jahanian_`;
       } else if (style === "announcement") {
         return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
@@ -1094,7 +1095,7 @@ Respected Parents & Students,
 Ahem itlaa baraye {{name}} ({{class}}):
 College academic schedule aur official directives ke mutabiq tamam classes aur institutional activities barwaqt munaqid hongi.
 
-📞 Campus Helpdesk: 0301-4455891
+📞 Campus Helpdesk: ${campusHelpline}
 _Office of the Principal, SGC Jahanian_`;
       } else if (style === "absent_staff") {
         return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
@@ -1104,7 +1105,7 @@ Respected Faculty Member,
 
 This is an administrative reminder regarding daily biometric reporting and strict adherence to class timetables. Punctuality is essential for academic excellence.
 
-📞 Administration Office: 0301-4455891
+📞 Administration Office: ${campusHelpline}
 _Office of the Vice Principal, SGC Jahanian_`;
       }
       return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
@@ -1117,7 +1118,7 @@ Dear Parent/Guardian ({{father}}),
 • *Status / Dues:* {{dues}}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Kisi bhi tasdeeq ya rehnumai ke liye campus office se rabta karein.
-📞 Campus Helpdesk: 0301-4455891
+📞 Campus Helpdesk: ${campusHelpline}
 _Administration Directorate, SGC Jahanian_`;
     };
 
@@ -3943,7 +3944,7 @@ _Administration Directorate, SGC Jahanian_`;
                     type="text"
                     value={reportConfig?.principalPhone || ""}
                     onChange={(e) => setReportConfig((prev: any) => ({ ...prev, principalPhone: e.target.value }))}
-                    placeholder="e.g. 0301-4455891 or 923014455891"
+                    placeholder="e.g. 0331-2211147 or 923312211147"
                     className="w-full text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-slate-800 dark:text-slate-100 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>

@@ -124,7 +124,7 @@ Aapke bache ka fee ledger baqaya darj zail hai:
 ${statementUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ *Instruction:* Baraye meherbani aakhri tareekh se qabal accounts desk par baqaya fee jama karwa kar computerised receipt hasil karein.
-📞 Accounts Desk: 0301-4455891
+📞 Accounts Desk: ${data?.settings?.contactNumber || "0331-2211147"}
 _Accounts & Finance Department, Superior College Jahanian_`;
     } else if (type === 'results') {
       const resultUrl = getDocumentLink("result", studentRef);
@@ -146,7 +146,7 @@ ${marksList}
 ${resultUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 *Instruction:* Board imtehanat ki aala tayari ke liye regular revision yaqeeni banayein.
-📞 Academic Helpdesk: 0301-4455891
+📞 Academic Helpdesk: ${data?.settings?.contactNumber || "0331-2211147"}
 _Office of the Controller of Examinations, Superior College Jahanian_`;
     } else {
       const dossierUrl = getDocumentLink("student", studentRef);

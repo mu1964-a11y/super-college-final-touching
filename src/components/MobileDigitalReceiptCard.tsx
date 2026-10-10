@@ -571,7 +571,7 @@ ${origin}`;
                 Official Accounts & AI Registry • Code: 3014
               </p>
               <p className="text-[10px] text-slate-500 font-medium leading-tight mt-0.5">
-                Canal Road, Jahanian • Helpline: 0301-4455891
+                Canal Road, Jahanian • Helpline: 0331-2211147
               </p>
               <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-emerald-700">
                 <ShieldCheck size={12} className="text-emerald-600 shrink-0" />
