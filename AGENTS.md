@@ -62,4 +62,26 @@ As the project grows over the upcoming months, strictly adhere to these rules:
    - MUST ALWAYS COMMUNICATE AND REPLY IN ENGLISH OR HINGLISH ONLY. Do not use pure Urdu responses.
 9. **Session Normalization**:
    - A logic hook is applied in `App.tsx` (`normalizeSession`) that forces any usage of `2026-2028` (or similar 4-digit ended sessions) to be read, processed, and tracked as `2026-28`. Keep this in your logic, the system will naturally consider `2026-2028` as `2026-28`.
+10. **Hybrid Bot + Nexus AI Architecture & Strategic Innovation Memory (Persistent Context)**:
+   - **Hybrid WhatsApp Architecture (Implemented)**:
+     - Real-time DB grounding snapshot (`getExecutiveLiveSnapshot`) feeds live collection (Cash vs Bank), staff attendance (present/absent/late names), and pipeline admissions into Principal AI prompt.
+     - Faculty Air-Gap Firewall strictly blocks prompt injections, girls' phone numbers, whole class rosters, and fee ledgers.
+     - Student/Parent AI provides medical empathy, dua, leave confirmation, and exact non-hallucinated fee math.
+     - Public Guest AI handles Session 2026-28 admissions inquiry wizard with zero internal data leaks.
+   - **AI Voice Note Intelligence Roadmap**:
+     - Gemini Multimodal Audio processes OGG/Opus voice notes directly with ~95%+ accuracy for Urdu/Hinglish.
+     - Uses Confirmation Guardrails ("Aapne farmaya: ... Humne leave darj kar li hai").
+     - Replies with Push-To-Talk (PTT) voice notes using Edge-TTS in a natural female voice. Zero external cost.
+   - **Tablet Gate Face Attendance Architecture**:
+     - Android Tablet front camera runs `/gate-kiosk` page inside Chrome full-screen.
+     - Direct connection to Supabase DB (Zero third-party apps).
+     - Uses `students.photo_url` with lightweight client-side `face-api.js` to match 128-point face descriptors.
+     - Triggers instant 2-second WhatsApp entry/exit notice to parents.
+     - Zero breaking DB schema changes needed (uses existing `students` and `attendance` tables).
+   - **Custom Book / Photo Exam Paper Maker**:
+     - Teachers upload 3-5 photos of textbook pages or chapter PDFs.
+     - Gemini Multimodal Vision reads text via OCR and strictly generates BISE Multan Board formatted papers (MCQs with Answer Key, Short Questions with English/Urdu, Long Questions) ONLY from the uploaded material.
+     - Exports college-branded print-ready PDF for 1-click photocopying.
+     - Zero DB changes needed.
+
 
