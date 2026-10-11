@@ -154,39 +154,107 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
     };
   }, []);
 
-  // 2. Fetch Enrolled Students from Supabase
+  // 2. Fetch Enrolled Students from Backend API & Supabase (Merging Admissions & Students)
   const loadEnrolledStudents = useCallback(async () => {
     if (!modelsLoaded) return;
     setIsEnrolling(true);
 
     try {
-      const { data: dbStudents, error } = await supabase
-        .from("students")
-        .select("id, full_name, father_name, college_no, group, section, photo, photo_url, contact_number, father_contact")
-        .order("full_name", { ascending: true });
+      let withPhotos: StudentProfile[] = [];
 
-      if (error) {
-        toast.error("Failed to load students: " + error.message);
-        setIsEnrolling(false);
-        return;
+      // Method A: Try backend API endpoint first (service role, zero RLS issues)
+      try {
+        const res = await fetch("/api/kiosk/enrolled-students");
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.students) && json.students.length > 0) {
+            withPhotos = json.students.map((s: any) => ({
+              id: String(s.id),
+              fullName: s.fullName || "Student",
+              fatherName: s.fatherName || "",
+              collegeNo: s.collegeNo || s.id,
+              group: s.group || "Intermediate",
+              section: s.section || "A",
+              photo: s.photo,
+              phone: s.phone || "",
+            }));
+          }
+        }
+      } catch (apiErr) {
+        console.warn("[Face Kiosk] Server API fetch failed, falling back to direct Supabase:", apiErr);
       }
 
-      // Filter students who have photos
-      const withPhotos: StudentProfile[] = (dbStudents || [])
-        .map((s: any) => ({
-          id: String(s.id),
-          fullName: s.full_name || "Student",
-          fatherName: s.father_name || "",
-          collegeNo: s.college_no || s.id,
-          group: s.group || "Intermediate",
-          section: s.section || "A",
-          photo: s.photo_url || s.photo || "",
-          phone: s.contact_number || s.father_contact || "",
-        }))
-        .filter((s: StudentProfile) => Boolean(s.photo && s.photo.trim().length > 5));
+      // Method B: Client-side Supabase fallback if API returned no students
+      if (withPhotos.length === 0) {
+        const [admissionsRes, studentsRes] = await Promise.all([
+          supabase
+            .from("admissions")
+            .select("id, student_id, full_name, father_name, college_no, group, section, photo_url, photo, contact_number, father_contact"),
+          supabase
+            .from("students")
+            .select("id, student_id, admission_id, full_name, father_name, college_no, group, section, photo_url, photo, contact, father_contact")
+        ]);
+
+        const mergedMap = new Map<string, StudentProfile>();
+
+        // 1. Process Admissions (where photos are primarily saved)
+        if (admissionsRes.data) {
+          for (const a of admissionsRes.data) {
+            const photo = a.photo_url || a.photo || "";
+            if (photo && photo.trim().length > 10) {
+              const sid = a.student_id || a.college_no || a.id;
+              mergedMap.set(String(sid), {
+                id: String(sid),
+                fullName: a.full_name || "Student",
+                fatherName: a.father_name || "",
+                collegeNo: a.college_no || a.student_id || String(a.id).slice(-6),
+                group: a.group || "Intermediate",
+                section: a.section || "A",
+                photo: photo,
+                phone: a.contact_number || a.father_contact || "",
+              });
+            }
+          }
+        }
+
+        // 2. Process Students
+        if (studentsRes.data) {
+          for (const s of studentsRes.data) {
+            const sid = s.student_id || s.college_no || s.id;
+            const photo = s.photo_url || s.photo || "";
+            const existing = mergedMap.get(String(sid)) || mergedMap.get(String(s.id));
+
+            if (photo && photo.trim().length > 10) {
+              mergedMap.set(String(sid), {
+                id: String(sid),
+                fullName: s.full_name || existing?.fullName || "Student",
+                fatherName: s.father_name || existing?.fatherName || "",
+                collegeNo: s.college_no || s.student_id || existing?.collegeNo || String(s.id).slice(-6),
+                group: s.group || existing?.group || "Intermediate",
+                section: s.section || existing?.section || "A",
+                photo: photo,
+                phone: s.contact || s.father_contact || existing?.phone || "",
+              });
+            } else if (existing) {
+              mergedMap.set(String(sid), {
+                ...existing,
+                fullName: s.full_name || existing.fullName,
+                collegeNo: s.college_no || existing.collegeNo,
+              });
+            }
+          }
+        }
+
+        withPhotos = Array.from(mergedMap.values());
+      }
 
       setEnrolledStudents(withPhotos);
       setEnrollingProgress({ current: 0, total: withPhotos.length });
+
+      if (withPhotos.length === 0) {
+        setIsEnrolling(false);
+        return;
+      }
 
       // Enroll descriptors in background
       const newMap = new Map<string, { student: StudentProfile; descriptor: Float32Array }>();
@@ -215,16 +283,21 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
           if (detection && detection.descriptor) {
             newMap.set(st.id, { student: st, descriptor: detection.descriptor });
           }
-        } catch {}
+        } catch (enrollErr) {
+          console.warn(`[Face Kiosk] Could not enroll face for ${st.fullName}:`, enrollErr);
+        }
 
         processed++;
         setEnrollingProgress({ current: processed, total: withPhotos.length });
       }
 
       enrolledDescriptorsRef.current = newMap;
-      toast.success(`Successfully enrolled ${newMap.size} of ${withPhotos.length} student faces!`, { id: "enrolled-toast" });
+      if (newMap.size > 0) {
+        toast.success(`Successfully enrolled ${newMap.size} of ${withPhotos.length} student faces!`, { id: "enrolled-toast" });
+      }
     } catch (err: any) {
       console.error("Enrollment error:", err);
+      toast.error("Enrollment error: " + (err?.message || "Check connection"));
     } finally {
       setIsEnrolling(false);
     }

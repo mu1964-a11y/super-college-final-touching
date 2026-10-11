@@ -84,6 +84,7 @@ import autoTable from 'jspdf-autotable';
 
 import { useDebounce } from '../hooks/useDebounce';
 import { getUnifiedTransactions } from '../utils/fee';
+import PhotoEditorModal from './PhotoEditorModal';
 
 export default function StudentsView({ data, gender, program }: { data: any, gender?: Gender, program?: string }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -93,6 +94,9 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
   const [genderFilter, setGenderFilter] = useState<string>(gender || 'all');
   const [programFilter, setProgramFilter] = useState<string>(program || 'all');
   const [sectionFilter, setSectionFilter] = useState<string>('all');
+  const [photoFilter, setPhotoFilter] = useState<'all' | 'with-photo' | 'missing-photo'>('all');
+  const [photoEditorStudent, setPhotoEditorStudent] = useState<Student | null>(null);
+  const [isPhotoEditorOpen, setIsPhotoEditorOpen] = useState(false);
   const [subjectFilter] = useState('all');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
@@ -122,7 +126,9 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           derivedGender = 'Male';
         }
       }
-      return { ...s, gender: derivedGender };
+      const linkedAdm = data.admissions?.find((a: any) => a.id === s.admissionId || a.studentId === s.id || (s.collegeNo && a.collegeNo === s.collegeNo));
+      const resolvedPhoto = s.photo || s.photo_url || linkedAdm?.photo_url || linkedAdm?.photo || '';
+      return { ...s, gender: derivedGender, photo: resolvedPhoto };
     });
     
     // Add all admissions that don't have a matching student record yet but are confirmed
@@ -170,7 +176,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           category: a.category || 'Inter Part-1 Boys',
           group: a.group || 'Pending',
           section: a.section || 'A',
-          photo: a.photo || '',
+          photo: a.photo || a.photoUrl || (a as any).photo_url || '',
           attendance: { present: 0, absent: 0 },
           feeHistory: a.feeHistory || [],
           feeLedger: a.feeLedger ? a.feeLedger : { 
@@ -282,6 +288,12 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
     return Array.from(new Set([...predefinedNames, ...activeStudentSections])).sort() as string[];
   }, [data?.settings?.predefinedSections, programFilter, genderFilter, mergedStudents]);
 
+  const photoStats = React.useMemo(() => {
+    const withPhoto = (mergedStudents || []).filter((s: any) => Boolean(s.photo && String(s.photo).trim())).length;
+    const missingPhoto = (mergedStudents || []).length - withPhoto;
+    return { withPhoto, missingPhoto, total: (mergedStudents || []).length };
+  }, [mergedStudents]);
+
   const filteredStudents = React.useMemo(() => {
     const searchClean = (debouncedSearch || '').trim().toLowerCase();
     return mergedStudents.filter((s: any) => {
@@ -314,9 +326,15 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
 
       const matchesSection = sectionFilter === 'all' || (s.section || '').trim().toLowerCase() === sectionFilter.trim().toLowerCase();
 
-      return matchesSearch && matchesFee && matchesDefaulter && matchesSubject && matchesSection;
+      // Photo presence filter
+      const matchesPhoto = 
+        photoFilter === 'all' ||
+        (photoFilter === 'with-photo' && Boolean(s.photo && String(s.photo).trim())) ||
+        (photoFilter === 'missing-photo' && (!s.photo || !String(s.photo).trim()));
+
+      return matchesSearch && matchesFee && matchesDefaulter && matchesSubject && matchesSection && matchesPhoto;
     });
-  }, [mergedStudents, debouncedSearch, monthlyFeeFilter, defaulterFilter, subjectFilter, sectionFilter]);
+  }, [mergedStudents, debouncedSearch, monthlyFeeFilter, defaulterFilter, subjectFilter, sectionFilter, photoFilter]);
 
   // Handle pagination for better performance
   const ITEMS_PER_PAGE = 30;
@@ -326,7 +344,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
   // Reset pagination when search or filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, monthlyFeeFilter, defaulterFilter, subjectFilter, sectionFilter]);
+  }, [searchTerm, monthlyFeeFilter, defaulterFilter, subjectFilter, sectionFilter, photoFilter]);
 
   const visibleStudents = React.useMemo(
     () => {
@@ -599,6 +617,59 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
         </TabsList>
       </Tabs>
 
+      {/* 1-Click Photo Filter Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 bg-slate-50/90 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-2xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 mr-1 flex items-center gap-1.5">
+            <Camera size={14} className="text-superior-teal" />
+            Photo Filter:
+          </span>
+          <button
+            onClick={() => setPhotoFilter("all")}
+            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+              photoFilter === "all"
+                ? "bg-slate-900 text-white shadow-xs"
+                : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 border border-slate-200 dark:border-slate-700"
+            }`}
+          >
+            <span>All Records</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${photoFilter === "all" ? "bg-white/20 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"}`}>
+              {photoStats.total}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setPhotoFilter("with-photo")}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+              photoFilter === "with-photo"
+                ? "bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/20"
+                : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 border border-emerald-200/80 dark:border-emerald-800"
+            }`}
+          >
+            <Camera size={13} />
+            <span>With Photos (Lagi Hui Hain)</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${photoFilter === "with-photo" ? "bg-emerald-800 text-white" : "bg-emerald-200/80 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200"}`}>
+              {photoStats.withPhoto}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setPhotoFilter("missing-photo")}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+              photoFilter === "missing-photo"
+                ? "bg-amber-600 text-white shadow-xs ring-2 ring-amber-500/20"
+                : "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 border border-amber-200/80 dark:border-amber-800"
+            }`}
+          >
+            <AlertCircle size={13} />
+            <span>Missing Photos</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${photoFilter === "missing-photo" ? "bg-amber-800 text-white" : "bg-amber-200/80 dark:bg-amber-900 text-amber-800 dark:text-amber-200"}`}>
+              {photoStats.missingPhoto}
+            </span>
+          </button>
+        </div>
+      </div>
+
       {/* Filters Bar */}
       <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-wrap items-center gap-5 mb-10 hover:border-superior-teal/20 transition-all duration-500">
         <div className="flex items-center gap-3 pr-5 border-r border-slate-100">
@@ -789,6 +860,15 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                         <Download size={16} className="text-superior-teal" /> Download Receipt
                       </DropdownMenuItem>
                       <DropdownMenuItem 
+                        className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-teal-600 hover:bg-teal-50" 
+                        onClick={() => {
+                          setPhotoEditorStudent(student);
+                          setIsPhotoEditorOpen(true);
+                        }}
+                      >
+                        <Camera size={16} /> Crop & Edit Photo
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
                         className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
                         onClick={() => {
                           setSelectedStudent(student);
@@ -812,12 +892,20 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                 </div>
 
                 <div className="absolute -bottom-10 left-5">
-                  <div className="w-20 h-20 rounded-full border-4 border-white bg-slate-100 overflow-hidden shadow-xl shadow-superior-teal/10 ring-2 ring-superior-teal/15">
+                  <div 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPhotoEditorStudent(student);
+                      setIsPhotoEditorOpen(true);
+                    }}
+                    className="w-20 h-20 rounded-full border-4 border-white bg-slate-100 overflow-hidden shadow-xl shadow-superior-teal/10 ring-2 ring-superior-teal/15 cursor-pointer relative group"
+                    title="Click to Crop & Edit Photo (Passport Studio)"
+                  >
                     {student.photo ? (
                       <img 
                         src={student.photo} 
                         alt="" 
-                        className="w-full h-full object-cover object-[center_top] rounded-full" 
+                        className="w-full h-full object-cover object-[center_top] rounded-full group-hover:opacity-75 transition-opacity" 
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
@@ -825,10 +913,13 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                         }}
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-slate-200 text-slate-500 font-bold text-2xl rounded-full">
+                      <div className="w-full h-full flex items-center justify-center bg-slate-200 text-slate-500 font-bold text-2xl rounded-full group-hover:bg-slate-300 transition-colors">
                         {student.fullName ? student.fullName.charAt(0).toUpperCase() : 'S'}
                       </div>
                     )}
+                    <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Camera size={18} className="text-white" />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -959,12 +1050,23 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                       </TableCell>
                       <TableCell>
                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200 shadow-2xs">
+                            <div 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPhotoEditorStudent(student);
+                                setIsPhotoEditorOpen(true);
+                              }}
+                              className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200 shadow-2xs cursor-pointer relative group"
+                              title="Click to Crop & Edit Photo (AI Studio)"
+                            >
                               {student.photo ? (
-                                <img src={student.photo} alt="" className="w-full h-full object-cover object-[center_top] rounded-full" referrerPolicy="no-referrer" />
+                                <img src={student.photo} alt="" className="w-full h-full object-cover object-[center_top] rounded-full group-hover:opacity-75 transition-opacity" referrerPolicy="no-referrer" />
                               ) : (
-                                <div className="w-full h-full flex items-center justify-center text-slate-500 font-bold text-base bg-slate-200 rounded-full">{student.fullName ? student.fullName.charAt(0).toUpperCase() : 'S'}</div>
+                                <div className="w-full h-full flex items-center justify-center text-slate-500 font-bold text-base bg-slate-200 rounded-full group-hover:bg-slate-300 transition-colors">{student.fullName ? student.fullName.charAt(0).toUpperCase() : 'S'}</div>
                               )}
+                              <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Camera size={12} className="text-white" />
+                              </div>
                             </div>
                            <div className="flex flex-col">
                               <span className="text-sm font-black text-slate-900 group-hover:text-superior-teal transition-colors tracking-tight">{student.fullName}</span>
@@ -1101,6 +1203,15 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                            >
                              <Edit className="h-4 w-4" />
                            </Button>
+                            <Button
+                              onClick={() => { setPhotoEditorStudent(student); setIsPhotoEditorOpen(true); }}
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-all"
+                              title="Crop and Edit Photo (AI Studio)"
+                            >
+                              <Camera className="h-4 w-4" />
+                            </Button>
                          </div>
                       </TableCell>
                   </TableRow>
@@ -1343,6 +1454,29 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
         items={bulkModalProps.items}
         settings={data?.settings}
       />
+
+      {/* Interactive Photo Studio and AI Editor Modal */}
+      {photoEditorStudent && (
+        <PhotoEditorModal
+          isOpen={isPhotoEditorOpen}
+          onClose={() => {
+            setIsPhotoEditorOpen(false);
+            setPhotoEditorStudent(null);
+          }}
+          initialPhotoUrl={photoEditorStudent.photo}
+          studentName={photoEditorStudent.fullName}
+          studentId={photoEditorStudent.id}
+          admissionId={(photoEditorStudent as any).admissionId}
+          onSaveSuccess={(newPhoto) => {
+            if (photoEditorStudent) {
+              photoEditorStudent.photo = newPhoto;
+            }
+            if (data?.updateStudent) {
+              data.updateStudent(photoEditorStudent.id, { photo: newPhoto });
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

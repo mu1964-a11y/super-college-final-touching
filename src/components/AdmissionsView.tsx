@@ -90,6 +90,7 @@ import AdmissionSlip from "./AdmissionSlip";
 import { compressImage } from "../lib/imageUtils";
 import { sendAutoAdmissionNotice, buildAdmissionNoticeMessage } from "../lib/whatsappAutomation";
 import WhatsAppReportModal, { ReportRecipientItem } from "./WhatsAppReportModal";
+import PhotoEditorModal from "./PhotoEditorModal";
 
 export default function AdmissionsView({
   data,
@@ -107,6 +108,9 @@ export default function AdmissionsView({
   const [feeFilter, setFeeFilter] = useState<string>(initialFilter || "all");
   const [admittedFilter, setAdmittedFilter] = useState<string>("all");
   const [genderFilter, setGenderFilter] = useState<string>("all");
+  const [photoFilter, setPhotoFilter] = useState<"all" | "with-photo" | "missing-photo">("all");
+  const [editingPhotoAdmission, setEditingPhotoAdmission] = useState<Admission | null>(null);
+  const [isPhotoEditorOpen, setIsPhotoEditorOpen] = useState(false);
   const [sortBy, setSortBy] = useState<string>("date-new");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
@@ -142,6 +146,21 @@ export default function AdmissionsView({
   React.useEffect(() => {
     setLocalProgram(program);
   }, [program]);
+
+  const photoStats = useMemo(() => {
+    let withPhoto = 0;
+    let missingPhoto = 0;
+    for (const a of data.admissions || []) {
+      const hasP = Boolean(
+        (a.photo && a.photo.trim().length > 10) ||
+        ((a as any).photoUrl && (a as any).photoUrl.trim().length > 10) ||
+        ((a as any).photo_url && (a as any).photo_url.trim().length > 10)
+      );
+      if (hasP) withPhoto++;
+      else missingPhoto++;
+    }
+    return { withPhoto, missingPhoto, total: (data.admissions || []).length };
+  }, [data.admissions]);
 
   const filteredAdmissions = useMemo(() => {
     return data.admissions
@@ -205,12 +224,23 @@ export default function AdmissionsView({
           (admittedFilter === "Admitted" && isFullyEnrolled) ||
           (admittedFilter === "Prospective" && !isFullyEnrolled);
 
+        const hasPhoto = Boolean(
+          (a.photo && a.photo.trim().length > 10) ||
+          ((a as any).photoUrl && (a as any).photoUrl.trim().length > 10) ||
+          ((a as any).photo_url && (a as any).photo_url.trim().length > 10)
+        );
+        const matchesPhoto =
+          photoFilter === "all" ||
+          (photoFilter === "with-photo" && hasPhoto) ||
+          (photoFilter === "missing-photo" && !hasPhoto);
+
         return (
           matchesSearch &&
           matchesFee &&
           matchesGender &&
           matchesAdmitted &&
-          matchesProgram
+          matchesProgram &&
+          matchesPhoto
         );
       })
       .sort((a: Admission, b: Admission) => {
@@ -234,6 +264,7 @@ export default function AdmissionsView({
     feeFilter,
     admittedFilter,
     genderFilter,
+    photoFilter,
     sortBy,
     localProgram,
   ]);
@@ -1300,6 +1331,70 @@ export default function AdmissionsView({
         )}
       </div>
 
+      {/* 1-Click Photo Filter Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 bg-slate-50/90 p-3 rounded-2xl border border-slate-200/60 shadow-2xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 mr-1 flex items-center gap-1.5">
+            <Camera size={14} className="text-superior-teal" />
+            Photo Filter:
+          </span>
+          <button
+            onClick={() => setPhotoFilter("all")}
+            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+              photoFilter === "all"
+                ? "bg-slate-900 text-white shadow-xs"
+                : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+            }`}
+          >
+            <span>All Records</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${photoFilter === "all" ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}`}>
+              {photoStats.total}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setPhotoFilter("with-photo")}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+              photoFilter === "with-photo"
+                ? "bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/20"
+                : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/80"
+            }`}
+          >
+            <Camera size={13} />
+            <span>With Photos (Lagi Hui Hain)</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${photoFilter === "with-photo" ? "bg-emerald-800 text-white" : "bg-emerald-200/80 text-emerald-800"}`}>
+              {photoStats.withPhoto}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setPhotoFilter("missing-photo")}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+              photoFilter === "missing-photo"
+                ? "bg-amber-600 text-white shadow-xs ring-2 ring-amber-500/20"
+                : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200/80"
+            }`}
+          >
+            <AlertCircle size={13} />
+            <span>Missing Photos</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${photoFilter === "missing-photo" ? "bg-amber-800 text-white" : "bg-amber-200/80 text-amber-800"}`}>
+              {photoStats.missingPhoto}
+            </span>
+          </button>
+        </div>
+
+        {photoFilter === "missing-photo" && photoStats.missingPhoto > 0 && (
+          <Button
+            size="sm"
+            onClick={() => handleOpenBulkWhatsAppModal()}
+            className="h-8 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs"
+          >
+            <MessageSquare size={13} />
+            <span>Request Photos via WhatsApp ({photoStats.missingPhoto})</span>
+          </Button>
+        )}
+      </div>
+
       {/* Filters Bar */}
       <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-wrap items-center gap-5 mb-8 hover:border-superior-teal/20 transition-all duration-500">
         <div className="relative flex-1 min-w-[320px]">
@@ -1555,7 +1650,15 @@ export default function AdmissionsView({
                             const applicantPhoto = admission.photo || (admission as any).photoUrl || (admission as any).photo_url || linkedStudent?.photo || (linkedStudent as any)?.photo_url;
                             
                             return (
-                              <div className="w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center text-sm font-black text-superior-teal overflow-hidden border-2 border-slate-200 shadow-2xs shrink-0 ring-2 ring-superior-teal/10">
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingPhotoAdmission(admission);
+                                  setIsPhotoEditorOpen(true);
+                                }}
+                                title="Click to Crop or Edit Student Photo"
+                                className="w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center text-sm font-black text-superior-teal overflow-hidden border-2 border-slate-200 shadow-2xs shrink-0 ring-2 ring-superior-teal/10 relative group cursor-pointer hover:border-superior-teal hover:scale-105 transition-all"
+                              >
                                 {applicantPhoto ? (
                                   <img
                                     src={applicantPhoto}
@@ -1573,6 +1676,9 @@ export default function AdmissionsView({
                                 ) : (
                                   <span>{admission.fullName ? admission.fullName.charAt(0).toUpperCase() : "A"}</span>
                                 )}
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white backdrop-blur-[1px]">
+                                  <Camera size={13} />
+                                </div>
                               </div>
                             );
                           })()}
@@ -1754,6 +1860,16 @@ export default function AdmissionsView({
                               align="end"
                               className="rounded-2xl p-2 min-w-[200px] border-slate-200 shadow-xl"
                             >
+                              <DropdownMenuItem
+                                className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-superior-teal hover:bg-superior-teal/5"
+                                onClick={() => {
+                                  setEditingPhotoAdmission(admission);
+                                  setIsPhotoEditorOpen(true);
+                                }}
+                              >
+                                <Camera size={16} className="text-superior-teal" />{" "}
+                                Crop & Edit Photo
+                              </DropdownMenuItem>
                               <DropdownMenuItem
                                 className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700"
                                 onClick={() => {
@@ -2031,6 +2147,33 @@ export default function AdmissionsView({
         items={bulkModalProps.items}
         settings={data?.settings}
       />
+
+      {/* Interactive Photo Studio & AI Editor Modal */}
+      {editingPhotoAdmission && (
+        <PhotoEditorModal
+          isOpen={isPhotoEditorOpen}
+          onClose={() => {
+            setIsPhotoEditorOpen(false);
+            setEditingPhotoAdmission(null);
+          }}
+          initialPhotoUrl={
+            editingPhotoAdmission.photo ||
+            (editingPhotoAdmission as any).photoUrl ||
+            (editingPhotoAdmission as any).photo_url
+          }
+          studentName={editingPhotoAdmission.fullName}
+          studentId={editingPhotoAdmission.studentId}
+          admissionId={editingPhotoAdmission.id}
+          onSaveSuccess={(newUrl) => {
+            editingPhotoAdmission.photo = newUrl;
+            (editingPhotoAdmission as any).photoUrl = newUrl;
+            (editingPhotoAdmission as any).photo_url = newUrl;
+            if (data.updateAdmission) {
+              data.updateAdmission(editingPhotoAdmission.id, { photo_url: newUrl, photo: newUrl });
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

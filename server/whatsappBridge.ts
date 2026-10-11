@@ -2176,39 +2176,25 @@ _Directorate of Audit & Accounts — Superior Group of Colleges Jahanian_`;
 
     // 3. Update Supabase Database (both students and admissions tables)
     try {
-      try {
-        await supabase
-          .from("students")
-          .update({ photo: dataUrl, photo_url: dataUrl })
-          .eq("id", studentId);
-      } catch {
-        await supabase
-          .from("students")
-          .update({ photo: dataUrl })
-          .eq("id", studentId);
-      }
+      // 3A. Update students table (columns: photo, photo_url)
+      await supabase
+        .from("students")
+        .update({ photo: dataUrl, photo_url: dataUrl })
+        .or(`id.eq.${studentId},student_id.eq.${studentId},college_no.eq.${rollNo}`);
 
-      try {
-        await supabase
-          .from("admissions")
-          .update({ photo: dataUrl, photo_url: dataUrl })
-          .or(`id.eq.${studentId},student_id.eq.${studentId},college_no.eq.${rollNo}`);
-      } catch {
-        try {
-          await supabase
-            .from("admissions")
-            .update({ photo: dataUrl })
-            .or(`id.eq.${studentId},student_id.eq.${studentId},college_no.eq.${rollNo}`);
-        } catch {
-          await supabase
-            .from("admissions")
-            .update({ photo_url: dataUrl })
-            .or(`id.eq.${studentId},student_id.eq.${studentId},college_no.eq.${rollNo}`);
-        }
-      }
+      // 3B. Update admissions table (column: photo_url)
+      await supabase
+        .from("admissions")
+        .update({ photo_url: dataUrl })
+        .or(`id.eq.${studentId},student_id.eq.${studentId},college_no.eq.${rollNo}`);
     } catch (dbErr) {
       console.error("[WhatsApp Bot] Error updating student photo in Supabase:", dbErr);
     }
+
+    // Clean up any pending staged photos for this student
+    const norm = this.normalizePhoneNumber(rawNumber);
+    this.pendingStudentPhotos.delete(norm);
+    this.pendingStudentPhotos.delete(rawNumber);
 
     // 4. Send Confirmation back to Student / Parent
     const confirmationMsg = 
@@ -2622,41 +2608,15 @@ Kisi bhi inquiry ke liye Accounts Office: 📞 *${this.collegeHelpline || "0331-
       return;
     }
 
-    // Case 3D: Student Portrait Photo (Strict Intent Guard to prevent accidental overwrites!)
-    if (classification.category === "student_portrait") {
-      const hasPhotoIntent = 
-        /\b(photo|tasveer|pic|picture|dp|profile|card|id card|update)\b/i.test(caption) ||
-        Boolean(session?.waitingForStudentPhoto);
+    // Case 3D: Student Portrait Photo or Profile Picture Submission
+    const hasPhotoIntent = 
+      /\b(photo|tasveer|pic|picture|dp|profile|card|id card|update|chehra|face)\b/i.test(caption || quotedText || "") ||
+      Boolean(session?.waitingForStudentPhoto);
 
-      if (hasPhotoIntent) {
-        if (session) session.waitingForStudentPhoto = false;
-        await this.handleIncomingStudentPhoto(msg, senderJid, rawNumber, caption, pushName);
-        return;
-      } else {
-        // Safe clarifying prompt: Do not overwrite anything without explicit confirmation!
-        this.pendingStudentPhotos.set(normPhone, {
-          buffer,
-          timestamp: Date.now(),
-          mimeType: imageMsg.mimetype || "image/jpeg",
-          caption,
-        });
-        if (session) session.waitingForStudentPhoto = true;
-
-        const safePrompt = 
-`📸 *PORTRAIT TASVEER MASOOL HUI HAI*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Aapki bheji gayi portrait photo receive ho chuki hai.
-
-Agar aap yeh photo kisi student ke *College ID Card* ya *Profile* par lagana chahte hain, toh student ka *Roll Number* (maslan: *SGC-26-101*) ya *Mukammal Naam* likh kar reply karein.`;
-
-        if (this.sock) await this.sock.sendMessage(senderJid, { text: safePrompt });
-        this.saveChatLog({
-          phone: rawNumber,
-          direction: "outgoing",
-          text: safePrompt,
-        });
-        return;
-      }
+    if (classification.category === "student_portrait" || hasPhotoIntent) {
+      if (session) session.waitingForStudentPhoto = false;
+      await this.handleIncomingStudentPhoto(msg, senderJid, rawNumber, caption, pushName);
+      return;
     }
 
     // Fallback: If unclassified, handle safely conversationally without touching student photos!
@@ -2738,31 +2698,52 @@ Agar aap yeh photo kisi student ke *College ID Card* ya *Profile* par lagana cha
       }
     }
 
-    // 3. Check by sender phone number against students table
+    // 3. Check by sender phone number against students & admissions tables
     if (!matchedStudent && standardPhone) {
       const phoneDigits = standardPhone.replace(/\D/g, "");
       const strippedSender = phoneDigits.startsWith("92") ? phoneDigits.slice(2) : phoneDigits.startsWith("0") ? phoneDigits.slice(1) : phoneDigits;
       const last7 = phoneDigits.slice(-7);
       const hyphenated = `0${strippedSender.slice(0, 3)}-${last7}`;
 
-      const { data: byPhone } = await supabase
-        .from("students")
-        .select("*")
-        .or(`contact.ilike.%${last7}%,contact.ilike.%${strippedSender}%,contact.ilike.%${hyphenated}%`)
-        .limit(3);
+      const [studentsRes, admissionsRes] = await Promise.all([
+        supabase
+          .from("students")
+          .select("*")
+          .or(`contact.ilike.%${last7}%,contact.ilike.%${strippedSender}%,contact.ilike.%${hyphenated}%`)
+          .limit(3),
+        supabase
+          .from("admissions")
+          .select("*")
+          .or(`contact_number.ilike.%${last7}%,contact_number.ilike.%${strippedSender}%,contact_number.ilike.%${hyphenated}%,father_contact.ilike.%${last7}%,father_contact.ilike.%${strippedSender}%`)
+          .limit(3)
+      ]);
 
-      if (byPhone && byPhone.length === 1) {
-        matchedStudent = byPhone[0];
-      } else if (byPhone && byPhone.length > 1) {
+      const foundList: any[] = [];
+      if (studentsRes.data && studentsRes.data.length > 0) {
+        foundList.push(...studentsRes.data);
+      }
+      if (admissionsRes.data && admissionsRes.data.length > 0) {
+        for (const a of admissionsRes.data) {
+          if (!foundList.some(s => s.id === a.id || s.id === a.student_id || s.admission_id === a.id)) {
+            foundList.push(this.formatAdmissionAsStudent(a));
+          }
+        }
+      }
+
+      if (foundList.length === 1) {
+        matchedStudent = foundList[0];
+      } else if (foundList.length > 1) {
         // Multiple children registered under same phone (siblings)
-        this.pendingStudentPhotos.set(standardPhone, {
+        const stagePayload = {
           buffer,
           timestamp: Date.now(),
           mimeType: imageMsg.mimetype || "image/jpeg",
           caption,
-        });
+        };
+        this.pendingStudentPhotos.set(standardPhone, stagePayload);
+        this.pendingStudentPhotos.set(rawNumber, stagePayload);
 
-        const listStr = byPhone.map((s: any, idx: number) => 
+        const listStr = foundList.map((s: any, idx: number) => 
           `${idx + 1}. *${s.full_name}* (Roll: *${s.college_no || s.id}*, Class: ${s.group || "Inter"})`
         ).join("\n");
 
@@ -2774,7 +2755,7 @@ Aapke is number par record mein 1 se zyada students darj hain:
 ${listStr}
 
 Baraye meherbani batayein yeh picture kis student ki hai?
-Student ka *Roll Number* (maslan: *${byPhone[0].college_no || byPhone[0].id}*) ya *Mukammal Naam* likh kar reply karein.`;
+Student ka *Roll Number* (maslan: *${foundList[0].college_no || foundList[0].id}*) ya *Mukammal Naam* likh kar reply karein.`;
 
         if (this.sock) await this.sock.sendMessage(senderJid, { text: promptMsg });
         this.saveChatLog({
@@ -2793,12 +2774,14 @@ Student ka *Roll Number* (maslan: *${byPhone[0].college_no || byPhone[0].id}*) y
     }
 
     // 5. Unknown sender or photo sent without context: Stage photo and ask for student details
-    this.pendingStudentPhotos.set(standardPhone, {
+    const unkPayload = {
       buffer,
       timestamp: Date.now(),
       mimeType: imageMsg.mimetype || "image/jpeg",
       caption,
-    });
+    };
+    this.pendingStudentPhotos.set(standardPhone, unkPayload);
+    this.pendingStudentPhotos.set(rawNumber, unkPayload);
 
     const needIdMsg = 
 `📸 *TASVEER MOSOOL HO GAYI HAI (PHOTO RECEIVED)*
@@ -3308,6 +3291,11 @@ Truthfulness & Anti-Gaslighting Mandate:
 
 Admission & Capability Integrity:
 - NEVER say "Main aik AI hoon, dakhla/admission nahi kar sakti" or give brush-off excuses. You are an active part of Superior College Jahanian's ERP & LMS system. If a user asks for admission, guide them through the details (Candidate Name, Father Name, Program, Marks, Contact) to record their admission inquiry.
+
+Profile Picture & Photo Updates Integrity (CRITICAL):
+- You fully support student profile picture updates and photo uploads.
+- NEVER say "Main directly aapki profile picture system mein update nahi kar sakti" or "Main kisi shakhs ki tasveer dekh kar guidance nahi de sakti" or give canned refusals.
+- If a user asks to update their profile picture or sends a photo, tell them warmly: "Jee bilkul! Aap apni passport-size picture ya selfie WhatsApp par send karein, hamara automated AI system foran aapki profile aur College Face Attendance Kiosk mein update kar dega."
 
 ChatGPT Intelligence:
 - You can answer ANY question intelligently, accurately, and helpfully: college information (session 2026-28), subjects, exam prep, writing applications, general knowledge, career advice.
@@ -5550,6 +5538,35 @@ Aap seedha yeh maloomat hasil kar sakte hain:
 _Kahiye, aaj aapko kya maloomat darkaar hain? (Aap 1, 2, 3 likh sakte hain ya seedha sawal pooch sakte hain)._`;
           return await sendReply(studentWelcome, "Registered Student Welcome (Zero OTP)", student.full_name);
         } else {
+          // Check if sender has a staged photo waiting to be applied, OR is asking to update photo
+          const pendingPhoto = this.pendingStudentPhotos.get(standardPhone) || 
+                               this.pendingStudentPhotos.get(rawNumber) ||
+                               (normPhone ? this.pendingStudentPhotos.get(normPhone) : undefined);
+
+          const isPhotoUpdateIntent = 
+            /\b(photo|tasveer|pic|picture|dp|profile|image)\b/i.test(cleanQuery) &&
+            /\b(update|laga|lagao|karo|kr do|add|chahiye|set|badlo|change)\b/i.test(cleanQuery);
+
+          if (pendingPhoto) {
+            this.pendingStudentPhotos.delete(standardPhone);
+            this.pendingStudentPhotos.delete(rawNumber);
+            if (normPhone) this.pendingStudentPhotos.delete(normPhone);
+            const confirmation = await this.applyStudentPhoto(supabase, student, pendingPhoto.buffer, senderJid, rawNumber);
+            return confirmation;
+          }
+
+          if (isPhotoUpdateIntent && !pendingPhoto) {
+            const promptForPhoto = 
+`📸 *PROFILE PHOTO UPDATE DESK*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Khush-amdeed *${student.full_name}*!
+🏷️ Roll No: *${student.college_no || student.id || "N/A"}*
+
+Jee bilkul! Aap apni nayi passport-size photo ya selfie is WhatsApp chat par send karein.
+Hamara automated AI system foran aapki profile, College ID Card aur Gate Face Attendance system par picture update kar dega! 🌸`;
+            return await sendReply(promptForPhoto, "Photo Request Prompt", student.full_name);
+          }
+
           const studentDues = Math.max(0, Number(student.total_package || 0) - Number(student.fee_received || 0));
           const feeStatusLabel = studentDues === 0 
             ? "Fully Paid (Alhamdolillah Zero Dues Pending)" 
@@ -5580,10 +5597,14 @@ CONVERSATIONAL RULES & PARENTAL EMPATHY:
    - If asked about attendance or exams, guide them helpfully (note that 80% attendance is required for Board examination slips).
 6. NATURAL REPLIES:
    - If they are sending a natural update or response to staff (e.g., "sham ko send kr dta hun", "theek hai sir", "kab aana hai"), acknowledge politely and humanely (e.g., "Walaikum Assalam! Jee bilkul, aap tasalli se bhej dein. JazakAllah!").
-7. AIR-GAP PRIVACY:
+7. CRITICAL PROFILE PHOTO RULE:
+   - You fully support profile photo and picture updates in the college database.
+   - If user asks to update their photo, picture, or profile image, NEVER say "Main directly aapki profile picture update nahi kar sakti" or refuse.
+   - Guide them warmly: "Jee bilkul! Aap apni passport-size photo ya selfie is WhatsApp chat par send karein, hamara automated system foran aapki profile aur face attendance kiosk mein picture update kar dega."
+8. AIR-GAP PRIVACY:
    - You are ONLY authorized to discuss this specific student (${student.full_name}). NEVER discuss or reveal information about other students, class fellows, or staff.
-8. Language: Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. NEVER write in Arabic script Urdu. Every character must be Latin script.
-9. Persona: Female AI assistant ("karti hoon", "bata sakti hoon").`;
+9. Language: Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. NEVER write in Arabic script Urdu. Every character must be Latin script.
+10. Persona: Female AI assistant ("karti hoon", "bata sakti hoon").`;
 
           const aiReply = await this.generateAiConversationalReply(
             text,
@@ -5923,15 +5944,27 @@ _Directorate of Admissions, SGC Jahanian_`;
     }
 
     // 9b. Check if sender has a pending photo waiting to be attached to a student
-    const pendingPhoto = this.pendingStudentPhotos.get(standardPhone);
+    const pendingPhoto = this.pendingStudentPhotos.get(standardPhone) || this.pendingStudentPhotos.get(rawNumber);
     if (pendingPhoto) {
       if (Date.now() - pendingPhoto.timestamp > 15 * 60 * 1000) {
         this.pendingStudentPhotos.delete(standardPhone);
+        this.pendingStudentPhotos.delete(rawNumber);
       } else {
+        let candidate: any = null;
         const photoCandidateLookup = await this.findStudentCandidate(supabase, text, rawNumber, explicitRoll);
         if (photoCandidateLookup.candidate) {
-          const candidate = photoCandidateLookup.candidate;
+          candidate = photoCandidateLookup.candidate;
+        } else {
+          // Fallback: check if sender's phone itself belongs to a student or admission
+          const byPhoneLookup = await this.findStudentCandidate(supabase, "", rawNumber);
+          if (byPhoneLookup.candidate) {
+            candidate = byPhoneLookup.candidate;
+          }
+        }
+
+        if (candidate) {
           this.pendingStudentPhotos.delete(standardPhone);
+          this.pendingStudentPhotos.delete(rawNumber);
           const confirmation = await this.applyStudentPhoto(supabase, candidate, pendingPhoto.buffer, senderJid, rawNumber);
           return confirmation;
         } else if (photoCandidateLookup.multipleMatches && photoCandidateLookup.multipleMatches.length > 1) {

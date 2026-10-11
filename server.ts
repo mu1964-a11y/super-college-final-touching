@@ -219,7 +219,91 @@ async function startServer() {
     }
   });
 
-  // AI Endpoint: Chat & Decision Console Co-pilot
+  // Kiosk Endpoint: Get all enrolled students with photos for Biometric Face Recognition
+  app.get("/api/kiosk/enrolled-students", async (req, res) => {
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabaseUrl = process.env.VITE_SUPABASE_URL || "https://wgjkodcggpklxqcpnjhu.supabase.co";
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+      const supabase = createClient(supabaseUrl, supabaseKey as string, { auth: { persistSession: false } });
+
+      const [admissionsRes, studentsRes] = await Promise.all([
+        supabase
+          .from("admissions")
+          .select("id, student_id, full_name, father_name, college_no, group, section, photo_url, contact_number, father_contact"),
+        supabase
+          .from("students")
+          .select("id, student_id, admission_id, full_name, father_name, college_no, group, section, photo_url, photo, contact, father_contact")
+      ]);
+
+      const map = new Map<string, any>();
+
+      // 1. Process Admissions first
+      if (admissionsRes.data) {
+        for (const a of admissionsRes.data) {
+          const photo = a.photo_url || a.photo || "";
+          if (photo && photo.trim().length > 10) {
+            const sid = a.student_id || a.college_no || a.id;
+            map.set(String(sid), {
+              id: String(sid),
+              admissionId: String(a.id),
+              fullName: a.full_name || "Student",
+              fatherName: a.father_name || "",
+              collegeNo: a.college_no || a.student_id || String(a.id).slice(-6),
+              group: a.group || "Intermediate",
+              section: a.section || "A",
+              photo: photo,
+              phone: a.contact_number || a.father_contact || "",
+              source: "admissions"
+            });
+          }
+        }
+      }
+
+      // 2. Merge Students (override or add)
+      if (studentsRes.data) {
+        for (const s of studentsRes.data) {
+          const sid = s.student_id || s.college_no || s.id;
+          const photo = s.photo_url || s.photo || "";
+          const existing = map.get(String(sid)) || map.get(String(s.id)) || (s.admission_id ? map.get(String(s.admission_id)) : null);
+
+          if (photo && photo.trim().length > 10) {
+            map.set(String(sid), {
+              id: String(sid),
+              admissionId: s.admission_id || existing?.admissionId || String(s.id),
+              fullName: s.full_name || existing?.fullName || "Student",
+              fatherName: s.father_name || existing?.fatherName || "",
+              collegeNo: s.college_no || s.student_id || existing?.collegeNo || String(s.id).slice(-6),
+              group: s.group || existing?.group || "Intermediate",
+              section: s.section || existing?.section || "A",
+              photo: photo,
+              phone: s.contact || s.father_contact || existing?.phone || "",
+              source: "students"
+            });
+          } else if (existing) {
+            // Keep existing photo from admissions but update student details if needed
+            map.set(String(sid), {
+              ...existing,
+              fullName: s.full_name || existing.fullName,
+              collegeNo: s.college_no || existing.collegeNo
+            });
+          }
+        }
+      }
+
+      const enrolled = Array.from(map.values());
+      return res.json({
+        success: true,
+        count: enrolled.length,
+        students: enrolled
+      });
+    } catch (err: any) {
+      console.error("[Kiosk API] Error fetching enrolled students:", err);
+      return res.status(500).json({ success: false, error: err?.message || "Failed to load enrolled students" });
+    }
+  });
+
+
   app.post("/api/gemini/chat", async (req, res) => {
     try {
       const { message, history, collegeContext } = req.body;
