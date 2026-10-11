@@ -255,7 +255,12 @@ export default function SettingsView({ data }: { data: any }) {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await updateSettings(formData);
+      const payload = { ...formData };
+      if (payload.contactNumber && payload.contactNumber.includes("22111447")) {
+        payload.contactNumber = payload.contactNumber.replace(/22111447/g, "2211147");
+        setFormData(payload);
+      }
+      await updateSettings(payload);
       toast.success("Application settings updated successfully!");
     } catch (error) {
       toast.error("Failed to save settings.");
@@ -985,7 +990,7 @@ export default function SettingsView({ data }: { data: any }) {
                   <Label htmlFor="contactNumber" className="text-[10px] font-black uppercase tracking-widest text-slate-400">Institutional Phone</Label>
                   <div className="relative">
                     <Phone className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <Input id="contactNumber" name="contactNumber" value={formData.contactNumber} onChange={handleInputChange} className="pl-14 h-14 rounded-2xl bg-slate-50 border-transparent font-bold" />
+                    <Input id="contactNumber" name="contactNumber" placeholder="0331-2211147" value={formData.contactNumber} onChange={handleInputChange} className="pl-14 h-14 rounded-2xl bg-slate-50 border-transparent font-bold" />
                   </div>
                 </div>
                 <div className="space-y-2">

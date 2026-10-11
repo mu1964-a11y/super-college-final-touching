@@ -25,6 +25,17 @@ export function formatWhatsAppPhone(rawPhone?: string): string | null {
 }
 
 /**
+ * Returns clean normalized college helpline, preventing accidental double-digit typos
+ */
+export function getCleanHelpline(settings?: any): string {
+  let num = settings?.contactNumber || settings?.contact_number || "0331-2211147";
+  if (num.includes("22111447")) {
+    num = num.replace(/22111447/g, "2211147");
+  }
+  return num;
+}
+
+/**
  * Resolves the public base URL for short preview & download document links
  */
 export function getPublicBaseUrl(settings?: any): string {
@@ -140,7 +151,7 @@ export function buildAdmissionNoticeMessage(admission: any, settings?: any): str
     : "";
 
   const address = settings?.address || "Superior College, Canal Road, Jahanian";
-  const helpline = settings?.contactNumber || "0331-2211147";
+  const helpline = getCleanHelpline(settings);
 
   // Build Context-Specific Links (ONLY Admission Slip & Initial Fee Receipt if paid)
   const primaryId = collegeNo !== "Allotted on Orientation" ? collegeNo : (studentId !== "Allotted on Portal" ? studentId : (admission.id || ""));
@@ -195,7 +206,7 @@ export function buildPhotoUploadRequestMessage(student: any, settings?: any): st
   const studentName = (student.fullName || student.name || "Student").trim();
   const rollNo = student.collegeNo || student.rollNo || student.id || "N/A";
   const group = student.group || student.section || "Intermediate";
-  const helpline = settings?.contactNumber || "0331-2211147";
+  const helpline = getCleanHelpline(settings);
 
   return `🏛️ *${collegeName.toUpperCase()}*
 📸 *SMART FACE ATTENDANCE & PROFILE PHOTO UPDATE*
@@ -371,7 +382,7 @@ export function buildFeeReceiptMessage(
     remainingBal = Math.max(0, totalPkg - (existingReceived + Number(paymentDetails.amountPaid || 0)));
   }
 
-  const helpline = settings?.contactNumber || "0331-2211147";
+  const helpline = getCleanHelpline(settings);
 
   // Context-specific links: ONLY Fee Receipt & Fee Statement
   const receiptUrl = getDocumentLink("receipt", rollNo, { rcp: receiptNo }, settings);
@@ -490,7 +501,7 @@ export function buildFeeReminderMessage(
   const totalPkg = Number(student.totalPackage || 0);
   const feeReceived = Number(student.feeReceived || 0);
   const balance = typeof balanceAmount === "number" ? balanceAmount : Math.max(0, totalPkg - feeReceived);
-  const helpline = settings?.contactNumber || "0331-2211147";
+  const helpline = getCleanHelpline(settings);
 
   // Context-specific link: ONLY Fee Statement / Ledger
   const statementUrl = getDocumentLink("statement", rollNo, undefined, settings);
@@ -619,7 +630,7 @@ export async function sendAutoResultNotice(
   const group = student.group || student.category || "Intermediate";
   const section = student.section ? ` (Sec: ${student.section})` : "";
   const month = details.month || "Current Term";
-  const helpline = settings?.contactNumber || "0331-2211147";
+  const helpline = getCleanHelpline(settings);
 
   // Context-specific link: ONLY Academic Result Card
   const resultUrl = getDocumentLink("result", rollNo, { m: month }, settings);
@@ -715,7 +726,7 @@ export function buildDailyAttendanceMessage(student: any, details: AutoDailyAtte
   const group = student.group || student.category || "Intermediate";
   const section = student.section ? ` (Sec: ${student.section})` : "";
   const dateStr = details.date || new Date().toISOString().split('T')[0];
-  const helpline = settings?.contactNumber || "0331-2211147";
+  const helpline = getCleanHelpline(settings);
 
   const statusBadge = details.status === 'Present' 
     ? '✅ HAZIR (Present)' 
@@ -871,7 +882,7 @@ export function buildPeriodicAttendanceMessage(
   const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
   const group = student.group || student.category || "Intermediate";
   const section = student.section ? ` (Sec: ${student.section})` : "";
-  const helpline = settings?.contactNumber || "0331-2211147";
+  const helpline = getCleanHelpline(settings);
 
   const totalDays = details.totalWorkingDays || (details.present + details.absent + details.late + details.leave) || 1;
   const pct = details.percentage !== undefined 
@@ -989,7 +1000,7 @@ export function buildTestMarksMessage(student: any, details: AutoTestMarksDetail
   const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
   const group = student.group || student.category || "Intermediate";
   const section = student.section ? ` (Sec: ${student.section})` : "";
-  const helpline = settings?.contactNumber || "0331-2211147";
+  const helpline = getCleanHelpline(settings);
 
   const numObtained = Number(details.obtainedMarks) || 0;
   const total = Number(details.totalMarks) || 50;
@@ -1102,7 +1113,7 @@ export function buildMeritPositionMessage(student: any, details: AutoMeritPositi
   const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
   const group = student.group || student.category || "Intermediate";
   const section = student.section ? ` (Sec: ${student.section})` : "";
-  const helpline = settings?.contactNumber || "0331-2211147";
+  const helpline = getCleanHelpline(settings);
 
   const posMedal = details.rank === 1 ? '🥇 FIRST POSITION (1st)' : details.rank === 2 ? '🥈 SECOND POSITION (2nd)' : details.rank === 3 ? '🥉 THIRD POSITION (3rd)' : `Class Position #${details.rank}`;
 
@@ -1289,7 +1300,7 @@ export function buildLeadFollowUpMessage(lead: any, settings?: any, customNote?:
   const previousSchool = lead.previousSchool ? `\n• *Previous School:* ${lead.previousSchool}` : "";
   const feeLine = lead.finalizedFee ? `\n• *Agreed Package Fee:* Rs. ${Number(lead.finalizedFee).toLocaleString()}` : "";
   const address = settings?.address || "Canal Road, Jahanian";
-  const helpline = settings?.contactNumber || "0331-2211147";
+  const helpline = getCleanHelpline(settings);
 
   let noteSection = "";
   if (customNote && customNote.trim()) {
@@ -1375,7 +1386,7 @@ export function buildStudentNoticeMessage(
   const group = student.group || student.category || "Intermediate";
   const section = student.section ? ` (Sec: ${student.section})` : "";
   const address = settings?.address || "Canal Road, Jahanian";
-  const helpline = settings?.contactNumber || "0331-2211147";
+  const helpline = getCleanHelpline(settings);
 
   const studentPortalUrl = getDocumentLink("student", rollNo, undefined, settings);
 

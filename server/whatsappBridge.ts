@@ -1442,12 +1442,16 @@ _Superior College Staff Portal_`;
       if (supabase) {
         const { data: stg } = await supabase.from("settings").select("contact_number, config").limit(1).maybeSingle();
         if (stg?.contact_number && stg.contact_number.trim() && !stg.contact_number.includes("0301-4455891")) {
-          this.collegeHelpline = stg.contact_number.trim();
+          let num = stg.contact_number.trim();
+          if (num.includes("22111447")) num = num.replace(/22111447/g, "2211147");
+          this.collegeHelpline = num;
           return this.collegeHelpline;
         }
         const autoPhone = stg?.config?.automatedReports?.principalPhone;
         if (autoPhone && autoPhone.trim() && !autoPhone.includes("0301-4455891")) {
-          this.collegeHelpline = autoPhone.trim();
+          let num = autoPhone.trim();
+          if (num.includes("22111447")) num = num.replace(/22111447/g, "2211147");
+          this.collegeHelpline = num;
           return this.collegeHelpline;
         }
       }
