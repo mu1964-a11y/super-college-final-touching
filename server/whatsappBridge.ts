@@ -5540,8 +5540,7 @@ _Kahiye, aaj aapko kya maloomat darkaar hain? (Aap 1, 2, 3 likh sakte hain ya se
         } else {
           // Check if sender has a staged photo waiting to be applied, OR is asking to update photo
           const pendingPhoto = this.pendingStudentPhotos.get(standardPhone) || 
-                               this.pendingStudentPhotos.get(rawNumber) ||
-                               (normPhone ? this.pendingStudentPhotos.get(normPhone) : undefined);
+                               this.pendingStudentPhotos.get(rawNumber);
 
           const isPhotoUpdateIntent = 
             /\b(photo|tasveer|pic|picture|dp|profile|image)\b/i.test(cleanQuery) &&
@@ -5550,7 +5549,6 @@ _Kahiye, aaj aapko kya maloomat darkaar hain? (Aap 1, 2, 3 likh sakte hain ya se
           if (pendingPhoto) {
             this.pendingStudentPhotos.delete(standardPhone);
             this.pendingStudentPhotos.delete(rawNumber);
-            if (normPhone) this.pendingStudentPhotos.delete(normPhone);
             const confirmation = await this.applyStudentPhoto(supabase, student, pendingPhoto.buffer, senderJid, rawNumber);
             return confirmation;
           }

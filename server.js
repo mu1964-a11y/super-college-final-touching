@@ -141,7 +141,7 @@ async function startServer() {
         console.error("[Public Leads API] Supabase Insert Error:", error);
         return res.status(500).json({ success: false, error: error.message });
       }
-      const resolvedAppId = extra_info2 || "SCJ-2026-" + Math.floor(1e3 + Math.random() * 9e3);
+      const resolvedAppId = data?.extra_info2 || req.body?.extra_info2 || "SCJ-2026-" + Math.floor(1e3 + Math.random() * 9e3);
       try {
         const welcomeText = `\u{1F393} *SUPERIOR COLLEGE JAHANIAN*
 ---------------------------------------

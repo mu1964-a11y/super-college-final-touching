@@ -181,7 +181,7 @@ async function startServer() {
       }
 
       // Nexus AI Bot: Send instant automatic WhatsApp confirmation to student
-      const resolvedAppId = (extra_info2 || ("SCJ-2026-" + Math.floor(1000 + Math.random() * 9000)));
+      const resolvedAppId = (data?.extra_info2 || req.body?.extra_info2 || ("SCJ-2026-" + Math.floor(1000 + Math.random() * 9000)));
       try {
         const welcomeText = `🎓 *SUPERIOR COLLEGE JAHANIAN*\n` +
           `---------------------------------------\n` +
@@ -241,7 +241,7 @@ async function startServer() {
       // 1. Process Admissions first
       if (admissionsRes.data) {
         for (const a of admissionsRes.data) {
-          const photo = a.photo_url || a.photo || "";
+          const photo = a.photo_url || (a as any).photo || "";
           if (photo && photo.trim().length > 10) {
             const sid = a.student_id || a.college_no || a.id;
             map.set(String(sid), {
