@@ -829,6 +829,62 @@ Is access ko activate karne ke liye isi chat par reply karein:
     }
   }
 
+  // Synthesize Text-to-Speech audio buffer for WhatsApp Voice Note (PTT) replies
+  public async synthesizeSpeech(text: string, lang: string = "ur"): Promise<Buffer | null> {
+    try {
+      // 1. Clean markdown formatting, emojis, bullets for natural TTS pronunciation
+      let cleanText = text
+        .replace(/[*_~`#]/g, "")
+        .replace(/[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, "")
+        .replace(/[•●▪▫■□▶►]/g, "")
+        .replace(/https?:\/\/\S+/g, "")
+        .replace(/\n+/g, ". ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      // If text is long, take the first 2-3 most essential sentences for a natural, concise voice note
+      if (cleanText.length > 250) {
+        const sentences = cleanText.split(/[.?!।]\s+/).filter(s => s.trim().length > 0);
+        cleanText = sentences.slice(0, 3).join(". ").trim();
+        if (cleanText.length > 250) {
+          cleanText = cleanText.substring(0, 240) + "...";
+        }
+      }
+
+      if (!cleanText || cleanText.length < 2) return null;
+
+      // Determine TTS language: 'ur' if Roman Urdu/Urdu, 'en' if predominantly English
+      const lower = cleanText.toLowerCase();
+      const isEnglish = /^[A-Za-z0-9\s.,?!'-]+$/.test(cleanText) && 
+        !lower.includes("aap") && 
+        !lower.includes("karein") && 
+        !lower.includes("hai") &&
+        !lower.includes("ka") &&
+        !lower.includes("ki");
+      const targetLang = (lang === "en" || isEnglish) ? "en" : "ur";
+
+      const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${targetLang}&client=tw-ob&q=${encodeURIComponent(cleanText)}`;
+      
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Referer": "https://translate.google.com/"
+        }
+      });
+
+      if (!res.ok) {
+        console.warn(`[WhatsApp TTS] HTTP ${res.status}: ${res.statusText}`);
+        return null;
+      }
+
+      const arrayBuf = await res.arrayBuffer();
+      return Buffer.from(arrayBuf);
+    } catch (ttsErr) {
+      console.error("[WhatsApp TTS] Speech synthesis error:", ttsErr);
+      return null;
+    }
+  }
+
   public async compareFaceWithEnrolled(enrolledBase64OrUrl: string, liveBuffer: Buffer): Promise<{ isMatch: boolean; confidence: number; reason: string }> {
     const ai = this.getGeminiClient();
     if (!ai) return { isMatch: false, confidence: 0, reason: "AI service unavailable" };
@@ -2473,7 +2529,7 @@ CRITICAL RULES FOR ANALYZING THIS IMAGE:
 "${classification.extractedText}"
 3. Anti-Gaslighting & Honesty: If the screenshot displays an earlier conversation, mistake, or message where you previously addressed the user as Principal or sent an irrelevant message, ACKNOWLEDGE IT HONESTLY AND POLITELY. Apologize sincerely for the previous confusion without arguing, denying, or lying about what is visible.
 4. Role Lock: Calmly clarify that according to college database records, their official profile is registered as ${verifiedUser.name} (${verifiedUser.designation || verifiedUser.role}, ID: ${verifiedUser.staffId}).
-5. Strictly reply in polite, polished Roman Urdu / Hinglish (Latin alphabet) or English. NEVER write in Arabic-script Urdu (اردو). Every single character must be Latin script.
+5. STRICT LANGUAGE MANDATE: Reply in polite, polished Roman Urdu / Hinglish (Latin alphabet) or English ONLY. ZERO Hindi / Devanagari script allowed. No pure Hindi vocabulary ('dhanyawad', 'namaste', etc.). NEVER write in Arabic-script Urdu (اردو). Every single character must be Latin script.
 6. Do NOT give lazy brush-off answers. Address the user's inquiry thoroughly and respectfully.`;
       } else {
         systemPrompt = `You are Superior Nexus, the official female AI Virtual Assistant of Superior College Jahanian.
@@ -2484,7 +2540,7 @@ Extracted visual text: "${classification.extractedText}"
 
 Examine the image carefully. If it is a textbook question, academic problem, chat proof, or inquiry, provide a direct, accurate, respectful answer.
 Anti-Gaslighting: If the image shows an earlier bot response or mistake, acknowledge it honestly and politely without denying visible facts.
-Strict Language: Reply in Roman Urdu / Hinglish or English. NEVER use Arabic-script Urdu (اردو).`;
+Strict Language Mandate: Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. ZERO Hindi / Devanagari script allowed. No pure Hindi words. NEVER use Arabic-script Urdu (اردو).`;
       }
 
       const promptMsg = caption || (quotedText ? `Regarding quoted message: "${quotedText}"` : "Baraye meherbani is tasveer / screenshot ko dekh kar rahnumai farmayein.");
@@ -3280,9 +3336,12 @@ Identity & Persona:
 - Strictly DO NOT use archaic or overly formal royal court words like "Mohtaram", "Janab", "Janab-e-Aali", or "Binte/Farzand". Speak respectfully, warmly, modernly, and naturally (e.g. "Aap", "Dear", or address them directly).
 - Salam Rule: ONLY include a Salam greeting (like "Assalam-o-Alaikum" or "Walaikum Assalam") if the user explicitly greeted you with Salam in their current message. Otherwise, jump directly to answering helpfully.
 
-Language Mandate (STRICT):
-- ALWAYS reply in Roman Urdu / Hinglish (Latin alphabet) or English.
-- STRICTLY FORBIDDEN: DO NOT write in Arabic script Urdu (اردو). Every single character must be standard Latin English text.
+Language Mandate (STRICT & ABSOLUTE):
+- ALWAYS reply in Roman Urdu / Hinglish (using Latin English letters) or standard English.
+- STRICTLY FORBIDDEN: NEVER write in Hindi or Devanagari script (e.g. नमस्ते, या, की, etc.). ZERO Devanagari characters allowed.
+- STRICTLY FORBIDDEN: DO NOT use pure Hindi vocabulary (e.g. NEVER say "dhanyawad", "namaste", "pranam", "kripya", "chhatra", "adhyapak"). ALWAYS use authentic Pakistani Roman Urdu / English words (e.g. "shukriya", "baraye meherbani", "talib-e-ilm", "asateza", "dakhla", "rabta karein").
+- MATCH USER LANGUAGE: If the user asks in English, reply in English. If the user asks in Roman Urdu or Urdu, reply in Roman Urdu.
+- STRICTLY FORBIDDEN: DO NOT write in Arabic script Urdu (اردو) unless specifically asked. Standardize on clean Roman Urdu / Hinglish and English.
 
 Truthfulness & Anti-Gaslighting Mandate:
 - NEVER lie, fabricate facts, or deny past mistakes.
@@ -3368,8 +3427,13 @@ College Key Info:
 
       const response = await Promise.race([apiPromise, timeoutPromise]) as any;
 
-      const reply = response.text?.trim();
+      let reply = response.text?.trim() || "";
       if (reply) {
+        // Strict Devanagari Hindi Sanitizer (Strips any accidental Hindi script: U+0900 to U+097F)
+        if (/[\u0900-\u097F]/.test(reply)) {
+          console.warn("[Nexus AI Guardrail] Sanitized stray Devanagari Hindi characters from response");
+          reply = reply.replace(/[\u0900-\u097F]+/g, "").replace(/\s+/g, " ").trim();
+        }
         if (senderPhone) {
           const lowerReply = reply.toLowerCase();
           if (
@@ -4064,6 +4128,26 @@ College Key Info:
         verifiedStudent: verifiedStudentName || (session!.verifiedStudent ? session!.verifiedStudent.full_name : undefined),
       });
       if (this.sock) {
+        // Voice-in -> Voice-out: If query was voice note OR user requested voice reply
+        const wantsVoiceReply = Boolean(options?.isVoice) || 
+          /\b(voice|audio|aawaz|bol k|bol kar|voice note|voice bhejo|audio bhejo)\b/i.test(cleanQuery);
+
+        if (wantsVoiceReply) {
+          try {
+            const speechBuffer = await this.synthesizeSpeech(replyText);
+            if (speechBuffer && speechBuffer.length > 500) {
+              await this.sock.sendMessage(senderJid, {
+                audio: speechBuffer,
+                mimetype: "audio/mpeg",
+                ptt: true
+              });
+              console.log(`[WhatsApp Voice Note Sent] PTT Voice response delivered to ${senderJid} (${speechBuffer.length} bytes)`);
+            }
+          } catch (voiceErr) {
+            console.warn("[WhatsApp Voice Reply] Failed to send audio note, fallback to text:", voiceErr);
+          }
+        }
+
         await this.sock.sendMessage(senderJid, { text: finalReply });
       }
       return finalReply;
@@ -4343,7 +4427,11 @@ EXECUTIVE PERSONA & REAL-TIME GROUNDING RULES:
    - Never say "mujhe nahi pata" or give generic non-answers. You are directly linked to the college LMS database!
 4. Provide concise, high-level institutional clarity, dignified, articulate, and respectful.
 5. If Principal Sahib gives administrative instructions, acknowledge them attentively and professionally.
-6. Language: Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. NEVER write in Arabic script Urdu (اردو). Every single character must be Latin script.
+6. STRICT LANGUAGE MANDATE:
+   - Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. Match user language (English -> English, Roman Urdu -> Roman Urdu).
+   - STRICTLY FORBIDDEN: NEVER write in Hindi or Devanagari script (e.g. नमस्ते). ZERO Devanagari characters allowed.
+   - STRICTLY FORBIDDEN: DO NOT use pure Hindi vocabulary (e.g. 'dhanyawad', 'namaste', 'kripya', 'chhatra', 'adhyapak'). ALWAYS use authentic Pakistani Roman Urdu / English words (e.g. 'shukriya', 'baraye meherbani', 'talib-e-ilm', 'asateza').
+   - NEVER write in Arabic script Urdu (اردو). Every single character must be Latin script.
 7. Persona: Professional, articulate, executive female assistant ("karti hoon", "bata sakti hoon").`;
 
       const aiReply = await this.generateAiConversationalReply(
@@ -5202,7 +5290,11 @@ TRUTHFULNESS & ANTI-GASLIGHTING:
 3. If the user points out a previous error, quotes a previous message, or provides proof/screenshot where you made a mistake (such as previously mistakenly calling them Principal or giving wrong info), NEVER DENY IT OR LIE. Acknowledge it honestly, apologize politely for the previous confusion, and proceed with the correct guidance. Never argue with visible facts.
 
 LANGUAGE & TONE:
-4. STRICT: Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. NEVER write in Arabic script Urdu (اردو). Every single character must be Latin script.
+4. STRICT LANGUAGE MANDATE:
+   - Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. Match user language (English -> English, Roman Urdu -> Roman Urdu).
+   - STRICTLY FORBIDDEN: NEVER write in Hindi or Devanagari script (e.g. नमस्ते). ZERO Devanagari characters allowed.
+   - STRICTLY FORBIDDEN: DO NOT use pure Hindi vocabulary (e.g. 'dhanyawad', 'namaste', 'kripya', 'chhatra', 'adhyapak'). ALWAYS use authentic Pakistani Roman Urdu / English words (e.g. 'shukriya', 'baraye meherbani', 'talib-e-ilm', 'asateza').
+   - NEVER write in Arabic script Urdu (اردو). Every single character must be Latin script.
 5. Persona: Professional, courteous, female executive assistant ("karti hoon", "bata sakti hoon"). No archaic words like "Janab-e-Aali".
 6. Never say "Main AI hoon, dakhla nahi kar sakti". You have full knowledge of college LMS procedures. If asked to do an admission, guide them through the details (Father name, Group, Marks, Fee) to stage the admission in the system.
 
@@ -5380,7 +5472,11 @@ You are chatting with a registered faculty/staff member:
 RULES:
 1. Address them respectfully as "Mohtaram ${verified.name}".
 2. Reply intelligently, humanely, and articulately to whatever they say.
-3. Language: Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. Never use Arabic script.
+3. STRICT LANGUAGE MANDATE:
+   - Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. Match user language (English -> English, Roman Urdu -> Roman Urdu).
+   - STRICTLY FORBIDDEN: NEVER write in Hindi or Devanagari script. ZERO Devanagari characters allowed.
+   - STRICTLY FORBIDDEN: DO NOT use pure Hindi vocabulary (e.g. 'dhanyawad', 'namaste', 'kripya', 'chhatra', 'adhyapak'). ALWAYS use authentic Pakistani Roman Urdu / English words (e.g. 'shukriya', 'baraye meherbani', 'talib-e-ilm', 'asateza').
+   - NEVER write in Arabic script Urdu (اردو). Every single character must be Latin script.
 4. Persona: Professional female AI assistant ("karti hoon", "bata sakti hoon").
 
 AIR-GAP PRIVACY & DATA LEAKAGE PREVENTION (STRICT):
@@ -5601,7 +5697,11 @@ CONVERSATIONAL RULES & PARENTAL EMPATHY:
    - Guide them warmly: "Jee bilkul! Aap apni passport-size photo ya selfie is WhatsApp chat par send karein, hamara automated system foran aapki profile aur face attendance kiosk mein picture update kar dega."
 8. AIR-GAP PRIVACY:
    - You are ONLY authorized to discuss this specific student (${student.full_name}). NEVER discuss or reveal information about other students, class fellows, or staff.
-9. Language: Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. NEVER write in Arabic script Urdu. Every character must be Latin script.
+9. STRICT LANGUAGE MANDATE:
+   - Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. Match user language (English -> English, Roman Urdu -> Roman Urdu).
+   - STRICTLY FORBIDDEN: NEVER write in Hindi or Devanagari script (e.g. नमस्ते). ZERO Devanagari characters allowed.
+   - STRICTLY FORBIDDEN: DO NOT use pure Hindi vocabulary (e.g. 'dhanyawad', 'namaste', 'kripya', 'chhatra', 'adhyapak'). ALWAYS use authentic Pakistani Roman Urdu / English words (e.g. 'shukriya', 'baraye meherbani', 'talib-e-ilm', 'asateza', 'rabta karein').
+   - NEVER write in Arabic script Urdu. Every character must be Latin script.
 10. Persona: Female AI assistant ("karti hoon", "bata sakti hoon").`;
 
           const aiReply = await this.generateAiConversationalReply(

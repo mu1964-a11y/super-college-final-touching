@@ -244,46 +244,55 @@ export function useAdmissionsOperations(ctx: any) {
             }
         }
 
-        const { error } = await supabase.from('admissions').update({
-          full_name: updates.fullName,
-          father_name: updates.fatherName,
-          college_no: updates.collegeNo,
-          bay_form_no: updates.bayFormNo,
-          dob: updates.dob || null, // Handle empty date
-          previous_class: updates.previousClass,
-          board_roll_no: updates.boardRollNo,
-          previous_marks: updates.previousMarks || 0,
-          previous_institute: updates.previousInstitute,
-          subjects: updates.subjects,
-          address: updates.address,
-          admission_fee: updates.admissionFee || 0,
-          misc_funds: updates.miscFunds || 0,
-          total_fee_finalized: updates.totalFeeFinalized || 0,
-          total_package: updates.totalPackage || 0,
-          fee_received: updates.feeReceived || 0,
-          payment_plan: updates.paymentPlan,
-          contact_number: updates.contactNumber,
-          father_contact: updates.fatherContact,
-          secondary_contact: updates.secondaryContact,
-          email: updates.email,
-          blood_group: updates.bloodGroup,
-          reference: updates.concessionReason !== undefined
+        const dbUpdates: any = {};
+        if (updates.fullName !== undefined) dbUpdates.full_name = updates.fullName;
+        if (updates.fatherName !== undefined) dbUpdates.father_name = updates.fatherName;
+        if (updates.collegeNo !== undefined) dbUpdates.college_no = updates.collegeNo;
+        if (updates.bayFormNo !== undefined) dbUpdates.bay_form_no = updates.bayFormNo;
+        if (updates.dob !== undefined) dbUpdates.dob = updates.dob || null;
+        if (updates.previousClass !== undefined) dbUpdates.previous_class = updates.previousClass;
+        if (updates.boardRollNo !== undefined) dbUpdates.board_roll_no = updates.boardRollNo;
+        if (updates.previousMarks !== undefined) dbUpdates.previous_marks = updates.previousMarks;
+        if (updates.previousInstitute !== undefined) dbUpdates.previous_institute = updates.previousInstitute;
+        if (updates.subjects !== undefined) dbUpdates.subjects = updates.subjects;
+        if (updates.address !== undefined) dbUpdates.address = updates.address;
+        if (updates.admissionFee !== undefined) dbUpdates.admission_fee = updates.admissionFee;
+        if (updates.miscFunds !== undefined) dbUpdates.misc_funds = updates.miscFunds;
+        if (updates.totalFeeFinalized !== undefined) dbUpdates.total_fee_finalized = updates.totalFeeFinalized;
+        if (updates.totalPackage !== undefined) dbUpdates.total_package = updates.totalPackage;
+        if (updates.feeReceived !== undefined) dbUpdates.fee_received = updates.feeReceived;
+        if (updates.paymentPlan !== undefined) dbUpdates.payment_plan = updates.paymentPlan;
+        if (updates.contactNumber !== undefined) dbUpdates.contact_number = updates.contactNumber;
+        if (updates.fatherContact !== undefined) dbUpdates.father_contact = updates.fatherContact;
+        if (updates.secondaryContact !== undefined) dbUpdates.secondary_contact = updates.secondaryContact;
+        if (updates.email !== undefined) dbUpdates.email = updates.email;
+        if (updates.bloodGroup !== undefined) dbUpdates.blood_group = updates.bloodGroup;
+        if (updates.reference !== undefined || updates.concessionReason !== undefined) {
+          dbUpdates.reference = updates.concessionReason !== undefined
             ? `Concession: ${updates.concessionReason} | ${(updates.reference || existingAdmission?.reference || '').replace(/^Concession:[^|]*\|?/, '').trim()}`.trim()
-            : updates.reference,
-          gender: updates.gender,
-          category: updates.category,
-          group: updates.group,
-          section: updates.section,
-          photo_url: updates.photo,
-          student_id: updatedStudentId,
-          status: updates.status,
-          is_admitted: updates.isAdmitted,
-          session: updates.session,
-          session_start_date: updates.sessionStartDate || null,
-          session_end_date: updates.sessionEndDate || null,
-          academic_part: updates.academicPart
-        }).eq('id', id);
-        if (error) throw error;
+            : updates.reference;
+        }
+        if (updates.gender !== undefined) dbUpdates.gender = updates.gender;
+        if (updates.category !== undefined) dbUpdates.category = updates.category;
+        if (updates.group !== undefined) dbUpdates.group = updates.group;
+        if (updates.section !== undefined) dbUpdates.section = updates.section;
+        if (updates.photo !== undefined || (updates as any).photo_url !== undefined) {
+          dbUpdates.photo_url = updates.photo || (updates as any).photo_url;
+        }
+        if (updatedStudentId !== undefined) dbUpdates.student_id = updatedStudentId;
+        if (updates.status !== undefined) dbUpdates.status = updates.status;
+        if (updates.isAdmitted !== undefined) dbUpdates.is_admitted = updates.isAdmitted;
+        if (updates.session !== undefined) dbUpdates.session = updates.session;
+        if (updates.sessionStartDate !== undefined) dbUpdates.session_start_date = updates.sessionStartDate || null;
+        if (updates.sessionEndDate !== undefined) dbUpdates.session_end_date = updates.sessionEndDate || null;
+        if (updates.academicPart !== undefined) dbUpdates.academic_part = updates.academicPart;
+        if (updates.feeLedger !== undefined) dbUpdates.fee_ledger = updates.feeLedger;
+        if (updates.feeHistory !== undefined) dbUpdates.fee_history = updates.feeHistory;
+
+        if (Object.keys(dbUpdates).length > 0) {
+          const { error } = await supabase.from('admissions').update(dbUpdates).eq('id', id);
+          if (error) throw error;
+        }
 
         // Auto-sync to Students Table!
         if (needsId && updatedStudentId) {
@@ -317,7 +326,7 @@ export function useAdmissionsOperations(ctx: any) {
               contact: updates.contactNumber || existingAdmission?.contactNumber || 'N/A',
               address: updates.address || existingAdmission?.address || 'N/A',
               gender: derivedGender,
-              photo: updates.photo || existingAdmission?.photo,
+              photo: updates.photo || (updates as any).photo_url || existingAdmission?.photo,
               admission_fee: updates.admissionFee || existingAdmission?.admissionFee || 0,
               misc_funds: updates.miscFunds || existingAdmission?.miscFunds || 0,
               total_package: updates.totalPackage || existingAdmission?.totalPackage || 0,
@@ -330,29 +339,35 @@ export function useAdmissionsOperations(ctx: any) {
               academic_part: updates.academicPart || existingAdmission?.academicPart || 'Part-1'
             });
           } else {
-            // Keep existing student details in sync
-            await supabase.from('students').update({
-              full_name: updates.fullName || existingAdmission?.fullName,
-              father_name: updates.fatherName || existingAdmission?.fatherName,
-              college_no: updates.collegeNo || existingAdmission?.collegeNo,
-              bay_form_no: updates.bayFormNo || existingAdmission?.bayFormNo,
-              dob: updates.dob || existingAdmission?.dob,
-              previous_class: updates.previousClass || existingAdmission?.previousClass,
-              previous_marks: updates.previousMarks ?? existingAdmission?.previousMarks,
-              board_roll_no: updates.boardRollNo || existingAdmission?.boardRollNo,
-              category: updates.category || existingAdmission?.category,
-              group: updates.group || existingAdmission?.group,
-              section: updates.section || existingAdmission?.section,
-              subjects: updates.subjects || existingAdmission?.subjects,
-              contact: updates.contactNumber || existingAdmission?.contactNumber,
-              address: updates.address || existingAdmission?.address,
-              gender: updates.gender || existingAdmission?.gender,
-              photo: updates.photo || existingAdmission?.photo,
-              total_package: updates.totalPackage || existingAdmission?.totalPackage,
-              fee_received: updates.feeReceived || existingAdmission?.feeReceived,
-              session: updates.session || existingAdmission?.session,
-              academic_part: updates.academicPart || existingAdmission?.academicPart
-            }).eq('admission_id', id);
+            // Keep existing student details in sync (ONLY update fields that were actually passed)
+            const studentUpdates: any = {};
+            if (updates.fullName !== undefined) studentUpdates.full_name = updates.fullName;
+            if (updates.fatherName !== undefined) studentUpdates.father_name = updates.fatherName;
+            if (updates.collegeNo !== undefined) studentUpdates.college_no = updates.collegeNo;
+            if (updates.bayFormNo !== undefined) studentUpdates.bay_form_no = updates.bayFormNo;
+            if (updates.dob !== undefined) studentUpdates.dob = updates.dob;
+            if (updates.previousClass !== undefined) studentUpdates.previous_class = updates.previousClass;
+            if (updates.previousMarks !== undefined) studentUpdates.previous_marks = updates.previousMarks;
+            if (updates.boardRollNo !== undefined) studentUpdates.board_roll_no = updates.boardRollNo;
+            if (updates.category !== undefined) studentUpdates.category = updates.category;
+            if (updates.group !== undefined) studentUpdates.group = updates.group;
+            if (updates.section !== undefined) studentUpdates.section = updates.section;
+            if (updates.subjects !== undefined) studentUpdates.subjects = updates.subjects;
+            if (updates.contactNumber !== undefined) studentUpdates.contact = updates.contactNumber;
+            if (updates.address !== undefined) studentUpdates.address = updates.address;
+            if (updates.gender !== undefined) studentUpdates.gender = updates.gender;
+            if (updates.photo !== undefined || (updates as any).photo_url !== undefined) {
+              studentUpdates.photo = updates.photo || (updates as any).photo_url;
+              studentUpdates.photo_url = updates.photo || (updates as any).photo_url;
+            }
+            if (updates.totalPackage !== undefined) studentUpdates.total_package = updates.totalPackage;
+            if (updates.feeReceived !== undefined) studentUpdates.fee_received = updates.feeReceived;
+            if (updates.session !== undefined) studentUpdates.session = updates.session;
+            if (updates.academicPart !== undefined) studentUpdates.academic_part = updates.academicPart;
+            
+            if (Object.keys(studentUpdates).length > 0) {
+              await supabase.from('students').update(studentUpdates).eq('admission_id', id);
+            }
           }
         }
         
