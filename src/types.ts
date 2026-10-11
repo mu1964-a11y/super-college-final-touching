@@ -52,6 +52,7 @@ export interface Lead {
   pipelineStage?: 'new' | 'contacted' | 'visiting' | 'form_issued' | 'converted';
   followUpDate?: string;
   notes?: string;
+  source?: string; // 'Website Form' | 'WhatsApp AI' | 'Campus Desk' | 'Social Media' | string;
 }
 
 export interface Admission {
@@ -92,6 +93,7 @@ export interface Admission {
   fatherContact?: string;
   secondaryContact?: string;
   reference: string;
+  source?: string;
   concessionReason?: string;
   gender: Gender;
   photo?: string;

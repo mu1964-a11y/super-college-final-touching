@@ -10,26 +10,40 @@ export function useLeadsOperations(ctx: any) {
     const optimisticLead: Lead = { ...lead, id: tempId } as Lead;
     setLeads(prev => [optimisticLead, ...prev]);
 
+    const chosenSource = lead.source || 'Campus Desk';
+    const basePayload: any = {
+      student_name: lead.studentName,
+      father_name: lead.fatherName,
+      package: lead.finalizedFee,
+      finalized_fee: lead.finalizedFee,
+      finalized_by: lead.finalizedBy,
+      cnic: lead.cnic,
+      previous_school: lead.previousSchool,
+      area_village: lead.areaVillage,
+      city: lead.city,
+      father_phone: lead.fatherPhone,
+      grade: lead.grade,
+      current_class: lead.currentClass,
+      subjects: lead.subjects || [],
+      session: (lead as any).session,
+      is_converted: false,
+      extra_info1: lead.pipelineStage || 'new',
+      extra_info2: lead.followUpDate || '',
+      notes: lead.notes || (chosenSource !== 'Campus Desk' ? `[Source: ${chosenSource}]` : '')
+    };
+
     try {
-      const { data, error } = await supabase.from('leads').insert({
-        student_name: lead.studentName,
-        father_name: lead.fatherName,
-        package: lead.finalizedFee,
-        finalized_fee: lead.finalizedFee,
-        finalized_by: lead.finalizedBy,
-        cnic: lead.cnic,
-        previous_school: lead.previousSchool,
-        area_village: lead.areaVillage,
-        city: lead.city,
-        father_phone: lead.fatherPhone,
-        grade: lead.grade,
-        current_class: lead.currentClass,
-        subjects: lead.subjects || [],
-        session: (lead as any).session,
-        is_converted: false,
-        extra_info1: lead.pipelineStage || 'new',
-        extra_info2: lead.followUpDate || ''
+      let { data, error } = await supabase.from('leads').insert({
+        ...basePayload,
+        source: chosenSource
       }).select().single();
+      
+      // Fallback if source column not yet created in Supabase schema
+      if (error && (error.code === 'PGRST204' || (error.message || '').includes("'source'"))) {
+        const retry = await supabase.from('leads').insert(basePayload).select().single();
+        data = retry.data;
+        error = retry.error;
+      }
       
       if (error) throw error;
       
@@ -78,8 +92,16 @@ export function useLeadsOperations(ctx: any) {
       if (updates.followUpDate !== undefined) {
         updatePayload.extra_info2 = updates.followUpDate;
       }
+      if (updates.source !== undefined) {
+        updatePayload.source = updates.source;
+      }
 
-      const { error } = await supabase.from('leads').update(updatePayload).eq('id', id);
+      let { error } = await supabase.from('leads').update(updatePayload).eq('id', id);
+      if (error && (error.code === 'PGRST204' || (error.message || '').includes("'source'"))) {
+        delete updatePayload.source;
+        const retry = await supabase.from('leads').update(updatePayload).eq('id', id);
+        error = retry.error;
+      }
       if (error) throw error;
       const oldLead = leads.find((l: any) => l.id === id);
       const changes = diffObjects(oldLead, updates, LEAD_FIELD_LABELS);

@@ -20,7 +20,9 @@ import {
   FileText,
   FileSpreadsheet,
   MessageSquare,
-  Phone
+  Phone,
+  Globe,
+  Building2
 } from 'lucide-react';
 import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
 import { buildLeadFollowUpMessage, sendAutoLeadFollowUpNotice } from '../lib/whatsappAutomation';
@@ -74,6 +76,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
   const [areaFilter, setAreaFilter] = useState('all');
   const [classFilter, setClassFilter] = useState('all');
   const [convertedFilter, setConvertedFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
 
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -89,6 +92,13 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
   const schools = useMemo(() => Array.from(new Set(leads.map(l => String(l.previousSchool || '')).filter(Boolean))), [leads]);
   const areas = useMemo(() => Array.from(new Set(leads.map(l => String(l.areaVillage || '')).filter(Boolean))), [leads]);
   const classes = useMemo(() => Array.from(new Set(leads.map(l => String(l.currentClass || '')).filter(Boolean))), [leads]);
+  const sources = useMemo(() => {
+    const set = new Set<string>(['Website Form', 'WhatsApp AI', 'Campus Desk']);
+    leads.forEach(l => {
+      if (l.source) set.add(l.source);
+    });
+    return Array.from(set);
+  }, [leads]);
 
   const topSchools = useMemo(() => {
     const schoolCounts = leads.reduce((acc: any, curr: any) => {
@@ -198,15 +208,17 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
       const matchesSchool = schoolFilter === 'all' || leadSchool === schoolFilter;
       const matchesArea = areaFilter === 'all' || leadArea === areaFilter;
       const matchesClass = classFilter === 'all' || leadClass === classFilter;
-      
       const leadStage = lead.isConverted ? 'converted' : (lead.pipelineStage || 'new');
       const matchesConverted = convertedFilter === 'all' || 
                               leadStage === convertedFilter ||
                               (convertedFilter === 'pending' && !lead.isConverted);
+
+      const leadSource = String(lead.source || 'Campus Desk');
+      const matchesSource = sourceFilter === 'all' || leadSource.toLowerCase() === sourceFilter.toLowerCase();
                               
-      return matchesSearch && matchesSchool && matchesArea && matchesClass && matchesConverted;
+      return matchesSearch && matchesSchool && matchesArea && matchesClass && matchesConverted && matchesSource;
     });
-  }, [leads, deferredSearchTerm, schoolFilter, areaFilter, classFilter, convertedFilter]);
+  }, [leads, deferredSearchTerm, schoolFilter, areaFilter, classFilter, convertedFilter, sourceFilter]);
 
   const toggleSelectAll = () => {
     if (selectedLeads.length === filteredLeads.length) {
@@ -299,6 +311,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
       'Phone': l.fatherPhone,
       'Grade': l.grade,
       'Class': l.currentClass,
+      'Source': l.source || 'Campus Desk',
       'Subjects': l.subjects?.join(', ') || '',
       'Date Added': l.dateAdded
     }));
@@ -320,12 +333,13 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
       l.previousSchool,
       l.areaVillage,
       l.fatherPhone,
+      l.source || 'Campus Desk',
       l.grade,
       l.subjects?.join(', ') || ''
     ]);
 
     autoTable(doc, {
-      head: [['Student Name', 'Father Name', 'Package', 'By', 'School', 'Area', 'Phone', 'Grade', 'Subjects']],
+      head: [['Student Name', 'Father Name', 'Package', 'By', 'School', 'Area', 'Phone', 'Source', 'Grade', 'Subjects']],
       body: tableData,
       startY: 70,
     });
@@ -405,7 +419,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
   // Reset pagination when search or filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [deferredSearchTerm, schoolFilter, areaFilter, classFilter, convertedFilter]);
+  }, [deferredSearchTerm, schoolFilter, areaFilter, classFilter, convertedFilter, sourceFilter]);
 
   const visibleLeads = useMemo(
     () => {
@@ -564,7 +578,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
         </div>
 
         {/* Row 2: Expanded Filters */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="space-y-1.5">
             <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Filter by School</Label>
             <Select value={schoolFilter} onValueChange={setSchoolFilter}>
@@ -600,6 +614,24 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
               <SelectContent className="rounded-md border-slate-200 shadow-xl max-h-[400px] min-w-[250px]">
                 <SelectItem value="all" className="font-bold">All Class Levels</SelectItem>
                 {classes.map(c => <SelectItem key={c} value={c} className="text-sm py-2 px-3 whitespace-nowrap">{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Lead Source</Label>
+            <Select value={sourceFilter} onValueChange={setSourceFilter}>
+              <SelectTrigger className="h-11 rounded-md bg-white border-slate-200 focus:bg-white focus:border-superior-teal/40 focus:ring-4 focus:ring-superior-teal/5 transition-all font-semibold text-slate-700 shadow-sm w-full">
+                <SelectValue placeholder="All Sources" />
+              </SelectTrigger>
+              <SelectContent className="rounded-md border-slate-200 shadow-xl">
+                <SelectItem value="all" className="font-bold text-slate-700">All Sources Pool</SelectItem>
+                <SelectItem value="Website Form" className="font-bold text-blue-600">🌐 Website Form</SelectItem>
+                <SelectItem value="WhatsApp AI" className="font-bold text-emerald-600">💬 WhatsApp AI</SelectItem>
+                <SelectItem value="Campus Desk" className="font-bold text-slate-700">🏢 Campus Desk</SelectItem>
+                {sources.filter(s => !['Website Form', 'WhatsApp AI', 'Campus Desk'].includes(s)).map(s => (
+                  <SelectItem key={s} value={s} className="font-medium text-slate-600">{s}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -747,6 +779,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
                   <TableHead className="font-bold text-slate-400 uppercase tracking-widest text-[10px]">Subjects</TableHead>
                   <TableHead className="font-bold text-slate-400 uppercase tracking-widest text-[10px]">Phone</TableHead>
                   <TableHead className="font-bold text-slate-400 uppercase tracking-widest text-[10px]">Grade</TableHead>
+                  <TableHead className="font-bold text-slate-400 uppercase tracking-widest text-[10px]">Source</TableHead>
                   <TableHead className="font-bold text-slate-400 uppercase tracking-widest text-[10px]">Status</TableHead>
                   <TableHead className="text-right font-bold text-slate-400 uppercase tracking-widest text-[10px] pr-6">Action</TableHead>
                 </TableRow>
@@ -754,7 +787,7 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
               <TableBody>
                 {visibleLeads.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-64 text-center">
+                    <TableCell colSpan={13} className="h-64 text-center">
                       <div className="flex flex-col items-center justify-center text-slate-300">
                         <AlertCircle size={48} className="mb-4 opacity-20" />
                         <p className="text-lg font-medium">No leads found matching your criteria</p>
@@ -841,6 +874,29 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="bg-slate-50 text-slate-400 border-slate-100 font-bold px-2 py-0.5 rounded-lg">{lead.grade}</Badge>
+                      </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        {(() => {
+                          const src = String(lead.source || 'Campus Desk');
+                          const isWeb = src.toLowerCase().includes('website');
+                          const isWa = src.toLowerCase().includes('whatsapp');
+                          return (
+                            <Badge 
+                              variant="outline" 
+                              className={cn(
+                                "font-bold text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md flex items-center gap-1.5 w-fit whitespace-nowrap shadow-2xs",
+                                isWeb && "bg-blue-50 text-blue-700 border-blue-200",
+                                isWa && "bg-emerald-50 text-emerald-700 border-emerald-200",
+                                !isWeb && !isWa && "bg-slate-50 text-slate-600 border-slate-200"
+                              )}
+                            >
+                              {isWeb && <Globe size={11} className="text-blue-600 shrink-0" />}
+                              {isWa && <MessageSquare size={11} className="text-emerald-600 shrink-0" />}
+                              {!isWeb && !isWa && <Building2 size={11} className="text-slate-500 shrink-0" />}
+                              <span>{src}</span>
+                            </Badge>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         {lead.isConverted ? (
@@ -1129,7 +1185,8 @@ function AddLeadDialog({ onAdd }: { onAdd: (lead: Lead) => void }) {
     subjects: [] as string[],
     cnic: '',
     pipelineStage: 'new' as const,
-    followUpDate: ''
+    followUpDate: '',
+    source: 'Campus Desk'
   });
 
   const [subjectInput, setSubjectInput] = useState('');
@@ -1242,6 +1299,24 @@ function AddLeadDialog({ onAdd }: { onAdd: (lead: Lead) => void }) {
           </div>
         </div>
         <div className="space-y-2">
+          <Label>Inbound Source / Channel</Label>
+          <Select 
+            value={formData.source || 'Campus Desk'} 
+            onValueChange={val => setFormData({...formData, source: val})}
+          >
+            <SelectTrigger className="h-10">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Campus Desk">🏢 Campus Desk (Walk-in)</SelectItem>
+              <SelectItem value="Website Form">🌐 Website Form (superiorjhn.com)</SelectItem>
+              <SelectItem value="WhatsApp AI">💬 WhatsApp AI Bot</SelectItem>
+              <SelectItem value="Social Media">📱 Social Media</SelectItem>
+              <SelectItem value="Reference">👥 Personal Reference</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
           <Label>Intended Subjects</Label>
           <div className="flex gap-2">
             <Input 
@@ -1286,7 +1361,8 @@ function EditLeadDialog({ lead, onUpdate }: { lead: Lead, onUpdate: (updates: Pa
     subjects: lead.subjects || [],
     cnic: lead.cnic || '',
     pipelineStage: lead.pipelineStage || (lead.isConverted ? 'converted' : 'new'),
-    followUpDate: lead.followUpDate || ''
+    followUpDate: lead.followUpDate || '',
+    source: lead.source || 'Campus Desk'
   });
 
   // Sync state with lead prop if it changes
@@ -1306,7 +1382,8 @@ function EditLeadDialog({ lead, onUpdate }: { lead: Lead, onUpdate: (updates: Pa
       subjects: lead.subjects || [],
       cnic: lead.cnic || '',
       pipelineStage: lead.pipelineStage || (lead.isConverted ? 'converted' : 'new'),
-      followUpDate: lead.followUpDate || ''
+      followUpDate: lead.followUpDate || '',
+      source: lead.source || 'Campus Desk'
     });
   }, [lead]);
 
@@ -1407,6 +1484,24 @@ function EditLeadDialog({ lead, onUpdate }: { lead: Lead, onUpdate: (updates: Pa
             <Label>Current Class</Label>
             <Input value={formData.currentClass} onChange={e => setFormData({...formData, currentClass: e.target.value})} />
           </div>
+        </div>
+        <div className="space-y-2">
+          <Label>Inbound Source / Channel</Label>
+          <Select 
+            value={formData.source || 'Campus Desk'} 
+            onValueChange={val => setFormData({...formData, source: val})}
+          >
+            <SelectTrigger className="h-10">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Campus Desk">🏢 Campus Desk (Walk-in)</SelectItem>
+              <SelectItem value="Website Form">🌐 Website Form (superiorjhn.com)</SelectItem>
+              <SelectItem value="WhatsApp AI">💬 WhatsApp AI Bot</SelectItem>
+              <SelectItem value="Social Media">📱 Social Media</SelectItem>
+              <SelectItem value="Reference">👥 Personal Reference</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-2">
           <Label>Intended Subjects</Label>

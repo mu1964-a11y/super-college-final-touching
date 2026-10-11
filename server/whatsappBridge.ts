@@ -56,7 +56,7 @@ export interface BotAuditLog {
 
 export interface VerifiedUser {
   phone: string;
-  role: "Principal" | "Teacher" | "Staff" | "Admin";
+  role: "Principal" | "Teacher" | "Staff" | "Admin" | "Director";
   staffId?: string;
   name: string;
   email?: string;
@@ -4428,6 +4428,33 @@ Is admission ko LMS Database mein enter karne ke liye apna 5-digit PIN reply kar
 Application Inquiry ID: *SCJ-ADM-${Date.now().toString().slice(-4)}*
 
 College Admissions Helpline: 📞 *${this.collegeHelpline || "0331-2211147"}*`;
+          
+          try {
+            const supabase = await this.getSupabase();
+            const leadPayload: any = {
+              student_name: draft.fullName,
+              father_name: draft.fatherName || "N/A",
+              father_phone: draft.contact || standardPhone,
+              current_class: draft.groupName || "Intermediate",
+              grade: draft.previousMarks ? `${draft.previousMarks}` : undefined,
+              previous_school: draft.previousInstitute || "N/A",
+              area_village: draft.address || "Jahanian",
+              city: "Jahanian",
+              session: "2026-28",
+              is_converted: false,
+              extra_info1: "new",
+              notes: `[Source: WhatsApp AI] Inquiry via WhatsApp AI on ${new Date().toLocaleString()}`,
+              source: "WhatsApp AI"
+            };
+            let { error: lErr } = await supabase.from("leads").insert(leadPayload);
+            if (lErr && (lErr.code === "PGRST204" || (lErr.message || "").includes("'source'"))) {
+              delete leadPayload.source;
+              await supabase.from("leads").insert(leadPayload);
+            }
+          } catch (leadSaveErr) {
+            console.warn("[WhatsApp Bot] Could not auto-save lead:", leadSaveErr);
+          }
+
           return await sendReply(previewMsg, "Admission Lead Recorded", verifiedUser?.name);
         }
       } else {
@@ -4609,7 +4636,8 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
               address: pendingAdm.address || "Jahanian",
               date: new Date().toISOString().slice(0, 10),
               session: "2026-28",
-              reference: `Via WhatsApp Bot (${delegatedAdmin.name})`,
+              reference: `[Source: WhatsApp AI] Via WhatsApp Bot (${delegatedAdmin.name})`,
+              source: "WhatsApp AI",
               status: "Admitted",
               is_admitted: true
             };
@@ -5751,6 +5779,31 @@ Inquiry No: *SCJ-${Date.now().toString().slice(-4)}*
 
 Admissions Directorate jald hi aapke is mobile number par rabta karega.
 Direct Helpline: 📞 *${this.collegeHelpline || "0331-2211147"}*`;
+
+        try {
+          const supabase = await this.getSupabase();
+          const leadPayload: any = {
+            student_name: draft.fullName,
+            father_name: draft.fatherName || "N/A",
+            father_phone: draft.contact || standardPhone,
+            current_class: draft.groupName || "Intermediate",
+            grade: draft.previousMarks ? `${draft.previousMarks}` : undefined,
+            session: "2026-28",
+            city: "Jahanian",
+            is_converted: false,
+            extra_info1: "new",
+            notes: `[Source: WhatsApp AI] Fast inquiry via WhatsApp AI on ${new Date().toLocaleString()}`,
+            source: "WhatsApp AI"
+          };
+          let { error: lErr } = await supabase.from("leads").insert(leadPayload);
+          if (lErr && (lErr.code === "PGRST204" || (lErr.message || "").includes("'source'"))) {
+            delete leadPayload.source;
+            await supabase.from("leads").insert(leadPayload);
+          }
+        } catch (leadSaveErr) {
+          console.warn("[WhatsApp Bot] Could not auto-save fast lead:", leadSaveErr);
+        }
+
         return await sendReply(previewMsg, "Public Fast Lead Recorded");
       } else {
         const candNameMatch = cleanQuery.match(/(?:student\s+)?([a-zA-Z]{3,20})\s+(?:ka|ki|ke)?\s*(?:admission|dakhla)/i) ||

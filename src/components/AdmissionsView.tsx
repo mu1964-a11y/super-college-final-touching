@@ -152,7 +152,7 @@ export default function AdmissionsView({
           (a.fullName || "").toLowerCase().includes(searchClean) ||
           (a.fatherName || "").toLowerCase().includes(searchClean) ||
           (a.studentId && a.studentId.toLowerCase().includes(searchClean)) ||
-          (String((a as any).collegeNo || a.college_no || "").toLowerCase().includes(searchClean)) ||
+          (String(a.collegeNo || (a as any).college_no || "").toLowerCase().includes(searchClean)) ||
           (String(a.contactNumber || (a as any).contact || "").includes(searchClean)) ||
           (String(a.fatherContact || "").includes(searchClean)) ||
           (String(a.bayFormNo || (a as any).bay_form_no || "").includes(searchClean));
@@ -490,8 +490,9 @@ export default function AdmissionsView({
   };
 
   const handleOpenBulkWhatsAppModal = (targetAdmissionIds?: string[]) => {
+    const allAdmissions: Admission[] = data.admissions || [];
     const list = targetAdmissionIds && targetAdmissionIds.length > 0
-      ? admissions.filter((a: Admission) => targetAdmissionIds.includes(a.id))
+      ? allAdmissions.filter((a: Admission) => targetAdmissionIds.includes(a.id))
       : filteredAdmissions;
 
     if (list.length === 0) {
@@ -501,12 +502,12 @@ export default function AdmissionsView({
 
     const items: ReportRecipientItem[] = list.map((a: Admission) => {
       const msg = buildAdmissionNoticeMessage(a, data?.settings);
-      const rollNo = a.collegeNo || a.rollNo || a.studentId || a.id || "N/A";
+      const rollNo = a.collegeNo || (a as any).rollNo || a.studentId || a.id || "N/A";
       return {
         id: a.id,
         student: a,
         name: a.fullName,
-        phone: a.fatherContact || a.contactNumber || a.phone || a.mobile || "",
+        phone: a.fatherContact || a.contactNumber || (a as any).phone || (a as any).mobile || "",
         rollNo,
         className: `${a.group || 'Admission'} (Sec: ${a.section || 'A'})`,
         message: msg,
@@ -1590,9 +1591,14 @@ export default function AdmissionsView({
                                   New
                                 </span>
                               )}
-                              {((admission.reference || '').toLowerCase().includes('whatsapp') || ((admission as any).remarks || '').toLowerCase().includes('whatsapp')) && (
+                              {((admission.reference || '').toLowerCase().includes('whatsapp') || (admission.source || '').toLowerCase().includes('whatsapp') || ((admission as any).remarks || '').toLowerCase().includes('whatsapp')) && (
                                 <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
                                   🤖 Via WhatsApp Bot {admission.reference ? `(${admission.reference.replace(/via whatsapp bot/i, '').replace(/[()]/g, '').trim() || 'Admin'})` : ''}
+                                </span>
+                              )}
+                              {((admission.reference || '').toLowerCase().includes('website') || (admission.source || '').toLowerCase().includes('website')) && (
+                                <span className="text-[9px] font-black uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-300 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
+                                  🌐 Online Website
                                 </span>
                               )}
                             </p>
@@ -3047,18 +3053,18 @@ function ProfileItem({
   isFull = false,
 }: {
   label: string;
-  value?: string;
+  value?: React.ReactNode;
   isFull?: boolean;
 }) {
-  if (!value || value === '---' || value === 'N/A' || value.trim() === '') return null;
+  if (!value || value === '---' || value === 'N/A' || (typeof value === 'string' && value.trim() === '')) return null;
   return (
     <div className={isFull ? "col-span-full" : ""}>
       <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">
         {label}
       </p>
-      <p className="text-[15px] font-bold text-slate-800 leading-tight">
+      <div className="text-[15px] font-bold text-slate-800 leading-tight">
         {value}
-      </p>
+      </div>
     </div>
   );
 }

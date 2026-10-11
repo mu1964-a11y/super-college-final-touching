@@ -176,7 +176,8 @@ export function useSupabaseData(user: any) {
         subjects: l.subjects || [],
         pipelineStage: l.pipeline_stage || l.extra_info1 || (l.is_converted ? 'converted' : 'new'),
         followUpDate: l.follow_up_date || l.extra_info2 || '',
-        notes: l.notes || ''
+        notes: l.notes || '',
+        source: l.source || (l.notes && l.notes.includes('[Source:') ? l.notes.match(/\[Source:\s*([^\]]+)\]/)?.[1] : undefined) || 'Campus Desk'
       })));
       if (admissionsData) setAdmissions(admissionsData.map(a => {
         const linkedStudent = studentsData?.find(s => 
@@ -218,6 +219,7 @@ export function useSupabaseData(user: any) {
           photo: resolvedPhoto, // Mapping photo_url from DB or linked student to photo in app
           feeHistory: a.fee_history || [],
           feeLedger: a.fee_ledger || null,
+          source: a.source || (a.reference && a.reference.includes('[Source:') ? a.reference.match(/\[Source:\s*([^\]]+)\]/)?.[1] : undefined) || 'Campus Desk'
         };
       }));
       if (studentsData) {

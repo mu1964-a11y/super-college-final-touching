@@ -66,8 +66,118 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3e3;
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use("/api/public", (req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization, apikey");
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+    next();
+  });
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+  app.post("/api/public/leads", async (req, res) => {
+    try {
+      const {
+        student_name,
+        studentName,
+        father_name,
+        fatherName,
+        father_phone,
+        fatherPhone,
+        phone,
+        previous_school,
+        previousSchool,
+        city,
+        area_village,
+        areaVillage,
+        current_class,
+        currentClass,
+        program,
+        grade,
+        marks,
+        session,
+        source
+      } = req.body;
+      const resolvedName = (student_name || studentName || "").trim();
+      const resolvedPhone = (father_phone || fatherPhone || phone || "").trim();
+      if (!resolvedName || !resolvedPhone) {
+        return res.status(400).json({
+          success: false,
+          error: "Student Name and Contact Phone are required."
+        });
+      }
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabaseUrl = process.env.VITE_SUPABASE_URL || "https://wgjkodcggpklxqcpnjhu.supabase.co";
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+      const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
+      const leadSource = (source || "Website Form").trim();
+      const basePayload = {
+        student_name: resolvedName,
+        father_name: (father_name || fatherName || "").trim(),
+        father_phone: resolvedPhone,
+        previous_school: (previous_school || previousSchool || "").trim(),
+        city: (city || "Jahanian").trim(),
+        area_village: (area_village || areaVillage || "").trim(),
+        current_class: (current_class || currentClass || program || "").trim(),
+        grade: (grade || marks ? String(grade || marks) : "").trim(),
+        session: (session || "2026-28").trim(),
+        is_converted: false,
+        extra_info1: "new",
+        notes: `[Source: ${leadSource}] Submitted via website form on ${(/* @__PURE__ */ new Date()).toLocaleString()}`
+      };
+      let { data, error } = await supabase.from("leads").insert({
+        ...basePayload,
+        source: leadSource
+      }).select().single();
+      if (error && (error.code === "PGRST204" || (error.message || "").includes("'source'"))) {
+        const retry = await supabase.from("leads").insert(basePayload).select().single();
+        data = retry.data;
+        error = retry.error;
+      }
+      if (error) {
+        console.error("[Public Leads API] Supabase Insert Error:", error);
+        return res.status(500).json({ success: false, error: error.message });
+      }
+      const resolvedAppId = extra_info2 || "SCJ-2026-" + Math.floor(1e3 + Math.random() * 9e3);
+      try {
+        const welcomeText = `\u{1F393} *SUPERIOR COLLEGE JAHANIAN*
+---------------------------------------
+Assalam-o-Alaikum *${resolvedName}*!
+
+Aapki online admission application for *${current_class || currentClass || program || "General Admissions"}* (Session 2026-28) receive ho chuki hai.
+
+\u{1F4CC} *Application Tracking ID:* ${resolvedAppId}
+\u{1F3DB}\uFE0F *Campus:* Canal Road, Jahanian
+\u{1F4DE} *Admissions Helpline:* 0331-2211147
+
+Superior College Jahanian ki Admissions Directorate jald hi aap se rabta karegi.
+_Superior Group of Colleges \u2014 Jahanian Campus_`;
+        whatsappBridge.sendMessage(resolvedPhone, welcomeText).then((sendRes) => {
+          if (sendRes.success) {
+            console.log(`[Public Leads API] Nexus Bot WhatsApp confirmation sent to ${resolvedPhone}`);
+          } else {
+            console.log(`[Public Leads API] WhatsApp confirmation note: ${sendRes.error}`);
+          }
+        }).catch((err) => {
+          console.error(`[Public Leads API] WhatsApp auto-reply error:`, err);
+        });
+      } catch (botErr) {
+        console.error(`[Public Leads API] Nexus bot dispatch error:`, botErr);
+      }
+      return res.status(201).json({
+        success: true,
+        message: "Lead recorded successfully",
+        id: data?.id,
+        appId: resolvedAppId,
+        source: leadSource
+      });
+    } catch (err) {
+      console.error("[Public Leads API] Unexpected Error:", err);
+      return res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    }
   });
   app.post("/api/gemini/chat", async (req, res) => {
     try {
