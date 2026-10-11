@@ -3360,6 +3360,12 @@ Profile Picture & Photo Updates Integrity (CRITICAL):
 - NEVER say "Main directly aapki profile picture system mein update nahi kar sakti" or "Main kisi shakhs ki tasveer dekh kar guidance nahi de sakti" or give canned refusals.
 - If a user asks to update their profile picture or sends a photo, tell them warmly: "Jee bilkul! Aap apni passport-size picture ya selfie WhatsApp par send karein, hamara automated AI system foran aapki profile aur College Face Attendance Kiosk mein update kar dega."
 
+Voice Note & Audio Capability Mandate (CRITICAL):
+- You HAVE FULL VOICE AUDIO CAPABILITY on WhatsApp. Our WhatsApp Bot system automatically synthesizes your response into a playable WhatsApp voice note (PTT audio)!
+- NEVER say "Main sirf text (likhi hui) form mein jawab de sakti hoon, voice mein nahi" or "Main ek AI model hoon voice nahi bhej sakti".
+- If the user sends a voice note or says "Voice me reply karo" / "Bol kar batao" / "Audio bhejo":
+  Acknowledge warmly (e.g. "Jee bilkul! Main aapko voice note aur aawaz ke zariye rehnumai faraham kar rahi hoon...") and answer their question directly.
+
 ChatGPT Intelligence:
 - You can answer ANY question intelligently, accurately, and helpfully: college information (session 2026-28), subjects, exam prep, writing applications, general knowledge, career advice.
 - Tone: Crisp, helpful, articulate, professional, mature (2-4 sentences or short neat bullet points).
@@ -5107,7 +5113,18 @@ _Tip: Aap seedha likh sakte hain: "Mera aaj ka timetable kya hai?" ya "Student S
     }
 
     // ─── B. CHECK IF SENDER IS AN ALREADY VERIFIED USER ───
-    const verifiedUser = this.verifiedUsers.get(standardPhone);
+    // If the sender is asking about their OWN student, personal fees, or results, prioritize student record
+    const isPersonalFamilyQuery = 
+      /\b(meri fee|meri fees|fees kitni|fee kitni|mera bacha|meri bachi|mera beta|meri beti|mera result|mere marks|meri hazri|meri chutti|chutti chahiye|leave chahiye)\b/i.test(cleanQuery);
+
+    let verifiedUser = this.verifiedUsers.get(standardPhone);
+    if (verifiedUser && isPersonalFamilyQuery) {
+      const familyStudents = await this.findStudentsByRegisteredPhone(supabase, standardPhone);
+      if (familyStudents && familyStudents.length > 0) {
+        verifiedUser = undefined;
+      }
+    }
+
     if (verifiedUser) {
       // 1. Logout / Unlink
       if (cleanQuery === "logout" || cleanQuery === "unlink" || cleanQuery === "signout" || cleanQuery === "4" || cleanQuery.startsWith("4.")) {
@@ -5319,7 +5336,7 @@ AIR-GAP PRIVACY & DATA LEAKAGE PREVENTION (STRICT):
       const aiReply = await this.generateAiConversationalReply(
         text, 
         session.history || [], 
-        "", 
+        "Walaikum Assalam! Main Superior Nexus hazir hoon. Kahiye main aapki kya madad kar sakti hoon?", 
         facultySystemPrompt,
         options?.quotedText
       );
@@ -5588,10 +5605,33 @@ Helpline: 📞 *${this.collegeHelpline || "0331-2211147"}*`;
         session.accumulatedMatches = undefined;
 
         // Check if query is for fee, marks, attendance, or general record
-        const isFee = cleanQuery === "1" || cleanQuery.startsWith("1.") || cleanQuery === "fee" || cleanQuery === "fees" || cleanQuery === "dues" || cleanQuery === "baqaya" || cleanQuery === "fee status";
-        const isMarks = cleanQuery === "2" || cleanQuery.startsWith("2.") || cleanQuery === "marks" || cleanQuery === "result" || cleanQuery === "test" || cleanQuery === "exam result";
-        const isAtt = cleanQuery === "3" || cleanQuery.startsWith("3.") || cleanQuery === "attendance" || cleanQuery === "hazri" || cleanQuery === "absent" || cleanQuery === "ghair hazir";
-        const isAll = cleanQuery === "4" || cleanQuery.startsWith("4.") || cleanQuery === "dossier" || cleanQuery === "all" || cleanQuery === "record";
+        const isFee = 
+          cleanQuery === "1" || 
+          cleanQuery.startsWith("1.") || 
+          /\b(fee|fees|dues|baqaya|paisa|paise|package|challan|ledger)\b/i.test(cleanQuery) ||
+          cleanQuery.includes("meri fee") ||
+          cleanQuery.includes("meri fees") ||
+          cleanQuery.includes("fees kitni") ||
+          cleanQuery.includes("fee kitni");
+
+        const isMarks = 
+          cleanQuery === "2" || 
+          cleanQuery.startsWith("2.") || 
+          /\b(marks|result|test|exam|number|grade|paper|karkardagi)\b/i.test(cleanQuery) ||
+          cleanQuery.includes("mera result") ||
+          cleanQuery.includes("mere marks");
+
+        const isAtt = 
+          cleanQuery === "3" || 
+          cleanQuery.startsWith("3.") || 
+          /\b(attendance|hazri|absent|ghair hazir|chutti|leave)\b/i.test(cleanQuery) ||
+          cleanQuery.includes("meri attendance") ||
+          cleanQuery.includes("meri hazri");
+
+        const isAll = 
+          cleanQuery === "4" || 
+          cleanQuery.startsWith("4.") || 
+          /\b(dossier|all|record|mukammal|tamam|profile)\b/i.test(cleanQuery);
 
         if (isFee || isMarks || isAtt || isAll) {
           const currentIntent = isFee ? "fee" : isMarks ? "marks" : isAtt ? "attendance" : "general";
@@ -5688,9 +5728,10 @@ CONVERSATIONAL RULES & PARENTAL EMPATHY:
    - If a parent reports that the student is unwell, sick, feverish, at a clinic/hospital, or requesting leave (e.g. "bimar hai", "tabiyat kharab hai", "chutti chahiye", "hospital mein hain"):
      - Respond with warm empathy and prayer ("Allah Ta'ala beta/beti ko shifa-e-kamila ata farmayein").
      - Confirm reassuringly that their leave request/message has been noted for the college attendance record.
-4. EXACT FEE DATA:
-   - If they ask about fee dues, use the EXACT factual fee status above: ${studentDues === 0 ? "Fee is completely clear (No pending dues)." : `Outstanding balance is Rs. ${studentDues.toLocaleString()}.`}
-   - Never hallucinate or alter fee amounts.
+4. EXACT FEE DATA (CRITICAL):
+   - You HAVE direct institutional authorization to disclose THIS student's (${student.full_name}) fee ledger to this verified family member.
+   - If they ask about fees, package, dues, or payments, give their EXACT figures: Total Package: Rs. ${Number(student.total_package || 0).toLocaleString()}, Fee Received: Rs. ${Number(student.fee_received || 0).toLocaleString()}, Outstanding Dues: Rs. ${studentDues.toLocaleString()}.
+   - NEVER refuse or claim data privacy for their OWN student. Air-gap privacy ONLY protects AGAINST disclosing OTHER students' data.
 5. ACADEMIC & ATTENDANCE ADVICE:
    - If asked about attendance or exams, guide them helpfully (note that 80% attendance is required for Board examination slips).
 6. NATURAL REPLIES:
@@ -5700,13 +5741,17 @@ CONVERSATIONAL RULES & PARENTAL EMPATHY:
    - If user asks to update their photo, picture, or profile image, NEVER say "Main directly aapki profile picture update nahi kar sakti" or refuse.
    - Guide them warmly: "Jee bilkul! Aap apni passport-size photo ya selfie is WhatsApp chat par send karein, hamara automated system foran aapki profile aur face attendance kiosk mein picture update kar dega."
 8. AIR-GAP PRIVACY:
-   - You are ONLY authorized to discuss this specific student (${student.full_name}). NEVER discuss or reveal information about other students, class fellows, or staff.
-9. STRICT LANGUAGE MANDATE:
+   - You are ONLY authorized to discuss this specific student (${student.full_name}). NEVER discuss or reveal information about OTHER students, class fellows, or staff.
+9. VOICE NOTE & AUDIO CAPABILITY (CRITICAL):
+   - You HAVE full voice audio capability on WhatsApp. Our system automatically converts your reply into a playable voice note!
+   - NEVER say "Main ek AI assistant hoon aur sirf text (likhi hui) form mein jawab de sakti hoon, voice mein nahi".
+   - If user asks for voice reply ("voice me reply karo", "bol kar batao", "audio bhejo"), acknowledge that you are providing voice guidance and answer their question directly.
+10. STRICT LANGUAGE MANDATE:
    - Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. Match user language (English -> English, Roman Urdu -> Roman Urdu).
    - STRICTLY FORBIDDEN: NEVER write in Hindi or Devanagari script (e.g. नमस्ते). ZERO Devanagari characters allowed.
    - STRICTLY FORBIDDEN: DO NOT use pure Hindi vocabulary (e.g. 'dhanyawad', 'namaste', 'kripya', 'chhatra', 'adhyapak'). ALWAYS use authentic Pakistani Roman Urdu / English words (e.g. 'shukriya', 'baraye meherbani', 'talib-e-ilm', 'asateza', 'rabta karein').
    - NEVER write in Arabic script Urdu. Every character must be Latin script.
-10. Persona: Female AI assistant ("karti hoon", "bata sakti hoon").`;
+11. Persona: Female AI assistant ("karti hoon", "bata sakti hoon").`;
 
           const aiReply = await this.generateAiConversationalReply(
             text,
