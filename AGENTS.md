@@ -72,12 +72,21 @@ As the project grows over the upcoming months, strictly adhere to these rules:
      - Gemini Multimodal Audio processes OGG/Opus voice notes directly with ~95%+ accuracy for Urdu/Hinglish.
      - Uses Confirmation Guardrails ("Aapne farmaya: ... Humne leave darj kar li hai").
      - Replies with Push-To-Talk (PTT) voice notes using Edge-TTS in a natural female voice. Zero external cost.
-   - **Tablet Gate Face Attendance Architecture**:
-     - Android Tablet front camera runs `/gate-kiosk` page inside Chrome full-screen.
-     - Direct connection to Supabase DB (Zero third-party apps).
-     - Uses `students.photo_url` with lightweight client-side `face-api.js` to match 128-point face descriptors.
-     - Triggers instant 2-second WhatsApp entry/exit notice to parents.
-     - Zero breaking DB schema changes needed (uses existing `students` and `attendance` tables).
+   - **Tablet Gate Face Attendance Architecture (Implemented & Active)**:
+     - Component: `src/components/FaceAttendanceKiosk.tsx`.
+     - Direct route: `/?gate=true` or `/?face-attendance=true` (loads standalone fullscreen kiosk mode without requiring portal login).
+     - Local network mobile URL: `http://<local-ip>:3000/?gate=true` (e.g. `http://10.133.234.154:3000/?gate=true`).
+     - Engine: `@vladmandic/face-api` with offline local models served from `public/models` (`tiny_face_detector`, `face_landmark_68`, `face_recognition`).
+     - Real-time matching against enrolled student photos in Supabase (`students.photo_url` / `photo`).
+     - Instant check-in recording into Supabase `student_attendance` table.
+     - 2-second automated WhatsApp entry notice dispatched to parents.
+     - Dual-mode: Live WebRTC camera stream + Mobile snapshot file capture fallback (works 100% on any mobile HTTP browser).
+     - Manual roll number / name search fallback with 1-tap check-in.
+   - **WhatsApp Photo Collection for Missing Students (Implemented & Active)**:
+     - Automated Admission Notice (`buildAdmissionNoticeMessage`): Prompts new students without photos to reply with a passport photo on WhatsApp.
+     - Bulk / Single Photo Requests: `sendAutoPhotoUploadRequestNotice` and `dispatchBulkPhotoRequests` in `src/lib/whatsappAutomation.ts`.
+     - UI: "Request Photos" button and modal in `AttendanceView.tsx` tracking students missing photos.
+     - Bot ingestion: WhatsApp Bot receives photo, auto-detects face, uploads to Supabase Storage (`student-photos`), and links to student profile.
    - **Custom Book / Photo Exam Paper Maker**:
      - Teachers upload 3-5 photos of textbook pages or chapter PDFs.
      - Gemini Multimodal Vision reads text via OCR and strictly generates BISE Multan Board formatted papers (MCQs with Answer Key, Short Questions with English/Urdu, Long Questions) ONLY from the uploaded material.

@@ -15,7 +15,11 @@ import {
   Bot,
   RotateCw,
   Send,
-  Users
+  Users,
+  Camera,
+  Smartphone,
+  Sparkles,
+  X
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -32,7 +36,9 @@ import {
   sendAutoDailyAttendanceNoticeDetailed,
   sendAutoPeriodicAttendanceReport, 
   buildDailyAttendanceMessage, 
-  buildPeriodicAttendanceMessage 
+  buildPeriodicAttendanceMessage,
+  sendAutoPhotoUploadRequestNotice,
+  dispatchBulkPhotoRequests
 } from '../lib/whatsappAutomation';
 
 export type StudentAttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Leave' | 'Holiday' | '';
@@ -220,6 +226,38 @@ export default function AttendanceView({ data }: { data: any }) {
 
   // Daily entries state
   const [dailyEntries, setDailyEntries] = useState<Record<string, Partial<StudentAttendanceRecord>>>({});
+
+  // Missing Photos WhatsApp Request State
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [isBulkSendingPhotos, setIsBulkSendingPhotos] = useState(false);
+  const [bulkPhotoProgress, setBulkPhotoProgress] = useState({ done: 0, total: 0 });
+
+  const studentsWithoutPhotos = useMemo(() => {
+    return (students || []).filter((s: any) => {
+      const p = s.photo_url || s.photo;
+      return !p || String(p).trim().length <= 5;
+    });
+  }, [students]);
+
+  const handleSendSinglePhotoRequest = async (student: any) => {
+    await sendAutoPhotoUploadRequestNotice(student, data?.settings);
+  };
+
+  const handleSendBulkPhotoRequests = async () => {
+    if (studentsWithoutPhotos.length === 0) {
+      toast.info('No students missing photos!');
+      return;
+    }
+    setIsBulkSendingPhotos(true);
+    setBulkPhotoProgress({ done: 0, total: studentsWithoutPhotos.length });
+    const res = await dispatchBulkPhotoRequests(
+      studentsWithoutPhotos,
+      data?.settings,
+      (done, total) => setBulkPhotoProgress({ done, total })
+    );
+    setIsBulkSendingPhotos(false);
+    toast.success(`Photo requests dispatched: ${res.sent} sent, ${res.failed} failed!`);
+  };
 
   useEffect(() => {
     // Only re-initialize dailyEntries if selectedDate changes, not when filters change.
@@ -730,6 +768,26 @@ export default function AttendanceView({ data }: { data: any }) {
               >
                 Monthly Report
               </Button>
+
+              <Button 
+                variant="outline"
+                onClick={() => window.open('/?gate=true', '_blank')}
+                className="rounded-xl h-10 px-3 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 font-semibold flex items-center gap-1.5 shadow-sm"
+                title="Open Gate Face Attendance Terminal"
+              >
+                <Camera size={16} className="text-emerald-600" />
+                <span className="hidden sm:inline">Gate Face Kiosk</span>
+              </Button>
+
+              <Button 
+                variant="outline"
+                onClick={() => setShowPhotoModal(true)}
+                className="rounded-xl h-10 px-3 bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 font-semibold flex items-center gap-1.5 shadow-sm"
+                title="Send WhatsApp Request for Missing Photos"
+              >
+                <Smartphone size={16} className="text-indigo-600" />
+                <span>Request Photos ({studentsWithoutPhotos.length})</span>
+              </Button>
             </div>
             
             {activeTab === 'daily' ? (
@@ -1158,6 +1216,90 @@ export default function AttendanceView({ data }: { data: any }) {
           )}
         </CardContent>
       </Card>
+      {/* Missing Photos WhatsApp Request Modal */}
+      {showPhotoModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-xl w-full overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                  <Smartphone size={18} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm">Request Student Profile Photos via WhatsApp</h3>
+                  <p className="text-xs text-slate-400">Total {studentsWithoutPhotos.length} students without photos</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowPhotoModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 border-b border-slate-100 bg-indigo-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-xs text-indigo-900">
+                <p className="font-semibold">Automated WhatsApp Photo Collection</p>
+                <p className="text-[11px] text-indigo-700">Students ko WhatsApp notice jayega ke wo selfie bhejein jo system auto-verify karega.</p>
+              </div>
+              <Button
+                size="sm"
+                onClick={handleSendBulkPhotoRequests}
+                disabled={isBulkSendingPhotos || studentsWithoutPhotos.length === 0}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-md flex items-center gap-1.5 whitespace-nowrap self-end sm:self-auto"
+              >
+                {isBulkSendingPhotos ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Sending ({bulkPhotoProgress.done}/{bulkPhotoProgress.total})
+                  </>
+                ) : (
+                  <>
+                    <Send size={14} />
+                    Send to All ({studentsWithoutPhotos.length})
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {studentsWithoutPhotos.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 text-xs">
+                  <CheckCircle2 size={32} className="mx-auto text-emerald-500 mb-2" />
+                  All students have profile photos enrolled!
+                </div>
+              ) : (
+                studentsWithoutPhotos.map((s: any) => (
+                  <div key={s.id} className="p-2.5 rounded-xl border border-slate-100 hover:border-slate-200 flex items-center justify-between gap-2 text-xs">
+                    <div>
+                      <p className="font-semibold text-slate-800">{s.fullName}</p>
+                      <p className="text-[11px] text-slate-500 font-mono">
+                        Roll: {s.collegeNo || s.id} • {s.group || "Inter"} {s.section ? `(Sec ${s.section})` : ""}
+                      </p>
+                      <p className="text-[10px] text-slate-400">Phone: {s.contactNumber || s.phone || s.fatherContact || "No phone"}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleSendSinglePhotoRequest(s)}
+                      className="text-xs rounded-lg border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                    >
+                      <Send size={12} className="mr-1" /> Send Notice
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="p-3 bg-slate-50 border-t border-slate-100 flex justify-end">
+              <Button size="sm" variant="outline" onClick={() => setShowPhotoModal(false)} className="rounded-xl text-xs">
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {bulkModalProps && (
         <WhatsAppReportModal

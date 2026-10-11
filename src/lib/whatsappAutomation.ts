@@ -153,6 +153,11 @@ export function buildAdmissionNoticeMessage(admission: any, settings?: any): str
     docLinksSection += `\n🧾 *Admission Fee Receipt:* ${feeReceiptUrl}`;
   }
 
+  const hasPhoto = Boolean(admission.photo_url || admission.photo);
+  const photoNoticeBlock = !hasPhoto
+    ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━\n📸 *ACTION REQUIRED: Profile Photo Upload*\nSmart Gate Face Attendance aur Digital Student Card ke liye aapki photo portal par darj nahi hai.\n👉 Baraye meherbani apne mobile se seedhi passport style photo (clear face) capture kar ke *ISI WHATSAPP NUMBER PAR BHEJEIN*. Humara AI bot aapki photo ko auto-verify kar ke profile ke sath link kar dega!`
+    : "";
+
   return `🏛️ *${collegeName.toUpperCase()}*
 🎓 *OFFICIAL ADMISSION CONFIRMATION NOTICE*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -175,11 +180,92 @@ ${concessionLine}━━━━━━━━━━━━━━━━━━━━━
 • *Fee Deposited:* Rs. ${paid}
 • *Remaining Balance:* Rs. ${balance}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-🔗 *Document Verification & Download:*${docLinksSection}
+🔗 *Document Verification & Download:*${docLinksSection}${photoNoticeBlock}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 📍 *Campus Address:* ${address}
 📞 *Helpline / Query:* ${helpline}
 _Office of the Principal, Superior College Jahanian_`;
+}
+
+/**
+ * Builds standalone message requesting student/parent to upload passport-size photo via WhatsApp
+ */
+export function buildPhotoUploadRequestMessage(student: any, settings?: any): string {
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
+  const studentName = (student.fullName || student.name || "Student").trim();
+  const rollNo = student.collegeNo || student.rollNo || student.id || "N/A";
+  const group = student.group || student.section || "Intermediate";
+  const helpline = settings?.contactNumber || "0331-2211147";
+
+  return `🏛️ *${collegeName.toUpperCase()}*
+📸 *SMART FACE ATTENDANCE & PROFILE PHOTO UPDATE*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum *${studentName}*!
+(Roll Number: *${rollNo}*, Class: *${group}*)
+
+College Smart Gate Face Attendance aur Digital ID Card ke liye aapki profile photo hamare system mein darj nahi hai.
+
+📱 *Kia Karna Hai?*
+1️⃣ Apne mobile camera se seedhi passport style photo (clear face, achi roshni) capture karein.
+2️⃣ Yeh photo *ISI WHATSAPP NUMBER PAR REPLY KAREIN*.
+
+✅ Hamara AI System aapki photo ko detect kar ke aapke student profile aur Gate Face Attendance system ke sath foran link kar dega!
+
+📞 Helpline: ${helpline}
+_Student Affairs & IT Department, Superior College Jahanian_`;
+}
+
+/**
+ * Dispatches WhatsApp photo upload request to a single student
+ */
+export async function sendAutoPhotoUploadRequestNotice(student: any, settings?: any): Promise<boolean> {
+  const rawPhone = student.phone || student.contactNumber || student.fatherContact || student.mobile || "";
+  const phone = formatWhatsAppPhone(rawPhone);
+  if (!phone) {
+    toast.error(`No valid contact phone for ${student.fullName || "Student"}`);
+    return false;
+  }
+
+  const message = buildPhotoUploadRequestMessage(student, settings);
+  try {
+    const res = await fetch("/api/whatsapp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, message }),
+    });
+    if (res.ok) {
+      toast.success(`Photo request sent to ${student.fullName || "Student"}!`);
+      return true;
+    } else {
+      toast.error(`Failed to send WhatsApp to ${student.fullName || "Student"}`);
+      return false;
+    }
+  } catch (e: any) {
+    toast.error("Network error: " + (e?.message || "Failed"));
+    return false;
+  }
+}
+
+/**
+ * Dispatches WhatsApp photo upload requests in bulk to students without photos
+ */
+export async function dispatchBulkPhotoRequests(
+  studentsList: any[],
+  settings?: any,
+  onProgress?: (done: number, total: number) => void
+): Promise<{ sent: number; failed: number }> {
+  let sent = 0;
+  let failed = 0;
+  for (let i = 0; i < studentsList.length; i++) {
+    const st = studentsList[i];
+    const ok = await sendAutoPhotoUploadRequestNotice(st, settings);
+    if (ok) sent++;
+    else failed++;
+    if (onProgress) onProgress(i + 1, studentsList.length);
+    // 700ms throttle between WhatsApp messages
+    await new Promise((r) => setTimeout(r, 700));
+  }
+  return { sent, failed };
 }
 
 /**

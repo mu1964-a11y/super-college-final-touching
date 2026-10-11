@@ -75,6 +75,7 @@ import DeletedArchiveView from "./components/DeletedArchiveView";
 import GlobalCommandPalette from "./components/GlobalCommandPalette";
 import StudentDossier360 from "./components/StudentDossier360";
 import PublicVerificationView from "./components/PublicVerificationView";
+import FaceAttendanceKiosk from "./components/FaceAttendanceKiosk";
 import StudentPortal from "./components/StudentPortal";
 import StaffPortal from "./components/StaffPortal";
 import PortalGatewayView from "./components/PortalGatewayView";
@@ -1166,6 +1167,24 @@ export default function App() {
     return (
       <PublicVerificationView 
         onGoToAdmin={() => {
+          window.location.href = window.location.origin + window.location.pathname;
+        }} 
+      />
+    );
+  }
+
+  const isGateKioskMode = typeof window !== 'undefined' && (
+    new URLSearchParams(window.location.search).has('gate') ||
+    new URLSearchParams(window.location.search).has('face-attendance') ||
+    window.location.pathname.startsWith('/gate') ||
+    window.location.pathname.startsWith('/face-attendance')
+  );
+
+  if (isGateKioskMode) {
+    return (
+      <FaceAttendanceKiosk 
+        standalone={true}
+        onBackToApp={() => {
           window.location.href = window.location.origin + window.location.pathname;
         }} 
       />
