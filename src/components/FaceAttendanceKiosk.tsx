@@ -29,7 +29,8 @@ import {
   Lock,
   Unlock,
   ShieldAlert,
-  AlertTriangle
+  AlertTriangle,
+  Download
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
@@ -125,6 +126,40 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
   const enrolledDescriptorsRef = useRef<Map<string, { person: PersonProfile; descriptor: Float32Array }>>(new Map());
   // Anti-Passback / Daily Scan Memory (key: personId-direction-date)
   const dailyScansMapRef = useRef<Map<string, { time: string; status: "Present" | "Late"; date: string }>>(new Map());
+
+  // PWA Tablet / Mobile Standalone App Installation State
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
+  const [isStandaloneApp, setIsStandaloneApp] = useState(false);
+  const [showInstallHelpModal, setShowInstallHelpModal] = useState(false);
+
+  useEffect(() => {
+    // Check if running in standalone display mode (installed PWA)
+    const isStandalone = 
+      (typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches) || 
+      (typeof navigator !== "undefined" && (navigator as any).standalone === true);
+    setIsStandaloneApp(Boolean(isStandalone));
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallKioskApp = async () => {
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      if (choice?.outcome === "accepted") {
+        toast.success("Gate Kiosk App tablet par successfully install ho chuka hai! Ab home screen se direct 1-tap par open karein.");
+      }
+      setDeferredInstallPrompt(null);
+    } else {
+      setShowInstallHelpModal(true);
+    }
+  };
 
   // Helper: Convert "HH:mm" to minutes from midnight
   const timeToMinutes = (t?: string): number => {
@@ -1111,6 +1146,18 @@ _Automated Realtime College Security & LMS_`;
             </button>
           </div>
 
+          {/* 1-Tap Install App on Tablet (Visible if not running as installed standalone app) */}
+          {!isStandaloneApp && (
+            <button
+              onClick={handleInstallKioskApp}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-extrabold shadow-md shadow-emerald-600/30 transition-all active:scale-95 cursor-pointer"
+              title="Install dedicated SCJ Smart Gate Kiosk App on this tablet"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Install on Tablet</span>
+            </button>
+          )}
+
           {/* Mobile Link Sharing */}
           <button
             onClick={copyMobileLink}
@@ -1700,6 +1747,78 @@ _Automated Realtime College Security & LMS_`;
             >
               Close Audit Review
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* PWA Tablet Installation Guidance Modal */}
+      {showInstallHelpModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
+            <button
+              onClick={() => setShowInstallHelpModal(false)}
+              className="absolute top-4 right-4 p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-4">
+              <Download className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-lg font-bold text-white mb-1">
+              Tablet par Gate Kiosk Install Karein
+            </h3>
+            <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+              Is app ko tablet par install karne se browser ki URL bar, tabs aur buttons 100% hide ho jayenge aur tablet aik dedicated hardware biometric terminal ban jayega.
+            </p>
+
+            <div className="space-y-3 bg-slate-950/60 border border-slate-800/80 rounded-2xl p-4 text-xs">
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">
+                  1
+                </div>
+                <div>
+                  <strong className="text-slate-200 block">Chrome / Edge Browser (Android / Tablet):</strong>
+                  <span className="text-slate-400 text-[11px]">
+                    Browser ke top-right corner par <strong>3 dots (⋮)</strong> par tap karein.
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">
+                  2
+                </div>
+                <div>
+                  <strong className="text-slate-200 block">"Install app" ya "Add to Home screen":</strong>
+                  <span className="text-slate-400 text-[11px]">
+                    Menu mein se <strong>"Install app"</strong> ya <strong>"Add to Home screen" (ہوم اسکرین پر شامل کریں)</strong> select karein.
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">
+                  3
+                </div>
+                <div>
+                  <strong className="text-slate-200 block">1-Tap Direct Launch:</strong>
+                  <span className="text-slate-400 text-[11px]">
+                    Tablet ki main home screen par <strong>"SCJ Smart Gate"</strong> ka official icon aa jayega. Guard sirf icon tap karega aur fullscreen terminal khul jayega!
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={() => setShowInstallHelpModal(false)}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg cursor-pointer transition-all"
+              >
+                Samajh Gaya (Done)
+              </button>
+            </div>
           </div>
         </div>
       )}
