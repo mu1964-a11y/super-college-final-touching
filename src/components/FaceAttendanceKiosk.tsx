@@ -139,23 +139,45 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
       (typeof navigator !== "undefined" && (navigator as any).standalone === true);
     setIsStandaloneApp(Boolean(isStandalone));
 
+    // Check if early install prompt was already captured by window script in index.html
+    if (typeof window !== "undefined" && (window as any).deferredInstallPrompt) {
+      setDeferredInstallPrompt((window as any).deferredInstallPrompt);
+    }
+
+    const handleEarlyPrompt = (e: any) => {
+      setDeferredInstallPrompt(e?.detail || (window as any).deferredInstallPrompt);
+    };
+
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
+      if (typeof window !== "undefined") (window as any).deferredInstallPrompt = e;
       setDeferredInstallPrompt(e);
     };
 
+    window.addEventListener("pwa-prompt-available", handleEarlyPrompt);
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    return () => {
+      window.removeEventListener("pwa-prompt-available", handleEarlyPrompt);
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    };
   }, []);
 
   const handleInstallKioskApp = async () => {
-    if (deferredInstallPrompt) {
-      deferredInstallPrompt.prompt();
-      const choice = await deferredInstallPrompt.userChoice;
-      if (choice?.outcome === "accepted") {
-        toast.success("Gate Kiosk App tablet par successfully install ho chuka hai! Ab home screen se direct 1-tap par open karein.");
+    const promptEvent = deferredInstallPrompt || (typeof window !== "undefined" && (window as any).deferredInstallPrompt);
+    if (promptEvent) {
+      try {
+        promptEvent.prompt();
+        const choice = await promptEvent.userChoice;
+        if (choice?.outcome === "accepted") {
+          toast.success("Gate Kiosk App tablet par successfully install ho chuka hai! Ab home screen se direct 1-tap par open karein.");
+          setIsStandaloneApp(true);
+        }
+      } catch (err) {
+        console.warn("Prompt launch error:", err);
+        setShowInstallHelpModal(true);
       }
       setDeferredInstallPrompt(null);
+      if (typeof window !== "undefined") (window as any).deferredInstallPrompt = null;
     } else {
       setShowInstallHelpModal(true);
     }
@@ -1811,7 +1833,19 @@ _Automated Realtime College Security & LMS_`;
               </div>
             </div>
 
-            <div className="mt-5 flex justify-end">
+            <div className="mt-5 flex items-center justify-between gap-2">
+              <button
+                onClick={() => {
+                  toggleFullscreen();
+                  setShowInstallHelpModal(false);
+                }}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-all"
+                title="Browser address bar hide kar ke fullscreen kiosk mode on karein"
+              >
+                <Maximize className="w-3.5 h-3.5 text-indigo-400" />
+                Fullscreen Kiosk Now
+              </button>
+
               <button
                 onClick={() => setShowInstallHelpModal(false)}
                 className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg cursor-pointer transition-all"

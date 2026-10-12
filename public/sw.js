@@ -1,10 +1,13 @@
 // Superior College Jahanian - Lightweight PWA Service Worker
-const CACHE_NAME = 'scj-erp-cache-v1';
+const CACHE_NAME = 'scj-gate-kiosk-cache-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/superior-logo.png',
-  '/manifest.webmanifest'
+  '/icon-192.png',
+  '/icon-512.png',
+  '/manifest.webmanifest',
+  '/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
