@@ -194,6 +194,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
   const [collegeName, setCollegeName] = useState<string>(() => {
     return typeof window !== 'undefined' ? (safeLocalStorage.getItem('college_name') || 'Superior College Jahanian') : 'Superior College Jahanian';
   });
+  const [settings, setSettings] = useState<any>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -246,6 +247,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
       try {
         const { data: stg } = await supabase.from('settings').select('*').limit(1).maybeSingle();
         if (stg) {
+          setSettings(stg);
           const logo = stg.logo_url || stg.logo || stg.config?.logo || stg.config?.logo_url;
           if (logo) {
             setCollegeLogo(logo);
@@ -501,8 +503,35 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
       }
 
       // Attendance statistics
-      const presentDays = Number(studentRecord?.attendance_present ?? 0);
-      const absentDays = Number(studentRecord?.attendance_absent ?? 0);
+      let presentDays = Number(studentRecord?.attendance_present ?? 0);
+      let absentDays = Number(studentRecord?.attendance_absent ?? 0);
+
+      if (activeStudentDbId) {
+        try {
+          const { data: attRows } = await supabase
+            .from('student_attendance')
+            .select('status')
+            .or(`student_id.eq.${activeStudentDbId}${cleanTargetId ? `,student_id.eq.${cleanTargetId}` : ''}`);
+
+          if (attRows && attRows.length > 0) {
+            const livePresent = attRows.filter((r: any) => {
+              const st = (r.status || '').toLowerCase();
+              return st === 'present' || st === 'late' || st === 'p';
+            }).length;
+            const liveAbsent = attRows.filter((r: any) => {
+              const st = (r.status || '').toLowerCase();
+              return st === 'absent' || st === 'a';
+            }).length;
+            if (livePresent > 0 || liveAbsent > 0) {
+              presentDays = livePresent;
+              absentDays = liveAbsent;
+            }
+          }
+        } catch (errAtt) {
+          console.warn('Live student_attendance fetch error:', errAtt);
+        }
+      }
+
       const totalDays = presentDays + absentDays;
       const attendancePercent = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 100;
 
@@ -1763,7 +1792,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
                 <div className="text-right text-[10px]" style={{ color: '#475569' }}>
                   <strong className="block font-black uppercase text-[10px]" style={{ color: '#0f172a' }}>Superior College Jahanian</strong>
                   <span>Old Multan Road, Jahanian</span>
-                  <span className="block font-mono font-bold" style={{ color: '#085a4e' }}>Helpline: {settings?.contactNumber || "0331-2211147"}</span>
+                  <span className="block font-mono font-bold" style={{ color: '#085a4e' }}>Helpline: {settings?.contactNumber || settings?.contact_number || settings?.phone || "0331-2211147"}</span>
                 </div>
               </div>
 

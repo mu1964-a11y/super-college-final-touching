@@ -816,13 +816,52 @@ Is access ko activate karne ke liye isi chat par reply karein:
                 },
               },
               {
-                text: "Accurately transcribe this WhatsApp voice note audio. It is from a college student, parent, faculty teacher, or principal of Superior College Jahanian. It may be spoken in Roman Urdu, spoken Urdu, Hinglish, or English. Return ONLY the direct transcription in English or Roman Urdu without preamble, quotation marks, or explanations.",
+                text: `Accurately transcribe this WhatsApp voice note audio from a student, parent, or staff member of Superior College Jahanian (Pakistan).
+The audio may be spoken in Urdu, Punjabi, Roman Urdu, Hinglish, or English.
+
+CRITICAL SCRIPT & LANGUAGE RULES (STRICT MANDATE):
+1. SCRIPT MANDATE: Write the transcription ONLY in ROMAN URDU (Latin English alphabet, e.g. "Mujhe meri fees ke bare mein to batao", "Sir kal class hai?") or ENGLISH.
+2. ABSOLUTELY ZERO HINDI / DEVANAGARI SCRIPT (देवनागरी लिपि / हिन्दी): NEVER output any Hindi letters (like क, ख, ग, घ, ु, ो, etc.).
+3. Even if spoken in Urdu or Hindi phonetics, you MUST write the transcription using LATIN / ENGLISH ALPHABET letters ONLY (Roman Urdu / Hinglish).
+4. Return ONLY the raw transcription text without quotation marks, markdown bolding, preamble, or explanations.`,
               },
             ],
           },
         ],
       });
-      return response.text?.trim() || "";
+      let transcribed = response.text?.trim() || "";
+      // Strip leading and trailing quotes
+      transcribed = transcribed.replace(/^["'«»“”]+|["'«»“”]+$/g, "").trim();
+
+      // Devanagari Guardrail: If any Hindi script characters exist (Unicode \u0900 - \u097F), transliterate immediately to Roman Urdu
+      if (/[\u0900-\u097F]/.test(transcribed)) {
+        console.warn(`[WhatsApp Bot Audio] Gemini returned Devanagari Hindi text: "${transcribed}". Auto-converting to Roman Urdu...`);
+        try {
+          const romanRes = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    text: `Transliterate this Devanagari Hindi text into natural Pakistani Roman Urdu (Latin English alphabet letters ONLY, e.g. "Mujhe meri fees ke bare mein to batao"). Return ONLY the Roman Urdu text without any Hindi characters, preamble, or quotes:\n\n${transcribed}`,
+                  },
+                ],
+              },
+            ],
+          });
+          const romanText = romanRes.text?.trim().replace(/^["'«»“”]+|["'«»“”]+$/g, "").trim();
+          if (romanText && !/[\u0900-\u097F]/.test(romanText)) {
+            transcribed = romanText;
+          } else {
+            transcribed = transcribed.replace(/[\u0900-\u097F]/g, "").trim();
+          }
+        } catch {
+          transcribed = transcribed.replace(/[\u0900-\u097F]/g, "").trim();
+        }
+      }
+
+      return transcribed;
     } catch (err: any) {
       console.error("[WhatsApp Bot Audio] Error transcribing voice note:", err);
       return "";
@@ -3360,11 +3399,10 @@ Profile Picture & Photo Updates Integrity (CRITICAL):
 - NEVER say "Main directly aapki profile picture system mein update nahi kar sakti" or "Main kisi shakhs ki tasveer dekh kar guidance nahi de sakti" or give canned refusals.
 - If a user asks to update their profile picture or sends a photo, tell them warmly: "Jee bilkul! Aap apni passport-size picture ya selfie WhatsApp par send karein, hamara automated AI system foran aapki profile aur College Face Attendance Kiosk mein update kar dega."
 
-Voice Note & Audio Capability Mandate (CRITICAL):
-- You HAVE FULL VOICE AUDIO CAPABILITY on WhatsApp. Our WhatsApp Bot system automatically synthesizes your response into a playable WhatsApp voice note (PTT audio)!
-- NEVER say "Main sirf text (likhi hui) form mein jawab de sakti hoon, voice mein nahi" or "Main ek AI model hoon voice nahi bhej sakti".
-- If the user sends a voice note or says "Voice me reply karo" / "Bol kar batao" / "Audio bhejo":
-  Acknowledge warmly (e.g. "Jee bilkul! Main aapko voice note aur aawaz ke zariye rehnumai faraham kar rahi hoon...") and answer their question directly.
+Voice Note Understanding & Text Response Mandate:
+- You fully understand WhatsApp voice notes sent by users (they are transcribed for you).
+- Always reply with clear, well-structured text messages on WhatsApp.
+- If a user explicitly asks "voice me reply karo" or "audio bhejo" or "bol kar batao", clarify: "Main aapka voice note samajh sakti hoon aur yahan WhatsApp text ke zariye aapko fori aur mukammal jawab faraham kar rahi hoon." and answer their question directly.
 
 ChatGPT Intelligence:
 - You can answer ANY question intelligently, accurately, and helpfully: college information (session 2026-28), subjects, exam prep, writing applications, general knowledge, career advice.
@@ -4138,26 +4176,6 @@ College Key Info:
         verifiedStudent: verifiedStudentName || (session!.verifiedStudent ? session!.verifiedStudent.full_name : undefined),
       });
       if (this.sock) {
-        // Voice-in -> Voice-out: If query was voice note OR user requested voice reply
-        const wantsVoiceReply = Boolean(options?.isVoice) || 
-          /\b(voice|audio|aawaz|bol k|bol kar|voice note|voice bhejo|audio bhejo)\b/i.test(cleanQuery);
-
-        if (wantsVoiceReply) {
-          try {
-            const speechBuffer = await this.synthesizeSpeech(replyText);
-            if (speechBuffer && speechBuffer.length > 500) {
-              await this.sock.sendMessage(senderJid, {
-                audio: speechBuffer,
-                mimetype: "audio/mpeg",
-                ptt: true
-              });
-              console.log(`[WhatsApp Voice Note Sent] PTT Voice response delivered to ${senderJid} (${speechBuffer.length} bytes)`);
-            }
-          } catch (voiceErr) {
-            console.warn("[WhatsApp Voice Reply] Failed to send audio note, fallback to text:", voiceErr);
-          }
-        }
-
         await this.sock.sendMessage(senderJid, { text: finalReply });
       }
       return finalReply;
@@ -5742,10 +5760,10 @@ CONVERSATIONAL RULES & PARENTAL EMPATHY:
    - Guide them warmly: "Jee bilkul! Aap apni passport-size photo ya selfie is WhatsApp chat par send karein, hamara automated system foran aapki profile aur face attendance kiosk mein picture update kar dega."
 8. AIR-GAP PRIVACY:
    - You are ONLY authorized to discuss this specific student (${student.full_name}). NEVER discuss or reveal information about OTHER students, class fellows, or staff.
-9. VOICE NOTE & AUDIO CAPABILITY (CRITICAL):
-   - You HAVE full voice audio capability on WhatsApp. Our system automatically converts your reply into a playable voice note!
-   - NEVER say "Main ek AI assistant hoon aur sirf text (likhi hui) form mein jawab de sakti hoon, voice mein nahi".
-   - If user asks for voice reply ("voice me reply karo", "bol kar batao", "audio bhejo"), acknowledge that you are providing voice guidance and answer their question directly.
+9. VOICE NOTE UNDERSTANDING & TEXT RESPONSE:
+   - You understand voice notes sent by students and parents (transcribed for you).
+   - Always reply with clear, well-structured text messages on WhatsApp.
+   - If user asks for voice reply ("voice me reply karo", "bol kar batao", "audio bhejo"), clarify: "Main aapka voice note samajh sakti hoon aur yahan WhatsApp text ke zariye aapko fori aur mukammal jawab faraham kar rahi hoon." and answer their question directly.
 10. STRICT LANGUAGE MANDATE:
    - Reply in Roman Urdu / Hinglish (Latin alphabet) or English ONLY. Match user language (English -> English, Roman Urdu -> Roman Urdu).
    - STRICTLY FORBIDDEN: NEVER write in Hindi or Devanagari script (e.g. नमस्ते). ZERO Devanagari characters allowed.

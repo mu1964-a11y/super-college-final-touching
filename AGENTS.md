@@ -70,8 +70,8 @@ As the project grows over the upcoming months, strictly adhere to these rules:
      - Public Guest AI handles Session 2026-28 admissions inquiry wizard with zero internal data leaks.
    - **AI Voice Note Intelligence Roadmap**:
      - Gemini Multimodal Audio processes OGG/Opus voice notes directly with ~95%+ accuracy for Urdu/Hinglish.
-     - Uses Confirmation Guardrails ("Aapne farmaya: ... Humne leave darj kar li hai").
-     - Replies with Push-To-Talk (PTT) voice notes using Edge-TTS in a natural female voice. Zero external cost.
+     - Transcription Guardrails: Strictly transcribe in Roman Urdu / English (Latin alphabet ONLY). Devanagari Hindi script is 100% blocked and auto-transliterated.
+     - Reply Mode: Fast, structured WhatsApp text replies (audio voice-out replies disabled per user requirement).
    - **Tablet Gate Face Attendance Architecture (Implemented & Active)**:
      - Component: `src/components/FaceAttendanceKiosk.tsx`.
      - Direct route: `/?gate=true` or `/?face-attendance=true` (loads standalone fullscreen kiosk mode without requiring portal login).
