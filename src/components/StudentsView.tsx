@@ -1056,16 +1056,16 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                                 setPhotoEditorStudent(student);
                                 setIsPhotoEditorOpen(true);
                               }}
-                              className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200 shadow-2xs cursor-pointer relative group"
+                              className="w-14 h-14 rounded-full overflow-hidden bg-slate-100 flex-shrink-0 border-2 border-slate-200 shadow-sm cursor-pointer relative group ring-2 ring-superior-teal/15"
                               title="Click to Crop & Edit Photo (AI Studio)"
                             >
                               {student.photo ? (
                                 <img src={student.photo} alt="" className="w-full h-full object-cover object-[center_top] rounded-full group-hover:opacity-75 transition-opacity" referrerPolicy="no-referrer" />
                               ) : (
-                                <div className="w-full h-full flex items-center justify-center text-slate-500 font-bold text-base bg-slate-200 rounded-full group-hover:bg-slate-300 transition-colors">{student.fullName ? student.fullName.charAt(0).toUpperCase() : 'S'}</div>
+                                <div className="w-full h-full flex items-center justify-center text-slate-500 font-bold text-lg bg-slate-200 rounded-full group-hover:bg-slate-300 transition-colors">{student.fullName ? student.fullName.charAt(0).toUpperCase() : 'S'}</div>
                               )}
                               <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Camera size={12} className="text-white" />
+                                <Camera size={16} className="text-white" />
                               </div>
                             </div>
                            <div className="flex flex-col">

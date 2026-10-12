@@ -834,7 +834,7 @@ _Canal Road, Jahanian | Superior College Jahanian_`;
               {filteredStudents.length > 0 ? filteredStudents.map((s: Student) => (
                 <div key={s.id} onClick={() => setSelectedStudentId(s.id)} className="p-4 border rounded-xl cursor-pointer hover:-translate-y-1.5 hover:shadow-lg hover:bg-emerald-50 hover:border-emerald-300 transition-all duration-300 flex items-center justify-between gap-3 bg-white group">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shadow-sm shrink-0 overflow-hidden border border-emerald-200/70">
+                    <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-base shadow-sm shrink-0 overflow-hidden border-2 border-emerald-300 ring-2 ring-emerald-100/80">
                       {s.photo ? (
                         <img
                           src={s.photo}
@@ -1152,7 +1152,7 @@ _Canal Road, Jahanian | Superior College Jahanian_`;
         <DialogContent className="max-w-4xl p-0 overflow-hidden bg-gray-50 border-0 rounded-xl shadow-xl">
           <div className="p-6 bg-white border-b flex flex-col md:flex-row justify-between md:items-center gap-4">
             <div className="flex items-center gap-3">
-               <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-800 font-bold text-lg overflow-hidden border-2 border-emerald-200 shrink-0">
+               <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-800 font-bold text-lg overflow-hidden border-2 border-emerald-300 shadow-sm shrink-0">
                  {selectedStudent?.photo ? (
                    <img
                      src={selectedStudent.photo}

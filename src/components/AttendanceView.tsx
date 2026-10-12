@@ -991,7 +991,7 @@ export default function AttendanceView({ data }: { data: any }) {
                          </TableCell>
                          <TableCell>
                            <div className="flex items-center gap-3">
-                             <div className="w-10 h-10 rounded-full bg-superior-teal/10 flex items-center justify-center text-superior-teal font-black text-sm overflow-hidden border border-slate-200/80 shadow-2xs shrink-0">
+                             <div className="w-14 h-14 rounded-full bg-superior-teal/10 flex items-center justify-center text-superior-teal font-black text-base overflow-hidden border-2 border-slate-200 shadow-sm shrink-0 ring-2 ring-slate-100">
                                {student.photo ? (
                                  <img
                                    src={student.photo}
@@ -1173,7 +1173,7 @@ export default function AttendanceView({ data }: { data: any }) {
                         <TableRow key={student.id} className="hover:bg-slate-50/50">
                           <TableCell className="pl-8">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-black text-sm overflow-hidden border border-slate-200/80 shadow-2xs shrink-0">
+                              <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-black text-base overflow-hidden border-2 border-slate-200 shadow-sm shrink-0 ring-2 ring-slate-100">
                                 {student.photo ? (
                                   <img
                                     src={student.photo}

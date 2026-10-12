@@ -1657,7 +1657,7 @@ export default function AdmissionsView({
                                   setIsPhotoEditorOpen(true);
                                 }}
                                 title="Click to Crop or Edit Student Photo"
-                                className="w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center text-sm font-black text-superior-teal overflow-hidden border-2 border-slate-200 shadow-2xs shrink-0 ring-2 ring-superior-teal/10 relative group cursor-pointer hover:border-superior-teal hover:scale-105 transition-all"
+                                className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center text-base font-black text-superior-teal overflow-hidden border-2 border-slate-200 shadow-sm shrink-0 ring-2 ring-superior-teal/20 relative group cursor-pointer hover:border-superior-teal hover:scale-105 transition-all"
                               >
                                 {applicantPhoto ? (
                                   <img
@@ -1677,7 +1677,7 @@ export default function AdmissionsView({
                                   <span>{admission.fullName ? admission.fullName.charAt(0).toUpperCase() : "A"}</span>
                                 )}
                                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white backdrop-blur-[1px]">
-                                  <Camera size={13} />
+                                  <Camera size={16} />
                                 </div>
                               </div>
                             );

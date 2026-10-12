@@ -1582,7 +1582,7 @@ export default function FeeManagementView({
                           >
                             <TableCell className="pl-8 py-4">
                               <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-sm font-black text-superior-teal overflow-hidden border border-slate-200 shadow-2xs shrink-0">
+                                <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center text-base font-black text-superior-teal overflow-hidden border-2 border-slate-200 shadow-sm shrink-0 ring-2 ring-superior-teal/15">
                                   {student.photo ? (
                                     <img
                                       src={student.photo}
@@ -1846,7 +1846,7 @@ export default function FeeManagementView({
             </DialogTitle>
             {selectedStudent ? (
               <div className="flex items-center gap-3 pt-2">
-                <div className="w-10 h-10 rounded-full bg-superior-teal/10 flex items-center justify-center text-sm font-black text-superior-teal overflow-hidden border border-slate-200 shadow-2xs shrink-0">
+                <div className="w-14 h-14 rounded-full bg-superior-teal/10 flex items-center justify-center text-base font-black text-superior-teal overflow-hidden border-2 border-slate-200 shadow-sm shrink-0 ring-2 ring-superior-teal/15">
                   {selectedStudent.photo ? (
                     <img
                       src={selectedStudent.photo}
@@ -2120,7 +2120,7 @@ export default function FeeManagementView({
             </DialogTitle>
             {selectedStudent && (
               <div className="flex items-center gap-3 pt-2">
-                <div className="w-10 h-10 rounded-full bg-superior-teal/10 flex items-center justify-center text-sm font-black text-superior-teal overflow-hidden border border-slate-200 shadow-2xs shrink-0">
+                <div className="w-14 h-14 rounded-full bg-superior-teal/10 flex items-center justify-center text-base font-black text-superior-teal overflow-hidden border-2 border-slate-200 shadow-sm shrink-0 ring-2 ring-superior-teal/15">
                   {selectedStudent.photo ? (
                     <img
                       src={selectedStudent.photo}

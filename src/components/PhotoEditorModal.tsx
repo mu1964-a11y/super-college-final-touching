@@ -13,7 +13,13 @@ import {
   Camera,
   Palette,
   Sliders,
-  X
+  X,
+  Pipette,
+  Sparkles,
+  ShieldCheck,
+  CheckCircle2,
+  Circle,
+  Square
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
@@ -29,11 +35,12 @@ interface PhotoEditorModalProps {
 }
 
 const BG_PRESETS = [
-  { name: "Original", value: "none", hex: "transparent", border: "border-slate-300" },
-  { name: "Passport Blue", value: "#0072CE", hex: "#0072CE", border: "border-blue-600" },
-  { name: "Studio White", value: "#FFFFFF", hex: "#FFFFFF", border: "border-slate-400" },
-  { name: "Soft Sky", value: "#93C5FD", hex: "#93C5FD", border: "border-sky-300" },
-  { name: "Neutral Gray", value: "#E2E8F0", hex: "#E2E8F0", border: "border-slate-300" },
+  { name: "Original", value: "none", hex: "transparent", border: "border-slate-300", label: "Original" },
+  { name: "Studio White", value: "#FFFFFF", hex: "#FFFFFF", border: "border-slate-400", label: "White BG" },
+  { name: "Passport Blue", value: "#0072CE", hex: "#0072CE", border: "border-blue-600", label: "Passport Blue" },
+  { name: "Sky Blue", value: "#38BDF8", hex: "#38BDF8", border: "border-sky-400", label: "Sky Blue" },
+  { name: "Deep Navy", value: "#1E3A8A", hex: "#1E3A8A", border: "border-indigo-900", label: "Navy" },
+  { name: "Neutral Gray", value: "#E2E8F0", hex: "#E2E8F0", border: "border-slate-300", label: "Neutral" },
 ];
 
 export default function PhotoEditorModal({
@@ -47,7 +54,7 @@ export default function PhotoEditorModal({
 }: PhotoEditorModalProps) {
   // Source Image
   const [sourceImage, setSourceImage] = useState<string>(initialPhotoUrl || "");
-  const [aspectRatio, setAspectRatio] = useState<"passport" | "square" | "free">("passport"); // 3:4 or 1:1 or free
+  const [cropShape, setCropShape] = useState<"circle" | "passport" | "square" | "free">("circle"); // Default to Circle for App avatars!
 
   // Transform controls
   const [zoom, setZoom] = useState<number>(1);
@@ -63,8 +70,11 @@ export default function PhotoEditorModal({
 
   // Background replacement
   const [selectedBg, setSelectedBg] = useState<string>("none");
-  const [customBgHex] = useState<string>("#0072CE");
-  const [bgTolerance, setBgTolerance] = useState<number>(38); // 10 to 80
+  const [bgTolerance, setBgTolerance] = useState<number>(40); // 15 to 80
+  const [sampledColor, setSampledColor] = useState<{ r: number; g: number; b: number } | null>(null);
+  const [isEyedropperActive, setIsEyedropperActive] = useState<boolean>(false);
+  const [protectFaceSkin, setProtectFaceSkin] = useState<boolean>(true);
+  const [featherRadius, setFeatherRadius] = useState<number>(18);
 
   // Pan interaction
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -76,6 +86,7 @@ export default function PhotoEditorModal({
   const [previewDataUrl, setPreviewDataUrl] = useState<string>("");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Sync initial photo when modal opens or initialPhotoUrl changes
   useEffect(() => {
@@ -95,12 +106,16 @@ export default function PhotoEditorModal({
     setContrast(100);
     setSaturation(100);
     setSelectedBg("none");
-    setBgTolerance(38);
+    setBgTolerance(40);
+    setSampledColor(null);
+    setIsEyedropperActive(false);
+    setProtectFaceSkin(true);
+    setFeatherRadius(18);
   };
 
   // Render canvas with all edits & background replacement
   const renderEditedImage = useCallback(
-    async (targetWidth = 480, targetHeight = 640): Promise<string> => {
+    async (targetWidth = 500, targetHeight = 500): Promise<string> => {
       if (!sourceImage) return "";
 
       return new Promise((resolve) => {
@@ -112,10 +127,10 @@ export default function PhotoEditorModal({
           let outputW = targetWidth;
           let outputH = targetHeight;
 
-          if (aspectRatio === "square") {
+          if (cropShape === "circle" || cropShape === "square") {
             outputW = 500;
             outputH = 500;
-          } else if (aspectRatio === "passport") {
+          } else if (cropShape === "passport") {
             outputW = 450;
             outputH = 600; // 3:4 ratio
           } else {
@@ -131,7 +146,7 @@ export default function PhotoEditorModal({
           if (!ctx) return resolve("");
 
           // 1. Draw solid background color if selected
-          const activeBgColor = selectedBg === "custom" ? customBgHex : selectedBg;
+          const activeBgColor = selectedBg;
           if (activeBgColor !== "none") {
             ctx.fillStyle = activeBgColor;
             ctx.fillRect(0, 0, outputW, outputH);
@@ -159,57 +174,101 @@ export default function PhotoEditorModal({
           tempCtx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
           tempCtx.restore();
 
-          // 3. Background replacement algorithm (Chroma Key & Edge color distance)
+          // 3. Smart Background replacement algorithm (Chroma Key with Face & Skin Shield)
           if (activeBgColor !== "none") {
             const imgData = tempCtx.getImageData(0, 0, outputW, outputH);
             const data = imgData.data;
 
-            // Sample corners of the image to detect ambient background color
-            const samplePoints = [
-              [4, 4],
-              [outputW - 5, 4],
-              [4, outputH - 5],
-              [outputW - 5, outputH - 5],
-              [Math.floor(outputW / 2), 4],
-              [4, Math.floor(outputH / 2)],
-              [outputW - 5, Math.floor(outputH / 2)],
-            ];
-
-            let sampleR = 0,
-              sampleG = 0,
-              sampleB = 0;
-            let validSamples = 0;
-
-            for (const [sx, sy] of samplePoints) {
-              const idx = (sy * outputW + sx) * 4;
-              sampleR += data[idx];
-              sampleG += data[idx + 1];
-              sampleB += data[idx + 2];
-              validSamples++;
+            // Target replacement color (destination)
+            let destR = 255, destG = 255, destB = 255;
+            if (activeBgColor.startsWith("#")) {
+              destR = parseInt(activeBgColor.slice(1, 3), 16) || 255;
+              destG = parseInt(activeBgColor.slice(3, 5), 16) || 255;
+              destB = parseInt(activeBgColor.slice(5, 7), 16) || 255;
             }
 
-            sampleR /= validSamples;
-            sampleG /= validSamples;
-            sampleB /= validSamples;
+            // Target background color to remove (source sample)
+            let sampleR = 240, sampleG = 240, sampleB = 240;
+            if (sampledColor) {
+              // User clicked with eyedropper!
+              sampleR = sampledColor.r;
+              sampleG = sampledColor.g;
+              sampleB = sampledColor.b;
+            } else {
+              // Auto-sample border points excluding skin
+              const samplePoints: Array<[number, number]> = [];
+              // Top border points
+              for (let x = 8; x < outputW - 8; x += Math.floor(outputW / 8)) samplePoints.push([x, 6]);
+              // Left & Right corners
+              samplePoints.push([6, 6], [outputW - 8, 6], [6, outputH - 8], [outputW - 8, outputH - 8]);
+              // Left & Right border points
+              for (let y = 16; y < outputH - 16; y += Math.floor(outputH / 6)) {
+                samplePoints.push([6, y]);
+                samplePoints.push([outputW - 8, y]);
+              }
 
-            // Parse destination replacement color
-            const dummyEl = document.createElement("div");
-            dummyEl.style.color = activeBgColor;
-            document.body.appendChild(dummyEl);
-            const computed = window.getComputedStyle(dummyEl).color;
-            document.body.removeChild(dummyEl);
-            const rgbMatch = computed.match(/\d+/g) || ["0", "114", "206"];
-            const destR = parseInt(rgbMatch[0], 10);
-            const destG = parseInt(rgbMatch[1], 10);
-            const destB = parseInt(rgbMatch[2], 10);
+              let sR = 0, sG = 0, sB = 0, validSamples = 0;
+              for (const [sx, sy] of samplePoints) {
+                const idx = (sy * outputW + sx) * 4;
+                const r = data[idx];
+                const g = data[idx + 1];
+                const b = data[idx + 2];
+                // Exclude skin from background sample
+                const isSkinSample = r > 100 && g > 45 && b > 25 && r > g && r > b;
+                if (!isSkinSample) {
+                  sR += r;
+                  sG += g;
+                  sB += b;
+                  validSamples++;
+                }
+              }
+
+              if (validSamples > 0) {
+                sampleR = Math.round(sR / validSamples);
+                sampleG = Math.round(sG / validSamples);
+                sampleB = Math.round(sB / validSamples);
+              }
+            }
 
             const tolSq = bgTolerance * bgTolerance * 3;
-            const featherSq = (bgTolerance + 15) * (bgTolerance + 15) * 3;
+            const featherSq = (bgTolerance + featherRadius) * (bgTolerance + featherRadius) * 3;
+
+            // Face center region parameters for shield
+            const faceCx = outputW / 2 + panX;
+            const faceCy = outputH * 0.44 + panY;
+            const faceRx = outputW * 0.28 * zoom;
+            const faceRy = outputH * 0.35 * zoom;
 
             for (let i = 0; i < data.length; i += 4) {
+              const pixelIndex = i / 4;
+              const px = pixelIndex % outputW;
+              const py = Math.floor(pixelIndex / outputW);
+
               const r = data[i];
               const g = data[i + 1];
               const b = data[i + 2];
+
+              // Normalized distance squared to center face oval
+              const dX = (px - faceCx) / (faceRx || 1);
+              const dY = (py - faceCy) / (faceRy || 1);
+              const faceDistSq = dX * dX + dY * dY;
+
+              // Robust Human Skin Tone detection (RGB model)
+              const isSkin =
+                r > 90 &&
+                g > 35 &&
+                b > 20 &&
+                Math.max(r, g, b) - Math.min(r, g, b) > 12 &&
+                r > g &&
+                r > b;
+
+              // Dark hair shield in upper half of face oval
+              const isDarkHair = faceDistSq < 1.4 && (r + g + b) < 180 && py < faceCy + faceRy * 0.25;
+
+              // Protect face and skin from being replaced
+              if (protectFaceSkin && (faceDistSq < 0.75 || (faceDistSq < 1.35 && (isSkin || isDarkHair)))) {
+                continue; // Protected student face/body pixel!
+              }
 
               const dr = r - sampleR;
               const dg = g - sampleG;
@@ -217,7 +276,7 @@ export default function PhotoEditorModal({
               const distSq = dr * dr + dg * dg + db * db;
 
               if (distSq < tolSq) {
-                // Fully background
+                // Background pixel -> Replace with destination color
                 data[i] = destR;
                 data[i + 1] = destG;
                 data[i + 2] = destB;
@@ -245,7 +304,7 @@ export default function PhotoEditorModal({
     },
     [
       sourceImage,
-      aspectRatio,
+      cropShape,
       zoom,
       rotation,
       flipH,
@@ -255,8 +314,10 @@ export default function PhotoEditorModal({
       contrast,
       saturation,
       selectedBg,
-      customBgHex,
       bgTolerance,
+      sampledColor,
+      protectFaceSkin,
+      featherRadius,
     ]
   );
 
@@ -266,12 +327,12 @@ export default function PhotoEditorModal({
     const timer = setTimeout(async () => {
       if (!sourceImage) return;
       setIsProcessing(true);
-      const url = await renderEditedImage(360, 480);
+      const url = await renderEditedImage(400, 400);
       if (active) {
         setPreviewDataUrl(url);
         setIsProcessing(false);
       }
-    }, 80);
+    }, 70);
 
     return () => {
       active = false;
@@ -301,14 +362,18 @@ export default function PhotoEditorModal({
     reader.readAsDataURL(file);
   };
 
-  // Drag to pan
-  const handleMouseDown = (e: React.MouseEvent) => {
+  // Drag to pan or Eyedropper click
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isEyedropperActive) {
+      handleEyedropperClick(e);
+      return;
+    }
     setIsDragging(true);
     setDragStart({ x: e.clientX - panX, y: e.clientY - panY });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
+    if (!isDragging || isEyedropperActive) return;
     setPanX(e.clientX - dragStart.x);
     setPanY(e.clientY - dragStart.y);
   };
@@ -317,13 +382,42 @@ export default function PhotoEditorModal({
     setIsDragging(false);
   };
 
+  // Eyedropper to sample color from clicked point
+  const handleEyedropperClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!previewContainerRef.current) return;
+    const rect = previewContainerRef.current.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+
+    // Create temp canvas to read pixel at click coordinates
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = previewDataUrl || sourceImage;
+    img.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = rect.width;
+      c.height = rect.height;
+      const ctx = c.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        const pixel = ctx.getImageData(Math.floor(clickX), Math.floor(clickY), 1, 1).data;
+        setSampledColor({ r: pixel[0], g: pixel[1], b: pixel[2] });
+        setIsEyedropperActive(false);
+        if (selectedBg === "none") {
+          setSelectedBg("#0072CE"); // Default to passport blue on sample
+        }
+        toast.success(`🎯 Background color sampled (RGB: ${pixel[0]}, ${pixel[1]}, ${pixel[2]})`);
+      }
+    };
+  };
+
   // Save changes to database
   const handleSaveToDatabase = async () => {
     setIsSaving(true);
-    const toastId = toast.loading("Saving optimized passport photo to database...");
+    const toastId = toast.loading("Saving optimized portrait to database...");
 
     try {
-      const finalDataUrl = await renderEditedImage(450, 600); // High-res 3:4 passport
+      const finalDataUrl = await renderEditedImage(500, 500); // High-res 500x500
       if (!finalDataUrl) {
         throw new Error("Could not render photo output");
       }
@@ -346,7 +440,7 @@ export default function PhotoEditorModal({
       }
 
       toast.dismiss(toastId);
-      toast.success("✅ Profile photo & biometric descriptor successfully updated!");
+      toast.success("✅ Profile photo & face descriptor updated successfully!");
       onSaveSuccess?.(finalDataUrl);
       onClose();
     } catch (err: any) {
@@ -360,12 +454,12 @@ export default function PhotoEditorModal({
 
   // Download photo to computer
   const handleDownload = async () => {
-    const finalDataUrl = await renderEditedImage(600, 800);
+    const finalDataUrl = await renderEditedImage(600, 600);
     if (!finalDataUrl) return;
 
     const link = document.createElement("a");
     link.href = finalDataUrl;
-    link.download = `Passport-Photo-${studentName.replace(/\s+/g, "-")}.jpg`;
+    link.download = `Profile-Photo-${studentName.replace(/\s+/g, "-")}.jpg`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -375,8 +469,8 @@ export default function PhotoEditorModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 w-full max-w-4xl overflow-hidden flex flex-col relative max-h-[94vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 w-full max-w-5xl overflow-hidden flex flex-col relative max-h-[96vh]">
         {/* Header */}
         <div className="bg-slate-900 px-6 py-4 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -387,7 +481,7 @@ export default function PhotoEditorModal({
               <div className="text-base font-black uppercase tracking-tight text-white flex items-center gap-2">
                 Student Photo Studio & AI Editor
                 <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-black uppercase px-2 py-0.5 rounded-full">
-                  Passport Ready
+                  LMS Avatar & Passport Ready
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-medium">
@@ -406,21 +500,21 @@ export default function PhotoEditorModal({
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="h-8 px-3 text-xs font-bold rounded-xl border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white flex items-center gap-1.5 transition-colors"
+              className="h-8 px-3 text-xs font-bold rounded-xl border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Upload size={13} />
               <span>Replace Photo</span>
             </button>
             <button
               onClick={handleReset}
-              className="h-8 px-2.5 text-xs font-bold rounded-xl border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+              className="h-8 px-2.5 text-xs font-bold rounded-xl border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition-colors cursor-pointer"
               title="Reset All Adjustments"
             >
               <RefreshCw size={13} />
             </button>
             <button
               onClick={onClose}
-              className="h-8 w-8 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 flex items-center justify-center transition-colors ml-1"
+              className="h-8 w-8 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 flex items-center justify-center transition-colors ml-1 cursor-pointer"
               title="Close"
             >
               <X size={16} />
@@ -431,56 +525,60 @@ export default function PhotoEditorModal({
         {/* Studio Body */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-0 divide-y md:divide-y-0 md:divide-x divide-slate-100 dark:divide-slate-800 overflow-y-auto">
           {/* Left Canvas Preview Area (7 cols) */}
-          <div className="md:col-span-7 p-6 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950/50 min-h-[420px] select-none">
-            {/* Aspect Ratio Switcher */}
-            <div className="flex items-center gap-2 mb-4 bg-white dark:bg-slate-900 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div className="md:col-span-7 p-6 flex flex-col items-center justify-center bg-slate-950/90 text-white min-h-[460px] select-none relative">
+            {/* Crop Shape Switcher */}
+            <div className="flex items-center gap-1.5 mb-4 bg-slate-900/90 p-1 rounded-2xl border border-slate-800 shadow-md">
               <button
-                onClick={() => setAspectRatio("passport")}
-                className={`px-3 py-1.5 text-xs font-black uppercase rounded-xl transition-all ${
-                  aspectRatio === "passport"
-                    ? "bg-teal-600 text-white shadow-xs"
-                    : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                onClick={() => setCropShape("circle")}
+                className={`px-3 py-1.5 text-xs font-black uppercase rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                  cropShape === "circle"
+                    ? "bg-teal-500 text-slate-950 shadow-md font-black"
+                    : "text-slate-400 hover:text-white"
                 }`}
               >
-                Passport (3:4)
+                <Circle size={13} />
+                <span>Round (App Avatar 1:1)</span>
               </button>
               <button
-                onClick={() => setAspectRatio("square")}
-                className={`px-3 py-1.5 text-xs font-black uppercase rounded-xl transition-all ${
-                  aspectRatio === "square"
-                    ? "bg-teal-600 text-white shadow-xs"
-                    : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                onClick={() => setCropShape("passport")}
+                className={`px-3 py-1.5 text-xs font-black uppercase rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                  cropShape === "passport"
+                    ? "bg-teal-500 text-slate-950 shadow-md font-black"
+                    : "text-slate-400 hover:text-white"
                 }`}
               >
-                Square (1:1)
+                <Crop size={13} />
+                <span>Passport (3:4)</span>
               </button>
               <button
-                onClick={() => setAspectRatio("free")}
-                className={`px-3 py-1.5 text-xs font-black uppercase rounded-xl transition-all ${
-                  aspectRatio === "free"
-                    ? "bg-teal-600 text-white shadow-xs"
-                    : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                onClick={() => setCropShape("square")}
+                className={`px-3 py-1.5 text-xs font-black uppercase rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                  cropShape === "square"
+                    ? "bg-teal-500 text-slate-950 shadow-md font-black"
+                    : "text-slate-400 hover:text-white"
                 }`}
               >
-                Full / Free
+                <Square size={13} />
+                <span>Square (1:1)</span>
               </button>
             </div>
 
             {/* Interactive Portrait Box */}
             <div
+              ref={previewContainerRef}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
-              className={`relative overflow-hidden rounded-2xl border-4 border-white dark:border-slate-800 shadow-2xl cursor-grab active:cursor-grabbing transition-all ${
-                aspectRatio === "passport"
-                  ? "w-[240px] h-[320px]"
-                  : aspectRatio === "square"
-                  ? "w-[260px] h-[260px]"
-                  : "w-[260px] h-[340px]"
+              className={`relative overflow-hidden rounded-2xl border-4 border-slate-800 shadow-2xl transition-all ${
+                isEyedropperActive ? "cursor-crosshair ring-4 ring-teal-400/50" : "cursor-grab active:cursor-grabbing"
+              } ${
+                cropShape === "circle" || cropShape === "square"
+                  ? "w-[280px] h-[280px]"
+                  : "w-[260px] h-[346px]"
               }`}
               style={{
-                backgroundColor: selectedBg === "none" ? "#f1f5f9" : selectedBg === "custom" ? customBgHex : selectedBg,
+                backgroundColor: selectedBg === "none" ? "#1e293b" : selectedBg,
               }}
             >
               {previewDataUrl ? (
@@ -490,28 +588,66 @@ export default function PhotoEditorModal({
                   className="w-full h-full object-cover pointer-events-none"
                 />
               ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-4 text-center">
-                  <Camera size={36} className="mb-2 opacity-40 animate-pulse" />
+                <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 p-4 text-center">
+                  <Camera size={36} className="mb-2 opacity-40 animate-pulse text-teal-400" />
                   <p className="text-xs font-bold uppercase tracking-wider">No Photo Loaded</p>
                   <p className="text-[10px] text-slate-400 mt-1">Upload a photo to begin editing</p>
                 </div>
               )}
 
-              {/* Passport Guidelines Overlay */}
-              <div className="absolute inset-0 pointer-events-none border border-black/10 rounded-2xl flex flex-col items-center justify-between p-3 opacity-60 hover:opacity-100 transition-opacity">
-                <div className="w-16 h-1 border-t-2 border-dashed border-teal-500/50" />
-                <div className="w-24 h-28 border border-dashed border-teal-500/40 rounded-full" />
-                <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 bg-black/40 text-white px-2 py-0.5 rounded-full backdrop-blur-xs">
-                  Drag to Reposition
+              {/* Exact Circular Mask for "App Avatar" Mode */}
+              {cropShape === "circle" && (
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                  {/* Outer Dimmed Matte (Shows exact round shape that appears in LMS) */}
+                  <div
+                    className="w-[250px] h-[250px] rounded-full border-2 border-teal-400/90 relative flex flex-col items-center justify-between p-3"
+                    style={{
+                      boxShadow: "0 0 0 9999px rgba(15, 23, 42, 0.65)",
+                    }}
+                  >
+                    {/* Head / Hair guideline */}
+                    <div className="w-14 h-1 border-t-2 border-dashed border-teal-400/60 mt-1" />
+                    
+                    {/* Face oval guide */}
+                    <div className="w-24 h-32 border border-dashed border-teal-400/50 rounded-full flex flex-col items-center justify-center relative">
+                      <div className="w-full border-t border-dashed border-teal-400/40 absolute top-[44%]" />
+                      <span className="text-[8px] font-bold text-teal-300 uppercase tracking-widest bg-slate-950/70 px-1 py-0.2 rounded mt-[-10px]">
+                        Eye Level
+                      </span>
+                    </div>
+
+                    <div className="text-[8px] font-black uppercase tracking-widest text-teal-200 bg-slate-900/80 px-2.5 py-0.5 rounded-full border border-teal-500/30 backdrop-blur-xs mb-1">
+                      Exact App Avatar
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Passport Guidelines Overlay for (3:4) Mode */}
+              {cropShape === "passport" && (
+                <div className="absolute inset-0 pointer-events-none border border-black/10 rounded-2xl flex flex-col items-center justify-between p-3 opacity-70">
+                  <div className="w-16 h-1 border-t-2 border-dashed border-teal-400/60" />
+                  <div className="w-24 h-28 border border-dashed border-teal-400/50 rounded-full" />
+                  <div className="text-[9px] font-black uppercase tracking-widest text-white bg-black/60 px-2 py-0.5 rounded-full backdrop-blur-xs">
+                    Drag to Reposition
+                  </div>
+                </div>
+              )}
+
+              {/* Eyedropper Notice Overlay */}
+              {isEyedropperActive && (
+                <div className="absolute top-2 inset-x-2 bg-teal-600 text-white text-[10px] font-black uppercase tracking-wider py-1 px-2 rounded-lg text-center shadow-lg animate-pulse flex items-center justify-center gap-1.5">
+                  <Pipette size={12} />
+                  <span>Click anywhere on background to remove it</span>
+                </div>
+              )}
             </div>
 
-            {/* Quick Transform Bar */}
+            {/* Quick Transform & Eyedropper Bar */}
             <div className="flex items-center gap-2 mt-4">
               <button
                 onClick={() => setRotation((prev) => (prev - 90 + 360) % 360)}
-                className="h-8 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1 hover:bg-slate-50 transition-colors"
+                className="h-8 px-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 text-xs font-bold flex items-center gap-1 hover:bg-slate-800 transition-colors cursor-pointer"
                 title="Rotate 90° Left"
               >
                 <RotateCcw size={13} />
@@ -519,7 +655,7 @@ export default function PhotoEditorModal({
               </button>
               <button
                 onClick={() => setRotation((prev) => (prev + 90) % 360)}
-                className="h-8 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1 hover:bg-slate-50 transition-colors"
+                className="h-8 px-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 text-xs font-bold flex items-center gap-1 hover:bg-slate-800 transition-colors cursor-pointer"
                 title="Rotate 90° Right"
               >
                 <RotateCw size={13} />
@@ -527,66 +663,126 @@ export default function PhotoEditorModal({
               </button>
               <button
                 onClick={() => setFlipH((prev) => !prev)}
-                className={`h-8 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-1 transition-colors ${
-                  flipH ? "bg-teal-600 text-white border-transparent" : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50"
+                className={`h-8 px-2.5 rounded-xl border text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer ${
+                  flipH ? "bg-teal-500 text-slate-950 border-teal-400 font-black" : "border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800"
                 }`}
                 title="Flip Horizontally"
               >
                 <FlipHorizontal size={13} />
                 <span>Mirror</span>
               </button>
+              <button
+                onClick={() => setIsEyedropperActive(!isEyedropperActive)}
+                className={`h-8 px-2.5 rounded-xl border text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer ${
+                  isEyedropperActive
+                    ? "bg-amber-500 text-slate-950 border-amber-400 font-black ring-2 ring-amber-400/40"
+                    : "border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800"
+                }`}
+                title="Sample background color directly from photo"
+              >
+                <Pipette size={13} />
+                <span>{isEyedropperActive ? "Click BG..." : "Pick BG"}</span>
+              </button>
             </div>
           </div>
 
           {/* Right Controls Area (5 cols) */}
-          <div className="md:col-span-5 p-6 flex flex-col justify-between space-y-6">
-            <div className="space-y-5">
+          <div className="md:col-span-5 p-6 flex flex-col justify-between space-y-5 bg-white dark:bg-slate-900">
+            <div className="space-y-4">
+              {/* LIVE LMS APP PREVIEW WIDGET */}
+              <div className="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                    <Sparkles size={11} className="text-teal-600" />
+                    Live LMS App Appearance
+                  </span>
+                  <span className="text-[9px] font-bold text-teal-600 dark:text-teal-400 uppercase bg-teal-50 dark:bg-teal-950/60 px-1.5 py-0.5 rounded border border-teal-200 dark:border-teal-800">
+                    Exact Fit
+                  </span>
+                </div>
+                <div className="flex items-center gap-4">
+                  {/* 56px Avatar (Table Row Size) */}
+                  <div className="flex flex-col items-center">
+                    <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-teal-500 shadow-sm bg-slate-100 dark:bg-slate-800 ring-2 ring-teal-500/20">
+                      {previewDataUrl ? (
+                        <img src={previewDataUrl} alt="Preview" className="w-full h-full object-cover rounded-full" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs font-black">A</div>
+                      )}
+                    </div>
+                    <span className="text-[9px] font-bold text-slate-400 mt-1">Table (56px)</span>
+                  </div>
+
+                  {/* 80px Avatar (Dossier / Profile Card Size) */}
+                  <div className="flex flex-col items-center">
+                    <div className="w-18 h-18 rounded-full overflow-hidden border-3 border-amber-500 shadow-md bg-slate-100 dark:bg-slate-800 ring-2 ring-amber-500/20">
+                      {previewDataUrl ? (
+                        <img src={previewDataUrl} alt="Preview" className="w-full h-full object-cover rounded-full" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-400 text-sm font-black">A</div>
+                      )}
+                    </div>
+                    <span className="text-[9px] font-bold text-slate-400 mt-1">Profile (72px)</span>
+                  </div>
+
+                  {/* Info Badge */}
+                  <div className="text-left flex-1 min-w-0">
+                    <p className="text-xs font-black text-slate-800 dark:text-white uppercase truncate">
+                      {studentName}
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">
+                      Session 2026-28
+                    </p>
+                    <div className="mt-1 flex items-center gap-1 text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 size={11} />
+                      <span>Ready for Face Kiosk</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Background Color Chooser */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                     <Palette size={14} className="text-teal-600" />
-                    Passport Background Color
+                    AI Passport Background Color
                   </label>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase">
-                    {selectedBg === "none" ? "Original" : "Chroma AI"}
+                  <span className="text-[10px] text-teal-600 font-bold uppercase">
+                    {selectedBg === "none" ? "Original BG" : "AI Background Replaced"}
                   </span>
                 </div>
-                <div className="grid grid-cols-5 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {BG_PRESETS.map((preset) => (
                     <button
                       key={preset.value}
                       onClick={() => setSelectedBg(preset.value)}
-                      className={`h-11 rounded-xl flex flex-col items-center justify-center border-2 transition-all relative ${
+                      className={`h-11 rounded-xl flex items-center px-2.5 gap-2 border-2 transition-all cursor-pointer ${
                         selectedBg === preset.value
-                          ? "border-teal-600 ring-2 ring-teal-500/30 scale-105"
-                          : "border-slate-200 hover:border-slate-300"
+                          ? "border-teal-600 ring-2 ring-teal-500/30 scale-102 bg-teal-50/20 shadow-xs"
+                          : "border-slate-200 dark:border-slate-800 hover:border-slate-300"
                       }`}
-                      style={{ backgroundColor: preset.hex }}
                     >
-                      {selectedBg === preset.value && (
-                        <Check
-                          size={14}
-                          className={preset.value === "#FFFFFF" || preset.value === "#E2E8F0" ? "text-slate-800" : "text-white"}
-                        />
-                      )}
                       <span
-                        className={`text-[9px] font-black tracking-tighter mt-0.5 leading-none ${
-                          preset.value === "#FFFFFF" || preset.value === "#E2E8F0" ? "text-slate-700" : preset.value === "none" ? "text-slate-600" : "text-white"
-                        }`}
-                      >
-                        {preset.name.split(" ")[0]}
+                        className="w-4 h-4 rounded-full border border-slate-300 shadow-2xs shrink-0"
+                        style={{ backgroundColor: preset.hex }}
+                      />
+                      <span className="text-[10px] font-black text-slate-800 dark:text-slate-200 leading-tight truncate">
+                        {preset.label}
                       </span>
+                      {selectedBg === preset.value && (
+                        <Check size={13} className="text-teal-600 ml-auto shrink-0" />
+                      )}
                     </button>
                   ))}
                 </div>
 
-                {/* Tolerance slider if background selected */}
+                {/* Tolerance & Face Shield Options if background selected */}
                 {selectedBg !== "none" && (
-                  <div className="mt-3 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-1.5">
+                  <div className="mt-3 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                        Edge Blend Sensitivity
+                        Edge Sensitivity
                       </span>
                       <span className="text-[10px] font-black text-teal-600">{bgTolerance}%</span>
                     </div>
@@ -599,16 +795,29 @@ export default function PhotoEditorModal({
                       onChange={(e) => setBgTolerance(Number(e.target.value))}
                       className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-teal-600"
                     />
+
+                    <div className="flex items-center justify-between pt-1">
+                      <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1.5 cursor-pointer">
+                        <ShieldCheck size={13} className="text-teal-600" />
+                        <span>Face & Skin Shield (Prevent Erase)</span>
+                      </label>
+                      <input
+                        type="checkbox"
+                        checked={protectFaceSkin}
+                        onChange={(e) => setProtectFaceSkin(e.target.checked)}
+                        className="w-4 h-4 rounded accent-teal-600 cursor-pointer"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
 
               {/* Zoom Slider */}
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                     <Crop size={14} className="text-teal-600" />
-                    Crop Scale & Zoom
+                    Face Zoom & Scale
                   </label>
                   <span className="text-xs font-black text-teal-600">{Math.round(zoom * 100)}%</span>
                 </div>
@@ -624,14 +833,14 @@ export default function PhotoEditorModal({
               </div>
 
               {/* Visual Enhancements */}
-              <div className="space-y-3.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <label className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                   <Sliders size={14} className="text-teal-600" />
                   Color & Lighting Adjustments
                 </label>
 
                 {/* Brightness */}
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
                       <Sun size={11} /> Brightness
@@ -650,7 +859,7 @@ export default function PhotoEditorModal({
                 </div>
 
                 {/* Contrast */}
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
                       <Contrast size={11} /> Contrast
@@ -671,11 +880,11 @@ export default function PhotoEditorModal({
             </div>
 
             {/* Bottom Actions */}
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
               <button
                 onClick={handleDownload}
-                className="h-11 px-4 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0 flex items-center justify-center transition-colors"
-                title="Download Passport Photo File"
+                className="h-11 px-4 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0 flex items-center justify-center transition-colors cursor-pointer"
+                title="Download Photo File"
               >
                 <Download size={15} />
               </button>
