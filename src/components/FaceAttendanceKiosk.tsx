@@ -25,7 +25,11 @@ import {
   Briefcase,
   GraduationCap,
   Eye,
-  X
+  X,
+  Lock,
+  Unlock,
+  ShieldAlert,
+  AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
@@ -55,7 +59,7 @@ export interface ScanRecord {
   timestamp: string;
   date: string;
   direction: "entry" | "exit";
-  status: "Present";
+  status: "Present" | "Late";
   method: "face_recognition" | "manual";
 }
 
@@ -71,6 +75,26 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
   const [enrolledProfiles, setEnrolledProfiles] = useState<PersonProfile[]>([]);
   const [enrollingProgress, setEnrollingProgress] = useState({ current: 0, total: 0 });
   const [isEnrolling, setIsEnrolling] = useState(false);
+
+  // Configurable Gate Timings & Policies
+  const [kioskSettings, setKioskSettings] = useState<{
+    gateEntryStartTime: string;
+    collegeStartTime: string;
+    gateEntryCutoffTime: string;
+    gateExitStartTime: string;
+    gateExitCutoffTime: string;
+    allowOffHoursScan: boolean;
+  }>({
+    gateEntryStartTime: "07:00",
+    collegeStartTime: "07:54",
+    gateEntryCutoffTime: "08:30",
+    gateExitStartTime: "13:30",
+    gateExitCutoffTime: "15:30",
+    allowOffHoursScan: false,
+  });
+  const [adminOverrideUnlocked, setAdminOverrideUnlocked] = useState(false);
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  const userManuallySetDirectionRef = useRef(false);
   
   // Camera & Detection state
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -99,6 +123,79 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
   const scanLoopRef = useRef<number | null>(null);
   const cooldownMapRef = useRef<Map<string, number>>(new Map()); // personId -> timestamp
   const enrolledDescriptorsRef = useRef<Map<string, { person: PersonProfile; descriptor: Float32Array }>>(new Map());
+  // Anti-Passback / Daily Scan Memory (key: personId-direction-date)
+  const dailyScansMapRef = useRef<Map<string, { time: string; status: "Present" | "Late"; date: string }>>(new Map());
+
+  // Helper: Convert "HH:mm" to minutes from midnight
+  const timeToMinutes = (t?: string): number => {
+    if (!t || typeof t !== "string") return 0;
+    const parts = t.split(":");
+    const h = parseInt(parts[0], 10) || 0;
+    const m = parseInt(parts[1], 10) || 0;
+    return h * 60 + m;
+  };
+
+  // Compute Live Gate Window Status & Late Arrival Status
+  const gateStatus = useMemo(() => {
+    const nowMin = currentTime.getHours() * 60 + currentTime.getMinutes();
+    const entryStartMin = timeToMinutes(kioskSettings.gateEntryStartTime);
+    const collegeStartMin = timeToMinutes(kioskSettings.collegeStartTime);
+    const entryCutoffMin = timeToMinutes(kioskSettings.gateEntryCutoffTime);
+    const exitStartMin = timeToMinutes(kioskSettings.gateExitStartTime);
+    const exitCutoffMin = timeToMinutes(kioskSettings.gateExitCutoffTime);
+
+    const isInEntryWindow = nowMin >= entryStartMin && nowMin <= entryCutoffMin;
+    const isInExitWindow = nowMin >= exitStartMin && nowMin <= exitCutoffMin;
+
+    if (isInEntryWindow) {
+      const isLate = nowMin > collegeStartMin;
+      return {
+        isOpen: true,
+        phase: isLate ? ("entry_late" as const) : ("entry_regular" as const),
+        suggestedDirection: "entry" as const,
+        isLate,
+        label: isLate 
+          ? `Late Arrival Window (Bell was ${kioskSettings.collegeStartTime})` 
+          : `Morning Arrival (${kioskSettings.gateEntryStartTime} - ${kioskSettings.collegeStartTime})`,
+        badgeColor: isLate ? "bg-amber-500/20 text-amber-300 border-amber-500/40" : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+        isOffHours: false,
+      };
+    } else if (isInExitWindow) {
+      return {
+        isOpen: true,
+        phase: "exit_regular" as const,
+        suggestedDirection: "exit" as const,
+        isLate: false,
+        label: `Departure Exit (${kioskSettings.gateExitStartTime} - ${kioskSettings.gateExitCutoffTime})`,
+        badgeColor: "bg-blue-500/20 text-blue-300 border-blue-500/40",
+        isOffHours: false,
+      };
+    } else {
+      const isLocked = !kioskSettings.allowOffHoursScan && !adminOverrideUnlocked;
+      return {
+        isOpen: !isLocked,
+        phase: "closed" as const,
+        suggestedDirection: (nowMin > exitCutoffMin ? "exit" : "entry") as const,
+        isLate: false,
+        label: isLocked ? "Gate Closed (Off-Hours Locked)" : "Off-Hours Scan Override Active",
+        badgeColor: isLocked ? "bg-red-500/20 text-red-300 border-red-500/40" : "bg-purple-500/20 text-purple-300 border-purple-500/40",
+        isOffHours: true,
+      };
+    }
+  }, [currentTime, kioskSettings, adminOverrideUnlocked]);
+
+  // Keep live time ticking every 3 seconds
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 3000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Auto-switch gate direction to suggested direction unless user manually toggled
+  useEffect(() => {
+    if (!userManuallySetDirectionRef.current) {
+      setGateDirection(gateStatus.suggestedDirection);
+    }
+  }, [gateStatus.suggestedDirection]);
 
   // Web Audio Synth for success chime
   const playSuccessChime = useCallback(() => {
@@ -185,6 +282,18 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
         const res = await fetch("/api/kiosk/enrolled-students");
         if (res.ok) {
           const json = await res.json();
+          if (json.settings) {
+            const c = json.settings.config || json.settings;
+            setKioskSettings({
+              gateEntryStartTime: c.gateEntryStartTime || "07:00",
+              collegeStartTime: c.collegeStartTime || "07:54",
+              gateEntryCutoffTime: c.gateEntryCutoffTime || "08:30",
+              gateExitStartTime: c.gateExitStartTime || "13:30",
+              gateExitCutoffTime: c.gateExitCutoffTime || "15:30",
+              allowOffHoursScan: Boolean(c.allowOffHoursScan),
+            });
+          }
+
           if (json.success) {
             const rawProfiles = Array.isArray(json.profiles) 
               ? json.profiles 
@@ -212,7 +321,7 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
 
       // Method B: Client-side Supabase fallback if API returned no data
       if (withPhotos.length === 0) {
-        const [admissionsRes, studentsRes, staffRes] = await Promise.all([
+        const [admissionsRes, studentsRes, staffRes, settingsRes] = await Promise.all([
           supabase
             .from("admissions")
             .select("id, student_id, full_name, father_name, college_no, group, section, photo_url, photo, contact_number, father_contact"),
@@ -221,8 +330,26 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
             .select("id, student_id, admission_id, full_name, father_name, college_no, group, section, photo_url, photo, contact, father_contact"),
           supabase
             .from("staff")
-            .select("id, full_name, father_name, role, contact, photo, status")
+            .select("id, full_name, father_name, role, contact, photo, status"),
+          supabase
+            .from("settings")
+            .select("*")
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle()
         ]);
+
+        if (settingsRes?.data) {
+          const c = settingsRes.data.config || settingsRes.data;
+          setKioskSettings({
+            gateEntryStartTime: c.gateEntryStartTime || "07:00",
+            collegeStartTime: c.collegeStartTime || "07:54",
+            gateEntryCutoffTime: c.gateEntryCutoffTime || "08:30",
+            gateExitStartTime: c.gateExitStartTime || "13:30",
+            gateExitCutoffTime: c.gateExitCutoffTime || "15:30",
+            allowOffHoursScan: Boolean(c.allowOffHoursScan),
+          });
+        }
 
         const mergedMap = new Map<string, PersonProfile>();
 
@@ -361,6 +488,59 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
     }
   }, [modelsLoaded, loadEnrolledProfiles]);
 
+  // Pre-load today's attendance scans to enforce instant anti-passback duplicate protection
+  useEffect(() => {
+    const todayDate = new Date().toISOString().slice(0, 10);
+    async function loadTodayExistingScans() {
+      try {
+        const [stuRes, staffRes] = await Promise.all([
+          supabase
+            .from("student_attendance")
+            .select("student_id, date, status, check_in_time, check_out_time, snapshot_url, verification_method, notes")
+            .eq("date", todayDate),
+          supabase
+            .from("staff_attendance")
+            .select("staff_id, date, status, check_in, check_out, check_in_time, check_out_time, snapshot_url, verification_method, notes")
+            .eq("date", todayDate)
+        ]);
+
+        if (stuRes.data) {
+          stuRes.data.forEach((r: any) => {
+            const sid = String(r.student_id);
+            const status = (r.status === "Late" ? "Late" : "Present") as "Present" | "Late";
+            const inTime = r.check_in_time 
+              ? new Date(r.check_in_time).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }) 
+              : "Morning";
+            dailyScansMapRef.current.set(`${sid}-entry-${todayDate}`, { time: inTime, status, date: todayDate });
+
+            if (r.check_out_time) {
+              const outTime = new Date(r.check_out_time).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+              dailyScansMapRef.current.set(`${sid}-exit-${todayDate}`, { time: outTime, status: "Present", date: todayDate });
+            }
+          });
+        }
+
+        if (staffRes.data) {
+          staffRes.data.forEach((r: any) => {
+            const stid = String(r.staff_id);
+            const status = (r.status === "Late" ? "Late" : "Present") as "Present" | "Late";
+            const inTime = r.check_in || (r.check_in_time ? new Date(r.check_in_time).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }) : "Morning");
+            dailyScansMapRef.current.set(`${stid}-entry-${todayDate}`, { time: inTime, status, date: todayDate });
+
+            if (r.check_out || r.check_out_time) {
+              const outTime = r.check_out || (r.check_out_time ? new Date(r.check_out_time).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }) : "Afternoon");
+              dailyScansMapRef.current.set(`${stid}-exit-${todayDate}`, { time: outTime, status: "Present", date: todayDate });
+            }
+          });
+        }
+      } catch (err) {
+        console.warn("[Face Kiosk] Could not preload today's attendance logs:", err);
+      }
+    }
+
+    loadTodayExistingScans();
+  }, []);
+
   // 3. Start Live Camera
   const startCamera = async (facing: "user" | "environment" = cameraFacing) => {
     try {
@@ -453,24 +633,36 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
     method: "face_recognition" | "manual" = "face_recognition",
     customSnapshot?: string
   ) => {
-    const now = Date.now();
-    const lastMarked = cooldownMapRef.current.get(person.id);
+    const todayDate = new Date().toISOString().slice(0, 10);
+    const scanKey = `${person.id}-${gateDirection}-${todayDate}`;
 
-    // 10 minutes cooldown (600,000 ms) to avoid duplicate checkins
-    if (lastMarked && now - lastMarked < 10 * 60 * 1000) {
-      const minutesAgo = Math.max(1, Math.round((now - lastMarked) / 60000));
-      setAlreadyMarkedMessage(`${person.fullName} already marked (${minutesAgo} min ago)`);
-      setTimeout(() => setAlreadyMarkedMessage(null), 3000);
+    // 1. Off-hours gate lockout check
+    if (!gateStatus.isOpen) {
+      setAlreadyMarkedMessage(`🔒 Scanner Locked: College timing window is closed. (Admin override to scan)`);
+      setTimeout(() => setAlreadyMarkedMessage(null), 3500);
       return;
     }
 
-    // Set cooldown
-    cooldownMapRef.current.set(person.id, now);
+    // 2. Anti-Passback / Duplicate Lockout Check
+    if (dailyScansMapRef.current.has(scanKey)) {
+      const existing = dailyScansMapRef.current.get(scanKey);
+      const actionLabel = gateDirection === "exit" ? "Checked-Out (Exit)" : "Checked-In (Entry)";
+      setAlreadyMarkedMessage(`✅ ${person.fullName} already ${actionLabel} today at ${existing?.time || "earlier"} (${existing?.status || "Recorded"})`);
+      setTimeout(() => setAlreadyMarkedMessage(null), 3500);
+      return;
+    }
+
+    // Determine status: Late if entry and arriving after official bell
+    const attendanceStatus: "Present" | "Late" = (gateDirection === "entry" && gateStatus.isLate) ? "Late" : "Present";
+
+    // Play chime
     playSuccessChime();
 
-    const todayDate = new Date().toISOString().slice(0, 10);
     const timeStr = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
     const liveSnapshot = customSnapshot || captureLiveSnapshot();
+
+    // Mark in anti-passback memory
+    dailyScansMapRef.current.set(scanKey, { time: timeStr, status: attendanceStatus, date: todayDate });
 
     // Show celebratory popup
     setMatchedPerson(person);
@@ -492,7 +684,7 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
       timestamp: timeStr,
       date: todayDate,
       direction: gateDirection,
-      status: "Present",
+      status: attendanceStatus,
       method,
     };
     setRecentScans((prev) => [newRecord, ...prev.slice(0, 24)]);
@@ -505,10 +697,10 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
         const staffPayload: any = {
           staff_id: person.id,
           date: todayDate,
-          status: "Present",
+          status: attendanceStatus,
           snapshot_url: liveSnapshot || undefined,
           verification_method: method === "face_recognition" ? "face_biometric" : "manual_kiosk",
-          notes: `Gate Face Biometric ${isExit ? "Exit" : "Entry"} (${timeStr})`,
+          notes: `Gate Face Biometric ${isExit ? "Exit" : "Entry"} (${timeStr})${attendanceStatus === "Late" ? " [Late Arrival]" : ""}`,
         };
         if (isExit) {
           staffPayload.check_out = timeStr;
@@ -527,11 +719,12 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
           const fallbackPayload: any = {
             staff_id: person.id,
             date: todayDate,
-            status: "Present",
+            status: attendanceStatus,
             notes: JSON.stringify({
               method: "face_biometric",
               direction: gateDirection,
               time: timeStr,
+              status: attendanceStatus,
               snapshot: liveSnapshot,
             }),
           };
@@ -550,9 +743,9 @@ Assalam-o-Alaikum, *${person.fullName}*!
 Designation: *${person.role || "Faculty Member"}*
 Staff ID: *${person.id}*
 
-• Status: *Present ✅*
+• Status: *${attendanceStatus === "Late" ? "Late Arrival (Tawkheer) ⏰" : "Present ✅"}*
 • Action: *${isExit ? "GATE EXIT (Departure / Chhutti)" : "GATE ENTRY (Arrival / Dakhla)"}*
-• Time: *${timeStr}*
+• Time: *${timeStr}*${attendanceStatus === "Late" ? ` (College Bell was at ${kioskSettings.collegeStartTime})` : ""}
 • Date: *${todayDate}*
 • Verification: *Biometric Face Scan Verified*
 • Scanned Face Record: *Logged in Central Security Server*
@@ -574,10 +767,10 @@ _Office of the Principal & College Administration_`;
         const studentPayload: any = {
           student_id: person.id,
           date: todayDate,
-          status: "Present",
+          status: attendanceStatus,
           snapshot_url: liveSnapshot || undefined,
           verification_method: method === "face_recognition" ? "face_biometric" : "manual_kiosk",
-          notes: `Gate Face Biometric ${isExit ? "Exit" : "Entry"} (${timeStr})`,
+          notes: `Gate Face Biometric ${isExit ? "Exit" : "Entry"} (${timeStr})${attendanceStatus === "Late" ? " [Late Arrival]" : ""}`,
         };
         if (isExit) {
           studentPayload.check_out_time = new Date().toISOString();
@@ -594,11 +787,12 @@ _Office of the Principal & College Administration_`;
           const fallbackPayload = {
             student_id: person.id,
             date: todayDate,
-            status: "Present",
+            status: attendanceStatus,
             notes: JSON.stringify({
               method: "face_biometric",
               direction: gateDirection,
               time: timeStr,
+              status: attendanceStatus,
               snapshot: liveSnapshot,
             }),
           };
@@ -614,9 +808,9 @@ _Office of the Principal & College Administration_`;
 Assalam-o-Alaikum!
 Aapka bacha *${person.fullName}* (Roll: *${person.collegeNo || person.id}*, Class: ${person.group || "Inter"}) aaj *${timeStr}* par College Gate se kamyabi se ${isExit ? "exit (chhutti)" : "enter"} ho chuka hai.
 
-• Status: *Present ✅ (Biometric Face Scan)*
+• Status: *${attendanceStatus === "Late" ? "Late Arrival (Tawkheer) ⏰" : "Present ✅ (On Time)"}*
 • Action: *${isExit ? "Gate Departure / Exit" : "Gate Arrival / Entry"}*
-• Time: *${timeStr}*
+• Time: *${timeStr}*${attendanceStatus === "Late" ? ` (College Bell was at ${kioskSettings.collegeStartTime})` : ""}
 • Date: *${todayDate}*
 • Scanned Verification: *Face Biometrically Matched*
 • Campus: Canal Road, Jahanian
@@ -652,6 +846,15 @@ _Automated Realtime College Security & LMS_`;
   const runDetectionFrame = async () => {
     if (!videoRef.current || !isCameraActive || videoRef.current.paused || videoRef.current.ended) {
       scanLoopRef.current = requestAnimationFrame(runDetectionFrame);
+      return;
+    }
+
+    // If gate attendance window is closed and override not active, pause detection
+    if (!gateStatus.isOpen) {
+      setIsDetecting(false);
+      setTimeout(() => {
+        scanLoopRef.current = requestAnimationFrame(runDetectionFrame);
+      }, 1000);
       return;
     }
 
@@ -843,11 +1046,46 @@ _Automated Realtime College Security & LMS_`;
         </div>
 
         {/* Action Controls & Direction Selector */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* Timing Window & Live Clock Pill */}
+          <div className="hidden sm:flex items-center gap-2 bg-slate-950/80 px-2.5 py-1 rounded-xl border border-slate-800 text-xs">
+            <span className="font-mono text-emerald-400 font-bold text-xs flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5 text-slate-400" />
+              {currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true })}
+            </span>
+            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${gateStatus.badgeColor}`}>
+              {gateStatus.label}
+            </span>
+          </div>
+
+          {/* Admin Emergency Override Button (When off-hours or override active) */}
+          {gateStatus.isOffHours && (
+            <button
+              onClick={() => {
+                const nextState = !adminOverrideUnlocked;
+                setAdminOverrideUnlocked(nextState);
+                if (nextState) toast.success("Admin Override Activated: Scanner unlocked for off-hours check-ins.");
+                else toast.info("Admin Override Disabled: Off-hours scanner locked.");
+              }}
+              className={`px-2.5 py-1 text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all cursor-pointer border ${
+                adminOverrideUnlocked
+                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-xs"
+                  : "bg-red-500/20 text-red-300 border-red-500/40"
+              }`}
+              title="Toggle Admin Off-Hours Override"
+            >
+              {adminOverrideUnlocked ? <Unlock className="w-3.5 h-3.5 text-amber-400" /> : <Lock className="w-3.5 h-3.5 text-red-400" />}
+              <span className="hidden md:inline">{adminOverrideUnlocked ? "Override ON" : "Unlock Gate"}</span>
+            </button>
+          )}
+
           {/* Gate Direction Switcher */}
           <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 shadow-inner">
             <button
-              onClick={() => setGateDirection("entry")}
+              onClick={() => {
+                userManuallySetDirectionRef.current = true;
+                setGateDirection("entry");
+              }}
               className={`px-2.5 py-1 text-xs font-bold rounded-lg flex items-center gap-1 transition-all cursor-pointer ${
                 gateDirection === "entry"
                   ? "bg-emerald-600 text-white shadow-xs"
@@ -858,7 +1096,10 @@ _Automated Realtime College Security & LMS_`;
               <span>Entry</span>
             </button>
             <button
-              onClick={() => setGateDirection("exit")}
+              onClick={() => {
+                userManuallySetDirectionRef.current = true;
+                setGateDirection("exit");
+              }}
               className={`px-2.5 py-1 text-xs font-bold rounded-lg flex items-center gap-1 transition-all cursor-pointer ${
                 gateDirection === "exit"
                   ? "bg-amber-600 text-white shadow-xs"
@@ -969,6 +1210,33 @@ _Automated Realtime College Security & LMS_`;
 
             {/* Video Feed & Scanner Overlay */}
             <div className="relative flex-1 flex items-center justify-center bg-black overflow-hidden min-h-[320px]">
+              {/* Off-Hours Gate Locked Overlay */}
+              {!gateStatus.isOpen && (
+                <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 z-25 text-center animate-in fade-in">
+                  <div className="w-16 h-16 rounded-2xl bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-400 mb-3 shadow-lg">
+                    <Lock className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-base sm:text-lg font-bold text-white mb-1">
+                    Gate Attendance Scanner Closed
+                  </h3>
+                  <p className="text-xs text-slate-400 max-w-sm mb-4 leading-relaxed">
+                    College timing schedule ke mutabiq gate attendance scanner locked hai.<br />
+                    <span className="text-slate-300 font-semibold">Morning Arrival:</span> {kioskSettings.gateEntryStartTime} - {kioskSettings.gateEntryCutoffTime} (Bell: {kioskSettings.collegeStartTime})<br />
+                    <span className="text-slate-300 font-semibold">Departure:</span> {kioskSettings.gateExitStartTime} - {kioskSettings.gateExitCutoffTime}
+                  </p>
+                  <button
+                    onClick={() => {
+                      setAdminOverrideUnlocked(true);
+                      toast.success("Admin Emergency Override active! Off-hours scanning unlocked.");
+                    }}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-amber-600/30 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Unlock className="w-4 h-4" />
+                    <span>Admin Emergency Override (Scan Any Time)</span>
+                  </button>
+                </div>
+              )}
+
               {isCameraActive ? (
                 <>
                   <video
@@ -1072,15 +1340,35 @@ _Automated Realtime College Security & LMS_`;
                       )}
                     </div>
 
-                    {/* Role Badge */}
-                    <span className={`text-[10px] font-bold tracking-widest uppercase px-2.5 py-0.5 rounded-full border mb-1 flex items-center gap-1 ${
-                      matchedPerson.personType === "staff"
-                        ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                        : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                    }`}>
-                      {matchedPerson.personType === "staff" ? <Briefcase size={11} /> : <GraduationCap size={11} />}
-                      <span>{matchedPerson.personType === "staff" ? "FACULTY / STAFF MEMBER" : "REGISTERED STUDENT"}</span>
-                    </span>
+                    {/* Role & Attendance Status Badges */}
+                    <div className="flex items-center gap-1.5 flex-wrap justify-center mb-1">
+                      <span className={`text-[10px] font-bold tracking-widest uppercase px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
+                        matchedPerson.personType === "staff"
+                          ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                          : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                      }`}>
+                        {matchedPerson.personType === "staff" ? <Briefcase size={11} /> : <GraduationCap size={11} />}
+                        <span>{matchedPerson.personType === "staff" ? "FACULTY / STAFF" : "STUDENT"}</span>
+                      </span>
+
+                      <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
+                        (gateDirection === "entry" && gateStatus.isLate)
+                          ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                          : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                      }`}>
+                        {(gateDirection === "entry" && gateStatus.isLate) ? (
+                          <>
+                            <Clock className="w-3 h-3 text-amber-400" />
+                            <span>Late Arrival</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                            <span>Present (On Time)</span>
+                          </>
+                        )}
+                      </span>
+                    </div>
 
                     <h2 className="text-xl font-bold text-white mb-0.5">{matchedPerson.fullName}</h2>
                     <p className="text-xs text-slate-300 font-mono mb-2">

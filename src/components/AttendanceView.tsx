@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
+import DailyAttendanceCloseoutModal from './DailyAttendanceCloseoutModal';
 import { 
   sendAutoDailyAttendanceNotice, 
   sendAutoDailyAttendanceNoticeDetailed,
@@ -257,6 +258,9 @@ export default function AttendanceView({ data }: { data: any }) {
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [isBulkSendingPhotos, setIsBulkSendingPhotos] = useState(false);
   const [bulkPhotoProgress, setBulkPhotoProgress] = useState({ done: 0, total: 0 });
+
+  // Daily Closeout Infographics Modal State
+  const [showCloseoutModal, setShowCloseoutModal] = useState(false);
 
   const studentsWithoutPhotos = useMemo(() => {
     return (students || []).filter((s: any) => {
@@ -864,6 +868,14 @@ export default function AttendanceView({ data }: { data: any }) {
                 >
                   <MessageSquare size={16} className="mr-2 text-emerald-600" /> WhatsApp Alerts
                 </Button>
+                <Button 
+                  onClick={() => setShowCloseoutModal(true)}
+                  className="rounded-xl h-11 px-5 bg-gradient-to-r from-amber-500 via-orange-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white font-extrabold shadow-md shadow-indigo-500/20 flex items-center gap-2 cursor-pointer"
+                  title="Open Daily Attendance Closeout & Principal Flash Summary Dashboard"
+                >
+                  <Sparkles size={16} className="text-amber-200 animate-pulse" />
+                  <span>Daily Flash & Closeout ⚡</span>
+                </Button>
                 <Button className="rounded-xl h-11 px-6 bg-superior-teal hover:bg-superior-teal/90 shadow-md shadow-superior-teal/20" onClick={handleSaveDaily}>
                    <Save size={18} className="mr-2" /> Save Attendance
                 </Button>
@@ -1428,6 +1440,21 @@ export default function AttendanceView({ data }: { data: any }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Daily Attendance Closeout Infographics Modal */}
+      {showCloseoutModal && (
+        <DailyAttendanceCloseoutModal
+          isOpen={showCloseoutModal}
+          onClose={() => setShowCloseoutModal(false)}
+          selectedDate={selectedDate}
+          students={students}
+          studentAttendance={data?.studentAttendance || []}
+          staff={data?.staff || []}
+          staffAttendance={data?.staffAttendance || []}
+          settings={data?.settings}
+          onRefreshData={() => data?.fetchData?.()}
+        />
       )}
     </div>
   );

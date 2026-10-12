@@ -247,8 +247,13 @@ export interface AppSettings {
   academicSession?: string;
   allowQuickNav?: boolean;
   enableHighlighting?: boolean;
-  autoWhatsAppAdmission?: boolean;
-  autoWhatsAppFeePayment?: boolean;
+  // Gate Attendance Timings & Controls
+  gateEntryStartTime?: string; // e.g. '07:00'
+  collegeStartTime?: string;   // e.g. '07:54'
+  gateEntryCutoffTime?: string;// e.g. '08:30'
+  gateExitStartTime?: string;  // e.g. '13:30'
+  gateExitCutoffTime?: string; // e.g. '15:30'
+  allowOffHoursScan?: boolean; // allow admin to scan outside window with override
 }
 
 export interface Staff {

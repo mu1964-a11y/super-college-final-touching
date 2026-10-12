@@ -78,5 +78,11 @@ export const INITIAL_SETTINGS: AppSettings = {
   allowQuickNav: true,
   enableHighlighting: true,
   autoWhatsAppAdmission: true,
-  autoWhatsAppFeePayment: true
+  autoWhatsAppFeePayment: true,
+  gateEntryStartTime: '07:00',
+  collegeStartTime: '07:54',
+  gateEntryCutoffTime: '08:30',
+  gateExitStartTime: '13:30',
+  gateExitCutoffTime: '15:30',
+  allowOffHoursScan: false
 };

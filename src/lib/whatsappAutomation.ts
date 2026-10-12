@@ -1616,5 +1616,211 @@ Staff ID: *${staffId}*
 _Office of the Principal & College Administration_`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DAILY ATTENDANCE CLOSEOUT & PRINCIPAL EXECUTIVE FLASH REPORT
+// ─────────────────────────────────────────────────────────────────────────────
 
+export interface DailyAttendanceSummaryData {
+  date: string;
+  totalStudents: number;
+  presentStudents: number;
+  lateStudents: number;
+  absentStudents: number;
+  leaveStudents: number;
+  totalStaff: number;
+  presentStaff: number;
+  lateStaff: number;
+  absentStaff: number;
+  leaveStaff: number;
+  absentStudentNames?: string[];
+  absentStaffNames?: string[];
+  lateStudentNames?: string[];
+}
 
+export function buildDailyPrincipalAttendanceSummary(
+  summary: DailyAttendanceSummaryData,
+  settings?: any
+): string {
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
+  const campusName = settings?.campusName || "Main Campus";
+  const stuPct = summary.totalStudents > 0 
+    ? Math.round(((summary.presentStudents + summary.lateStudents) / summary.totalStudents) * 100) 
+    : 0;
+  const staffPct = summary.totalStaff > 0 
+    ? Math.round(((summary.presentStaff + summary.lateStaff) / summary.totalStaff) * 100) 
+    : 0;
+
+  const absentStaffBlock = (summary.absentStaffNames && summary.absentStaffNames.length > 0)
+    ? `\n🚨 *ABSENT FACULTY MEMBERS (${summary.absentStaffNames.length}):*\n${summary.absentStaffNames.slice(0, 10).map(n => `• ${n}`).join("\n")}\n`
+    : "";
+
+  const absentStudentBlock = (summary.absentStudentNames && summary.absentStudentNames.length > 0)
+    ? `\n⚠️ *ABSENT STUDENTS SAMPLE (Total: ${summary.absentStudents}):*\n${summary.absentStudentNames.slice(0, 8).map(n => `• ${n}`).join("\n")}${summary.absentStudentNames.length > 8 ? `\n...aur ${summary.absentStudentNames.length - 8} mazeed students.` : ""}\n`
+    : "";
+
+  return `🏛️ *${collegeName.toUpperCase()}* (${campusName})
+⚡ *DAILY ATTENDANCE EXECUTIVE FLASH REPORT*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum Respected Principal Sahib!
+Aaj *${summary.date}* ki Gate Biometric Attendance Closeout Report darj zail hai:
+
+👥 *STUDENTS ATTENDANCE OVERVIEW:*
+• Total Enrolled: *${summary.totalStudents}*
+• Present at Gate: *${summary.presentStudents}* (${stuPct}%)
+• Late Arrivals: *${summary.lateStudents}* ⏰
+• Absent / Missing: *${summary.absentStudents}* 🚨
+• On Approved Leave: *${summary.leaveStudents}* 📝
+${absentStudentBlock}
+👔 *FACULTY & STAFF ATTENDANCE OVERVIEW:*
+• Total Faculty: *${summary.totalStaff}*
+• Present at Gate: *${summary.presentStaff}* (${staffPct}%)
+• Late Arrivals: *${summary.lateStaff}* ⏰
+• Absent: *${summary.absentStaff}* 🚨
+• On Approved Leave: *${summary.leaveStaff}* 📝
+${absentStaffBlock}━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Attendance Closeout verified & recorded on Central LMS Server.
+_Smart Gate Biometric Automation System • SCJ_`;
+}
+
+export async function sendDailyPrincipalAttendanceSummary(
+  summary: DailyAttendanceSummaryData,
+  settings?: any,
+  options?: { silent?: boolean; targetPhone?: string }
+): Promise<boolean> {
+  const rawPhone = options?.targetPhone || 
+    settings?.principalPhone || 
+    settings?.contactNumber || 
+    settings?.contact_number || 
+    "0331-2211147";
+  const phone = formatWhatsAppPhone(rawPhone);
+  const message = buildDailyPrincipalAttendanceSummary(summary, settings);
+
+  if (!phone) {
+    if (!options?.silent) toast.warning("Principal phone number not configured.");
+    return false;
+  }
+
+  try {
+    const res = await fetch("/api/whatsapp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, message }),
+    });
+    const json = await res.json();
+    if (json.success) {
+      if (!options?.silent) toast.success(`Flash Attendance Summary dispatched to Principal (+${phone})!`);
+      return true;
+    } else {
+      window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
+      return false;
+    }
+  } catch {
+    window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
+    return false;
+  }
+}
+
+export function buildStaffAbsentMessage(staff: any, date: string, settings?: any): string {
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
+  const name = staff.fullName || staff.full_name || "Faculty Member";
+  const role = staff.role || "Faculty Member";
+  const staffId = staff.id;
+  const helpline = getCleanHelpline(settings);
+
+  return `🏛️ *${collegeName.toUpperCase()}*
+⚠️ *FACULTY ABSENTEE NOTIFICATION*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum, *${name}* (${role})!
+Staff ID: *${staffId}*
+
+Aap aaj *${date}* ko College Gate Biometric Attendance System par ghair hazir (Absent) mark hue hain.
+
+Agar aap pehle se rukhast (Leave) par hain ya kisi zaroori assignment par hain to baraye meherbani foran Administration Office ko muttala farmaiyein ta k record update kiya ja sake.
+
+📞 *Administration Desk:* ${helpline}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+_Office of the Principal & HR Administration, SCJ_`;
+}
+
+export async function sendStaffAbsentNotice(
+  staff: any,
+  date: string,
+  settings?: any,
+  options?: { silent?: boolean }
+): Promise<boolean> {
+  const rawPhone = staff.contact || staff.phone || "";
+  const phone = formatWhatsAppPhone(rawPhone);
+  if (!phone) {
+    if (!options?.silent) toast.warning(`No phone number registered for ${staff.fullName || 'Staff'}`);
+    return false;
+  }
+
+  const message = buildStaffAbsentMessage(staff, date, settings);
+  try {
+    const res = await fetch("/api/whatsapp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, message }),
+    });
+    const json = await res.json();
+    if (json.success) {
+      if (!options?.silent) toast.success(`Absent notice sent to ${staff.fullName || staff.full_name}!`);
+      return true;
+    } else {
+      window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
+      return false;
+    }
+  } catch {
+    window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
+    return false;
+  }
+}
+
+export async function dispatchBulkStaffAbsentNotices(
+  absentStaffList: any[],
+  date: string,
+  settings?: any,
+  onProgress?: (sent: number, total: number) => void
+): Promise<{ total: number; sent: number; failed: number }> {
+  let sent = 0;
+  let failed = 0;
+
+  for (let i = 0; i < absentStaffList.length; i++) {
+    const st = absentStaffList[i];
+    const ok = await sendStaffAbsentNotice(st, date, settings, { silent: true });
+    if (ok) sent++;
+    else failed++;
+    onProgress?.(i + 1, absentStaffList.length);
+    // Anti-ban delay
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+
+  return { total: absentStaffList.length, sent, failed };
+}
+
+export async function dispatchBulkStudentAbsentNotices(
+  absentStudentsList: any[],
+  date: string,
+  settings?: any,
+  onProgress?: (sent: number, total: number) => void
+): Promise<{ total: number; sent: number; failed: number }> {
+  let sent = 0;
+  let failed = 0;
+
+  for (let i = 0; i < absentStudentsList.length; i++) {
+    const stu = absentStudentsList[i];
+    const ok = await sendAutoDailyAttendanceNotice(
+      stu,
+      { date, status: "Absent" },
+      settings,
+      { silent: true, manualTrigger: true }
+    );
+    if (ok) sent++;
+    else failed++;
+    onProgress?.(i + 1, absentStudentsList.length);
+    // Anti-ban delay
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+
+  return { total: absentStudentsList.length, sent, failed };
+}

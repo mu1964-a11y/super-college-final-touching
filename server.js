@@ -185,10 +185,11 @@ _Superior Group of Colleges \u2014 Jahanian Campus_`;
       const supabaseUrl = process.env.VITE_SUPABASE_URL || "https://wgjkodcggpklxqcpnjhu.supabase.co";
       const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
       const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
-      const [admissionsRes, studentsRes, staffRes] = await Promise.all([
+      const [admissionsRes, studentsRes, staffRes, settingsRes] = await Promise.all([
         supabase.from("admissions").select("id, student_id, full_name, father_name, college_no, group, section, photo_url, contact_number, father_contact"),
         supabase.from("students").select("id, student_id, admission_id, full_name, father_name, college_no, group, section, photo_url, photo, contact, father_contact"),
-        supabase.from("staff").select("id, full_name, father_name, role, contact, photo, photo_url, status").eq("status", "Active")
+        supabase.from("staff").select("id, full_name, father_name, role, contact, photo, photo_url, status").eq("status", "Active"),
+        supabase.from("settings").select("*").order("updated_at", { ascending: false }).limit(1).maybeSingle()
       ]);
       const map = /* @__PURE__ */ new Map();
       if (admissionsRes.data) {
@@ -266,7 +267,8 @@ _Superior Group of Colleges \u2014 Jahanian Campus_`;
         count: enrolled.length + staffList.length,
         students: enrolled,
         staff: staffList,
-        profiles: [...enrolled, ...staffList]
+        profiles: [...enrolled, ...staffList],
+        settings: settingsRes?.data || null
       });
     } catch (err) {
       console.error("[Kiosk API] Error fetching enrolled students & staff:", err);

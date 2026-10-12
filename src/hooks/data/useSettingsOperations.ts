@@ -39,6 +39,12 @@ export function useSettingsOperations(ctx: any) {
           admissionSlipCustomText: newSettings.admissionSlipCustomText,
           feeReceiptCustomText: newSettings.feeReceiptCustomText,
           logo: newSettings.logo,
+          gateEntryStartTime: newSettings.gateEntryStartTime,
+          collegeStartTime: newSettings.collegeStartTime,
+          gateEntryCutoffTime: newSettings.gateEntryCutoffTime,
+          gateExitStartTime: newSettings.gateExitStartTime,
+          gateExitCutoffTime: newSettings.gateExitCutoffTime,
+          allowOffHoursScan: newSettings.allowOffHoursScan,
           predefinedSections: newSettings.predefinedSections !== undefined 
             ? newSettings.predefinedSections 
             : ((settings as any)?.predefinedSections || (settings as any)?.config?.predefinedSections || [])

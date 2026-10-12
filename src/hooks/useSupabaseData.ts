@@ -462,6 +462,12 @@ export function useSupabaseData(user: any) {
         admissionSlipCustomText: settingsData.admission_slip_custom_text ?? settingsData.config?.admissionSlipCustomText,
         feeReceiptCustomText: settingsData.fee_receipt_custom_text ?? settingsData.config?.feeReceiptCustomText,
         predefinedSections: settingsData.predefined_sections || settingsData.config?.predefinedSections || [],
+        gateEntryStartTime: settingsData.config?.gateEntryStartTime || '07:00',
+        collegeStartTime: settingsData.config?.collegeStartTime || '07:54',
+        gateEntryCutoffTime: settingsData.config?.gateEntryCutoffTime || '08:30',
+        gateExitStartTime: settingsData.config?.gateExitStartTime || '13:30',
+        gateExitCutoffTime: settingsData.config?.gateExitCutoffTime || '15:30',
+        allowOffHoursScan: settingsData.config?.allowOffHoursScan ?? false,
         config: settingsData.config || {}
       } as any);
       if (permissionsData) setPermissions(permissionsData.map(p => ({
@@ -570,9 +576,23 @@ export function useSupabaseData(user: any) {
       })
       .subscribe();
 
+    const studentAttSubscription = supabase.channel('student-attendance-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_attendance' }, () => {
+        debouncedFetchData();
+      })
+      .subscribe();
+
+    const staffAttSubscription = supabase.channel('staff-attendance-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_attendance' }, () => {
+        debouncedFetchData();
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(leadsSubscription);
       supabase.removeChannel(notifSubscription);
+      supabase.removeChannel(studentAttSubscription);
+      supabase.removeChannel(staffAttSubscription);
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
   }, [userId, fetchData, debouncedFetchData]);

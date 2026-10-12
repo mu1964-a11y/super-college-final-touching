@@ -227,7 +227,7 @@ async function startServer() {
       const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
       const supabase = createClient(supabaseUrl, supabaseKey as string, { auth: { persistSession: false } });
 
-      const [admissionsRes, studentsRes, staffRes] = await Promise.all([
+      const [admissionsRes, studentsRes, staffRes, settingsRes] = await Promise.all([
         supabase
           .from("admissions")
           .select("id, student_id, full_name, father_name, college_no, group, section, photo_url, contact_number, father_contact"),
@@ -237,7 +237,13 @@ async function startServer() {
         supabase
           .from("staff")
           .select("id, full_name, father_name, role, contact, photo, photo_url, status")
-          .eq("status", "Active")
+          .eq("status", "Active"),
+        supabase
+          .from("settings")
+          .select("*")
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
       ]);
 
       const map = new Map<string, any>();
@@ -325,7 +331,8 @@ async function startServer() {
         count: enrolled.length + staffList.length,
         students: enrolled,
         staff: staffList,
-        profiles: [...enrolled, ...staffList]
+        profiles: [...enrolled, ...staffList],
+        settings: settingsRes?.data || null
       });
     } catch (err: any) {
       console.error("[Kiosk API] Error fetching enrolled students & staff:", err);

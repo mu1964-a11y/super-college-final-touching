@@ -28,6 +28,9 @@ import {
   FileText,
   Plus,
   Sparkles,
+  Clock,
+  ShieldAlert,
+  DoorOpen
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -362,6 +365,7 @@ export default function SettingsView({ data }: { data: any }) {
             { id: 'modules', label: 'Core Modules', icon: AppWindow },
             { id: 'interlinks', label: 'System Logic', icon: Link2 },
             { id: 'sections', label: 'Classes & Sections', icon: Layers },
+            { id: 'gate_timings', label: 'Gate & Timings', icon: Clock },
             { id: 'documents', label: 'Forms & Documents', icon: FileText },
             { id: 'contact', label: 'Legal & Contact', icon: Globe },
           ].map(tab => (
@@ -977,6 +981,138 @@ export default function SettingsView({ data }: { data: any }) {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="gate_timings" className="space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Morning Arrival Window */}
+            <Card className="bg-white border-none shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden">
+              <CardHeader className="bg-emerald-50/50 px-8 py-6 border-b border-emerald-100/50">
+                <CardTitle className="text-lg font-black uppercase tracking-widest text-emerald-800 flex items-center gap-2.5">
+                  <DoorOpen size={20} className="text-emerald-600" /> Morning Gate Arrival Window
+                </CardTitle>
+                <CardDescription className="text-xs font-bold text-slate-500">
+                  Timings when kiosk scans students & staff entering college.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-8 space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="gateEntryStartTime" className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Gate Opens for Entry (Scan Start)
+                  </Label>
+                  <Input 
+                    id="gateEntryStartTime" 
+                    name="gateEntryStartTime" 
+                    type="time"
+                    value={formData.gateEntryStartTime || '07:00'} 
+                    onChange={handleInputChange} 
+                    className="h-14 rounded-2xl bg-slate-50 border-transparent font-bold text-slate-800 text-base"
+                  />
+                  <p className="text-[11px] text-slate-400">Default: 07:00 AM. Scanner starts accepting arrival scans.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="collegeStartTime" className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Official College Bell / Start Time
+                  </Label>
+                  <Input 
+                    id="collegeStartTime" 
+                    name="collegeStartTime" 
+                    type="time"
+                    value={formData.collegeStartTime || '07:54'} 
+                    onChange={handleInputChange} 
+                    className="h-14 rounded-2xl bg-amber-50 border-amber-200 font-bold text-amber-900 text-base"
+                  />
+                  <p className="text-[11px] text-amber-700 font-semibold">Default: 07:54 AM. Scans after this time are automatically marked as "Late".</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="gateEntryCutoffTime" className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Gate Arrival Cutoff / Lockout Time
+                  </Label>
+                  <Input 
+                    id="gateEntryCutoffTime" 
+                    name="gateEntryCutoffTime" 
+                    type="time"
+                    value={formData.gateEntryCutoffTime || '08:30'} 
+                    onChange={handleInputChange} 
+                    className="h-14 rounded-2xl bg-rose-50 border-rose-200 font-bold text-rose-900 text-base"
+                  />
+                  <p className="text-[11px] text-rose-700 font-semibold">Default: 08:30 AM. Entry gate locks. Scans after this require special Admin/Principal pass.</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Afternoon Departure & Security Window */}
+            <div className="space-y-8">
+              <Card className="bg-white border-none shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden">
+                <CardHeader className="bg-blue-50/50 px-8 py-6 border-b border-blue-100/50">
+                  <CardTitle className="text-lg font-black uppercase tracking-widest text-blue-900 flex items-center gap-2.5">
+                    <Clock size={20} className="text-blue-600" /> Afternoon Departure Window (Exit)
+                  </CardTitle>
+                  <CardDescription className="text-xs font-bold text-slate-500">
+                    Timings for student & faculty dismissal check-out.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-8 space-y-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="gateExitStartTime" className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      Gate Departure Start Time
+                    </Label>
+                    <Input 
+                      id="gateExitStartTime" 
+                      name="gateExitStartTime" 
+                      type="time"
+                      value={formData.gateExitStartTime || '13:30'} 
+                      onChange={handleInputChange} 
+                      className="h-14 rounded-2xl bg-slate-50 border-transparent font-bold text-slate-800 text-base"
+                    />
+                    <p className="text-[11px] text-slate-400">Default: 01:30 PM (13:30). Scanner automatically switches to "Gate Exit" mode.</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="gateExitCutoffTime" className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      Departure Window Close Time
+                    </Label>
+                    <Input 
+                      id="gateExitCutoffTime" 
+                      name="gateExitCutoffTime" 
+                      type="time"
+                      value={formData.gateExitCutoffTime || '15:30'} 
+                      onChange={handleInputChange} 
+                      className="h-14 rounded-2xl bg-slate-50 border-transparent font-bold text-slate-800 text-base"
+                    />
+                    <p className="text-[11px] text-slate-400">Default: 03:30 PM (15:30). Departure scanning concludes.</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Security & Override Controls */}
+              <Card className="bg-white border-none shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden">
+                <CardHeader className="bg-slate-50/50 px-8 py-6">
+                  <CardTitle className="text-[11px] font-black uppercase tracking-widest text-slate-800 flex items-center gap-2">
+                    <ShieldAlert size={16} className="text-amber-500" /> Scanner Off-Hours Protection
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-8 space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-black uppercase tracking-widest text-slate-800">
+                        Allow Admin Off-Hours Emergency Override
+                      </p>
+                      <p className="text-[10px] font-bold text-slate-500">
+                        Allows gate keeper / admin to manually unlock kiosk if someone arrives outside official windows.
+                      </p>
+                    </div>
+                    <Checkbox 
+                      checked={!!formData.allowOffHoursScan} 
+                      onCheckedChange={(v) => handleCheckboxChange('allowOffHoursScan', !!v)} 
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="contact" className="space-y-8">
