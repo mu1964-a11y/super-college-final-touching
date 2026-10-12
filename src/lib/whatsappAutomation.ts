@@ -1446,5 +1446,175 @@ export async function sendAutoStudentNotice(
   }
 }
 
+// ============================================================================
+// 10. STAFF ENROLLMENT & BIOMETRIC GATE ATTENDANCE NOTICES
+// ============================================================================
+
+export function buildStaffEnrollmentMessage(staff: any, settings?: any): string {
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
+  const name = staff.fullName || staff.full_name || "Faculty Member";
+  const role = staff.role || "Faculty Member";
+  const staffId = staff.id;
+  const joinDate = staff.joinDate || staff.join_date || new Date().toISOString().slice(0, 10);
+  const helpline = getCleanHelpline(settings);
+  const address = settings?.address || "Canal Road, Jahanian";
+
+  const hasPhoto = Boolean(staff.photo || staff.photo_url);
+  const photoBlock = !hasPhoto
+    ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━\n📸 *ACTION REQUIRED: Profile Photo Upload*\nSmart Gate Face Attendance aur Faculty ID Card ke liye aapki photo record mein moojood nahi hai.\n👉 Baraye meherbani apne mobile se seedhi passport style photo ya selfie *ISI WHATSAPP NUMBER PAR BHEJEIN*. Hamara automated AI system foran aapka chehra Gate Face Attendance Kiosk mein activate kar dega!`
+    : `\n• Gate Face Attendance: *Biometric Photo Active ✅*`;
+
+  return `🏛️ *${collegeName.toUpperCase()}*
+👔 *OFFICIAL FACULTY & STAFF ENROLLMENT NOTIFICATION*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum, *${name}*!
+
+Aapko Superior Group of Colleges Jahanian ke digital portal aur faculty roster mein kamyabi se shamil kar liya gaya hai.
+
+• *Faculty / Staff Name:* ${name}
+• *Designation / Role:* ${role}
+• *Staff ID:* ${staffId}
+• *Joining Date:* ${joinDate}
+• *Campus:* ${address}
+${photoBlock}
+
+• *Biometric Gate Attendance:*
+College aamad aur rawangi par Main Gate par nasab Smart Tablet Kiosk ke samne dekh kar aapki hazri automatically record hogi aur confirmation WhatsApp par bhej di jaye gi.
+
+📞 *Admin Helpline:* ${helpline}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+_Office of the Principal & College Administration_`;
+}
+
+export async function sendStaffEnrollmentNotice(staff: any, settings?: any): Promise<boolean> {
+  const rawPhone = staff.contact || staff.phone || "";
+  const phone = formatWhatsAppPhone(rawPhone);
+  if (!phone) return false;
+
+  const message = buildStaffEnrollmentMessage(staff, settings);
+  try {
+    const res = await fetch("/api/whatsapp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, message }),
+    });
+    const json = await res.json();
+    return Boolean(json.success);
+  } catch (err) {
+    console.warn("Failed to dispatch staff enrollment WhatsApp notice:", err);
+    return false;
+  }
+}
+
+export function buildStaffPhotoRequestMessage(staff: any, settings?: any): string {
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
+  const name = staff.fullName || staff.full_name || "Faculty Member";
+  const role = staff.role || "Faculty Member";
+  const staffId = staff.id;
+  const helpline = getCleanHelpline(settings);
+
+  return `🏛️ *${collegeName.toUpperCase()}*
+📸 *FACULTY PROFILE PHOTO REQUEST (GATE ATTENDANCE)*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum, *${name}* (${role})!
+
+Staff ID: *${staffId}*
+
+College Gate par Automated Biometric Face Attendance aur Official Faculty Identity Card ke liye aapki passport-size tasveer portal par darj nahi hai.
+
+👉 Baraye meherbani apne mobile se seedhi passport style photo ya selfie *ISI WHATSAPP NUMBER PAR BHEJEIN*. 
+
+Hamara AI Bot aapki picture ko verify kar ke automatically aapki profile aur Gate Tablet Kiosk mein enroll kar dega.
+
+📞 *Administration Desk:* ${helpline}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+_Office of the Principal & HR Administration_`;
+}
+
+export async function sendStaffPhotoRequestNotice(staff: any, settings?: any, options?: { silent?: boolean }): Promise<boolean> {
+  const rawPhone = staff.contact || staff.phone || "";
+  const phone = formatWhatsAppPhone(rawPhone);
+  if (!phone) {
+    if (!options?.silent) toast.warning(`No phone number for ${staff.fullName || 'Staff'}`);
+    return false;
+  }
+
+  const message = buildStaffPhotoRequestMessage(staff, settings);
+  try {
+    const res = await fetch("/api/whatsapp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, message }),
+    });
+    const json = await res.json();
+    if (json.success) {
+      if (!options?.silent) toast.success(`Photo request sent to ${staff.fullName || staff.full_name}!`);
+      return true;
+    } else {
+      window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
+      return false;
+    }
+  } catch {
+    window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
+    return false;
+  }
+}
+
+export async function dispatchBulkStaffPhotoRequests(
+  staffList: any[],
+  settings?: any,
+  onProgress?: (sent: number, total: number) => void
+): Promise<{ total: number; sent: number; failed: number }> {
+  const missing = staffList.filter(s => {
+    const p = s.photo || s.photo_url || "";
+    return !p || String(p).trim().length <= 10;
+  });
+
+  let sent = 0;
+  let failed = 0;
+
+  for (let i = 0; i < missing.length; i++) {
+    const st = missing[i];
+    const ok = await sendStaffPhotoRequestNotice(st, settings, { silent: true });
+    if (ok) sent++;
+    else failed++;
+    onProgress?.(i + 1, missing.length);
+    // Anti-ban delay
+    await new Promise(r => setTimeout(r, 1200));
+  }
+
+  return { total: missing.length, sent, failed };
+}
+
+export function buildStaffGateAttendanceMessage(
+  staff: any,
+  scanDetails: { time: string; date?: string; type: 'check_in' | 'check_out' },
+  settings?: any
+): string {
+  const collegeName = settings?.collegeName || "Superior College Jahanian";
+  const name = staff.fullName || staff.full_name || "Faculty Member";
+  const role = staff.role || "Faculty Member";
+  const staffId = staff.id;
+  const time = scanDetails.time;
+  const date = scanDetails.date || new Date().toISOString().slice(0, 10);
+  const isExit = scanDetails.type === 'check_out';
+
+  return `🏛️ *${collegeName.toUpperCase()}*
+👔 *STAFF GATE BIOMETRIC ATTENDANCE RECORDED*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum, *${name}*!
+Designation: *${role}*
+Staff ID: *${staffId}*
+
+• Status: *Present ✅*
+• Action: *${isExit ? "GATE EXIT (Departure / Chhutti)" : "GATE ENTRY (Arrival / Dakhla)"}*
+• Time: *${time}*
+• Date: *${date}*
+• Method: *Biometric Face Scan Verified*
+• Scanned Face Record: *Logged in Central Security Server*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+_Office of the Principal & College Administration_`;
+}
+
 
 

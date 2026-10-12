@@ -18,6 +18,8 @@ import {
   Users,
   Camera,
   Smartphone,
+  ShieldCheck,
+  Clock,
   Sparkles,
   X
 } from 'lucide-react';
@@ -88,6 +90,30 @@ function storeWaStatuses(date: string, statuses: Record<string, AttendanceWhatsA
 }
 
 export default function AttendanceView({ data }: { data: any }) {
+  const [studentAuditSnapshot, setStudentAuditSnapshot] = useState<{
+    studentName: string;
+    rollNo: string;
+    classInfo: string;
+    registeredPhoto?: string;
+    snapshotUrl: string;
+    checkInTime?: string;
+    status?: string;
+    date: string;
+  } | null>(null);
+
+  function getStudentSnapshotUrl(entry?: any): string | null {
+    if (!entry) return null;
+    if (entry.snapshotUrl && entry.snapshotUrl.length > 10) return entry.snapshotUrl;
+    if (entry.snapshot_url && entry.snapshot_url.length > 10) return entry.snapshot_url;
+    if (entry.notes && typeof entry.notes === 'string' && entry.notes.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(entry.notes);
+        if (parsed.snapshot) return parsed.snapshot;
+      } catch {}
+    }
+    return null;
+  }
+
   const [activeTab, setActiveTab] = useState<'daily' | 'report'>('daily');
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [reportMonth, setReportMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
@@ -1311,6 +1337,97 @@ export default function AttendanceView({ data }: { data: any }) {
           items={bulkModalProps.items}
           settings={data?.settings}
         />
+      )}
+
+      {/* Student Biometric Gate Snapshot Audit Modal */}
+      {studentAuditSnapshot && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden flex flex-col">
+            <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                  <ShieldCheck size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm">Student Biometric Gate Attendance</h3>
+                  <p className="text-xs text-slate-400">Audit Trail • {studentAuditSnapshot.date}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setStudentAuditSnapshot(null)}
+                className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Student Info */}
+              <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+                <div>
+                  <h4 className="font-black text-slate-900 text-base">{studentAuditSnapshot.studentName}</h4>
+                  <p className="text-xs text-slate-500 font-mono">Roll: {studentAuditSnapshot.rollNo} • {studentAuditSnapshot.classInfo}</p>
+                </div>
+                <div className="text-right">
+                  <span className="inline-flex items-center gap-1 font-black text-xs text-emerald-700 bg-emerald-100/70 px-3 py-1 rounded-full border border-emerald-300">
+                    <CheckCircle2 size={12} className="text-emerald-600" />
+                    {studentAuditSnapshot.status || 'Present'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Side-by-side Photo Comparison */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center space-y-2">
+                  <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">Registered Student ID</p>
+                  <div className="aspect-square rounded-2xl overflow-hidden border-2 border-slate-200 bg-slate-100 shadow-sm">
+                    {studentAuditSnapshot.registeredPhoto ? (
+                      <img src={studentAuditSnapshot.registeredPhoto} alt="Registered Student" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs font-bold">
+                        No ID Photo
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-semibold">Enrolled Profile</span>
+                </div>
+
+                <div className="text-center space-y-2">
+                  <p className="text-[11px] font-black uppercase tracking-wider text-emerald-600 flex items-center justify-center gap-1">
+                    <Camera size={12} /> Live Gate Camera Scan
+                  </p>
+                  <div className="aspect-square rounded-2xl overflow-hidden border-2 border-emerald-500 bg-slate-900 shadow-md ring-2 ring-emerald-500/20">
+                    <img src={studentAuditSnapshot.snapshotUrl} alt="Gate Camera Snapshot" className="w-full h-full object-cover" />
+                  </div>
+                  <span className="text-[10px] text-emerald-600 font-bold">Biometrically Verified</span>
+                </div>
+              </div>
+
+              {/* Timestamps */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-2 text-xs">
+                <div className="flex items-center justify-between text-slate-600">
+                  <span className="font-medium flex items-center gap-1.5"><Clock size={13} className="text-slate-400" /> Gate Arrival Timestamp:</span>
+                  <span className="font-mono font-bold text-slate-800">
+                    {studentAuditSnapshot.checkInTime ? new Date(studentAuditSnapshot.checkInTime).toLocaleString() : 'N/A'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-600 pt-1 border-t border-slate-200/60">
+                  <span className="font-medium">Verification Engine:</span>
+                  <span className="font-bold text-emerald-700">Gate Kiosk AI Face Biometrics</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+              <Button
+                onClick={() => setStudentAuditSnapshot(null)}
+                className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl px-5"
+              >
+                Close Audit Record
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

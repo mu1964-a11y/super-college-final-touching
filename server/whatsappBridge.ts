@@ -2327,6 +2327,76 @@ _Administration, Superior College Jahanian_`;
     return confirmationMsg;
   }
 
+  // Save received photo for a staff/faculty member in Supabase and on disk
+  public async applyStaffPhoto(
+    supabase: any,
+    staff: any,
+    buffer: Buffer,
+    senderJid: string,
+    rawNumber: string
+  ): Promise<string> {
+    const staffId = staff.id;
+    const staffName = staff.full_name || staff.fullName || "Faculty Member";
+    const role = staff.role || "Faculty Member";
+
+    // 1. Prepare Base64 Data URL
+    const base64Data = buffer.toString("base64");
+    const dataUrl = `data:image/jpeg;base64,${base64Data}`;
+
+    // 2. Save locally on disk in public/uploads/staff-photos/
+    try {
+      const uploadDir = path.join(process.cwd(), "public", "uploads", "staff-photos");
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      const filePath = path.join(uploadDir, `${staffId}.jpg`);
+      fs.writeFileSync(filePath, buffer);
+    } catch (diskErr) {
+      console.warn("[WhatsApp Bot] Could not save staff photo to disk:", diskErr);
+    }
+
+    // 3. Update Supabase Database staff table
+    try {
+      await supabase
+        .from("staff")
+        .update({ photo: dataUrl, photo_url: dataUrl })
+        .eq("id", staffId);
+    } catch (dbErr) {
+      console.error("[WhatsApp Bot] Error updating staff photo in Supabase:", dbErr);
+    }
+
+    // 4. Send Confirmation back to Staff
+    const confirmationMsg = 
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
+✅ *FACULTY / STAFF PROFILE PHOTO REGISTERED*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Assalam-o-Alaikum, *${staffName}*!
+Designation: *${role}*
+Staff ID: *${staffId}*
+
+🎉 Mubarak ho! Aapki profile photo college database mein kamyabi se update kar di gayi hai.
+
+• *Gate Face Attendance:* ACTIVE & READY ✅
+• *Faculty ID Card:* Photo Linked
+• *Status:* Biometrically Enrolled
+
+Aap kal subah se College Main Gate par nasab Tablet Kiosk par camera ke samne aakar apni hazri ba-aasani darj karwa sakte hain. JazakAllah!
+━━━━━━━━━━━━━━━━━━━━━━━━━
+_Office of the Principal & College Administration_`;
+
+    if (this.sock) {
+      await this.sock.sendMessage(senderJid, { text: confirmationMsg });
+    }
+
+    this.saveChatLog({
+      phone: rawNumber,
+      direction: "outgoing",
+      text: confirmationMsg,
+    });
+
+    return confirmationMsg;
+  }
+
   // Handle incoming WhatsApp Audio / Voice Notes across all roles
   public async handleIncomingAudioMessage(
     msg: any,
@@ -2781,6 +2851,25 @@ Kisi bhi inquiry ke liye Accounts Office: 📞 *${this.collegeHelpline || "0331-
 
     const standardPhone = this.normalizePhoneNumber(rawNumber);
     const session = this.sessionState.get(rawNumber);
+
+    // 0B. Check if sender is a registered Faculty / Staff member
+    if (standardPhone) {
+      const phoneDigits = standardPhone.replace(/\D/g, "");
+      const strippedSender = phoneDigits.startsWith("92") ? phoneDigits.slice(2) : phoneDigits.startsWith("0") ? phoneDigits.slice(1) : phoneDigits;
+      const last7 = phoneDigits.slice(-7);
+      const hyphenated = `0${strippedSender.slice(0, 3)}-${last7}`;
+
+      const { data: staffData } = await supabase
+        .from("staff")
+        .select("*")
+        .or(`contact.ilike.%${last7}%,contact.ilike.%${strippedSender}%,contact.ilike.%${hyphenated}%`)
+        .limit(1);
+
+      if (staffData && staffData.length > 0) {
+        await this.applyStaffPhoto(supabase, staffData[0], buffer, senderJid, rawNumber);
+        return;
+      }
+    }
 
     // 1. Check if user already verified a student in this session
     if (session?.verifiedStudent) {

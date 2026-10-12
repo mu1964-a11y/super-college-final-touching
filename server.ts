@@ -227,13 +227,17 @@ async function startServer() {
       const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
       const supabase = createClient(supabaseUrl, supabaseKey as string, { auth: { persistSession: false } });
 
-      const [admissionsRes, studentsRes] = await Promise.all([
+      const [admissionsRes, studentsRes, staffRes] = await Promise.all([
         supabase
           .from("admissions")
           .select("id, student_id, full_name, father_name, college_no, group, section, photo_url, contact_number, father_contact"),
         supabase
           .from("students")
-          .select("id, student_id, admission_id, full_name, father_name, college_no, group, section, photo_url, photo, contact, father_contact")
+          .select("id, student_id, admission_id, full_name, father_name, college_no, group, section, photo_url, photo, contact, father_contact"),
+        supabase
+          .from("staff")
+          .select("id, full_name, father_name, role, contact, photo, photo_url, status")
+          .eq("status", "Active")
       ]);
 
       const map = new Map<string, any>();
@@ -254,6 +258,7 @@ async function startServer() {
               section: a.section || "A",
               photo: photo,
               phone: a.contact_number || a.father_contact || "",
+              personType: "student",
               source: "admissions"
             });
           }
@@ -278,6 +283,7 @@ async function startServer() {
               section: s.section || existing?.section || "A",
               photo: photo,
               phone: s.contact || s.father_contact || existing?.phone || "",
+              personType: "student",
               source: "students"
             });
           } else if (existing) {
@@ -291,15 +297,39 @@ async function startServer() {
         }
       }
 
+      // 3. Process Active Staff Members
+      const staffList: any[] = [];
+      if (staffRes.data) {
+        for (const st of staffRes.data) {
+          const photo = st.photo_url || st.photo || "";
+          if (photo && photo.trim().length > 10) {
+            staffList.push({
+              id: String(st.id),
+              fullName: st.full_name || "Faculty Member",
+              fatherName: st.father_name || "",
+              collegeNo: st.id,
+              group: st.role || "Faculty",
+              role: st.role || "Faculty Member",
+              photo: photo,
+              phone: st.contact || "",
+              personType: "staff",
+              source: "staff"
+            });
+          }
+        }
+      }
+
       const enrolled = Array.from(map.values());
       return res.json({
         success: true,
-        count: enrolled.length,
-        students: enrolled
+        count: enrolled.length + staffList.length,
+        students: enrolled,
+        staff: staffList,
+        profiles: [...enrolled, ...staffList]
       });
     } catch (err: any) {
-      console.error("[Kiosk API] Error fetching enrolled students:", err);
-      return res.status(500).json({ success: false, error: err?.message || "Failed to load enrolled students" });
+      console.error("[Kiosk API] Error fetching enrolled students & staff:", err);
+      return res.status(500).json({ success: false, error: err?.message || "Failed to load enrolled profiles" });
     }
   });
 

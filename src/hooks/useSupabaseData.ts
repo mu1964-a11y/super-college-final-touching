@@ -378,7 +378,8 @@ export function useSupabaseData(user: any) {
         joinDate: st.join_date,
         baseSalary: st.base_salary,
         salary: st.salary,
-        photo: st.photo,
+        photo: st.photo_url || st.photo,
+        photo_url: st.photo_url || st.photo,
         dob: st.dob,
         cnic: st.cnic,
         qualification: st.qualification,
@@ -389,7 +390,12 @@ export function useSupabaseData(user: any) {
         ...a,
         staffId: a.staff_id,
         checkIn: a.check_in,
-        checkOut: a.check_out
+        checkOut: a.check_out,
+        checkInTime: a.check_in_time,
+        checkOutTime: a.check_out_time,
+        snapshotUrl: a.snapshot_url,
+        snapshot_url: a.snapshot_url,
+        verificationMethod: a.verification_method || 'manual'
       })));
       if (staffTimetableData) setStaffTimetable(staffTimetableData.map(t => ({
         ...t,
@@ -402,6 +408,11 @@ export function useSupabaseData(user: any) {
       if (studentAttendanceData) setStudentAttendance(studentAttendanceData.map(a => ({
         ...a,
         studentId: a.student_id,
+        checkInTime: a.check_in_time,
+        checkOutTime: a.check_out_time,
+        snapshotUrl: a.snapshot_url,
+        snapshot_url: a.snapshot_url,
+        verificationMethod: a.verification_method || 'manual'
       })));
       if (staffAdvancesData) setStaffAdvances(staffAdvancesData.map(a => ({
         ...a,

@@ -305,6 +305,10 @@ CREATE TABLE IF NOT EXISTS "staff_attendance" (
     "status" TEXT NOT NULL,
     "check_in" TIME,
     "check_out" TIME,
+    "check_in_time" TIMESTAMP WITH TIME ZONE,
+    "check_out_time" TIMESTAMP WITH TIME ZONE,
+    "snapshot_url" TEXT,
+    "verification_method" TEXT DEFAULT 'face_biometric',
     "notes" TEXT,
     "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
     UNIQUE("staff_id", "date")
@@ -486,6 +490,10 @@ CREATE TABLE IF NOT EXISTS "student_attendance" (
     "student_id" TEXT NOT NULL,
     "date" DATE NOT NULL,
     "status" TEXT NOT NULL,
+    "check_in_time" TIMESTAMP WITH TIME ZONE,
+    "check_out_time" TIMESTAMP WITH TIME ZONE,
+    "snapshot_url" TEXT,
+    "verification_method" TEXT DEFAULT 'face_biometric',
     "notes" TEXT,
     "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
     UNIQUE("student_id", "date")

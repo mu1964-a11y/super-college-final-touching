@@ -23,7 +23,12 @@ import {
   Printer,
   FileSpreadsheet,
   Upload,
-  Clock
+  Clock,
+  Smartphone,
+  Send,
+  Loader2,
+  CheckCircle2,
+  X
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { 
@@ -70,6 +75,7 @@ import { STAFF_ROLES } from '../constants';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { compressImage, base64ToBlob } from '../lib/imageUtils';
+import { sendStaffPhotoRequestNotice, dispatchBulkStaffPhotoRequests } from '../lib/whatsappAutomation';
 
 import * as XLSX from 'xlsx';
 import StaffAttendance from './StaffAttendance';
@@ -96,6 +102,46 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
       ? (initialFilter as any) 
       : 'directory'
   );
+
+  // Biometric Photo Filter & WhatsApp Collection State
+  const [photoFilter, setPhotoFilter] = useState<'all' | 'with-photo' | 'missing-photo'>('all');
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [isBulkSendingPhotos, setIsBulkSendingPhotos] = useState(false);
+  const [bulkPhotoProgress, setBulkPhotoProgress] = useState({ done: 0, total: 0 });
+
+  const staffWithoutPhotos = React.useMemo(() => {
+    return (data.staff || []).filter((s: Staff) => {
+      const p = s.photo || (s as any).photo_url;
+      return !p || String(p).trim().length <= 5;
+    });
+  }, [data.staff]);
+
+  const staffWithPhotos = React.useMemo(() => {
+    return (data.staff || []).filter((s: Staff) => {
+      const p = s.photo || (s as any).photo_url;
+      return Boolean(p && String(p).trim().length > 5);
+    });
+  }, [data.staff]);
+
+  const handleSendSinglePhotoRequest = async (staff: Staff) => {
+    await sendStaffPhotoRequestNotice(staff, data?.settings);
+  };
+
+  const handleSendBulkPhotoRequests = async () => {
+    if (staffWithoutPhotos.length === 0) {
+      toast.info('All staff members have profile photos!');
+      return;
+    }
+    setIsBulkSendingPhotos(true);
+    setBulkPhotoProgress({ done: 0, total: staffWithoutPhotos.length });
+    const res = await dispatchBulkStaffPhotoRequests(
+      staffWithoutPhotos,
+      data?.settings,
+      (done, total) => setBulkPhotoProgress({ done, total })
+    );
+    setIsBulkSendingPhotos(false);
+    toast.success(`Staff photo requests dispatched: ${res.sent} sent, ${res.failed} failed!`);
+  };
 
   const handleExportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(filteredStaff.map((staff: Staff) => ({
@@ -259,7 +305,16 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
     }
 
     const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
-    return matchesSearch && matchesRole && matchesStatus;
+
+    let matchesPhoto = true;
+    const hasPhoto = Boolean((s.photo || (s as any).photo_url) && String(s.photo || (s as any).photo_url).trim().length > 5);
+    if (photoFilter === 'with-photo') {
+      matchesPhoto = hasPhoto;
+    } else if (photoFilter === 'missing-photo') {
+      matchesPhoto = !hasPhoto;
+    }
+
+    return matchesSearch && matchesRole && matchesStatus && matchesPhoto;
   });
 
   const toggleSelectAll = () => {
@@ -396,16 +451,69 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
         </motion.div>
       )}
 
-      {/* Category Tabs */}
-      <Tabs value={roleFilter} className="w-full" onValueChange={setRoleFilter}>
-        <TabsList className="bg-slate-100/80 dark:bg-slate-900/80 p-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 h-auto flex flex-wrap max-w-fit mb-6">
-          <TabsTrigger value="all" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">All ({data.staff.length})</TabsTrigger>
-          <TabsTrigger value="Management" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Management</TabsTrigger>
-          <TabsTrigger value="Academic" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Academic</TabsTrigger>
-          <TabsTrigger value="Administration" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Admin</TabsTrigger>
-          <TabsTrigger value="Support" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Support</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {/* Category Tabs & Biometric Photo Filters */}
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-6">
+        <Tabs value={roleFilter} className="w-auto" onValueChange={setRoleFilter}>
+          <TabsList className="bg-slate-100/80 dark:bg-slate-900/80 p-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 h-auto flex flex-wrap max-w-fit">
+            <TabsTrigger value="all" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">All ({data.staff.length})</TabsTrigger>
+            <TabsTrigger value="Management" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Management</TabsTrigger>
+            <TabsTrigger value="Academic" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Academic</TabsTrigger>
+            <TabsTrigger value="Administration" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Admin</TabsTrigger>
+            <TabsTrigger value="Support" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Support</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {/* Biometric Photo Filters & Request Photos Button */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="bg-slate-100/80 dark:bg-slate-900/80 p-1 rounded-2xl border border-slate-200/80 dark:border-slate-800 flex items-center gap-1">
+            <button
+              onClick={() => setPhotoFilter('all')}
+              className={cn(
+                "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
+                photoFilter === 'all'
+                  ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              All Photos ({data.staff.length})
+            </button>
+            <button
+              onClick={() => setPhotoFilter('with-photo')}
+              className={cn(
+                "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
+                photoFilter === 'with-photo'
+                  ? "bg-emerald-600 text-white shadow-sm"
+                  : "text-slate-500 hover:text-emerald-600"
+              )}
+            >
+              <Camera size={13} />
+              Enrolled ({staffWithPhotos.length})
+            </button>
+            <button
+              onClick={() => setPhotoFilter('missing-photo')}
+              className={cn(
+                "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
+                photoFilter === 'missing-photo'
+                  ? "bg-amber-600 text-white shadow-sm"
+                  : "text-slate-500 hover:text-amber-600"
+              )}
+            >
+              <AlertCircle size={13} />
+              Missing ({staffWithoutPhotos.length})
+            </button>
+          </div>
+
+          <Button
+            onClick={() => setShowPhotoModal(true)}
+            size="sm"
+            className="h-9 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5"
+            title="Request staff profile photos on WhatsApp for Biometric Gate Attendance"
+          >
+            <Smartphone size={14} />
+            <span>Request Photos ({staffWithoutPhotos.length})</span>
+          </Button>
+        </div>
+      </div>
 
       {/* Filters Bar */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-wrap items-center gap-4 mb-8 hover:border-emerald-500/30 transition-all duration-300">
@@ -524,7 +632,16 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                   )}
                 </div>
               </div>
-              <div className="absolute top-6 right-6">
+              <div className="absolute top-6 right-6 flex items-center gap-2">
+                {(!member.photo || String(member.photo).trim().length <= 5) ? (
+                  <Badge className="rounded-xl px-2.5 py-1 font-bold text-[10px] bg-amber-500 text-white shadow-md flex items-center gap-1 border-none">
+                    <AlertCircle size={10} /> No Photo
+                  </Badge>
+                ) : (
+                  <Badge className="rounded-xl px-2.5 py-1 font-bold text-[10px] bg-emerald-600 text-white shadow-md flex items-center gap-1 border-none">
+                    <Camera size={10} /> Biometric Ready
+                  </Badge>
+                )}
                 <Badge className={cn(
                   "rounded-xl px-3 py-1 font-black uppercase tracking-widest text-[10px] shadow-lg",
                   member.status === 'Active' ? "bg-emerald-500 text-white shadow-emerald-500/20" : "bg-slate-500 text-white shadow-slate-500/20"
@@ -562,7 +679,18 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Monthly Salary</p>
                   <p className="font-display font-black text-slate-800 text-lg">Rs. {(member.salary || 0).toLocaleString()}</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
+                  {(!member.photo || String(member.photo).trim().length <= 5) && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-10 rounded-xl text-xs font-bold border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 transition-all px-3 hidden sm:flex items-center gap-1.5 shadow-xs" 
+                      onClick={() => handleSendSinglePhotoRequest(member)}
+                      title="Request staff profile photo on WhatsApp"
+                    >
+                      <Smartphone size={13} className="text-emerald-600" /> Photo
+                    </Button>
+                  )}
                   <Button 
                     variant="outline" 
                     size="sm" 
@@ -580,6 +708,12 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                       <MoreHorizontal size={18} />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="rounded-2xl p-2 min-w-[200px] border-slate-100 shadow-2xl">
+                      <DropdownMenuItem 
+                        className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-emerald-700 focus:bg-emerald-50 focus:text-emerald-800" 
+                        onClick={() => handleSendSinglePhotoRequest(member)}
+                      >
+                        <Smartphone size={16} className="text-emerald-600" /> <span>Request Photo (WhatsApp)</span>
+                      </DropdownMenuItem>
                       <DropdownMenuItem 
                         className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-600 focus:bg-superior-teal/5 focus:text-superior-teal" 
                         onClick={() => {
@@ -700,12 +834,12 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
       </TabsContent>
 
       <TabsContent value="attendance" className="space-y-8 mt-0 focus-visible:outline-none">
-        <StaffAttendance staffList={filteredStaff} attendanceRecords={data.staffAttendance} onSaveAttendance={data.bulkSaveStaffAttendance} />
+        <StaffAttendance staffList={data.staff || filteredStaff} attendanceRecords={data.staffAttendance} onSaveAttendance={data.bulkSaveStaffAttendance} />
       </TabsContent>
 
       <TabsContent value="payroll" className="space-y-8 mt-0 focus-visible:outline-none">
         <StaffPayroll 
-          staffList={filteredStaff} 
+          staffList={data.staff || filteredStaff} 
           advances={data.staffAdvances || []} 
           staffTimetable={data.staffTimetable || []} 
           attendanceRecords={data.staffAttendance || []}
@@ -726,9 +860,89 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
       </TabsContent>
 
       <TabsContent value="subjects" className="space-y-8 mt-0 focus-visible:outline-none">
-        <StaffSubjects staffList={filteredStaff} onUpdateStaff={data.updateStaff} />
+        <StaffSubjects staffList={data.staff || filteredStaff} onUpdateStaff={data.updateStaff} />
       </TabsContent>
       </Tabs>
+
+      {/* Missing Photos WhatsApp Request Modal for Staff */}
+      {showPhotoModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-xl w-full overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                  <Smartphone size={18} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm">Request Staff Profile Photos via WhatsApp</h3>
+                  <p className="text-xs text-slate-400">Total {staffWithoutPhotos.length} staff without biometric photos</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowPhotoModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 border-b border-slate-100 bg-emerald-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-xs text-emerald-950">
+                <p className="font-semibold">Automated WhatsApp Photo Collection for Gate Biometrics</p>
+                <p className="text-[11px] text-emerald-700">Staff members ko WhatsApp notice jayega. Unke reply krte hi bot unka face biometric gate attendance ke liye register kar lega.</p>
+              </div>
+              <Button
+                size="sm"
+                onClick={handleSendBulkPhotoRequests}
+                disabled={isBulkSendingPhotos || staffWithoutPhotos.length === 0}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-md flex items-center gap-1.5 whitespace-nowrap self-end sm:self-auto"
+              >
+                {isBulkSendingPhotos ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Sending ({bulkPhotoProgress.done}/{bulkPhotoProgress.total})
+                  </>
+                ) : (
+                  <>
+                    <Send size={14} />
+                    Send to All ({staffWithoutPhotos.length})
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {staffWithoutPhotos.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 text-xs">
+                  <CheckCircle2 size={32} className="mx-auto text-emerald-500 mb-2" />
+                  All staff members have biometric photos enrolled!
+                </div>
+              ) : (
+                staffWithoutPhotos.map((s: Staff) => (
+                  <div key={s.id} className="p-2.5 rounded-xl border border-slate-100 hover:border-slate-200 flex items-center justify-between gap-2 text-xs">
+                    <div>
+                      <p className="font-semibold text-slate-800">{s.fullName}</p>
+                      <p className="text-[11px] text-slate-500 font-mono">
+                        ID: {s.id} • {s.role || "Faculty"}
+                      </p>
+                      <p className="text-[10px] text-slate-400">Phone: {s.contact || "No contact"}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleSendSinglePhotoRequest(s)}
+                      className="text-xs h-8 border-emerald-200 text-emerald-700 hover:bg-emerald-50 gap-1.5"
+                    >
+                      <Smartphone size={13} />
+                      Request Photo
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {cardStaffMember && (
         <ExecutiveIDCardModal

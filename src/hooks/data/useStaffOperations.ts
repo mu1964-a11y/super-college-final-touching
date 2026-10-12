@@ -2,9 +2,10 @@ import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
 import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus } from '../../types';
 import { diffObjects, STAFF_FIELD_LABELS } from '../../utils/changeTracker';
+import { sendStaffEnrollmentNotice } from '../../lib/whatsappAutomation';
 
 export function useStaffOperations(ctx: any) {
-  const { generateStudentId, user, staff, setStaff, isBulkOperatingRef, logActivity, fetchData } = ctx;
+  const { generateStudentId, user, staff, setStaff, isBulkOperatingRef, logActivity, fetchData, settings } = ctx;
   const addStaff = async (member: Staff) => {
       try {
         setStaff((prev: Staff[]) => [...prev, member]);
@@ -39,6 +40,13 @@ export function useStaffOperations(ctx: any) {
           fullRecord: member
         }, 'success');
         toast.success("Staff member added successfully");
+
+        // Dispatch automated WhatsApp Enrollment Notice to Staff Member
+        sendStaffEnrollmentNotice(member, settings).then((sent) => {
+          if (sent) {
+            toast.success(`WhatsApp enrollment notification dispatched to ${member.fullName}!`);
+          }
+        }).catch((err) => console.warn("Staff enrollment notice error:", err));
       } catch (e: any) {
         toast.error(`Failed to add staff: ${e.message}`);
       }
@@ -141,6 +149,10 @@ export function useStaffOperations(ctx: any) {
             check_in: r.checkIn || null,
             check_out: r.checkOut || null,
             notes: r.notes || null,
+            snapshot_url: r.snapshotUrl || r.snapshot_url || null,
+            verification_method: r.verificationMethod || r.verification_method || null,
+            check_in_time: r.checkInTime || r.check_in_time || null,
+            check_out_time: r.checkOutTime || r.check_out_time || null,
           })).map(rec => {
             // Remove id if it's an old compound id from localstorage to let UUID default gen work
             // But we need to use constraint `staff_attendance_staff_id_date_key`
