@@ -30,10 +30,36 @@ import {
   Unlock,
   ShieldAlert,
   AlertTriangle,
-  Download
+  Download,
+  Sliders,
+  Play,
+  Mic,
+  Bell
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+
+export interface KioskVoiceSettings {
+  masterSound: boolean;
+  playChime: boolean;
+  speakArrival: boolean;
+  speakDeparture: boolean;
+  speakLate: boolean;
+  speakAlreadyMarked: boolean;
+  speechRate: number; // 0.9 - 1.3
+  voiceLanguage: string; // 'en-IN' | 'ur-PK'
+}
+
+export const DEFAULT_VOICE_SETTINGS: KioskVoiceSettings = {
+  masterSound: true,
+  playChime: true,
+  speakArrival: true,
+  speakDeparture: true,
+  speakLate: true,
+  speakAlreadyMarked: false,
+  speechRate: 1.15,
+  voiceLanguage: "en-IN",
+};
 
 export interface PersonProfile {
   id: string;
@@ -106,7 +132,30 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
   const [matchedSnapshot, setMatchedSnapshot] = useState<string | null>(null);
   const [selectedScanForAudit, setSelectedScanForAudit] = useState<ScanRecord | null>(null);
   const [alreadyMarkedMessage, setAlreadyMarkedMessage] = useState<string | null>(null);
-  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  // Customizable Voice & Audio Settings state (persisted in localStorage)
+  const [voiceSettings, setVoiceSettings] = useState<KioskVoiceSettings>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("scj_kiosk_voice_settings");
+        if (saved) return { ...DEFAULT_VOICE_SETTINGS, ...JSON.parse(saved) };
+      } catch {}
+    }
+    return DEFAULT_VOICE_SETTINGS;
+  });
+  const [showVoiceSettingsModal, setShowVoiceSettingsModal] = useState(false);
+  const soundEnabled = voiceSettings.masterSound;
+
+  const updateVoiceSettings = useCallback((partial: Partial<KioskVoiceSettings>) => {
+    setVoiceSettings((prev) => {
+      const next = { ...prev, ...partial };
+      try {
+        localStorage.setItem("scj_kiosk_voice_settings", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Target Filter & Gate Direction
@@ -254,9 +303,9 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
     }
   }, [gateStatus.suggestedDirection]);
 
-  // Web Audio Synth for success chime
-  const playSuccessChime = useCallback(() => {
-    if (!soundEnabled) return;
+  // Web Audio Synth for melodic feedback chimes (Entry / Exit / Late)
+  const playSuccessChime = useCallback((type: "normal" | "late" | "exit" = "normal") => {
+    if (!voiceSettings.masterSound || !voiceSettings.playChime) return;
     try {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const now = audioCtx.currentTime;
@@ -268,14 +317,27 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
       osc1.type = "sine";
       osc2.type = "triangle";
 
-      // Pleasant chord (G5 -> C6)
-      osc1.frequency.setValueAtTime(783.99, now);
-      osc1.frequency.exponentialRampToValueAtTime(1046.50, now + 0.15);
+      if (type === "exit") {
+        // Warm departure chord (C6 -> G5)
+        osc1.frequency.setValueAtTime(1046.50, now);
+        osc1.frequency.exponentialRampToValueAtTime(783.99, now + 0.2);
+        osc2.frequency.setValueAtTime(523.25, now);
+        osc2.frequency.exponentialRampToValueAtTime(392.00, now + 0.2);
+      } else if (type === "late") {
+        // Cautionary amber tone (A4 -> E5)
+        osc1.frequency.setValueAtTime(440.00, now);
+        osc1.frequency.setValueAtTime(659.25, now + 0.12);
+        osc2.frequency.setValueAtTime(329.63, now);
+        osc2.frequency.setValueAtTime(493.88, now + 0.12);
+      } else {
+        // Bright morning entry chord (G5 -> C6)
+        osc1.frequency.setValueAtTime(783.99, now);
+        osc1.frequency.exponentialRampToValueAtTime(1046.50, now + 0.15);
+        osc2.frequency.setValueAtTime(392.00, now);
+        osc2.frequency.exponentialRampToValueAtTime(523.25, now + 0.15);
+      }
 
-      osc2.frequency.setValueAtTime(392.00, now);
-      osc2.frequency.exponentialRampToValueAtTime(523.25, now + 0.15);
-
-      gainNode.gain.setValueAtTime(0.15, now);
+      gainNode.gain.setValueAtTime(0.18, now);
       gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
 
       osc1.connect(gainNode);
@@ -287,7 +349,50 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
       osc1.stop(now + 0.5);
       osc2.stop(now + 0.5);
     } catch {}
-  }, [soundEnabled]);
+  }, [voiceSettings.masterSound, voiceSettings.playChime]);
+
+  // Clean friendly name extractor for verbal speech
+  const getFriendlyName = useCallback((fullName?: string) => {
+    if (!fullName) return "Student";
+    const parts = fullName.trim().split(/\s+/);
+    if (parts.length > 1 && ["muhammad", "m.", "hafiz", "syed", "malik", "rana", "ch", "sir", "mam"].includes(parts[0].toLowerCase())) {
+      return parts.slice(0, 2).join(" ");
+    }
+    return parts[0] || fullName;
+  }, []);
+
+  // Neural Voice Synthesizer (Instant 0-delay on device)
+  const speakVoiceGreeting = useCallback((text: string) => {
+    if (!voiceSettings.masterSound) return;
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    try {
+      window.speechSynthesis.cancel(); // Prevent audio overlapping when students arrive in rapid succession
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = voiceSettings.speechRate || 1.15;
+      utterance.pitch = 1.0;
+
+      const voices = window.speechSynthesis.getVoices();
+      const targetLang = (voiceSettings.voiceLanguage || "en-IN").toLowerCase();
+
+      // Look for preferred subcontinent English or Urdu voice
+      const matchedVoice = voices.find(v => 
+        v.lang.toLowerCase().includes(targetLang) ||
+        v.lang.toLowerCase().includes("ur") ||
+        v.lang.toLowerCase().includes("in") ||
+        v.name.toLowerCase().includes("india") ||
+        v.name.toLowerCase().includes("urdu")
+      );
+      if (matchedVoice) {
+        utterance.voice = matchedVoice;
+      }
+
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.warn("[Voice Synthesis] Error:", err);
+    }
+  }, [voiceSettings]);
 
   // 1. Initialize Face-API Models from local /models directory
   useEffect(() => {
@@ -720,14 +825,44 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
       const actionLabel = gateDirection === "exit" ? "Checked-Out (Exit)" : "Checked-In (Entry)";
       setAlreadyMarkedMessage(`✅ ${person.fullName} already ${actionLabel} today at ${existing?.time || "earlier"} (${existing?.status || "Recorded"})`);
       setTimeout(() => setAlreadyMarkedMessage(null), 3500);
+
+      // Verbal notification if enabled
+      if (voiceSettings.masterSound && voiceSettings.speakAlreadyMarked) {
+        const friendlyName = getFriendlyName(person.fullName);
+        speakVoiceGreeting(`${friendlyName}, attendance already marked.`);
+      }
       return;
     }
 
     // Determine status: Late if entry and arriving after official bell
     const attendanceStatus: "Present" | "Late" = (gateDirection === "entry" && gateStatus.isLate) ? "Late" : "Present";
+    const isExit = gateDirection === "exit";
+    const isLate = gateDirection === "entry" && attendanceStatus === "Late";
 
-    // Play chime
-    playSuccessChime();
+    // Play melodic chime
+    if (voiceSettings.playChime) {
+      playSuccessChime(isLate ? "late" : isExit ? "exit" : "normal");
+    }
+
+    // Speak personalized AI Voice Greeting
+    if (voiceSettings.masterSound) {
+      const friendlyName = getFriendlyName(person.fullName);
+      if (isExit) {
+        if (voiceSettings.speakDeparture) {
+          speakVoiceGreeting(`Allah Hafiz ${friendlyName}! Safe journey home.`);
+        }
+      } else if (isLate) {
+        if (voiceSettings.speakLate) {
+          speakVoiceGreeting(`Late arrival recorded, ${friendlyName}.`);
+        } else if (voiceSettings.speakArrival) {
+          speakVoiceGreeting(`Assalam-o-Alaikum ${friendlyName}! Welcome to Superior College.`);
+        }
+      } else {
+        if (voiceSettings.speakArrival) {
+          speakVoiceGreeting(`Assalam-o-Alaikum ${friendlyName}! Welcome to Superior College.`);
+        }
+      }
+    }
 
     const timeStr = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
     const liveSnapshot = customSnapshot || captureLiveSnapshot();
@@ -759,8 +894,6 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
       method,
     };
     setRecentScans((prev) => [newRecord, ...prev.slice(0, 24)]);
-
-    const isExit = gateDirection === "exit";
 
     try {
       if (person.personType === "staff") {
@@ -1274,14 +1407,31 @@ _Automated Realtime College Security & LMS_`;
             {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
           </button>
 
-          {/* Sound Toggle */}
-          <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
-            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors cursor-pointer"
-            title={soundEnabled ? "Mute audio chime" : "Unmute audio chime"}
-          >
-            {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
-          </button>
+          {/* Sound & Voice Settings */}
+          <div className="flex items-center gap-1 bg-slate-800/90 p-0.5 rounded-lg border border-slate-700/60 shadow-inner">
+            <button
+              onClick={() => updateVoiceSettings({ masterSound: !voiceSettings.masterSound })}
+              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                voiceSettings.masterSound 
+                  ? "text-emerald-400 hover:bg-slate-700/80" 
+                  : "text-slate-500 hover:bg-slate-700/80"
+              }`}
+              title={voiceSettings.masterSound ? "Mute audio & voice greetings" : "Unmute audio & voice greetings"}
+            >
+              {voiceSettings.masterSound ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => setShowVoiceSettingsModal(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 hover:border-indigo-500/50 rounded-md text-xs font-semibold text-indigo-300 transition-all cursor-pointer shadow-sm active:scale-95"
+              title="Configure AI Voice Greetings & Audio Chimes"
+            >
+              <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden sm:inline">Voice AI</span>
+              {voiceSettings.masterSound && (voiceSettings.speakArrival || voiceSettings.speakDeparture) && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              )}
+            </button>
+          </div>
 
           {/* Fullscreen */}
           <button
@@ -1852,6 +2002,249 @@ _Automated Realtime College Security & LMS_`;
             >
               Close Audit Review
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Voice & Sound Customization Modal */}
+      {showVoiceSettingsModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative max-h-[92vh] overflow-y-auto">
+            <button
+              onClick={() => setShowVoiceSettingsModal(false)}
+              className="absolute top-4 right-4 p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                <Sliders className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  AI Voice Greetings & Audio
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    Live Engine
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Granular control over speaker greetings, warnings, and chimes.
+                </p>
+              </div>
+            </div>
+
+            {/* Master Sound Card */}
+            <div className="bg-gradient-to-r from-slate-950 to-slate-900 border border-slate-800 rounded-2xl p-4 mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${voiceSettings.masterSound ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-800 text-slate-500"}`}>
+                  {voiceSettings.masterSound ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white">Master Speaker & Audio</div>
+                  <div className="text-[11px] text-slate-400">
+                    {voiceSettings.masterSound ? "All audio and voice announcements are active" : "Completely mute all kiosk sounds and speech"}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => updateVoiceSettings({ masterSound: !voiceSettings.masterSound })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${voiceSettings.masterSound ? "bg-emerald-500" : "bg-slate-700"}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${voiceSettings.masterSound ? "translate-x-6" : "translate-x-1"}`} />
+              </button>
+            </div>
+
+            {/* Individual Voice Effects Toggles */}
+            <div className="space-y-2.5 mb-5">
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">
+                Voice Announcements & Chimes
+              </div>
+
+              {/* 1. Chime */}
+              <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <Bell className="w-4 h-4 text-amber-400 shrink-0" />
+                  <div>
+                    <div className="text-xs font-semibold text-slate-200">Melodic Scan Chime</div>
+                    <div className="text-[10px] text-slate-400">Pleasant synthesized dual-tone harmonic feedback on each punch</div>
+                  </div>
+                </div>
+                <button
+                  disabled={!voiceSettings.masterSound}
+                  onClick={() => updateVoiceSettings({ playChime: !voiceSettings.playChime })}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-40 ${voiceSettings.playChime && voiceSettings.masterSound ? "bg-indigo-600" : "bg-slate-700"}`}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${voiceSettings.playChime && voiceSettings.masterSound ? "translate-x-4.5" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+
+              {/* 2. Arrival Welcome */}
+              <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <LogIn className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div>
+                    <div className="text-xs font-semibold text-slate-200">Morning Arrival Welcome</div>
+                    <div className="text-[10px] text-slate-400">"Assalam-o-Alaikum [Name]! Welcome to Superior College."</div>
+                  </div>
+                </div>
+                <button
+                  disabled={!voiceSettings.masterSound}
+                  onClick={() => updateVoiceSettings({ speakArrival: !voiceSettings.speakArrival })}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-40 ${voiceSettings.speakArrival && voiceSettings.masterSound ? "bg-emerald-600" : "bg-slate-700"}`}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${voiceSettings.speakArrival && voiceSettings.masterSound ? "translate-x-4.5" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+
+              {/* 3. Departure Farewell */}
+              <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <LogOut className="w-4 h-4 text-blue-400 shrink-0" />
+                  <div>
+                    <div className="text-xs font-semibold text-slate-200">Departure Farewell</div>
+                    <div className="text-[10px] text-slate-400">"Allah Hafiz [Name]! Safe journey home."</div>
+                  </div>
+                </div>
+                <button
+                  disabled={!voiceSettings.masterSound}
+                  onClick={() => updateVoiceSettings({ speakDeparture: !voiceSettings.speakDeparture })}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-40 ${voiceSettings.speakDeparture && voiceSettings.masterSound ? "bg-blue-600" : "bg-slate-700"}`}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${voiceSettings.speakDeparture && voiceSettings.masterSound ? "translate-x-4.5" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+
+              {/* 4. Late Arrival Alert */}
+              <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                  <div>
+                    <div className="text-xs font-semibold text-slate-200">Late Arrival Warning</div>
+                    <div className="text-[10px] text-slate-400">"Late arrival recorded, [Name]."</div>
+                  </div>
+                </div>
+                <button
+                  disabled={!voiceSettings.masterSound}
+                  onClick={() => updateVoiceSettings({ speakLate: !voiceSettings.speakLate })}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-40 ${voiceSettings.speakLate && voiceSettings.masterSound ? "bg-amber-600" : "bg-slate-700"}`}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${voiceSettings.speakLate && voiceSettings.masterSound ? "translate-x-4.5" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+
+              {/* 5. Already Marked Alert */}
+              <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <div>
+                    <div className="text-xs font-semibold text-slate-200">Already Marked Notice</div>
+                    <div className="text-[10px] text-slate-400">"[Name], attendance already marked today."</div>
+                  </div>
+                </div>
+                <button
+                  disabled={!voiceSettings.masterSound}
+                  onClick={() => updateVoiceSettings({ speakAlreadyMarked: !voiceSettings.speakAlreadyMarked })}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-40 ${voiceSettings.speakAlreadyMarked && voiceSettings.masterSound ? "bg-rose-600" : "bg-slate-700"}`}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${voiceSettings.speakAlreadyMarked && voiceSettings.masterSound ? "translate-x-4.5" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Speech Rate Controls */}
+            <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-3.5 mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-slate-200">Speech Rate / Speed</span>
+                <span className="text-xs font-mono font-bold text-indigo-400">{voiceSettings.speechRate}x</span>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { label: "0.95x (Clear)", rate: 0.95 },
+                  { label: "1.0x (Normal)", rate: 1.0 },
+                  { label: "1.15x (Gate Rush ⭐)", rate: 1.15 },
+                  { label: "1.3x (Turbo)", rate: 1.3 }
+                ].map((item) => (
+                  <button
+                    key={item.rate}
+                    onClick={() => updateVoiceSettings({ speechRate: item.rate })}
+                    className={`py-1.5 px-2 rounded-xl text-[11px] font-medium transition-all cursor-pointer ${
+                      voiceSettings.speechRate === item.rate
+                        ? "bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/30"
+                        : "bg-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-2">
+                💡 Tip: 1.15x is recommended for 400+ students so greetings finish in ~1.2 seconds without blocking the gate line.
+              </div>
+            </div>
+
+            {/* Accent Selection */}
+            <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-3.5 mb-5 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-semibold text-slate-200 block">Voice Accent & Dialect</span>
+                <span className="text-[10px] text-slate-400">Optimized for Pakistani student names</span>
+              </div>
+              <select
+                value={voiceSettings.voiceLanguage}
+                onChange={(e) => updateVoiceSettings({ voiceLanguage: e.target.value })}
+                className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+              >
+                <option value="en-IN">Subcontinent / Urdu Inflection (Recommended)</option>
+                <option value="en-US">Standard English (US)</option>
+                <option value="en-GB">British English (UK)</option>
+              </select>
+            </div>
+
+            {/* Interactive Test Buttons */}
+            <div className="bg-indigo-950/30 border border-indigo-900/40 rounded-2xl p-3.5 mb-5 flex items-center justify-between gap-3">
+              <div className="text-xs text-indigo-300 font-medium">
+                Test speaker output on this device:
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => playSuccessChime("normal")}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                >
+                  <Bell className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Test Chime</span>
+                </button>
+                <button
+                  onClick={() => speakVoiceGreeting("Assalam-o-Alaikum! Welcome to Superior College Jahanian.")}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/30 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Test Greeting</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => {
+                  updateVoiceSettings(DEFAULT_VOICE_SETTINGS);
+                  toast.success("Voice settings reset to defaults.");
+                }}
+                className="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+              >
+                Reset Defaults
+              </button>
+              <Button
+                onClick={() => {
+                  setShowVoiceSettingsModal(false);
+                  toast.success("Voice settings saved successfully.");
+                }}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2 px-6 rounded-xl cursor-pointer"
+              >
+                Save & Close
+              </Button>
+            </div>
           </div>
         </div>
       )}

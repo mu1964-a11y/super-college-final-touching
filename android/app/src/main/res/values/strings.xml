@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SCJ Smart Gate</string>
+    <string name="title_activity_main">SCJ Smart Gate</string>
+    <string name="package_name">pk.edu.superiorjahanian.kiosk</string>
+    <string name="custom_url_scheme">pk.edu.superiorjahanian.kiosk</string>
+</resources>
