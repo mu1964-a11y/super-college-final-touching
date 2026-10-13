@@ -21,6 +21,7 @@ import {
   ExternalLink,
   Sliders,
   Play,
+  Pause,
   Square,
   Sparkles,
   Eye,
@@ -51,7 +52,7 @@ export interface WhatsAppReportModalProps {
   onOpenChange: (open: boolean) => void;
   title: string;
   subtitle?: string;
-  category: "daily_attendance" | "monthly_attendance" | "test_marks" | "monthly_merit" | "leads" | "admissions" | "students" | "fee_reminders";
+  category: "daily_attendance" | "monthly_attendance" | "test_marks" | "monthly_merit" | "leads" | "admissions" | "students" | "fee_reminders" | "photo_requests" | "staff_absent" | "staff_photos" | "general_broadcast";
   items: ReportRecipientItem[];
   settings?: any;
   onFinished?: () => void;
@@ -85,6 +86,8 @@ export default function WhatsAppReportModal({
 
   // Dispatch state
   const [isDispatching, setIsDispatching] = useState<boolean>(false);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const isPausedRef = useRef<boolean>(false);
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [sentCount, setSentCount] = useState<number>(0);
@@ -101,13 +104,15 @@ export default function WhatsAppReportModal({
     if (open) {
       setIsCompleted(false);
       setIsDispatching(false);
+      setIsPaused(false);
+      isPausedRef.current = false;
       setCurrentIndex(0);
       setSentCount(0);
       setFailedCount(0);
       setCurrentRecipient(null);
       setDispatchLogs([]);
 
-      if (category === "daily_attendance") {
+      if (category === "daily_attendance" || category === "staff_absent") {
         const hasAbsents = items.some((i) => i.isAbsent);
         setFilterMode(hasAbsents ? "absent" : "all");
       } else {
@@ -118,9 +123,12 @@ export default function WhatsAppReportModal({
 
   // Compute active recipient list based on filter
   const targetRecipients = useMemo(() => {
-    if (category === "daily_attendance") {
+    if (category === "daily_attendance" || category === "staff_absent") {
       if (filterMode === "absent") return items.filter((i) => i.isAbsent);
       if (filterMode === "present") return items.filter((i) => !i.isAbsent);
+    }
+    if (category === "photo_requests" || category === "staff_photos" || category === "general_broadcast") {
+      return items;
     }
     if (category === "test_marks") {
       if (filterMode === "failed") return items.filter((i) => i.isFailed);
@@ -183,6 +191,12 @@ export default function WhatsAppReportModal({
       if (controller.signal.aborted) {
         break;
       }
+
+      // Check pause state
+      while (isPausedRef.current && !controller.signal.aborted) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+      if (controller.signal.aborted) break;
 
       const item = targetRecipients[i];
       setCurrentIndex(i + 1);
@@ -248,6 +262,8 @@ export default function WhatsAppReportModal({
     }
 
     setIsDispatching(false);
+    setIsPaused(false);
+    isPausedRef.current = false;
     setIsCompleted(true);
     toast.success(`WhatsApp Broadcast completed! Sent: ${sCount}, Failed: ${fCount}`);
     onFinished?.();
@@ -264,6 +280,8 @@ export default function WhatsAppReportModal({
     }
 
     setIsDispatching(true);
+    setIsPaused(false);
+    isPausedRef.current = false;
     setIsCompleted(false);
     setCurrentIndex(0);
     // Keep already sent logs, purge failed logs to re-audit them
@@ -278,6 +296,12 @@ export default function WhatsAppReportModal({
     let fCount = 0;
 
     for (let i = 0; i < failedItems.length; i++) {
+      if (controller.signal.aborted) break;
+
+      // Check pause state
+      while (isPausedRef.current && !controller.signal.aborted) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
       if (controller.signal.aborted) break;
 
       const item = failedItems[i];
@@ -343,6 +367,8 @@ export default function WhatsAppReportModal({
     }
 
     setIsDispatching(false);
+    setIsPaused(false);
+    isPausedRef.current = false;
     setIsCompleted(true);
     toast.success(`Retry complete! Delivered: ${sCount}, Still Failed: ${fCount}`);
     onFinished?.();
@@ -371,6 +397,8 @@ ${failedLogs.map((l, idx) => `${idx + 1}. ${l.name} (${l.rollNo || 'N/A'})
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
+    setIsPaused(false);
+    isPausedRef.current = false;
     setIsDispatching(false);
     toast.info("WhatsApp broadcast stopped by user.");
   };
@@ -473,6 +501,64 @@ ${failedLogs.map((l, idx) => `${idx + 1}. ${l.name} (${l.rollNo || 'N/A'})
                       <p className="text-[10px] text-slate-400 font-normal">Sirf hazir talba</p>
                     </button>
                   </>
+                )}
+
+                {category === "staff_absent" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setFilterMode("absent")}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        filterMode === "absent"
+                          ? "bg-rose-50 border-rose-300 text-rose-800 shadow-xs font-bold"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs">🚨 Absent Faculty Only</span>
+                        <Badge variant="secondary" className="bg-rose-200 text-rose-900 text-[10px]">
+                          {items.filter((i) => i.isAbsent).length}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-normal">Ghair hazir faculty members</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFilterMode("all")}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        filterMode === "all"
+                          ? "bg-emerald-50 border-emerald-300 text-emerald-800 shadow-xs font-bold"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs">📢 All Targeted Faculty</span>
+                        <Badge variant="secondary" className="bg-emerald-200 text-emerald-900 text-[10px]">
+                          {items.length}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-normal">Tamam targeted faculty</p>
+                    </button>
+                  </>
+                )}
+
+                {(category === "photo_requests" || category === "staff_photos") && (
+                  <button
+                    type="button"
+                    onClick={() => setFilterMode("all")}
+                    className="p-3 rounded-2xl border bg-emerald-50 border-emerald-300 text-emerald-800 shadow-xs font-bold text-left col-span-2 sm:col-span-3"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs">📸 Missing Gate Biometric Photos Target</span>
+                      <Badge variant="secondary" className="bg-emerald-200 text-emerald-900 text-[10px]">
+                        {items.length} Recipients
+                      </Badge>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-normal">
+                      Students / Faculty missing passport photos for Face Attendance Kiosk enrollment
+                    </p>
+                  </button>
                 )}
 
                 {category === "test_marks" && (
@@ -832,18 +918,20 @@ ${failedLogs.map((l, idx) => `${idx + 1}. ${l.name} (${l.rollNo || 'N/A'})
             <div className="p-6 rounded-3xl bg-slate-50 border border-slate-200 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center animate-spin">
-                    <RefreshCw size={18} />
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isPaused ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700 animate-spin"}`}>
+                    {isPaused ? <Pause size={18} /> : <RefreshCw size={18} />}
                   </div>
                   <div>
-                    <h4 className="font-bold text-slate-800 text-sm">Broadcasting via WhatsApp...</h4>
+                    <h4 className="font-bold text-slate-800 text-sm">
+                      {isPaused ? "Broadcast Paused ⏸️" : "Broadcasting via WhatsApp..."}
+                    </h4>
                     <p className="text-xs text-slate-400 font-medium">
                       Sending {currentIndex} of {targetRecipients.length} messages ({progressPercent}%)
                     </p>
                   </div>
                 </div>
-                <Badge className="bg-emerald-600 text-white font-mono text-xs px-3 py-1">
-                  {progressPercent}%
+                <Badge className={`font-mono text-xs px-3 py-1 ${isPaused ? "bg-amber-500 text-white" : "bg-emerald-600 text-white"}`}>
+                  {isPaused ? `Paused (${progressPercent}%)` : `${progressPercent}%`}
                 </Badge>
               </div>
 
@@ -1025,15 +1113,32 @@ ${failedLogs.map((l, idx) => `${idx + 1}. ${l.name} (${l.rollNo || 'N/A'})
           ) : isDispatching ? (
             <>
               <div className="text-xs font-bold text-slate-500">
-                Please do not close this window while sending...
+                {isPaused ? "Broadcast paused by user." : "Please do not close this window while sending..."}
               </div>
-              <Button
-                variant="destructive"
-                onClick={handleCancelDispatch}
-                className="h-11 rounded-xl font-bold px-6"
-              >
-                <Square size={16} className="mr-2" /> Stop Broadcast
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    const next = !isPaused;
+                    setIsPaused(next);
+                    isPausedRef.current = next;
+                    if (next) toast.info("WhatsApp broadcast paused.");
+                    else toast.success("Resuming WhatsApp broadcast...");
+                  }}
+                  className="h-11 rounded-xl font-bold px-4 border-slate-300 bg-white hover:bg-slate-50 text-slate-700 shadow-xs"
+                >
+                  {isPaused ? <Play size={15} className="mr-1.5 text-emerald-600" /> : <Pause size={15} className="mr-1.5 text-amber-600" />}
+                  {isPaused ? "Resume" : "Pause"}
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleCancelDispatch}
+                  className="h-11 rounded-xl font-bold px-5"
+                >
+                  <Square size={16} className="mr-2" /> Stop Broadcast
+                </Button>
+              </div>
             </>
           ) : (
             <div className="w-full flex justify-end">

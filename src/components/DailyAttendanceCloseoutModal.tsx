@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import WhatsAppReportModal, { ReportRecipientItem } from "./WhatsAppReportModal";
 import {
   DailyAttendanceSummaryData,
   buildDailyPrincipalAttendanceSummary,
@@ -29,7 +30,9 @@ import {
   dispatchBulkStaffAbsentNotices,
   dispatchBulkStudentAbsentNotices,
   sendAutoDailyAttendanceNotice,
-  formatWhatsAppPhone
+  formatWhatsAppPhone,
+  buildDailyAttendanceMessage,
+  buildStaffAbsentMessage
 } from "../lib/whatsappAutomation";
 
 interface DailyAttendanceCloseoutModalProps {
@@ -69,6 +72,20 @@ export default function DailyAttendanceCloseoutModal({
 
   const [isBulkSendingStaff, setIsBulkSendingStaff] = useState(false);
   const [bulkStaffProgress, setBulkStaffProgress] = useState({ done: 0, total: 0 });
+
+  // Universal WhatsApp Report Modal State
+  const [isBulkReportModalOpen, setIsBulkReportModalOpen] = useState(false);
+  const [bulkReportModalProps, setBulkReportModalProps] = useState<{
+    title: string;
+    subtitle: string;
+    category: "daily_attendance" | "staff_absent";
+    items: ReportRecipientItem[];
+  }>({
+    title: "",
+    subtitle: "",
+    category: "daily_attendance",
+    items: [],
+  });
 
   // 1. Process Students Attendance for selectedDate
   const studentAnalysis = useMemo(() => {
@@ -215,44 +232,69 @@ export default function DailyAttendanceCloseoutModal({
     }
   };
 
-  // Action: 1-Click Send to ALL Absent Students
-  const handleBulkSendAbsentStudents = async () => {
+  // Action: 1-Click Send to ALL Absent Students with Live Progress & Audit Hub
+  const handleBulkSendAbsentStudents = () => {
     if (studentAnalysis.absents.length === 0) {
       toast.info("No absent students today!");
       return;
     }
-    setIsBulkSendingStudents(true);
-    setBulkStudentProgress({ done: 0, total: studentAnalysis.absents.length });
+    const items: ReportRecipientItem[] = studentAnalysis.absents.map((stu: any) => {
+      const rollNo = stu.collegeNo || stu.studentId || stu.id || "N/A";
+      const msg = buildDailyAttendanceMessage(
+        stu,
+        { date: selectedDate, status: "Absent" },
+        settings
+      );
+      return {
+        id: stu.id,
+        student: stu,
+        name: stu.fullName || "Student",
+        phone: stu.contact || stu.fatherContact || stu.phone || stu.mobile || "",
+        rollNo,
+        className: `${stu.section || ""} • ${stu.groupName || stu.currentClass || ""}`,
+        message: msg,
+        statusBadge: "Absent",
+        isAbsent: true,
+      };
+    });
 
-    const res = await dispatchBulkStudentAbsentNotices(
-      studentAnalysis.absents,
-      selectedDate,
-      settings,
-      (done, total) => setBulkStudentProgress({ done, total })
-    );
-
-    setIsBulkSendingStudents(false);
-    toast.success(`Dispatched ${res.sent} of ${res.total} WhatsApp absent notices to parents!`);
+    setBulkReportModalProps({
+      title: "Broadcast Daily Absent Notices (Students)",
+      subtitle: `${items.length} Absent Students • Date: ${selectedDate}`,
+      category: "daily_attendance",
+      items,
+    });
+    setIsBulkReportModalOpen(true);
   };
 
-  // Action: 1-Click Send to ALL Absent Staff
-  const handleBulkSendAbsentStaff = async () => {
+  // Action: 1-Click Send to ALL Absent Staff with Live Progress & Audit Hub
+  const handleBulkSendAbsentStaff = () => {
     if (staffAnalysis.absents.length === 0) {
       toast.info("No absent faculty members today!");
       return;
     }
-    setIsBulkSendingStaff(true);
-    setBulkStaffProgress({ done: 0, total: staffAnalysis.absents.length });
+    const items: ReportRecipientItem[] = staffAnalysis.absents.map((st: any) => {
+      const msg = buildStaffAbsentMessage(st, selectedDate, settings);
+      return {
+        id: st.id,
+        student: st,
+        name: st.fullName || st.full_name || "Faculty Member",
+        phone: st.contact || st.phone || "",
+        rollNo: st.id || "Staff",
+        className: st.role || "Faculty Member",
+        message: msg,
+        statusBadge: "Absent",
+        isAbsent: true,
+      };
+    });
 
-    const res = await dispatchBulkStaffAbsentNotices(
-      staffAnalysis.absents,
-      selectedDate,
-      settings,
-      (done, total) => setBulkStaffProgress({ done, total })
-    );
-
-    setIsBulkSendingStaff(false);
-    toast.success(`Dispatched ${res.sent} of ${res.total} WhatsApp absent notices to faculty!`);
+    setBulkReportModalProps({
+      title: "Broadcast Faculty Absent Notices",
+      subtitle: `${items.length} Absent Faculty Members • Date: ${selectedDate}`,
+      category: "staff_absent",
+      items,
+    });
+    setIsBulkReportModalOpen(true);
   };
 
   // Action: Quick Mark Student as Leave (Excused)
@@ -814,6 +856,20 @@ export default function DailyAttendanceCloseoutModal({
           </button>
         </div>
       </div>
+
+      {/* Universal Bulk WhatsApp Dispatch & Audit Hub Modal */}
+      <WhatsAppReportModal
+        open={isBulkReportModalOpen}
+        onOpenChange={setIsBulkReportModalOpen}
+        title={bulkReportModalProps.title}
+        subtitle={bulkReportModalProps.subtitle}
+        category={bulkReportModalProps.category}
+        items={bulkReportModalProps.items}
+        settings={settings}
+        onFinished={() => {
+          onRefreshData?.();
+        }}
+      />
     </div>
   );
 }

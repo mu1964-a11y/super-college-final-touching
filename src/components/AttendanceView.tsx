@@ -44,6 +44,7 @@ import {
   buildDailyAttendanceMessage, 
   buildPeriodicAttendanceMessage,
   sendAutoPhotoUploadRequestNotice,
+  buildPhotoUploadRequestMessage,
   dispatchBulkPhotoRequests
 } from '../lib/whatsappAutomation';
 
@@ -354,20 +355,33 @@ export default function AttendanceView({ data }: { data: any }) {
     await sendAutoPhotoUploadRequestNotice(student, data?.settings);
   };
 
-  const handleSendBulkPhotoRequests = async () => {
+  const handleSendBulkPhotoRequests = () => {
     if (studentsWithoutPhotos.length === 0) {
       toast.info('No students missing photos!');
       return;
     }
-    setIsBulkSendingPhotos(true);
-    setBulkPhotoProgress({ done: 0, total: studentsWithoutPhotos.length });
-    const res = await dispatchBulkPhotoRequests(
-      studentsWithoutPhotos,
-      data?.settings,
-      (done, total) => setBulkPhotoProgress({ done, total })
-    );
-    setIsBulkSendingPhotos(false);
-    toast.success(`Photo requests dispatched: ${res.sent} sent, ${res.failed} failed!`);
+    const items: ReportRecipientItem[] = studentsWithoutPhotos.map((s: any) => {
+      const msg = buildPhotoUploadRequestMessage(s, data?.settings);
+      const rollNo = s.studentId || s.collegeNo || s.id || 'Pending';
+      return {
+        id: s.id,
+        student: s,
+        name: s.fullName || 'Student',
+        phone: s.phone || s.contactNumber || s.fatherContact || s.mobile || '',
+        rollNo,
+        className: `${s.section || ''} • ${s.groupName || s.currentClass || ''}`,
+        message: msg,
+        statusBadge: 'Missing Photo',
+      };
+    });
+
+    setBulkModalProps({
+      title: 'Request Student Profile Photos (Bulk)',
+      subtitle: `${items.length} Students Missing Gate Biometric Photos`,
+      category: 'photo_requests',
+      items,
+    });
+    setIsBulkModalOpen(true);
   };
 
   // Live Direct Supabase Polling & Realtime Synchronization for Gate Attendance

@@ -75,7 +75,8 @@ import { STAFF_ROLES } from '../constants';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { compressImage, base64ToBlob } from '../lib/imageUtils';
-import { sendStaffPhotoRequestNotice, dispatchBulkStaffPhotoRequests } from '../lib/whatsappAutomation';
+import { sendStaffPhotoRequestNotice, dispatchBulkStaffPhotoRequests, buildStaffPhotoRequestMessage } from '../lib/whatsappAutomation';
+import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
 
 import * as XLSX from 'xlsx';
 import StaffAttendance from './StaffAttendance';
@@ -109,6 +110,20 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
   const [isBulkSendingPhotos, setIsBulkSendingPhotos] = useState(false);
   const [bulkPhotoProgress, setBulkPhotoProgress] = useState({ done: 0, total: 0 });
 
+  // Bulk WhatsApp Report Modal State
+  const [isBulkStaffModalOpen, setIsBulkStaffModalOpen] = useState(false);
+  const [bulkStaffModalProps, setBulkStaffModalProps] = useState<{
+    title: string;
+    subtitle: string;
+    category: "staff_photos";
+    items: ReportRecipientItem[];
+  }>({
+    title: "",
+    subtitle: "",
+    category: "staff_photos",
+    items: [],
+  });
+
   const staffWithoutPhotos = React.useMemo(() => {
     return (data.staff || []).filter((s: Staff) => {
       const p = s.photo || (s as any).photo_url;
@@ -127,20 +142,32 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
     await sendStaffPhotoRequestNotice(staff, data?.settings);
   };
 
-  const handleSendBulkPhotoRequests = async () => {
+  const handleSendBulkPhotoRequests = () => {
     if (staffWithoutPhotos.length === 0) {
       toast.info('All staff members have profile photos!');
       return;
     }
-    setIsBulkSendingPhotos(true);
-    setBulkPhotoProgress({ done: 0, total: staffWithoutPhotos.length });
-    const res = await dispatchBulkStaffPhotoRequests(
-      staffWithoutPhotos,
-      data?.settings,
-      (done, total) => setBulkPhotoProgress({ done, total })
-    );
-    setIsBulkSendingPhotos(false);
-    toast.success(`Staff photo requests dispatched: ${res.sent} sent, ${res.failed} failed!`);
+    const items: ReportRecipientItem[] = staffWithoutPhotos.map((s: Staff) => {
+      const msg = buildStaffPhotoRequestMessage(s, data?.settings);
+      return {
+        id: s.id,
+        student: s,
+        name: s.fullName || 'Faculty Member',
+        phone: s.contact || (s as any).phone || '',
+        rollNo: s.id || 'Staff',
+        className: s.role || 'Faculty Member',
+        message: msg,
+        statusBadge: 'Missing Photo',
+      };
+    });
+
+    setBulkStaffModalProps({
+      title: 'Request Faculty Profile Photos (Bulk)',
+      subtitle: `${items.length} Faculty Members Missing Gate Biometric Photos`,
+      category: 'staff_photos',
+      items,
+    });
+    setIsBulkStaffModalOpen(true);
   };
 
   const handleExportExcel = () => {
@@ -968,6 +995,17 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
           }}
         />
       )}
+
+      {/* Bulk WhatsApp Report Modal for Staff Photos */}
+      <WhatsAppReportModal
+        open={isBulkStaffModalOpen}
+        onOpenChange={setIsBulkStaffModalOpen}
+        title={bulkStaffModalProps.title}
+        subtitle={bulkStaffModalProps.subtitle}
+        category={bulkStaffModalProps.category}
+        items={bulkStaffModalProps.items}
+        settings={data?.settings}
+      />
     </div>
   );
 }
