@@ -386,17 +386,31 @@ export function useSupabaseData(user: any) {
         specialization: st.specialization,
         subjects: st.subjects
       })));
-      if (staffAttendanceData) setStaffAttendance(staffAttendanceData.map(a => ({
-        ...a,
-        staffId: a.staff_id,
-        checkIn: a.check_in,
-        checkOut: a.check_out,
-        checkInTime: a.check_in_time,
-        checkOutTime: a.check_out_time,
-        snapshotUrl: a.snapshot_url,
-        snapshot_url: a.snapshot_url,
-        verificationMethod: a.verification_method || 'manual'
-      })));
+      if (staffAttendanceData) setStaffAttendance(staffAttendanceData.map(a => {
+        let parsedNotes: any = null;
+        if (a.notes && typeof a.notes === 'string' && a.notes.startsWith('{')) {
+          try { parsedNotes = JSON.parse(a.notes); } catch {}
+        }
+        const checkIn = a.check_in || a.check_in_time || parsedNotes?.check_in_time || null;
+        const checkOut = a.check_out || a.check_out_time || parsedNotes?.check_out_time || null;
+        const entrySnap = a.snapshot_url || parsedNotes?.entry_snapshot || parsedNotes?.snapshot || null;
+        const exitSnap = parsedNotes?.exit_snapshot || null;
+        const isBio = a.verification_method === 'face_biometric' || parsedNotes?.verification_method === 'face_biometric' || Boolean(entrySnap || exitSnap);
+
+        return {
+          ...a,
+          staffId: a.staff_id,
+          checkIn,
+          checkOut,
+          checkInTime: checkIn,
+          checkOutTime: checkOut,
+          snapshotUrl: entrySnap,
+          entrySnapshotUrl: entrySnap,
+          exitSnapshotUrl: exitSnap,
+          verificationMethod: isBio ? 'face_biometric' : (a.verification_method || 'manual'),
+          parsedNotes
+        };
+      }));
       if (staffTimetableData) setStaffTimetable(staffTimetableData.map(t => ({
         ...t,
         staffId: t.staff_id,
@@ -405,15 +419,29 @@ export function useSupabaseData(user: any) {
         classRoom: t.class_room,
         section: t.section || (t.class_room?.match(/\(Sec\s+([^)]+)\)/i)?.[1]?.trim()) || ''
       })));
-      if (studentAttendanceData) setStudentAttendance(studentAttendanceData.map(a => ({
-        ...a,
-        studentId: a.student_id,
-        checkInTime: a.check_in_time,
-        checkOutTime: a.check_out_time,
-        snapshotUrl: a.snapshot_url,
-        snapshot_url: a.snapshot_url,
-        verificationMethod: a.verification_method || 'manual'
-      })));
+      if (studentAttendanceData) setStudentAttendance(studentAttendanceData.map(a => {
+        let parsedNotes: any = null;
+        if (a.notes && typeof a.notes === 'string' && a.notes.startsWith('{')) {
+          try { parsedNotes = JSON.parse(a.notes); } catch {}
+        }
+        const checkIn = a.check_in_time || parsedNotes?.check_in_time || null;
+        const checkOut = a.check_out_time || parsedNotes?.check_out_time || null;
+        const entrySnap = a.snapshot_url || parsedNotes?.entry_snapshot || parsedNotes?.snapshot || null;
+        const exitSnap = parsedNotes?.exit_snapshot || null;
+        const isBio = a.verification_method === 'face_biometric' || parsedNotes?.verification_method === 'face_biometric' || Boolean(entrySnap || exitSnap);
+
+        return {
+          ...a,
+          studentId: a.student_id,
+          checkInTime: checkIn,
+          checkOutTime: checkOut,
+          snapshotUrl: entrySnap,
+          entrySnapshotUrl: entrySnap,
+          exitSnapshotUrl: exitSnap,
+          verificationMethod: isBio ? 'face_biometric' : (a.verification_method || 'manual'),
+          parsedNotes
+        };
+      }));
       if (staffAdvancesData) setStaffAdvances(staffAdvancesData.map(a => ({
         ...a,
         staffId: a.staff_id,

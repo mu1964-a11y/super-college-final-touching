@@ -605,14 +605,27 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: facing,
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-        },
-        audio: false,
-      });
+      // Check if browser supports WebRTC in current security context
+      if (!navigator?.mediaDevices?.getUserMedia) {
+        toast.info("Live WebRTC requires HTTPS or Localhost. Opening instant camera snap...", { duration: 4000 });
+        fileInputRef.current?.click();
+        return;
+      }
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: facing,
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+          },
+          audio: false,
+        });
+      } catch (constraintErr) {
+        // Fallback to plain video constraint
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
 
       streamRef.current = stream;
       if (videoRef.current) {
@@ -624,8 +637,9 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
       }
     } catch (err: any) {
       console.error("Camera access error:", err);
-      toast.error("Camera access failed. Check browser permissions or use snapshot upload.");
+      toast.info("Live camera stream permission blocked. Switching to mobile snapshot camera...", { duration: 4500 });
       setIsCameraActive(false);
+      fileInputRef.current?.click();
     }
   };
 
@@ -780,6 +794,9 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
         const entrySnapshot = !isExit ? liveSnapshot : (existingEntrySnap || null);
         const exitSnapshot = isExit ? liveSnapshot : (existingExitSnap || null);
 
+        const checkInIso = !isExit ? new Date().toISOString() : (existingCheckIn || null);
+        const checkOutIso = isExit ? new Date().toISOString() : (existingCheckOut || null);
+
         const structuredNotes = JSON.stringify({
           entry_snapshot: entrySnapshot,
           exit_snapshot: exitSnapshot,
@@ -793,29 +810,26 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
           staff_id: person.id,
           date: todayDate,
           status: attendanceStatus,
-          snapshot_url: entrySnapshot || liveSnapshot || undefined,
-          exit_snapshot_url: exitSnapshot || undefined,
+          snapshot_url: entrySnapshot || exitSnapshot || liveSnapshot || undefined,
+          check_in: !isExit ? timeStr : (existingCheckIn || undefined),
+          check_out: isExit ? timeStr : (existingCheckOut || undefined),
+          check_in_time: checkInIso || undefined,
+          check_out_time: checkOutIso || undefined,
           verification_method: method === "face_recognition" ? "face_biometric" : "manual_kiosk",
           notes: structuredNotes,
         };
-        if (isExit) {
-          staffPayload.check_out = timeStr;
-          staffPayload.check_out_time = new Date().toISOString();
-        } else {
-          staffPayload.check_in = timeStr;
-          staffPayload.check_in_time = new Date().toISOString();
-        }
 
         let { error: staffErr } = await supabase
           .from("staff_attendance")
           .upsert(staffPayload, { onConflict: "staff_id,date" });
 
         // Fallback if custom schema columns don't exist yet
-        if (staffErr && (staffErr.message.includes("column") || staffErr.message.includes("schema"))) {
+        if (staffErr) {
           const fallbackPayload: any = {
             staff_id: person.id,
             date: todayDate,
             status: attendanceStatus,
+            snapshot_url: entrySnapshot || exitSnapshot || liveSnapshot || undefined,
             notes: structuredNotes,
           };
           if (isExit) fallbackPayload.check_out = timeStr;
@@ -883,11 +897,14 @@ _Office of the Principal & College Administration_`;
         const entrySnapshot = !isExit ? liveSnapshot : (existingEntrySnap || null);
         const exitSnapshot = isExit ? liveSnapshot : (existingExitSnap || null);
 
+        const checkInIso = !isExit ? new Date().toISOString() : (existingCheckInTime || null);
+        const checkOutIso = isExit ? new Date().toISOString() : (existingCheckOutTime || null);
+
         const structuredNotes = JSON.stringify({
           entry_snapshot: entrySnapshot,
           exit_snapshot: exitSnapshot,
-          check_in_time: !isExit ? new Date().toISOString() : (existingCheckInTime || null),
-          check_out_time: isExit ? new Date().toISOString() : (existingCheckOutTime || null),
+          check_in_time: checkInIso,
+          check_out_time: checkOutIso,
           verification_method: method === "face_recognition" ? "face_biometric" : "manual_kiosk",
           last_action: isExit ? "Exit" : "Entry",
         });
@@ -896,29 +913,28 @@ _Office of the Principal & College Administration_`;
           student_id: person.id,
           date: todayDate,
           status: attendanceStatus,
-          snapshot_url: entrySnapshot || liveSnapshot || undefined,
-          exit_snapshot_url: exitSnapshot || undefined,
+          snapshot_url: entrySnapshot || exitSnapshot || liveSnapshot || undefined,
           verification_method: method === "face_recognition" ? "face_biometric" : "manual_kiosk",
           notes: structuredNotes,
         };
-        if (isExit) {
-          studentPayload.check_out_time = new Date().toISOString();
-        } else {
-          studentPayload.check_in_time = new Date().toISOString();
-        }
+        if (checkInIso) studentPayload.check_in_time = checkInIso;
+        if (checkOutIso) studentPayload.check_out_time = checkOutIso;
 
         let { error: stuErr } = await supabase
           .from("student_attendance")
           .upsert(studentPayload, { onConflict: "student_id,date" });
 
         // Fallback if custom schema columns don't exist yet
-        if (stuErr && (stuErr.message.includes("column") || stuErr.message.includes("schema"))) {
-          const fallbackPayload = {
+        if (stuErr) {
+          const fallbackPayload: any = {
             student_id: person.id,
             date: todayDate,
             status: attendanceStatus,
+            snapshot_url: entrySnapshot || exitSnapshot || liveSnapshot || undefined,
             notes: structuredNotes,
           };
+          if (checkInIso) fallbackPayload.check_in_time = checkInIso;
+          if (checkOutIso) fallbackPayload.check_out_time = checkOutIso;
           await supabase.from("student_attendance").upsert(fallbackPayload, { onConflict: "student_id,date" });
         }
 
@@ -1155,10 +1171,11 @@ _Automated Realtime College Security & LMS_`;
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-sm sm:text-base font-bold text-white tracking-tight flex items-center gap-2">
-                SUPERIOR COLLEGE JAHANIAN
-                <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase tracking-widest font-mono">
-                  Smart Gate
+              <h1 className="text-sm sm:text-base font-black text-white tracking-tight flex items-center gap-2">
+                <span className="hidden sm:inline">SUPERIOR COLLEGE JAHANIAN</span>
+                <span className="sm:hidden text-amber-300 font-extrabold">SCJ SMART GATE</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono font-bold uppercase tracking-wider">
+                  Gate AI
                 </span>
               </h1>
               <p className="text-[11px] text-slate-400 hidden sm:block">

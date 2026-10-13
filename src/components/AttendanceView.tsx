@@ -370,6 +370,93 @@ export default function AttendanceView({ data }: { data: any }) {
     toast.success(`Photo requests dispatched: ${res.sent} sent, ${res.failed} failed!`);
   };
 
+  // Live Direct Supabase Polling & Realtime Synchronization for Gate Attendance
+  useEffect(() => {
+    let isMounted = true;
+
+    async function syncLiveGateAttendance() {
+      try {
+        const { data: liveAtt } = await supabase
+          .from('student_attendance')
+          .select('*')
+          .eq('date', selectedDate);
+
+        if (liveAtt && isMounted) {
+          setDailyEntries(prev => {
+            const next = { ...prev };
+            let changed = false;
+
+            liveAtt.forEach((rec: any) => {
+              const sid = rec.student_id;
+              let parsedNotes: any = null;
+              if (rec.notes && typeof rec.notes === 'string' && rec.notes.startsWith('{')) {
+                try { parsedNotes = JSON.parse(rec.notes); } catch {}
+              }
+              const checkIn = rec.check_in_time || parsedNotes?.check_in_time || null;
+              const checkOut = rec.check_out_time || parsedNotes?.check_out_time || null;
+              const entrySnap = rec.snapshot_url || parsedNotes?.entry_snapshot || parsedNotes?.snapshot || null;
+              const exitSnap = parsedNotes?.exit_snapshot || null;
+              const isBio = rec.verification_method === 'face_biometric' || parsedNotes?.verification_method === 'face_biometric' || Boolean(entrySnap || exitSnap);
+
+              // Match across all potential student identifiers
+              const targetStudent = students.find((s: any) =>
+                s.id === sid ||
+                s.studentId === sid ||
+                s.collegeNo === sid ||
+                (s.admissionId && s.admissionId === sid)
+              );
+              const key = targetStudent ? targetStudent.id : sid;
+
+              const cur = next[key];
+              const curEntrySnap = cur?.entrySnapshotUrl || cur?.snapshotUrl;
+              const curExitSnap = cur?.exitSnapshotUrl;
+              const curIn = cur?.checkInTime;
+              const curOut = cur?.checkOutTime;
+
+              if (!cur || curIn !== checkIn || curOut !== checkOut || curEntrySnap !== entrySnap || curExitSnap !== exitSnap) {
+                next[key] = {
+                  ...(cur || {}),
+                  ...rec,
+                  studentId: key,
+                  status: rec.status || cur?.status || 'Present',
+                  checkInTime: checkIn,
+                  checkOutTime: checkOut,
+                  snapshotUrl: entrySnap || exitSnap,
+                  entrySnapshotUrl: entrySnap,
+                  exitSnapshotUrl: exitSnap,
+                  verificationMethod: isBio ? 'face_biometric' : (rec.verification_method || 'manual'),
+                  notes: rec.notes || cur?.notes || ''
+                };
+                changed = true;
+              }
+            });
+
+            return changed ? next : prev;
+          });
+        }
+      } catch (err) {
+        console.warn('[AttendanceView] Live sync error:', err);
+      }
+    }
+
+    syncLiveGateAttendance();
+
+    // Poll every 5 seconds so mobile gate scans reflect instantly without page reload
+    const pollTimer = setInterval(syncLiveGateAttendance, 5000);
+
+    const sub = supabase.channel(`student-att-view-${selectedDate}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_attendance', filter: `date=eq.${selectedDate}` }, () => {
+        syncLiveGateAttendance();
+      })
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      clearInterval(pollTimer);
+      supabase.removeChannel(sub);
+    };
+  }, [selectedDate, students]);
+
   useEffect(() => {
     // Only re-initialize dailyEntries if selectedDate changes, not when filters change.
     // We use all students to persist data even when filtered out.
@@ -1156,7 +1243,15 @@ export default function AttendanceView({ data }: { data: any }) {
                    ) : (
                      filteredStudents.map((student: any) => {
                       const entry = dailyEntries[student.id];
-                      const existing = records.find((r: any) => r.studentId === student.id && r.date === selectedDate);
+                      const existing = records.find((r: any) => 
+                        r.date === selectedDate && (
+                          r.studentId === student.id || 
+                          r.student_id === student.id ||
+                          (student.studentId && (r.studentId === student.studentId || r.student_id === student.studentId)) ||
+                          (student.collegeNo && (r.studentId === student.collegeNo || r.student_id === student.collegeNo)) ||
+                          (student.admissionId && (r.admissionId === student.admissionId || r.studentId === student.admissionId || r.student_id === student.admissionId))
+                        )
+                      );
                       const bio = getStudentBiometrics(entry, existing);
                       const entrySnapshot = bio.entrySnapshot;
                       const exitSnapshot = bio.exitSnapshot;
@@ -1276,38 +1371,55 @@ export default function AttendanceView({ data }: { data: any }) {
                           )}
                         </TableCell>
                          <TableCell>
-                           <div className="flex flex-col gap-1 text-[11px]">
-                             {checkInTime ? (
-                               <div className="flex items-center gap-1.5">
-                                 <span className={cn(
-                                   "inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-md border text-[10px]",
-                                   isLate 
-                                     ? "bg-amber-50 text-amber-800 border-amber-300"
-                                     : "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                 )}>
-                                   <Clock size={11} className={isLate ? "text-amber-600" : "text-emerald-600"} />
-                                   In: {formatPunchTime(checkInTime)}
-                                   {isLate && <span className="bg-amber-200 text-amber-900 font-black px-1 rounded text-[8px] uppercase">Late</span>}
-                                 </span>
-                               </div>
-                             ) : (
-                               <span className="text-[10px] text-slate-400 font-medium">In: —</span>
-                             )}
-
-                             {checkOutTime ? (
-                               <div className="flex items-center gap-1.5">
-                                 <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-md border border-blue-200 bg-blue-50 text-blue-800 text-[10px]">
-                                   <LogOut size={11} className="text-blue-600" />
-                                   Out: {formatPunchTime(checkOutTime)}
-                                 </span>
-                               </div>
-                             ) : checkInTime ? (
-                               <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 w-fit">
-                                 <Building2 size={10} className="text-slate-400" /> On Campus
+                          <div className="flex flex-col gap-1.5 py-0.5">
+                            {/* In (Arrival) Timing Badge */}
+                            {checkInTime ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className={cn(
+                                  "inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-lg border text-[10px] shadow-2xs",
+                                  isLate 
+                                    ? "bg-amber-50 text-amber-800 border-amber-300"
+                                    : "bg-emerald-50 text-emerald-800 border-emerald-300"
+                                )}>
+                                  <Clock size={11} className={isLate ? "text-amber-600" : "text-emerald-600"} />
+                                  <span>In: {formatPunchTime(checkInTime)}</span>
+                                  {isLate && <span className="bg-amber-200 text-amber-900 font-black px-1 rounded text-[8px] uppercase">Late</span>}
                                 </span>
-                             ) : null}
-                           </div>
-                         </TableCell>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <span className="inline-flex items-center gap-1 font-mono text-[10px] text-slate-400 bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200">
+                                  <Clock size={11} className="text-slate-300" />
+                                  <span>In: —</span>
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Out (Departure) Timing Badge */}
+                            {checkOutTime ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-lg border border-blue-300 bg-blue-50 text-blue-800 text-[10px] shadow-2xs">
+                                  <LogOut size={11} className="text-blue-600" />
+                                  <span>Out: {formatPunchTime(checkOutTime)}</span>
+                                </span>
+                              </div>
+                            ) : checkInTime ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="inline-flex items-center gap-1 font-sans text-[9px] font-bold text-indigo-700 bg-indigo-50/80 px-2 py-0.5 rounded-lg border border-indigo-200/80">
+                                  <Building2 size={10} className="text-indigo-500" />
+                                  <span>🏢 On Campus</span>
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <span className="inline-flex items-center gap-1 font-mono text-[10px] text-slate-400 bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200">
+                                  <LogOut size={11} className="text-slate-300" />
+                                  <span>Out: —</span>
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
                          <TableCell>
                            <div className="flex items-center bg-slate-50 inline-flex p-1 rounded-xl border border-slate-100">
                              {['Present', 'Absent', 'Late', 'Leave'].map(status => {
@@ -1334,7 +1446,7 @@ export default function AttendanceView({ data }: { data: any }) {
                          </TableCell>
                          <TableCell>
                            <Input 
-                             placeholder="Reason / note..." 
+                             placeholder="Note..." 
                              className="h-9 rounded-xl text-xs border-slate-200 bg-slate-50 focus:bg-white w-full max-w-[150px]"
                              value={dailyEntries[student.id]?.notes || ''}
                              onChange={(e) => handleEntryChange(student.id, 'notes', e.target.value)}
@@ -1846,10 +1958,20 @@ export default function AttendanceView({ data }: { data: any }) {
                       const dayDate = new Date(year, month - 1, d);
                       const dayName = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
                       const isSun = dayDate.getDay() === 0;
-                      const rec = records.find((r: any) => r.studentId === selectedDossierStudent.id && r.date === dateStr);
-                      const snapUrl = getStudentSnapshotUrl(rec);
-                      const cin = rec?.checkInTime || rec?.check_in_time;
-                      const cout = rec?.checkOutTime || rec?.check_out_time;
+                      const rec = records.find((r: any) => 
+                        r.date === dateStr && (
+                          r.studentId === selectedDossierStudent.id ||
+                          r.student_id === selectedDossierStudent.id ||
+                          (selectedDossierStudent.studentId && (r.studentId === selectedDossierStudent.studentId || r.student_id === selectedDossierStudent.studentId)) ||
+                          (selectedDossierStudent.collegeNo && (r.studentId === selectedDossierStudent.collegeNo || r.student_id === selectedDossierStudent.collegeNo)) ||
+                          (selectedDossierStudent.admissionId && (r.admissionId === selectedDossierStudent.admissionId || r.studentId === selectedDossierStudent.admissionId || r.student_id === selectedDossierStudent.admissionId))
+                        )
+                      );
+                      const bio = getStudentBiometrics(rec);
+                      const entrySnap = bio.entrySnapshot;
+                      const exitSnap = bio.exitSnapshot;
+                      const cin = bio.checkInTime || rec?.checkInTime || rec?.check_in_time;
+                      const cout = bio.checkOutTime || rec?.checkOutTime || rec?.check_out_time;
                       const isLate = isPunchLate(cin, data?.settings?.collegeStartTime || '07:54');
                       const status = rec?.status || (isSun ? 'Holiday' : '');
 
@@ -1894,29 +2016,56 @@ export default function AttendanceView({ data }: { data: any }) {
                             )}
                           </TableCell>
                           <TableCell>
-                            {snapUrl ? (
-                              <button
-                                type="button"
-                                onClick={() => setStudentAuditSnapshot({
-                                  studentName: selectedDossierStudent.fullName,
-                                  rollNo: selectedDossierStudent.studentId || selectedDossierStudent.collegeNo || 'N/A',
-                                  classInfo: selectedDossierStudent.section || '',
-                                  registeredPhoto: selectedDossierStudent.photo,
-                                  snapshotUrl: snapUrl,
-                                  checkInTime: cin,
-                                  checkOutTime: cout,
-                                  status: status,
-                                  date: dateStr
-                                })}
-                                className="group relative w-10 h-10 rounded-xl overflow-hidden border-2 border-emerald-500 shadow-2xs hover:scale-105 transition-all cursor-pointer ring-2 ring-emerald-500/20"
-                                title="Click to view full photo comparison"
-                              >
-                                <img src={snapUrl} alt="Gate Snapshot" className="w-full h-full object-cover" />
-                                <div className="absolute inset-0 bg-black/25 group-hover:bg-transparent flex items-center justify-center transition-all">
-                                  <Camera size={12} className="text-white drop-shadow" />
-                                </div>
-                              </button>
-                            ) : rec?.verificationMethod === 'face_biometric' ? (
+                            {entrySnap || exitSnap ? (
+                              <div className="flex items-center gap-1.5">
+                                {entrySnap && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setStudentAuditSnapshot({
+                                      studentName: selectedDossierStudent.fullName,
+                                      rollNo: selectedDossierStudent.studentId || selectedDossierStudent.collegeNo || 'N/A',
+                                      classInfo: selectedDossierStudent.section || '',
+                                      registeredPhoto: selectedDossierStudent.photo,
+                                      entrySnapshotUrl: entrySnap,
+                                      exitSnapshotUrl: exitSnap,
+                                      snapshotUrl: entrySnap,
+                                      checkInTime: cin,
+                                      checkOutTime: cout,
+                                      status: status,
+                                      date: dateStr
+                                    })}
+                                    className="group relative w-8 h-8 rounded-lg overflow-hidden border-2 border-emerald-500 shadow-2xs hover:scale-105 transition-all cursor-pointer ring-1 ring-emerald-500/20"
+                                    title="Click to view Arrival snapshot"
+                                  >
+                                    <img src={entrySnap} alt="Entry Snapshot" className="w-full h-full object-cover" />
+                                    <span className="absolute bottom-0 inset-x-0 bg-emerald-700/90 text-[6px] font-black text-white text-center leading-tight">IN</span>
+                                  </button>
+                                )}
+                                {exitSnap && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setStudentAuditSnapshot({
+                                      studentName: selectedDossierStudent.fullName,
+                                      rollNo: selectedDossierStudent.studentId || selectedDossierStudent.collegeNo || 'N/A',
+                                      classInfo: selectedDossierStudent.section || '',
+                                      registeredPhoto: selectedDossierStudent.photo,
+                                      entrySnapshotUrl: entrySnap,
+                                      exitSnapshotUrl: exitSnap,
+                                      snapshotUrl: exitSnap,
+                                      checkInTime: cin,
+                                      checkOutTime: cout,
+                                      status: status,
+                                      date: dateStr
+                                    })}
+                                    className="group relative w-8 h-8 rounded-lg overflow-hidden border-2 border-blue-500 shadow-2xs hover:scale-105 transition-all cursor-pointer ring-1 ring-blue-500/20"
+                                    title="Click to view Departure snapshot"
+                                  >
+                                    <img src={exitSnap} alt="Exit Snapshot" className="w-full h-full object-cover" />
+                                    <span className="absolute bottom-0 inset-x-0 bg-blue-700/90 text-[6px] font-black text-white text-center leading-tight">OUT</span>
+                                  </button>
+                                )}
+                              </div>
+                            ) : bio.isBiometric || rec?.verificationMethod === 'face_biometric' ? (
                               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                                 Face Verified
                               </span>
