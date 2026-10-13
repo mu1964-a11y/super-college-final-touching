@@ -18,8 +18,9 @@
     "preview": "vite preview",
     "clean": "rm -rf dist release",
     "lint": "tsc --noEmit && eslint .",
-    "android:sync": "npm run build && npx cap sync android",
-    "android:open": "npx cap open android"
+    "android:sync": "npm run build && npx cap sync android && node -e \"const fs=require('fs'); if(fs.existsSync('android/app/src/main/assets/public/downloads')) fs.rmSync('android/app/src/main/assets/public/downloads', {recursive:true, force:true});\"",
+    "android:open": "npx cap open android",
+    "android:build": "npm run android:sync && cd android && gradlew.bat assembleDebug && cd .."
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",

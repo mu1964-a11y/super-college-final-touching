@@ -10,5 +10,7 @@ coverage/
 .whatsapp_chat_logs.json
 .whatsapp_verified_users.json
 *.zip
+*.apk
+android/local.properties
 release/
 public/downloads/*.exe

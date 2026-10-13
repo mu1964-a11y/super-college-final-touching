@@ -1177,7 +1177,8 @@ export default function App() {
     new URLSearchParams(window.location.search).has('gate') ||
     new URLSearchParams(window.location.search).has('face-attendance') ||
     window.location.pathname.startsWith('/gate') ||
-    window.location.pathname.startsWith('/face-attendance')
+    window.location.pathname.startsWith('/face-attendance') ||
+    Boolean((window as any).Capacitor?.isNativePlatform?.() || (window as any).Capacitor)
   );
 
   if (isGateKioskMode) {
