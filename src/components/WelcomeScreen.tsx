@@ -340,6 +340,15 @@ export default function WelcomeScreen({
                   <span>Download Desktop App (.exe)</span>
                 </a>
               )}
+              <a
+                href="/downloads/SCJ_ERP_LMS_Complete_Master_User_Manual.pdf"
+                download="SCJ_ERP_LMS_Complete_Master_User_Manual.pdf"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold text-[11px] transition-all border border-teal-200/90 shadow-xs hover:shadow-sm hover:scale-[1.02] cursor-pointer"
+                title="Download Official Step-by-Step ERP Master Training Manual & Operations Guide (PDF)"
+              >
+                <FileText size={12} className="text-teal-700 stroke-[2.5]" />
+                <span>User Manual (PDF)</span>
+              </a>
               <span className="font-medium text-slate-500">Session 2026-28</span>
             </div>
           </div>
