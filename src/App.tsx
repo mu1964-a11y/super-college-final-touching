@@ -1185,6 +1185,8 @@ export default function App() {
     return (
       <FaceAttendanceKiosk 
         standalone={true}
+        collegeLogo={brandingSettings.logo || "/superior-logo.png"}
+        collegeName={brandingSettings.name || "Superior College Jahanian"}
         onBackToApp={() => {
           window.location.href = window.location.origin + window.location.pathname;
         }} 

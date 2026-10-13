@@ -233,7 +233,7 @@ async function startServer() {
           .select("id, student_id, full_name, father_name, college_no, group, section, photo_url, contact_number, father_contact"),
         supabase
           .from("students")
-          .select("id, student_id, admission_id, full_name, father_name, college_no, group, section, photo_url, photo, contact, father_contact"),
+          .select("id, admission_id, full_name, father_name, college_no, group, section, photo_url, photo, contact, father_contact"),
         supabase
           .from("staff")
           .select("id, full_name, father_name, role, contact, photo, photo_url, status")

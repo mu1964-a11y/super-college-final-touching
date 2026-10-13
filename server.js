@@ -187,7 +187,7 @@ _Superior Group of Colleges \u2014 Jahanian Campus_`;
       const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
       const [admissionsRes, studentsRes, staffRes, settingsRes] = await Promise.all([
         supabase.from("admissions").select("id, student_id, full_name, father_name, college_no, group, section, photo_url, contact_number, father_contact"),
-        supabase.from("students").select("id, student_id, admission_id, full_name, father_name, college_no, group, section, photo_url, photo, contact, father_contact"),
+        supabase.from("students").select("id, admission_id, full_name, father_name, college_no, group, section, photo_url, photo, contact, father_contact"),
         supabase.from("staff").select("id, full_name, father_name, role, contact, photo, photo_url, status").eq("status", "Active"),
         supabase.from("settings").select("*").order("updated_at", { ascending: false }).limit(1).maybeSingle()
       ]);

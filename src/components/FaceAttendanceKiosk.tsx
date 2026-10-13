@@ -34,7 +34,8 @@ import {
   Sliders,
   Play,
   Mic,
-  Bell
+  Bell,
+  BarChart3
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
@@ -93,9 +94,16 @@ export interface ScanRecord {
 interface FaceAttendanceKioskProps {
   onBackToApp?: () => void;
   standalone?: boolean;
+  collegeLogo?: string;
+  collegeName?: string;
 }
 
-export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }: FaceAttendanceKioskProps) {
+export default function FaceAttendanceKiosk({ 
+  onBackToApp, 
+  standalone = false,
+  collegeLogo = "/superior-logo.png",
+  collegeName = "Superior College Jahanian"
+}: FaceAttendanceKioskProps) {
   // State
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [modelLoadingText, setModelLoadingText] = useState("Loading Biometric Face Models...");
@@ -175,6 +183,7 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
   const enrolledDescriptorsRef = useRef<Map<string, { person: PersonProfile; descriptor: Float32Array }>>(new Map());
   // Anti-Passback / Daily Scan Memory (key: personId-direction-date)
   const dailyScansMapRef = useRef<Map<string, { time: string; status: "Present" | "Late"; date: string }>>(new Map());
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // PWA Tablet / Mobile Standalone App Installation State
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
@@ -481,18 +490,18 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
         console.warn("[Face Kiosk] Server API fetch failed, falling back to direct Supabase:", apiErr);
       }
 
-      // Method B: Client-side Supabase fallback if API returned no data
+      // Method B: Direct Supabase fetch if API returned no data
       if (withPhotos.length === 0) {
         const [admissionsRes, studentsRes, staffRes, settingsRes] = await Promise.all([
           supabase
             .from("admissions")
-            .select("id, student_id, full_name, father_name, college_no, group, section, photo_url, photo, contact_number, father_contact"),
+            .select("id, student_id, full_name, father_name, college_no, group, section, photo_url, contact_number, father_contact"),
           supabase
             .from("students")
-            .select("id, student_id, admission_id, full_name, father_name, college_no, group, section, photo_url, photo, contact, father_contact"),
+            .select("id, admission_id, full_name, father_name, college_no, group, section, photo_url, photo, contact, father_contact"),
           supabase
             .from("staff")
-            .select("id, full_name, father_name, role, contact, photo, status"),
+            .select("id, full_name, father_name, role, contact, photo, photo_url, status"),
           supabase
             .from("settings")
             .select("*")
@@ -518,9 +527,9 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
         // 1. Process Admissions
         if (admissionsRes.data) {
           for (const a of admissionsRes.data) {
-            const photo = a.photo_url || a.photo || "";
+            const photo = a.photo_url || "";
             if (photo && photo.trim().length > 10) {
-              const sid = a.student_id || a.college_no || a.id;
+              const sid = a.college_no || a.student_id || String(a.id);
               mergedMap.set(String(sid), {
                 id: String(sid),
                 fullName: a.full_name || "Student",
@@ -536,19 +545,19 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
           }
         }
 
-        // 2. Process Students
+        // 2. Process Students (with photo_url or photo)
         if (studentsRes.data) {
           for (const s of studentsRes.data) {
-            const sid = s.student_id || s.college_no || s.id;
+            const sid = s.college_no || String(s.id);
             const photo = s.photo_url || s.photo || "";
-            const existing = mergedMap.get(String(sid)) || mergedMap.get(String(s.id));
+            const existing = mergedMap.get(String(sid)) || mergedMap.get(String(s.id)) || (s.admission_id ? mergedMap.get(String(s.admission_id)) : null);
 
             if (photo && photo.trim().length > 10) {
               mergedMap.set(String(sid), {
                 id: String(sid),
                 fullName: s.full_name || existing?.fullName || "Student",
                 fatherName: s.father_name || existing?.fatherName || "",
-                collegeNo: s.college_no || s.student_id || existing?.collegeNo || String(s.id).slice(-6),
+                collegeNo: s.college_no || existing?.collegeNo || String(s.id).slice(-6),
                 group: s.group || existing?.group || "Intermediate",
                 section: s.section || existing?.section || "A",
                 personType: "student",
@@ -569,7 +578,7 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
         if (staffRes.data) {
           for (const st of staffRes.data) {
             if (st.status === "Inactive") continue;
-            const photo = st.photo || "";
+            const photo = st.photo_url || st.photo || "";
             if (photo && photo.trim().length > 10) {
               mergedMap.set(String(st.id), {
                 id: String(st.id),
@@ -598,13 +607,31 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
         return;
       }
 
-      // Enroll descriptors in background
+      // Fast Descriptor Caching: Load precomputed descriptors from localStorage for 0ms startup!
+      let descriptorCache: Record<string, { descriptor: number[]; photoSample: string }> = {};
+      try {
+        const raw = localStorage.getItem("scj_kiosk_face_descriptors_v2");
+        if (raw) descriptorCache = JSON.parse(raw);
+      } catch {}
+
       const newMap = new Map<string, { person: PersonProfile; descriptor: Float32Array }>();
+      let needsCacheSave = false;
       let processed = 0;
 
       for (const p of withPhotos) {
+        const photoSample = (p.photo || "").slice(0, 80);
+        const cached = descriptorCache[p.id];
+
+        // If descriptor already cached and photo hasn't changed, load immediately in 0ms!
+        if (cached && cached.photoSample === photoSample && Array.isArray(cached.descriptor)) {
+          newMap.set(p.id, { person: p, descriptor: new Float32Array(cached.descriptor) });
+          processed++;
+          setEnrollingProgress({ current: processed, total: withPhotos.length });
+          continue;
+        }
+
+        // For new / changed profiles: compute descriptor with fast offscreen downscaling
         try {
-          // Create an offscreen HTML image element
           const img = new Image();
           img.crossOrigin = "anonymous";
           img.src = p.photo!;
@@ -612,17 +639,30 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
           await new Promise((resolve, reject) => {
             img.onload = resolve;
             img.onerror = reject;
-            setTimeout(() => reject(new Error("Timeout")), 4000);
+            setTimeout(() => reject(new Error("Timeout")), 3500);
           });
 
-          // Detect face on enrolled photo
+          // Downscale to 240x240 for ultra-fast facial landmark extraction
+          const cvs = document.createElement("canvas");
+          cvs.width = 240;
+          cvs.height = 240;
+          const ctx = cvs.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, 240, 240);
+          }
+
           const detection = await faceapi
-            .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 224 }))
+            .detectSingleFace(cvs, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.38 }))
             .withFaceLandmarks()
             .withFaceDescriptor();
 
           if (detection && detection.descriptor) {
             newMap.set(p.id, { person: p, descriptor: detection.descriptor });
+            descriptorCache[p.id] = {
+              descriptor: Array.from(detection.descriptor),
+              photoSample,
+            };
+            needsCacheSave = true;
           }
         } catch (enrollErr) {
           console.warn(`[Face Kiosk] Could not enroll face for ${p.fullName}:`, enrollErr);
@@ -632,9 +672,15 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
         setEnrollingProgress({ current: processed, total: withPhotos.length });
       }
 
+      if (needsCacheSave) {
+        try {
+          localStorage.setItem("scj_kiosk_face_descriptors_v2", JSON.stringify(descriptorCache));
+        } catch {}
+      }
+
       enrolledDescriptorsRef.current = newMap;
       if (newMap.size > 0) {
-        toast.success(`Successfully enrolled ${newMap.size} of ${withPhotos.length} biometric face profiles!`, { id: "enrolled-toast" });
+        toast.success(`Biometric profiles loaded: ${newMap.size} active face descriptors!`, { id: "enrolled-toast" });
       }
     } catch (err: any) {
       console.error("Enrollment error:", err);
@@ -728,18 +774,21 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
           audio: false,
         });
       } catch (constraintErr) {
-        // Fallback to plain video constraint
+        console.warn("FacingMode constraint failed, trying basic video:", constraintErr);
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
 
       streamRef.current = stream;
+      setIsCameraActive(true);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current?.play();
-          setIsCameraActive(true);
-        };
+        try {
+          await videoRef.current.play();
+        } catch (e) {
+          console.warn("Direct play error:", e);
+        }
       }
+      toast.success("Gate Camera Active - scanning face...", { duration: 2500 });
     } catch (err: any) {
       console.error("Camera access error:", err);
       toast.info("Live camera stream permission blocked. Switching to mobile snapshot camera...", { duration: 4500 });
@@ -771,6 +820,25 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
       startCamera(next);
     }
   };
+
+  // Toggle Camera On/Off
+  const toggleCamera = () => {
+    if (isCameraActive) {
+      stopCamera();
+    } else {
+      startCamera();
+    }
+  };
+
+  // Ensure video element receives stream whenever camera becomes active
+  useEffect(() => {
+    if (isCameraActive && videoRef.current && streamRef.current) {
+      if (videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.play().catch((err) => console.warn("Video play error:", err));
+      }
+    }
+  }, [isCameraActive]);
 
   // Capture Live Camera Frame Snapshot (for Attendance Record Audit)
   const captureLiveSnapshot = (sourceImg?: HTMLImageElement): string => {
@@ -1156,8 +1224,8 @@ _Automated Realtime College Security & LMS_`;
             }
           });
 
-          // Match threshold: distance < 0.52 indicates genuine positive match
-          if (bestMatch && bestDistance < 0.52) {
+          // Match threshold: distance < 0.56 indicates genuine positive biometric match
+          if (bestMatch && bestDistance < 0.56) {
             await processAttendanceForPerson(bestMatch, "face_recognition");
           }
         } else {
@@ -1166,10 +1234,10 @@ _Automated Realtime College Security & LMS_`;
       }
     } catch {}
 
-    // Throttle next scan by ~350ms to keep mobile CPU cool
+    // Rapid scan loop (250ms) for snappy response during gate rush
     setTimeout(() => {
       scanLoopRef.current = requestAnimationFrame(runDetectionFrame);
-    }, 350);
+    }, 250);
   };
 
   useEffect(() => {
@@ -1286,625 +1354,517 @@ _Automated Realtime College Security & LMS_`;
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
-      {/* Top Header Bar */}
-      <header className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
-        <div className="flex items-center gap-3">
-          {(!standalone || onBackToApp) && (
-            <button
-              onClick={onBackToApp}
-              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">Back to LMS</span>
-            </button>
-          )}
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-sm sm:text-base font-black text-white tracking-tight flex items-center gap-2">
-                <span className="hidden sm:inline">SUPERIOR COLLEGE JAHANIAN</span>
-                <span className="sm:hidden text-amber-300 font-extrabold">SCJ SMART GATE</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono font-bold uppercase tracking-wider">
-                  Gate AI
+    <div className="min-h-screen bg-[#f4f7f6] text-slate-800 flex flex-col font-sans select-none pb-12">
+      {/* Hidden File Input for Snapshot Camera Fallback */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="user"
+        className="hidden"
+        onChange={handleMobilePhotoCapture}
+      />
+
+      {/* TOP CURVED HEADER (Matching Screenshot 1 exactly) */}
+      <header className="bg-gradient-to-b from-[#003d37] to-[#004e45] text-white px-4 pt-3.5 pb-6 rounded-b-[2rem] shadow-md border-b-2 border-amber-400/30 sticky top-0 z-40">
+        <div className="max-w-md sm:max-w-xl md:max-w-2xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            {/* Back Button */}
+            {(!standalone || onBackToApp) && (
+              <button
+                onClick={onBackToApp}
+                className="w-10 h-10 rounded-xl bg-[#003832]/80 border border-teal-600/40 hover:bg-[#003832] flex items-center justify-center text-teal-100 transition-colors cursor-pointer shadow-xs active:scale-95"
+                title="Back to LMS"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            )}
+
+            {/* Official Superior College Gold Crest Logo */}
+            <img
+              src={collegeLogo || "/superior-logo.png"}
+              alt="Superior College Crest"
+              className="w-11 h-11 object-contain rounded-full border border-amber-400/50 p-0.5 bg-[#00332d] shadow-sm shrink-0"
+            />
+
+            {/* Title & Badge */}
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <span className="text-white font-extrabold text-base tracking-tight">SCJ</span>
+                <span className="text-amber-400 font-extrabold text-base tracking-tight">SMART GATE</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold tracking-wider text-teal-300 border border-teal-500/50 bg-[#003832]/90 uppercase">
+                  GATE AI
                 </span>
-              </h1>
-              <p className="text-[11px] text-slate-400 hidden sm:block">
-                Unified Biometric Face Attendance • Students & Faculty Realtime Security
-              </p>
+              </div>
+              <span className="text-teal-100/70 text-xs font-medium tracking-wide">
+                Biometric Attendance
+              </span>
             </div>
           </div>
-        </div>
 
-        {/* Action Controls & Direction Selector */}
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          {/* Timing Window & Live Clock Pill */}
-          <div className="hidden sm:flex items-center gap-2 bg-slate-950/80 px-2.5 py-1 rounded-xl border border-slate-800 text-xs">
-            <span className="font-mono text-emerald-400 font-bold text-xs flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5 text-slate-400" />
-              {currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true })}
-            </span>
-            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${gateStatus.badgeColor}`}>
-              {gateStatus.label}
-            </span>
-          </div>
-
-          {/* Admin Emergency Override Button (When off-hours or override active) */}
-          {gateStatus.isOffHours && (
-            <button
-              onClick={() => {
-                const nextState = !adminOverrideUnlocked;
-                setAdminOverrideUnlocked(nextState);
-                if (nextState) toast.success("Admin Override Activated: Scanner unlocked for off-hours check-ins.");
-                else toast.info("Admin Override Disabled: Off-hours scanner locked.");
-              }}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all cursor-pointer border ${
-                adminOverrideUnlocked
-                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-xs"
-                  : "bg-red-500/20 text-red-300 border-red-500/40"
-              }`}
-              title="Toggle Admin Off-Hours Override"
-            >
-              {adminOverrideUnlocked ? <Unlock className="w-3.5 h-3.5 text-amber-400" /> : <Lock className="w-3.5 h-3.5 text-red-400" />}
-              <span className="hidden md:inline">{adminOverrideUnlocked ? "Override ON" : "Unlock Gate"}</span>
-            </button>
-          )}
-
-          {/* Gate Direction Switcher */}
-          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 shadow-inner">
-            <button
-              onClick={() => {
-                userManuallySetDirectionRef.current = true;
-                setGateDirection("entry");
-              }}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg flex items-center gap-1 transition-all cursor-pointer ${
-                gateDirection === "entry"
-                  ? "bg-emerald-600 text-white shadow-xs"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <LogIn className="w-3.5 h-3.5 text-emerald-300" />
-              <span>Entry</span>
-            </button>
-            <button
-              onClick={() => {
-                userManuallySetDirectionRef.current = true;
-                setGateDirection("exit");
-              }}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg flex items-center gap-1 transition-all cursor-pointer ${
-                gateDirection === "exit"
-                  ? "bg-amber-600 text-white shadow-xs"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <LogOut className="w-3.5 h-3.5 text-amber-300" />
-              <span>Exit</span>
-            </button>
-          </div>
-
-          {/* 1-Tap Install App on Tablet (Visible if not running as installed standalone app) */}
-          {!isStandaloneApp && (
-            <button
-              onClick={handleInstallKioskApp}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-extrabold shadow-md shadow-emerald-600/30 transition-all active:scale-95 cursor-pointer"
-              title="Install dedicated SCJ Smart Gate Kiosk App on this tablet"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Install on Tablet</span>
-            </button>
-          )}
-
-          {/* Mobile Link Sharing */}
+          {/* Right Action: Admin Emergency Lock / Unlock Override */}
           <button
-            onClick={copyMobileLink}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 rounded-lg text-xs font-medium text-indigo-300 transition-colors cursor-pointer"
-            title="Copy Mobile Browser Link"
+            onClick={() => {
+              const nextState = !adminOverrideUnlocked;
+              setAdminOverrideUnlocked(nextState);
+              if (nextState) toast.success("Admin Override Activated: Scanner unlocked for off-hours check-ins.");
+              else toast.info("Admin Override Disabled: Off-hours scanner locked.");
+            }}
+            className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95 ${
+              adminOverrideUnlocked
+                ? "bg-amber-500/20 text-amber-300 border-amber-400/50 shadow-amber-500/10"
+                : "bg-[#003832]/80 text-amber-400 border-amber-400/40 hover:bg-[#003832]"
+            }`}
+            title="Admin Off-Hours Scanner Override"
           >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Open on Mobile</span>
-            {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-          </button>
-
-          {/* Sound & Voice Settings */}
-          <div className="flex items-center gap-1 bg-slate-800/90 p-0.5 rounded-lg border border-slate-700/60 shadow-inner">
-            <button
-              onClick={() => updateVoiceSettings({ masterSound: !voiceSettings.masterSound })}
-              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
-                voiceSettings.masterSound 
-                  ? "text-emerald-400 hover:bg-slate-700/80" 
-                  : "text-slate-500 hover:bg-slate-700/80"
-              }`}
-              title={voiceSettings.masterSound ? "Mute audio & voice greetings" : "Unmute audio & voice greetings"}
-            >
-              {voiceSettings.masterSound ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-            </button>
-            <button
-              onClick={() => setShowVoiceSettingsModal(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 hover:border-indigo-500/50 rounded-md text-xs font-semibold text-indigo-300 transition-all cursor-pointer shadow-sm active:scale-95"
-              title="Configure AI Voice Greetings & Audio Chimes"
-            >
-              <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="hidden sm:inline">Voice AI</span>
-              {voiceSettings.masterSound && (voiceSettings.speakArrival || voiceSettings.speakDeparture) && (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              )}
-            </button>
-          </div>
-
-          {/* Fullscreen */}
-          <button
-            onClick={toggleFullscreen}
-            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors cursor-pointer"
-            title="Toggle Fullscreen"
-          >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            {adminOverrideUnlocked ? <Unlock className="w-5 h-5 text-amber-400" /> : <Lock className="w-5 h-5 text-amber-400" />}
           </button>
         </div>
       </header>
 
-      {/* Main Body */}
-      <main className="flex-1 p-3 sm:p-5 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Left Column: Camera Scanner Stage (8 cols on desktop) */}
-        <div className="lg:col-span-8 flex flex-col gap-4">
-          <div className="relative bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col min-h-[380px] sm:min-h-[460px] justify-between">
-            {/* Top Camera Controls Overlay */}
-            <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between gap-2 flex-wrap">
-              <div className="flex items-center gap-2">
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold backdrop-blur-md ${
-                  isCameraActive 
-                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" 
-                    : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                }`}>
-                  <span className={`w-2 h-2 rounded-full ${isCameraActive ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
-                  {isCameraActive ? (isDetecting ? "Face Scanning..." : "Live Gate Camera") : "Camera Standby"}
-                </span>
+      {/* MAIN CONTAINER (SS1 Design) */}
+      <main className="max-w-md sm:max-w-xl md:max-w-2xl mx-auto w-full px-4 pt-3.5 space-y-3 flex-1">
+        {/* DIRECTION SWITCHER: ENTRY / EXIT */}
+        <div className="bg-white rounded-2xl shadow-xs border border-slate-200/90 p-1 flex items-center gap-1">
+          <button
+            onClick={() => {
+              userManuallySetDirectionRef.current = true;
+              setGateDirection("entry");
+            }}
+            className={`flex-1 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              gateDirection === "entry"
+                ? "bg-[#004e45] text-white shadow-xs"
+                : "bg-transparent text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            <LogIn className="w-4 h-4 text-emerald-400" />
+            <span>Entry</span>
+          </button>
+          <button
+            onClick={() => {
+              userManuallySetDirectionRef.current = true;
+              setGateDirection("exit");
+            }}
+            className={`flex-1 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              gateDirection === "exit"
+                ? "bg-[#004e45] text-white shadow-xs"
+                : "bg-transparent text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            <LogOut className="w-4 h-4 text-amber-400" />
+            <span>Exit</span>
+          </button>
+        </div>
 
-                <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border backdrop-blur-md flex items-center gap-1 ${
-                  gateDirection === "entry" 
-                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" 
-                    : "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                }`}>
-                  {gateDirection === "entry" ? <LogIn className="w-3 h-3" /> : <LogOut className="w-3 h-3" />}
-                  <span>{gateDirection === "entry" ? "Entry (Dakhla)" : "Exit (Chhutti)"}</span>
-                </span>
-              </div>
+        {/* ROLE FILTER PILLS: All / Students / Staff */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setTargetRoleFilter("all")}
+            className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all border cursor-pointer ${
+              targetRoleFilter === "all"
+                ? "bg-[#004e45] text-white border-[#004e45] shadow-xs"
+                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+            }`}
+          >
+            All ({enrolledProfiles.length})
+          </button>
+          <button
+            onClick={() => setTargetRoleFilter("students")}
+            className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all border cursor-pointer ${
+              targetRoleFilter === "students"
+                ? "bg-[#004e45] text-white border-[#004e45] shadow-xs"
+                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+            }`}
+          >
+            Students ({stats.studentCount})
+          </button>
+          <button
+            onClick={() => setTargetRoleFilter("staff")}
+            className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all border cursor-pointer ${
+              targetRoleFilter === "staff"
+                ? "bg-[#004e45] text-white border-[#004e45] shadow-xs"
+                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+            }`}
+          >
+            Staff ({stats.staffCount})
+          </button>
+        </div>
 
-              {/* Target Persona Switcher */}
-              <div className="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-xl border border-slate-800 backdrop-blur-md">
-                <button
-                  onClick={() => setTargetRoleFilter("all")}
-                  className={`px-2 py-0.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
-                    targetRoleFilter === "all" ? "bg-teal-600 text-white" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  All ({enrolledProfiles.length})
-                </button>
-                <button
-                  onClick={() => setTargetRoleFilter("students")}
-                  className={`px-2 py-0.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
-                    targetRoleFilter === "students" ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  Students ({stats.studentCount})
-                </button>
-                <button
-                  onClick={() => setTargetRoleFilter("staff")}
-                  className={`px-2 py-0.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
-                    targetRoleFilter === "staff" ? "bg-amber-600 text-white" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  Staff ({stats.staffCount})
-                </button>
-              </div>
-
-              {isCameraActive && (
-                <button
-                  onClick={toggleCameraFacing}
-                  className="px-2.5 py-1 bg-slate-800/80 hover:bg-slate-700/80 backdrop-blur-md border border-slate-700 text-slate-200 rounded-lg text-xs flex items-center gap-1 cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Flip</span>
-                </button>
-              )}
-            </div>
-
-            {/* Video Feed & Scanner Overlay */}
-            <div className="relative flex-1 flex items-center justify-center bg-black overflow-hidden min-h-[320px]">
-              {/* Off-Hours Gate Locked Overlay */}
-              {!gateStatus.isOpen && (
-                <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 z-25 text-center animate-in fade-in">
-                  <div className="w-16 h-16 rounded-2xl bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-400 mb-3 shadow-lg">
-                    <Lock className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-base sm:text-lg font-bold text-white mb-1">
-                    Gate Attendance Scanner Closed
-                  </h3>
-                  <p className="text-xs text-slate-400 max-w-sm mb-4 leading-relaxed">
-                    College timing schedule ke mutabiq gate attendance scanner locked hai.<br />
-                    <span className="text-slate-300 font-semibold">Morning Arrival:</span> {kioskSettings.gateEntryStartTime} - {kioskSettings.gateEntryCutoffTime} (Bell: {kioskSettings.collegeStartTime})<br />
-                    <span className="text-slate-300 font-semibold">Departure:</span> {kioskSettings.gateExitStartTime} - {kioskSettings.gateExitCutoffTime}
-                  </p>
-                  <button
-                    onClick={() => {
-                      setAdminOverrideUnlocked(true);
-                      toast.success("Admin Emergency Override active! Off-hours scanning unlocked.");
-                    }}
-                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-amber-600/30 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
-                  >
-                    <Unlock className="w-4 h-4" />
-                    <span>Admin Emergency Override (Scan Any Time)</span>
-                  </button>
-                </div>
-              )}
-
-              {isCameraActive ? (
-                <>
-                  <video
-                    ref={videoRef}
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover transform scale-x-[-1]"
-                  />
-                  <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
-
-                  {/* High-Tech Biometric Targeting Frame */}
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="relative w-64 h-72 sm:w-72 sm:h-80 border-2 border-emerald-500/60 rounded-3xl overflow-hidden shadow-[0_0_30px_rgba(16,185,129,0.2)]">
-                      {/* Corner Accents */}
-                      <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-emerald-400" />
-                      <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-emerald-400" />
-                      <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-emerald-400" />
-                      <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-emerald-400" />
-
-                      {/* Moving Laser Scan Line */}
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_#34d399] animate-bounce" />
-
-                      <div className="absolute bottom-3 left-0 right-0 text-center">
-                        <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-300 bg-black/60 px-2.5 py-0.5 rounded backdrop-blur-sm">
-                          Align Face Inside Frame
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="text-center p-6 flex flex-col items-center">
-                  <div className="w-16 h-16 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 mb-3 shadow-inner">
-                    <Camera className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-base font-semibold text-white mb-1">Gate Camera is Standby</h3>
-                  <p className="text-xs text-slate-400 max-w-xs mb-4">
-                    Biometric attendance shuru karne ke liye live camera start karein ya mobile se snapshot lein.
-                  </p>
-                  <div className="flex flex-wrap items-center justify-center gap-2">
-                    <button
-                      onClick={() => startCamera()}
-                      disabled={!modelsLoaded}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
-                    >
-                      <Camera className="w-4 h-4" />
-                      Start Gate Camera
-                    </button>
-
-                    {/* Mobile File Snapshot (Works 100% on any mobile HTTP browser) */}
-                    <label className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-2 cursor-pointer transition-all active:scale-95">
-                      <UploadCloud className="w-4 h-4 text-indigo-400" />
-                      <span>Take Selfie / Snap</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="user"
-                        className="hidden"
-                        onChange={handleMobilePhotoCapture}
-                      />
-                    </label>
-                  </div>
-                </div>
-              )}
-
-              {/* CELEBRATORY MATCH POPUP (When student or staff attendance is verified) */}
-              {matchedPerson && (
-                <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-30 animate-in fade-in zoom-in-95 duration-200">
-                  <div className="bg-slate-900 border-2 border-emerald-500 rounded-3xl p-6 max-w-sm w-full text-center shadow-[0_0_50px_rgba(16,185,129,0.4)] flex flex-col items-center">
-                    
-                    {/* Dual Face Comparison: Registered Profile Photo vs Live Gate Snapshot */}
-                    <div className="flex items-center justify-center gap-3 mb-3">
-                      <div className="flex flex-col items-center">
-                        <div className="relative">
-                          <img
-                            src={matchedPerson.photo || "/placeholder-avatar.png"}
-                            alt={matchedPerson.fullName}
-                            className="w-20 h-20 rounded-2xl object-cover border-2 border-emerald-400 shadow-xl"
-                          />
-                          <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 rounded-full p-1 shadow-md">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                          </div>
-                        </div>
-                        <span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Registered ID</span>
-                      </div>
-
-                      {matchedSnapshot && (
-                        <div className="flex flex-col items-center">
-                          <div className="relative">
-                            <img
-                              src={matchedSnapshot}
-                              alt="Gate Snapshot"
-                              className="w-20 h-20 rounded-2xl object-cover border-2 border-teal-400 shadow-xl"
-                            />
-                            <div className="absolute -bottom-1 -right-1 bg-teal-500 text-slate-950 rounded-full p-1 shadow-md">
-                              <Camera className="w-3.5 h-3.5" />
-                            </div>
-                          </div>
-                          <span className="text-[9px] text-teal-300 font-bold uppercase mt-1">Gate Scanned</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Role & Attendance Status Badges */}
-                    <div className="flex items-center gap-1.5 flex-wrap justify-center mb-1">
-                      <span className={`text-[10px] font-bold tracking-widest uppercase px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
-                        matchedPerson.personType === "staff"
-                          ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                          : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                      }`}>
-                        {matchedPerson.personType === "staff" ? <Briefcase size={11} /> : <GraduationCap size={11} />}
-                        <span>{matchedPerson.personType === "staff" ? "FACULTY / STAFF" : "STUDENT"}</span>
-                      </span>
-
-                      <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
-                        (gateDirection === "entry" && gateStatus.isLate)
-                          ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                          : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                      }`}>
-                        {(gateDirection === "entry" && gateStatus.isLate) ? (
-                          <>
-                            <Clock className="w-3 h-3 text-amber-400" />
-                            <span>Late Arrival</span>
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                            <span>Present (On Time)</span>
-                          </>
-                        )}
-                      </span>
-                    </div>
-
-                    <h2 className="text-xl font-bold text-white mb-0.5">{matchedPerson.fullName}</h2>
-                    <p className="text-xs text-slate-300 font-mono mb-2">
-                      {matchedPerson.personType === "staff" 
-                        ? `${matchedPerson.role || "Faculty"} • Staff ID: ${matchedPerson.id}`
-                        : `Roll: ${matchedPerson.collegeNo || matchedPerson.id} • ${matchedPerson.group || "Inter"}`}
-                    </p>
-
-                    <div className="w-full bg-slate-800/80 rounded-xl p-2.5 border border-slate-700/60 text-xs text-slate-300 flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-slate-400">
-                        <Clock className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>{gateDirection === "exit" ? "Gate Exit:" : "Gate Entry:"}</span>
-                      </span>
-                      <span className="font-semibold text-emerald-300 font-mono">
-                        {new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}
-                      </span>
-                    </div>
-
-                    <p className="text-[10px] text-slate-400 mt-2 flex items-center gap-1 justify-center">
-                      <Send className="w-3 h-3 text-emerald-400" />
-                      <span>{matchedPerson.personType === "staff" ? "Confirmation dispatched to staff WhatsApp." : "Instant WhatsApp notice sent to parents."}</span>
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Already marked toast overlay */}
-              {alreadyMarkedMessage && (
-                <div className="absolute top-14 left-1/2 -translate-x-1/2 bg-amber-500/90 text-slate-950 px-4 py-2 rounded-xl text-xs font-semibold shadow-lg backdrop-blur-md flex items-center gap-2 z-20 animate-in slide-in-from-top-2">
-                  <AlertCircle className="w-4 h-4" />
-                  {alreadyMarkedMessage}
-                </div>
-              )}
-            </div>
-
-            {/* Bottom Camera Toolbar */}
-            <div className="bg-slate-950/80 backdrop-blur-md border-t border-slate-800 px-4 py-2.5 flex items-center justify-between text-xs text-slate-400">
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-slate-300">Status:</span>
-                <span className="text-slate-400 font-mono">{modelLoadingText}</span>
-              </div>
-
-              {isCameraActive && (
-                <button
-                  onClick={stopCamera}
-                  className="px-3 py-1 bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-300 rounded-lg text-xs font-medium transition-colors cursor-pointer"
-                >
-                  Turn Off Camera
-                </button>
-              )}
+        {/* CARD 1: GATE SCANNER CARD */}
+        <div className="bg-white rounded-3xl p-4 shadow-xs border border-slate-200/90">
+          {/* Header Row */}
+          <div className="flex items-center justify-between mb-3 px-1">
+            <h2 className="text-lg font-black text-slate-900 tracking-tight">Gate Scanner</h2>
+            <div className="px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 bg-amber-50 text-amber-700 border border-amber-200/80">
+              <span className={`w-2 h-2 rounded-full ${isCameraActive ? "bg-emerald-500 animate-ping" : "bg-amber-500"}`} />
+              <span>{isCameraActive ? (isDetecting ? "Scanning..." : "Active") : "Standby"}</span>
             </div>
           </div>
 
-          {/* Quick Enrolling & Reload Card */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold">
-                <Sparkles className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="font-semibold text-slate-200">
-                  {enrolledProfiles.length} Biometric Profiles ({stats.studentCount} Students, {stats.staffCount} Staff)
+          {/* Biometric Viewport / Stage */}
+          <div className="relative rounded-2xl overflow-hidden bg-gradient-to-b from-[#eef8f6] via-[#f7fcfb] to-white border border-teal-100 min-h-[310px] flex flex-col items-center justify-center p-4">
+            {/* Off-Hours Gate Locked Overlay */}
+            {!gateStatus.isOpen && !adminOverrideUnlocked && (
+              <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm flex flex-col items-center justify-center p-5 z-25 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-400 mb-2.5 shadow-lg">
+                  <Lock className="w-7 h-7" />
+                </div>
+                <h3 className="text-base font-bold text-white mb-1">Gate Scanner Locked</h3>
+                <p className="text-xs text-slate-300 max-w-xs mb-3 leading-relaxed">
+                  Off-hours timing window active.<br />
+                  <span className="text-amber-300 font-semibold">Morning:</span> {kioskSettings.gateEntryStartTime} - {kioskSettings.gateEntryCutoffTime} | <span className="text-amber-300 font-semibold">Exit:</span> {kioskSettings.gateExitStartTime} - {kioskSettings.gateExitCutoffTime}
                 </p>
-                <p className="text-[11px] text-slate-400">
-                  {isEnrolling 
-                    ? `Processing facial descriptors: ${enrollingProgress.current} / ${enrollingProgress.total}...` 
-                    : `Active AI Descriptors Loaded: ${enrolledDescriptorsRef.current.size}`}
+                <button
+                  onClick={() => {
+                    setAdminOverrideUnlocked(true);
+                    toast.success("Admin Override: Off-hours scanning unlocked.");
+                  }}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95"
+                >
+                  <Unlock className="w-4 h-4" />
+                  <span>Admin Emergency Override</span>
+                </button>
+              </div>
+            )}
+
+            {/* Permanent Video & Canvas Elements (Never unmounted so refs stay intact!) */}
+            <video
+              ref={videoRef}
+              playsInline
+              autoPlay
+              muted
+              className={isCameraActive ? "w-full h-full object-cover rounded-xl transform scale-x-[-1]" : "hidden"}
+            />
+            <canvas
+              ref={canvasRef}
+              className={isCameraActive ? "absolute inset-0 w-full h-full pointer-events-none" : "hidden"}
+            />
+
+            {/* Active Camera HUD Overlay */}
+            {isCameraActive && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="relative w-56 h-64 border-2 border-emerald-500/70 rounded-3xl overflow-hidden shadow-[0_0_30px_rgba(16,185,129,0.25)]">
+                  <div className="absolute top-0 left-0 w-5 h-5 border-t-4 border-l-4 border-emerald-400" />
+                  <div className="absolute top-0 right-0 w-5 h-5 border-t-4 border-r-4 border-emerald-400" />
+                  <div className="absolute bottom-0 left-0 w-5 h-5 border-b-4 border-l-4 border-emerald-400" />
+                  <div className="absolute bottom-0 right-0 w-5 h-5 border-b-4 border-r-4 border-emerald-400" />
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_#34d399] animate-bounce" />
+                  <div className="absolute bottom-2 left-0 right-0 text-center">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-300 bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm font-bold">
+                      Align Face In Frame
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Standby State: Biometric Outline Graphic (Exact match from Screenshot 1) */}
+            {!isCameraActive && (
+              <div className="relative flex flex-col items-center justify-center w-full my-2">
+                {/* Outer Dashed Amber Radar Ring */}
+                <div className="w-52 h-52 rounded-full border border-dashed border-amber-300/60 absolute pointer-events-none" />
+                {/* Inner Solid Teal Radar Ring */}
+                <div className="w-40 h-40 rounded-full border border-teal-300/40 absolute pointer-events-none" />
+
+                {/* Cyan Corner Brackets */}
+                <div className="relative w-36 h-36 flex items-center justify-center">
+                  <span className="absolute top-0 left-0 w-4 h-4 border-t-[3.5px] border-l-[3.5px] border-teal-500 rounded-tl-sm pointer-events-none" />
+                  <span className="absolute top-0 right-0 w-4 h-4 border-t-[3.5px] border-r-[3.5px] border-teal-500 rounded-tr-sm pointer-events-none" />
+                  <span className="absolute bottom-0 left-0 w-4 h-4 border-b-[3.5px] border-l-[3.5px] border-teal-500 rounded-bl-sm pointer-events-none" />
+                  <span className="absolute bottom-0 right-0 w-4 h-4 border-b-[3.5px] border-r-[3.5px] border-teal-500 rounded-br-sm pointer-events-none" />
+
+                  {/* Face Vector Outline Silhouette in Deep Teal */}
+                  <svg
+                    viewBox="0 0 100 100"
+                    className="w-24 h-24 text-[#004e45] relative z-10"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    {/* Head / Jaw / Ears outline */}
+                    <path d="M50 16 C34 16 30 28 30 44 C27 44 25 46 25 49 C25 52 27 54 30 54 C31 64 38 72 50 72 C62 72 69 64 70 54 C73 54 75 52 75 49 C75 46 73 44 70 44 C70 28 66 16 50 16 Z" />
+                    {/* Neck left */}
+                    <path d="M37 70 C33 76 28 82 23 85" />
+                    {/* Neck right */}
+                    <path d="M63 70 C67 76 72 82 77 85" />
+                  </svg>
+                </div>
+
+                {/* Glowing Cyan Laser Scanline */}
+                <div className="w-48 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_10px_#22d3ee] rounded-full my-2 relative z-10" />
+
+                {/* Status Texts */}
+                <h3 className="text-slate-900 font-extrabold text-lg mt-1 relative z-10">
+                  Ready to scan
+                </h3>
+                <p className="text-xs text-slate-500 text-center mt-0.5 max-w-xs relative z-10">
+                  Camera start karein aur chehra frame mein rakhein.
                 </p>
               </div>
+            )}
+
+            {/* Celebratory Match Modal Overlay (When verified) */}
+            {matchedPerson && (
+              <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-30 animate-in fade-in zoom-in-95 duration-200">
+                <div className="bg-white border-2 border-emerald-500 rounded-3xl p-5 max-w-xs w-full text-center shadow-2xl flex flex-col items-center">
+                  <div className="flex items-center justify-center gap-3 mb-2.5">
+                    <div className="relative">
+                      <img
+                        src={matchedPerson.photo || "/placeholder-avatar.png"}
+                        alt={matchedPerson.fullName}
+                        className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-500 shadow-md"
+                      />
+                      <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-white rounded-full p-1 shadow">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      </div>
+                    </div>
+                    {matchedSnapshot && (
+                      <div className="relative">
+                        <img
+                          src={matchedSnapshot}
+                          alt="Live Gate Capture"
+                          className="w-16 h-16 rounded-2xl object-cover border-2 border-teal-500 shadow-md"
+                        />
+                        <div className="absolute -bottom-1 -right-1 bg-teal-500 text-white rounded-full p-1 shadow">
+                          <Camera className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border mb-1.5 ${
+                    matchedPerson.personType === "staff"
+                      ? "bg-amber-50 text-amber-800 border-amber-300"
+                      : "bg-emerald-50 text-emerald-800 border-emerald-300"
+                  }`}>
+                    {matchedPerson.personType === "staff" ? "Staff" : "Student"} • {(gateDirection === "entry" && gateStatus.isLate) ? "Late Arrival" : "Present"}
+                  </span>
+
+                  <h3 className="text-base font-extrabold text-slate-900 leading-tight">{matchedPerson.fullName}</h3>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5">
+                    {matchedPerson.personType === "staff" ? (matchedPerson.role || "Faculty") : `Roll: ${matchedPerson.collegeNo || matchedPerson.id}`}
+                  </p>
+
+                  <div className="w-full bg-slate-50 rounded-xl p-2 border border-slate-200 mt-2.5 text-xs text-slate-600 flex items-center justify-between font-mono font-bold">
+                    <span>{gateDirection === "exit" ? "Gate Exit:" : "Gate Entry:"}</span>
+                    <span className="text-[#004e45]">
+                      {new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                    </span>
+                  </div>
+
+                  <p className="text-[10px] text-slate-400 mt-2 flex items-center gap-1 justify-center">
+                    <Send className="w-3 h-3 text-emerald-600" />
+                    <span>Instant WhatsApp notice sent!</span>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Already marked toast overlay */}
+            {alreadyMarkedMessage && (
+              <div className="absolute top-3 left-3 right-3 bg-amber-500 text-slate-950 px-3.5 py-2 rounded-xl text-xs font-bold shadow-lg backdrop-blur-md flex items-center gap-2 z-20 animate-in slide-in-from-top-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span className="truncate">{alreadyMarkedMessage}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Action Buttons */}
+          <button
+            onClick={toggleCamera}
+            disabled={!modelsLoaded}
+            className="w-full mt-3.5 py-3 px-4 rounded-2xl font-bold text-sm text-white bg-[#00695c] hover:bg-[#005a4f] shadow-sm flex items-center justify-center gap-2.5 transition-all cursor-pointer active:scale-[0.98]"
+          >
+            <Camera className="w-5 h-5 text-teal-100" />
+            <span>{isCameraActive ? "Stop Camera" : "Start Gate Camera"}</span>
+          </button>
+
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full mt-2 py-3 px-4 rounded-2xl font-bold text-sm text-slate-800 bg-white hover:bg-amber-50/40 border border-amber-400/90 shadow-2xs flex items-center justify-center gap-2.5 transition-all cursor-pointer active:scale-[0.98]"
+          >
+            <UploadCloud className="w-5 h-5 text-slate-700" />
+            <span>Take Snapshot</span>
+          </button>
+
+          {/* Bottom Status & Quick Action Buttons inside Card 1 */}
+          <div className="mt-3.5 pt-3 border-t border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-medium text-slate-600">
+              <span className={`w-2.5 h-2.5 rounded-full ${modelsLoaded ? "bg-emerald-500" : "bg-amber-500 animate-pulse"}`} />
+              <span className="truncate max-w-[170px] sm:max-w-xs">{modelLoadingText || "Biometric models ready"}</span>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <div className="flex items-center gap-2">
+              {/* Voice Settings Button */}
               <button
-                onClick={loadEnrolledProfiles}
-                disabled={isEnrolling}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg flex items-center gap-1.5 transition-colors text-xs disabled:opacity-50 cursor-pointer"
+                onClick={() => setShowVoiceSettingsModal(true)}
+                className="w-9 h-9 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center text-slate-700 transition-colors shadow-2xs cursor-pointer"
+                title="AI Voice & Chime Settings"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isEnrolling ? "animate-spin" : ""}`} />
-                Sync Profiles
+                {voiceSettings.masterSound ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4 text-slate-400" />}
+              </button>
+
+              {/* Flip Camera Facing */}
+              <button
+                onClick={toggleCameraFacing}
+                className="w-9 h-9 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center text-slate-700 transition-colors shadow-2xs cursor-pointer"
+                title="Flip Camera Facing"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+
+              {/* Fullscreen */}
+              <button
+                onClick={toggleFullscreen}
+                className="w-9 h-9 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center text-slate-700 transition-colors shadow-2xs cursor-pointer"
+                title="Toggle Fullscreen"
+              >
+                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Live Feed & Manual Search (4 cols on desktop) */}
-        <div className="lg:col-span-4 flex flex-col gap-4">
-          {/* Today Gate Entries Stats */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-lg">
+        {/* CARD 2: BIOMETRIC PROFILES CARD */}
+        <div className="bg-white rounded-3xl p-3.5 shadow-xs border border-slate-200/90 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200/60 flex items-center justify-center text-[#004e45] shadow-2xs shrink-0">
+              <GraduationCap className="w-6 h-6 text-[#004e45]" />
+            </div>
             <div>
-              <p className="text-xs text-slate-400 font-medium">Today's Total Gate Punches</p>
-              <h3 className="text-2xl font-bold text-emerald-400 mt-0.5">
-                {recentScans.length}
-                <span className="text-xs font-normal text-slate-400 ml-2 font-mono">
-                  ({stats.todayStudentScans} Students, {stats.todayStaffScans} Staff)
-                </span>
-              </h3>
-            </div>
-            <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-              <Users className="w-6 h-6" />
+              <h3 className="font-extrabold text-slate-900 text-sm">Biometric Profiles</h3>
+              <p className="text-xs text-slate-500 font-medium">{enrolledProfiles.length} profiles ready</p>
+              <p className="text-[11px] text-slate-400 font-semibold">{stats.studentCount} Students • {stats.staffCount} Staff</p>
             </div>
           </div>
 
-          {/* Manual Roll / ID Fallback */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col">
-            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <Search className="w-3.5 h-3.5 text-indigo-400" />
-              Manual Roll / Staff ID Fallback
-            </h3>
-            <p className="text-[11px] text-slate-400 mb-2.5">
-              Agar camera mein masla ho to roll number ya Staff ID likh kar 1-tap hazri lagayein:
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-px bg-slate-200"></div>
+            <button
+              onClick={() => loadEnrolledProfiles()}
+              disabled={isEnrolling}
+              className="bg-[#e8f5f3] hover:bg-[#d8eee9] text-[#004e45] font-extrabold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 border border-teal-200/60 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isEnrolling ? "animate-spin" : ""}`} />
+              <span>Sync</span>
+            </button>
+          </div>
+        </div>
 
-            <div className="relative mb-2">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-              <input
-                type="text"
-                placeholder="Search Roll No, Staff ID, or Name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-medium"
-              />
+        {/* CARD 3: TODAY'S PUNCHES CARD */}
+        <div className="bg-[#004e45] text-white rounded-3xl p-4 shadow-md flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-[#003832] border border-teal-600/30 flex items-center justify-center text-teal-300 shrink-0">
+            <BarChart3 className="w-6 h-6" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-teal-200/90 font-semibold">Today's Punches</p>
+            <div className="flex items-center gap-3 mt-0.5">
+              <span className="text-3xl font-black text-amber-400 font-mono tracking-tight leading-none">
+                {String(recentScans.length).padStart(2, "0")}
+              </span>
+              <span className="text-teal-400/50 text-sm">|</span>
+              <span className="text-xs text-teal-100/90 font-medium truncate">
+                {recentScans.length === 0 ? "No attendance recorded yet" : `Last: ${recentScans[0]?.fullName} (${recentScans[0]?.timestamp})`}
+              </span>
             </div>
+          </div>
+        </div>
 
-            {filteredSearch.length > 0 && (
-              <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-800/60">
-                {filteredSearch.slice(0, 8).map((p) => (
-                  <div key={p.id} className="pt-1.5 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 truncate">
-                      {p.photo ? (
-                        <img src={p.photo} alt={p.fullName} className="w-8 h-8 rounded-lg object-cover" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-lg bg-slate-800 text-[10px] font-bold flex items-center justify-center text-slate-400">
-                          {p.fullName.charAt(0)}
-                        </div>
-                      )}
-                      <div className="truncate">
-                        <p className="text-xs font-semibold text-slate-200 truncate flex items-center gap-1">
-                          <span>{p.fullName}</span>
-                          <span className={`text-[9px] px-1 py-0.2 rounded font-black ${
-                            p.personType === "staff" ? "bg-amber-900/60 text-amber-300" : "bg-emerald-900/60 text-emerald-300"
-                          }`}>
-                            {p.personType === "staff" ? "Staff" : "Student"}
-                          </span>
-                        </p>
-                        <p className="text-[10px] text-slate-400 font-mono">
-                          {p.personType === "staff" ? `ID: ${p.id} • ${p.role}` : `Roll: ${p.collegeNo || p.id}`}
-                        </p>
+        {/* EXTRA: COLLAPSIBLE MANUAL SEARCH & AUDIT RECENT SCANS */}
+        <div className="bg-white rounded-3xl p-4 shadow-xs border border-slate-200/90">
+          <div className="flex items-center justify-between mb-2.5">
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <Search className="w-3.5 h-3.5 text-teal-700" />
+              <span>Manual Roll / Staff Search</span>
+            </h3>
+            <span className="text-[10px] text-slate-400">1-Tap Hazri</span>
+          </div>
+
+          <div className="relative mb-2">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Search Roll No, Staff ID, or Name..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-600 font-medium"
+            />
+          </div>
+
+          {filteredSearch.length > 0 && (
+            <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-100">
+              {filteredSearch.slice(0, 6).map((p) => (
+                <div key={p.id} className="pt-1.5 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 truncate">
+                    {p.photo ? (
+                      <img src={p.photo} alt={p.fullName} className="w-8 h-8 rounded-lg object-cover" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-800 text-[10px] font-bold flex items-center justify-center">
+                        {p.fullName.charAt(0)}
                       </div>
-                    </div>
-                    <button
-                      onClick={() => processAttendanceForPerson(p, "manual")}
-                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-semibold whitespace-nowrap active:scale-95 transition-all cursor-pointer"
-                    >
-                      {gateDirection === "exit" ? "Mark Exit" : "Mark Entry"}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Recent Scans Feed with Captured Faces */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg flex-1 flex flex-col min-h-[220px]">
-            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5 flex items-center justify-between">
-              <span>Live Gate Check-ins</span>
-              <span className="text-[10px] text-slate-500 font-mono">Click to Audit Snapshot</span>
-            </h3>
-
-            {recentScans.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-4 text-slate-500">
-                <Clock className="w-8 h-8 stroke-1 mb-1.5 text-slate-600" />
-                <p className="text-xs">No gate entries recorded yet today.</p>
-                <p className="text-[10px] text-slate-600">Scans with captured face snapshots appear live here.</p>
-              </div>
-            ) : (
-              <div className="space-y-2 overflow-y-auto max-h-[340px] pr-1">
-                {recentScans.map((sc) => (
-                  <div
-                    key={sc.id}
-                    onClick={() => setSelectedScanForAudit(sc)}
-                    className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5 flex items-center justify-between gap-2 text-xs hover:border-emerald-500/40 hover:bg-slate-900 cursor-pointer transition-all"
-                  >
-                    <div className="flex items-center gap-2.5 truncate">
-                      {/* Live Captured Snapshot Thumbnail */}
-                      <div className="relative shrink-0">
-                        {sc.capturedSnapshot || sc.registeredPhoto ? (
-                          <img 
-                            src={sc.capturedSnapshot || sc.registeredPhoto} 
-                            alt={sc.fullName} 
-                            className="w-10 h-10 rounded-xl object-cover border border-slate-700" 
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center font-bold text-xs">
-                            {sc.fullName.charAt(0)}
-                          </div>
-                        )}
-                        <span className="absolute -bottom-1 -right-1 bg-slate-900 p-0.5 rounded-full">
-                          <Camera size={10} className="text-teal-400" />
+                    )}
+                    <div className="truncate">
+                      <p className="text-xs font-bold text-slate-800 truncate flex items-center gap-1">
+                        <span>{p.fullName}</span>
+                        <span className={`text-[9px] px-1 py-0.2 rounded font-black ${
+                          p.personType === "staff" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
+                        }`}>
+                          {p.personType === "staff" ? "Staff" : "Student"}
                         </span>
-                      </div>
-
-                      <div className="truncate">
-                        <p className="font-semibold text-slate-200 truncate flex items-center gap-1.5">
-                          <span>{sc.fullName}</span>
-                          <span className={`text-[8px] font-black uppercase px-1 py-0.2 rounded ${
-                            sc.personType === "staff" ? "bg-amber-950 text-amber-300 border border-amber-800" : "bg-emerald-950 text-emerald-300 border border-emerald-800"
-                          }`}>
-                            {sc.personType === "staff" ? "Staff" : "Student"}
-                          </span>
-                        </p>
-                        <p className="text-[10px] text-slate-400 font-mono">
-                          {sc.collegeNoOrRole}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="text-right whitespace-nowrap">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
-                        sc.direction === "exit"
-                          ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                          : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                      }`}>
-                        {sc.direction === "exit" ? "Exit" : "Entry"} • {sc.timestamp}
-                      </span>
-                      <p className="text-[9px] text-slate-500 mt-0.5 flex items-center gap-1 justify-end">
-                        <Eye size={10} />
-                        <span>Audit</span>
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-mono">
+                        {p.personType === "staff" ? `ID: ${p.id} • ${p.role}` : `Roll: ${p.collegeNo || p.id}`}
                       </p>
                     </div>
                   </div>
+                  <button
+                    onClick={() => processAttendanceForPerson(p, "manual")}
+                    className="px-2.5 py-1 bg-[#00695c] hover:bg-[#005a4f] text-white rounded-lg text-[11px] font-bold whitespace-nowrap active:scale-95 transition-all cursor-pointer"
+                  >
+                    {gateDirection === "exit" ? "Mark Exit" : "Mark Entry"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Recent Scans List */}
+          {recentScans.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>Recent Check-Ins ({recentScans.length})</span>
+                <span className="text-[10px] text-teal-700">Audit Snapshot</span>
+              </h4>
+              <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                {recentScans.slice(0, 5).map((sc) => (
+                  <div
+                    key={sc.id}
+                    onClick={() => setSelectedScanForAudit(sc)}
+                    className="bg-slate-50 border border-slate-100 rounded-xl p-2 flex items-center justify-between gap-2 hover:bg-slate-100/80 cursor-pointer transition-all"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <img
+                        src={sc.capturedSnapshot || sc.registeredPhoto || "/placeholder-avatar.png"}
+                        alt={sc.fullName}
+                        className="w-8 h-8 rounded-lg object-cover border border-slate-200"
+                      />
+                      <div className="truncate">
+                        <p className="text-xs font-bold text-slate-800 truncate">{sc.fullName}</p>
+                        <p className="text-[10px] text-slate-400 font-mono">{sc.collegeNoOrRole}</p>
+                      </div>
+                    </div>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                      sc.direction === "exit" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    }`}>
+                      {sc.direction === "exit" ? "Exit" : "Entry"} • {sc.timestamp}
+                    </span>
+                  </div>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </main>
 
