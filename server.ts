@@ -273,7 +273,7 @@ async function startServer() {
 
       // 2. Merge Students (override or add)
       if (studentsRes.data) {
-        for (const s of studentsRes.data) {
+        for (const s of (studentsRes.data as any[])) {
           const sid = s.student_id || s.college_no || s.id;
           const photo = s.photo_url || s.photo || "";
           const existing = map.get(String(sid)) || map.get(String(s.id)) || (s.admission_id ? map.get(String(s.admission_id)) : null);
