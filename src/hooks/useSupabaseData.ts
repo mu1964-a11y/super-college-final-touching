@@ -393,8 +393,19 @@ export function useSupabaseData(user: any) {
         }
         const checkIn = a.check_in || a.check_in_time || parsedNotes?.check_in_time || null;
         const checkOut = a.check_out || a.check_out_time || parsedNotes?.check_out_time || null;
-        const entrySnap = a.snapshot_url || parsedNotes?.entry_snapshot || parsedNotes?.snapshot || null;
-        const exitSnap = parsedNotes?.exit_snapshot || null;
+        let entrySnap: string | null = null;
+        let exitSnap: string | null = null;
+        if (parsedNotes) {
+          entrySnap = parsedNotes.entry_snapshot || null;
+          exitSnap = parsedNotes.exit_snapshot || null;
+        }
+        if (!entrySnap && !exitSnap && a.snapshot_url) {
+          if (checkOut && !checkIn) {
+            exitSnap = a.snapshot_url;
+          } else {
+            entrySnap = a.snapshot_url;
+          }
+        }
         const isBio = a.verification_method === 'face_biometric' || parsedNotes?.verification_method === 'face_biometric' || Boolean(entrySnap || exitSnap);
 
         return {
@@ -404,7 +415,7 @@ export function useSupabaseData(user: any) {
           checkOut,
           checkInTime: checkIn,
           checkOutTime: checkOut,
-          snapshotUrl: entrySnap,
+          snapshotUrl: entrySnap || exitSnap || null,
           entrySnapshotUrl: entrySnap,
           exitSnapshotUrl: exitSnap,
           verificationMethod: isBio ? 'face_biometric' : (a.verification_method || 'manual'),
@@ -426,8 +437,19 @@ export function useSupabaseData(user: any) {
         }
         const checkIn = a.check_in_time || parsedNotes?.check_in_time || null;
         const checkOut = a.check_out_time || parsedNotes?.check_out_time || null;
-        const entrySnap = a.snapshot_url || parsedNotes?.entry_snapshot || parsedNotes?.snapshot || null;
-        const exitSnap = parsedNotes?.exit_snapshot || null;
+        let entrySnap: string | null = null;
+        let exitSnap: string | null = null;
+        if (parsedNotes) {
+          entrySnap = parsedNotes.entry_snapshot || null;
+          exitSnap = parsedNotes.exit_snapshot || null;
+        }
+        if (!entrySnap && !exitSnap && a.snapshot_url) {
+          if (checkOut && !checkIn) {
+            exitSnap = a.snapshot_url;
+          } else {
+            entrySnap = a.snapshot_url;
+          }
+        }
         const isBio = a.verification_method === 'face_biometric' || parsedNotes?.verification_method === 'face_biometric' || Boolean(entrySnap || exitSnap);
 
         return {
@@ -435,7 +457,7 @@ export function useSupabaseData(user: any) {
           studentId: a.student_id,
           checkInTime: checkIn,
           checkOutTime: checkOut,
-          snapshotUrl: entrySnap,
+          snapshotUrl: entrySnap || exitSnap || null,
           entrySnapshotUrl: entrySnap,
           exitSnapshotUrl: exitSnap,
           verificationMethod: isBio ? 'face_biometric' : (a.verification_method || 'manual'),

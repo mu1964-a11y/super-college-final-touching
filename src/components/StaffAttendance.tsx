@@ -62,7 +62,7 @@ function getStaffBiometrics(entry?: Partial<AttendanceRecord>): {
   isBiometric: boolean;
 } {
   if (!entry) return { entrySnapshot: null, exitSnapshot: null, checkInTime: null, checkOutTime: null, isBiometric: false };
-  let entrySnap: string | null = (entry as any).entrySnapshotUrl || (entry as any).entry_snapshot_url || (entry as any).snapshotUrl || (entry as any).snapshot_url || null;
+  let entrySnap: string | null = (entry as any).entrySnapshotUrl || (entry as any).entry_snapshot_url || null;
   let exitSnap: string | null = (entry as any).exitSnapshotUrl || (entry as any).exit_snapshot_url || null;
   let checkIn = entry.checkInTime || (entry as any).check_in_time || null;
   let checkOut = entry.checkOutTime || (entry as any).check_out_time || null;
@@ -71,15 +71,26 @@ function getStaffBiometrics(entry?: Partial<AttendanceRecord>): {
   if (entry.notes && typeof entry.notes === 'string' && entry.notes.startsWith('{')) {
     try {
       const p = JSON.parse(entry.notes);
-      if (p.entry_snapshot) entrySnap = p.entry_snapshot;
-      if (p.exit_snapshot) exitSnap = p.exit_snapshot;
-      if (p.snapshot && !entrySnap) entrySnap = p.snapshot;
+      if ('entry_snapshot' in p) entrySnap = p.entry_snapshot;
+      if ('exit_snapshot' in p) exitSnap = p.exit_snapshot;
+      if (p.snapshot && !entrySnap && !exitSnap) entrySnap = p.snapshot;
       if (p.check_in_time && !checkIn) checkIn = p.check_in_time;
       if (p.check_out_time && !checkOut) checkOut = p.check_out_time;
       if (p.verification_method === 'face_biometric' || p.method === 'face_biometric') isBio = true;
     } catch {}
   }
-  return { entrySnapshot: entrySnap, exitSnapshot: exitSnap, checkInTime: checkIn, checkOutTime: checkOut, isBiometric: isBio };
+
+  // Only if notes didn't specify and we have legacy snapshot_url
+  if (!entrySnap && !exitSnap && ((entry as any).snapshotUrl || (entry as any).snapshot_url)) {
+    const snap = (entry as any).snapshotUrl || (entry as any).snapshot_url;
+    if (checkOut && !checkIn) {
+      exitSnap = snap;
+    } else {
+      entrySnap = snap;
+    }
+  }
+
+  return { entrySnapshot: entrySnap, exitSnapshot: exitSnap, checkInTime: checkIn, checkOutTime: checkOut, isBiometric: isBio || Boolean(entrySnap || exitSnap) };
 }
 
 function getSnapshotUrl(entry?: Partial<AttendanceRecord>): string | null {

@@ -130,7 +130,7 @@ export default function AttendanceView({ data }: { data: any }) {
     const raw = existing || entry;
     if (!raw) return { entrySnapshot: null, exitSnapshot: null, checkInTime: null, checkOutTime: null, isBiometric: false };
 
-    let entrySnap: string | null = raw.entrySnapshotUrl || raw.entry_snapshot_url || raw.snapshotUrl || raw.snapshot_url || null;
+    let entrySnap: string | null = raw.entrySnapshotUrl || raw.entry_snapshot_url || null;
     let exitSnap: string | null = raw.exitSnapshotUrl || raw.exit_snapshot_url || null;
     let checkIn = raw.checkInTime || raw.check_in_time || null;
     let checkOut = raw.checkOutTime || raw.check_out_time || null;
@@ -140,13 +140,23 @@ export default function AttendanceView({ data }: { data: any }) {
     if (notesStr && typeof notesStr === 'string' && notesStr.startsWith('{')) {
       try {
         const parsed = JSON.parse(notesStr);
-        if (parsed.entry_snapshot) entrySnap = parsed.entry_snapshot;
-        if (parsed.exit_snapshot) exitSnap = parsed.exit_snapshot;
-        if (parsed.snapshot && !entrySnap) entrySnap = parsed.snapshot;
+        if ('entry_snapshot' in parsed) entrySnap = parsed.entry_snapshot;
+        if ('exit_snapshot' in parsed) exitSnap = parsed.exit_snapshot;
+        if (parsed.snapshot && !entrySnap && !exitSnap) entrySnap = parsed.snapshot;
         if (parsed.check_in_time && !checkIn) checkIn = parsed.check_in_time;
         if (parsed.check_out_time && !checkOut) checkOut = parsed.check_out_time;
         if (parsed.method === 'face_biometric' || parsed.verification_method === 'face_biometric') isBio = true;
       } catch {}
+    }
+
+    // Only if notes didn't specify and we have legacy snapshot_url
+    if (!entrySnap && !exitSnap && (raw.snapshotUrl || raw.snapshot_url)) {
+      const snap = raw.snapshotUrl || raw.snapshot_url;
+      if (checkOut && !checkIn) {
+        exitSnap = snap;
+      } else {
+        entrySnap = snap;
+      }
     }
 
     return {
@@ -154,7 +164,7 @@ export default function AttendanceView({ data }: { data: any }) {
       exitSnapshot: exitSnap,
       checkInTime: checkIn,
       checkOutTime: checkOut,
-      isBiometric: isBio
+      isBiometric: isBio || Boolean(entrySnap || exitSnap)
     };
   }
 
@@ -409,8 +419,25 @@ export default function AttendanceView({ data }: { data: any }) {
               }
               const checkIn = rec.check_in_time || parsedNotes?.check_in_time || null;
               const checkOut = rec.check_out_time || parsedNotes?.check_out_time || null;
-              const entrySnap = rec.snapshot_url || parsedNotes?.entry_snapshot || parsedNotes?.snapshot || null;
-              const exitSnap = parsedNotes?.exit_snapshot || null;
+
+              // Strictly decouple Arrival and Departure snapshots
+              let entrySnap: string | null = null;
+              let exitSnap: string | null = null;
+
+              if (parsedNotes) {
+                entrySnap = parsedNotes.entry_snapshot || null;
+                exitSnap = parsedNotes.exit_snapshot || null;
+              }
+
+              // Fallback for legacy single-snapshot rows
+              if (!entrySnap && !exitSnap && rec.snapshot_url) {
+                if (parsedNotes?.last_action === 'Exit') {
+                  exitSnap = rec.snapshot_url;
+                } else {
+                  entrySnap = rec.snapshot_url;
+                }
+              }
+
               const isBio = rec.verification_method === 'face_biometric' || parsedNotes?.verification_method === 'face_biometric' || Boolean(entrySnap || exitSnap);
 
               // Match across all potential student identifiers
@@ -423,7 +450,7 @@ export default function AttendanceView({ data }: { data: any }) {
               const key = targetStudent ? targetStudent.id : sid;
 
               const cur = next[key];
-              const curEntrySnap = cur?.entrySnapshotUrl || cur?.snapshotUrl;
+              const curEntrySnap = cur?.entrySnapshotUrl;
               const curExitSnap = cur?.exitSnapshotUrl;
               const curIn = cur?.checkInTime;
               const curOut = cur?.checkOutTime;
@@ -436,7 +463,7 @@ export default function AttendanceView({ data }: { data: any }) {
                   status: rec.status || cur?.status || 'Present',
                   checkInTime: checkIn,
                   checkOutTime: checkOut,
-                  snapshotUrl: entrySnap || exitSnap,
+                  snapshotUrl: entrySnap || exitSnap || null,
                   entrySnapshotUrl: entrySnap,
                   exitSnapshotUrl: exitSnap,
                   verificationMethod: isBio ? 'face_biometric' : (rec.verification_method || 'manual'),
@@ -1801,15 +1828,17 @@ export default function AttendanceView({ data }: { data: any }) {
                     <Camera size={11} /> 2. Arrival Scan (IN)
                   </p>
                   <div className="aspect-square rounded-2xl overflow-hidden border-2 border-emerald-500 bg-slate-900 shadow-md ring-2 ring-emerald-500/20">
-                    {studentAuditSnapshot.entrySnapshotUrl || studentAuditSnapshot.snapshotUrl ? (
-                      <img src={studentAuditSnapshot.entrySnapshotUrl || studentAuditSnapshot.snapshotUrl} alt="Arrival Scan" className="w-full h-full object-cover" />
+                    {studentAuditSnapshot.entrySnapshotUrl ? (
+                      <img src={studentAuditSnapshot.entrySnapshotUrl} alt="Arrival Scan" className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs font-bold">
-                        No Entry Scan
+                      <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-2 text-center bg-slate-800/80">
+                        <span className="text-xl mb-1">🚪</span>
+                        <span className="text-[9px] font-bold text-slate-300">No Entry Scan</span>
+                        <span className="text-[8px] text-slate-400">Arrival Skipped / Direct Exit</span>
                       </div>
                     )}
                   </div>
-                  <span className="text-[9px] text-emerald-600 font-bold">Morning Entry</span>
+                  <span className="text-[9px] text-emerald-600 font-bold">{studentAuditSnapshot.entrySnapshotUrl ? 'Morning Entry' : 'No Arrival Scan'}</span>
                 </div>
 
                 <div className="text-center space-y-1.5">

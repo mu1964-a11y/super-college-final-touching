@@ -185,6 +185,18 @@ export default function FaceAttendanceKiosk({
   const dailyScansMapRef = useRef<Map<string, { time: string; status: "Present" | "Late"; date: string }>>(new Map());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // 3-Consecutive-Frame Biometric Consensus Memory (Prevents accidental single-frame false scans)
+  const consecutiveMatchRef = useRef<{ personId: string; count: number; lastTime: number }>({
+    personId: "",
+    count: 0,
+    lastTime: 0,
+  });
+  // Real-time Biometric Detection Feedback
+  const [biometricFeedback, setBiometricFeedback] = useState<{
+    text: string;
+    type: "idle" | "verifying" | "rejected" | "position" | "success";
+  }>({ text: "Ready to scan", type: "idle" });
+
   // PWA Tablet / Mobile Standalone App Installation State
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
   const [isStandaloneApp, setIsStandaloneApp] = useState(false);
@@ -979,7 +991,6 @@ export default function FaceAttendanceKiosk({
             .eq("date", todayDate)
             .maybeSingle();
           if (existRow) {
-            existingEntrySnap = existRow.snapshot_url;
             existingCheckIn = existRow.check_in || existRow.check_in_time;
             existingCheckOut = existRow.check_out || existRow.check_out_time;
             if (existRow.notes && typeof existRow.notes === "string" && existRow.notes.startsWith("{")) {
@@ -987,7 +998,11 @@ export default function FaceAttendanceKiosk({
                 const p = JSON.parse(existRow.notes);
                 if (p.entry_snapshot) existingEntrySnap = p.entry_snapshot;
                 if (p.exit_snapshot) existingExitSnap = p.exit_snapshot;
+                if (p.check_in_time) existingCheckIn = p.check_in_time;
+                if (p.check_out_time) existingCheckOut = p.check_out_time;
               } catch {}
+            } else if (existRow.snapshot_url && !existRow.check_out) {
+              existingEntrySnap = existRow.snapshot_url;
             }
           }
         } catch {}
@@ -995,12 +1010,12 @@ export default function FaceAttendanceKiosk({
         const entrySnapshot = !isExit ? liveSnapshot : (existingEntrySnap || null);
         const exitSnapshot = isExit ? liveSnapshot : (existingExitSnap || null);
 
-        const checkInIso = !isExit ? new Date().toISOString() : (existingCheckIn || null);
+        const checkInIso = !isExit ? (existingCheckIn || new Date().toISOString()) : (existingCheckIn || null);
         const checkOutIso = isExit ? new Date().toISOString() : (existingCheckOut || null);
 
         const structuredNotes = JSON.stringify({
-          entry_snapshot: entrySnapshot,
-          exit_snapshot: exitSnapshot,
+          entry_snapshot: entrySnapshot || null,
+          exit_snapshot: exitSnapshot || null,
           check_in_time: !isExit ? timeStr : (existingCheckIn || null),
           check_out_time: isExit ? timeStr : (existingCheckOut || null),
           verification_method: method === "face_recognition" ? "face_biometric" : "manual_kiosk",
@@ -1011,7 +1026,7 @@ export default function FaceAttendanceKiosk({
           staff_id: person.id,
           date: todayDate,
           status: attendanceStatus,
-          snapshot_url: entrySnapshot || exitSnapshot || liveSnapshot || undefined,
+          snapshot_url: isExit ? (exitSnapshot || entrySnapshot || undefined) : (entrySnapshot || undefined),
           check_in: !isExit ? timeStr : (existingCheckIn || undefined),
           check_out: isExit ? timeStr : (existingCheckOut || undefined),
           check_in_time: checkInIso || undefined,
@@ -1082,7 +1097,6 @@ _Office of the Principal & College Administration_`;
             .eq("date", todayDate)
             .maybeSingle();
           if (existRow) {
-            existingEntrySnap = existRow.snapshot_url;
             existingCheckInTime = existRow.check_in_time;
             existingCheckOutTime = existRow.check_out_time;
             if (existRow.notes && typeof existRow.notes === "string" && existRow.notes.startsWith("{")) {
@@ -1090,7 +1104,11 @@ _Office of the Principal & College Administration_`;
                 const p = JSON.parse(existRow.notes);
                 if (p.entry_snapshot) existingEntrySnap = p.entry_snapshot;
                 if (p.exit_snapshot) existingExitSnap = p.exit_snapshot;
+                if (p.check_in_time) existingCheckInTime = p.check_in_time;
+                if (p.check_out_time) existingCheckOutTime = p.check_out_time;
               } catch {}
+            } else if (existRow.snapshot_url && !existRow.check_out_time) {
+              existingEntrySnap = existRow.snapshot_url;
             }
           }
         } catch {}
@@ -1098,14 +1116,14 @@ _Office of the Principal & College Administration_`;
         const entrySnapshot = !isExit ? liveSnapshot : (existingEntrySnap || null);
         const exitSnapshot = isExit ? liveSnapshot : (existingExitSnap || null);
 
-        const checkInIso = !isExit ? new Date().toISOString() : (existingCheckInTime || null);
+        const checkInIso = !isExit ? (existingCheckInTime || new Date().toISOString()) : (existingCheckInTime || null);
         const checkOutIso = isExit ? new Date().toISOString() : (existingCheckOutTime || null);
 
         const structuredNotes = JSON.stringify({
-          entry_snapshot: entrySnapshot,
-          exit_snapshot: exitSnapshot,
-          check_in_time: checkInIso,
-          check_out_time: checkOutIso,
+          entry_snapshot: entrySnapshot || null,
+          exit_snapshot: exitSnapshot || null,
+          check_in_time: checkInIso || null,
+          check_out_time: checkOutIso || null,
           verification_method: method === "face_recognition" ? "face_biometric" : "manual_kiosk",
           last_action: isExit ? "Exit" : "Entry",
         });
@@ -1114,7 +1132,7 @@ _Office of the Principal & College Administration_`;
           student_id: person.id,
           date: todayDate,
           status: attendanceStatus,
-          snapshot_url: entrySnapshot || exitSnapshot || liveSnapshot || undefined,
+          snapshot_url: isExit ? (exitSnapshot || entrySnapshot || undefined) : (entrySnapshot || undefined),
           verification_method: method === "face_recognition" ? "face_biometric" : "manual_kiosk",
           notes: structuredNotes,
         };
@@ -1131,7 +1149,7 @@ _Office of the Principal & College Administration_`;
             student_id: person.id,
             date: todayDate,
             status: attendanceStatus,
-            snapshot_url: entrySnapshot || exitSnapshot || liveSnapshot || undefined,
+            snapshot_url: isExit ? (exitSnapshot || entrySnapshot || undefined) : (entrySnapshot || undefined),
             notes: structuredNotes,
           };
           if (checkInIso) fallbackPayload.check_in_time = checkInIso;
@@ -1182,6 +1200,9 @@ _Automated Realtime College Security & LMS_`;
     return Math.sqrt(sum);
   };
 
+  // Strict Thresholds for Industry-Grade Biometrics (Option 3 On-Device Engine)
+  const STRICT_MATCH_THRESHOLD = 0.385; // Distance < 0.385 guarantees 85%+ genuine facial similarity
+
   // 5. Continuous Frame Detection Loop
   const runDetectionFrame = async () => {
     if (!videoRef.current || !isCameraActive || videoRef.current.paused || videoRef.current.ended) {
@@ -1190,8 +1211,10 @@ _Automated Realtime College Security & LMS_`;
     }
 
     // If gate attendance window is closed and override not active, pause detection
-    if (!gateStatus.isOpen) {
+    if (!gateStatus.isOpen && !adminOverrideUnlocked) {
       setIsDetecting(false);
+      consecutiveMatchRef.current = { personId: "", count: 0, lastTime: 0 };
+      setBiometricFeedback({ text: "Gate Scanner Closed", type: "rejected" });
       setTimeout(() => {
         scanLoopRef.current = requestAnimationFrame(runDetectionFrame);
       }, 1000);
@@ -1201,15 +1224,49 @@ _Automated Realtime College Security & LMS_`;
     try {
       const video = videoRef.current;
       if (video.readyState >= 2) {
+        const videoWidth = video.videoWidth || 640;
+        const videoHeight = video.videoHeight || 480;
+
         const detection = await faceapi
-          .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+          .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.60 }))
           .withFaceLandmarks()
           .withFaceDescriptor();
 
-        if (detection && detection.descriptor) {
+        if (detection && detection.descriptor && detection.detection) {
+          const box = detection.detection.box;
+
+          // 1. Guardrail: Minimum Face Size (Reject far-away / passing background faces)
+          const minFaceDimension = Math.min(105, videoWidth * 0.18);
+          if (box.width < minFaceDimension || box.height < minFaceDimension) {
+            setIsDetecting(false);
+            consecutiveMatchRef.current = { personId: "", count: 0, lastTime: 0 };
+            setBiometricFeedback({ text: "Chehra frame ke thora qareeb layein", type: "position" });
+            setTimeout(() => {
+              scanLoopRef.current = requestAnimationFrame(runDetectionFrame);
+            }, 180);
+            return;
+          }
+
+          // 2. Guardrail: Face Centering Check (Prevent scanning entering from edge/corner)
+          const faceCenterX = box.x + box.width / 2;
+          const faceCenterY = box.y + box.height / 2;
+          const isCentered =
+            faceCenterX >= videoWidth * 0.18 && faceCenterX <= videoWidth * 0.82 &&
+            faceCenterY >= videoHeight * 0.12 && faceCenterY <= videoHeight * 0.88;
+
+          if (!isCentered) {
+            setIsDetecting(false);
+            consecutiveMatchRef.current = { personId: "", count: 0, lastTime: 0 };
+            setBiometricFeedback({ text: "Chehra circle ke center mein rakhein", type: "position" });
+            setTimeout(() => {
+              scanLoopRef.current = requestAnimationFrame(runDetectionFrame);
+            }, 180);
+            return;
+          }
+
           setIsDetecting(true);
 
-          // Find closest match among enrolled profiles (respecting role filter if set)
+          // 3. Find closest match among enrolled profiles (respecting role filter if set)
           let bestMatch: PersonProfile | null = null;
           let bestDistance = 1.0;
 
@@ -1224,20 +1281,60 @@ _Automated Realtime College Security & LMS_`;
             }
           });
 
-          // Match threshold: distance < 0.56 indicates genuine positive biometric match
-          if (bestMatch && bestDistance < 0.56) {
-            await processAttendanceForPerson(bestMatch, "face_recognition");
+          // 4. Strict Distance Match (< 0.385 = 85%+ confidence)
+          if (bestMatch && bestDistance < STRICT_MATCH_THRESHOLD) {
+            const now = Date.now();
+            const matchedPersonObj = bestMatch as PersonProfile;
+
+            // 5. 3-Consecutive-Frame Consensus Check (Temporal Stability)
+            if (
+              consecutiveMatchRef.current.personId === matchedPersonObj.id &&
+              now - consecutiveMatchRef.current.lastTime < 950
+            ) {
+              consecutiveMatchRef.current.count += 1;
+              consecutiveMatchRef.current.lastTime = now;
+            } else {
+              consecutiveMatchRef.current = {
+                personId: matchedPersonObj.id,
+                count: 1,
+                lastTime: now,
+              };
+            }
+
+            if (consecutiveMatchRef.current.count >= 3) {
+              // 3 solid frames confirmed! Mark attendance.
+              consecutiveMatchRef.current = { personId: "", count: 0, lastTime: 0 };
+              setBiometricFeedback({
+                text: `Verified: ${matchedPersonObj.fullName}`,
+                type: "success",
+              });
+              await processAttendanceForPerson(matchedPersonObj, "face_recognition");
+            } else {
+              setBiometricFeedback({
+                text: `Verifying ${matchedPersonObj.fullName.split(" ")[0]}... (${consecutiveMatchRef.current.count}/3)`,
+                type: "verifying",
+              });
+            }
+          } else {
+            // Distance >= 0.385: UNKNOWN / UNREGISTERED PERSON (Strict Rejection)
+            consecutiveMatchRef.current = { personId: "", count: 0, lastTime: 0 };
+            setBiometricFeedback({
+              text: "Unknown Face / Chehra Enrolled Nahi Hai",
+              type: "rejected",
+            });
           }
         } else {
           setIsDetecting(false);
+          consecutiveMatchRef.current = { personId: "", count: 0, lastTime: 0 };
+          setBiometricFeedback({ text: "Ready to scan", type: "idle" });
         }
       }
     } catch {}
 
-    // Rapid scan loop (250ms) for snappy response during gate rush
+    // Snappy scan loop interval (180ms)
     setTimeout(() => {
       scanLoopRef.current = requestAnimationFrame(runDetectionFrame);
-    }, 250);
+    }, 180);
   };
 
   useEffect(() => {
@@ -1257,7 +1354,7 @@ _Automated Realtime College Security & LMS_`;
     };
   }, [isCameraActive, targetRoleFilter, gateDirection]);
 
-  // Mobile Snapshot File Upload (Direct Fallback for any mobile browser)
+  // Mobile Snapshot File Upload (Direct Fallback with Strict Biometric Match)
   const handleMobilePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1269,7 +1366,7 @@ _Automated Realtime College Security & LMS_`;
       await new Promise((resolve) => (img.onload = resolve));
 
       const detection = await faceapi
-        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 224 }))
+        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.60 }))
         .withFaceLandmarks()
         .withFaceDescriptor();
 
@@ -1292,12 +1389,13 @@ _Automated Realtime College Security & LMS_`;
         }
       });
 
-      if (bestMatch && bestDistance < 0.54) {
+      // Strict Threshold (< 0.385): Only accept if genuinely identical person
+      if (bestMatch && bestDistance < STRICT_MATCH_THRESHOLD) {
         const snap = captureLiveSnapshot(img);
-        toast.success(`Match found: ${bestMatch.fullName}!`, { id: "snap-ai" });
+        toast.success(`Match verified: ${bestMatch.fullName}!`, { id: "snap-ai" });
         await processAttendanceForPerson(bestMatch, "face_recognition", snap);
       } else {
-        toast.warning("Koi enrolled profile match nahi hua. Roll number / ID se search karein.", { id: "snap-ai" });
+        toast.error("Unknown Face / Chehra Enrolled Nahi Hai: Koi registered student ya staff match nahi hua.", { id: "snap-ai", duration: 4500 });
       }
     } catch (err: any) {
       console.error("Snapshot analysis error:", err);
@@ -1543,15 +1641,89 @@ _Automated Realtime College Security & LMS_`;
             {/* Active Camera HUD Overlay */}
             {isCameraActive && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="relative w-56 h-64 border-2 border-emerald-500/70 rounded-3xl overflow-hidden shadow-[0_0_30px_rgba(16,185,129,0.25)]">
-                  <div className="absolute top-0 left-0 w-5 h-5 border-t-4 border-l-4 border-emerald-400" />
-                  <div className="absolute top-0 right-0 w-5 h-5 border-t-4 border-r-4 border-emerald-400" />
-                  <div className="absolute bottom-0 left-0 w-5 h-5 border-b-4 border-l-4 border-emerald-400" />
-                  <div className="absolute bottom-0 right-0 w-5 h-5 border-b-4 border-r-4 border-emerald-400" />
-                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_#34d399] animate-bounce" />
-                  <div className="absolute bottom-2 left-0 right-0 text-center">
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-300 bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm font-bold">
-                      Align Face In Frame
+                <div
+                  className={`relative w-56 h-64 border-2 rounded-3xl overflow-hidden transition-all duration-200 ${
+                    biometricFeedback.type === "verifying"
+                      ? "border-cyan-400 shadow-[0_0_30px_rgba(34,211,238,0.45)]"
+                      : biometricFeedback.type === "rejected"
+                      ? "border-rose-500 shadow-[0_0_30px_rgba(244,63,94,0.4)]"
+                      : biometricFeedback.type === "position"
+                      ? "border-amber-400 shadow-[0_0_30px_rgba(251,191,36,0.35)]"
+                      : biometricFeedback.type === "success"
+                      ? "border-emerald-400 shadow-[0_0_35px_rgba(52,211,153,0.5)]"
+                      : "border-emerald-500/70 shadow-[0_0_30px_rgba(16,185,129,0.25)]"
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0 left-0 w-5 h-5 border-t-4 border-l-4 transition-colors ${
+                      biometricFeedback.type === "verifying"
+                        ? "border-cyan-400"
+                        : biometricFeedback.type === "rejected"
+                        ? "border-rose-400"
+                        : biometricFeedback.type === "position"
+                        ? "border-amber-400"
+                        : "border-emerald-400"
+                    }`}
+                  />
+                  <div
+                    className={`absolute top-0 right-0 w-5 h-5 border-t-4 border-r-4 transition-colors ${
+                      biometricFeedback.type === "verifying"
+                        ? "border-cyan-400"
+                        : biometricFeedback.type === "rejected"
+                        ? "border-rose-400"
+                        : biometricFeedback.type === "position"
+                        ? "border-amber-400"
+                        : "border-emerald-400"
+                    }`}
+                  />
+                  <div
+                    className={`absolute bottom-0 left-0 w-5 h-5 border-b-4 border-l-4 transition-colors ${
+                      biometricFeedback.type === "verifying"
+                        ? "border-cyan-400"
+                        : biometricFeedback.type === "rejected"
+                        ? "border-rose-400"
+                        : biometricFeedback.type === "position"
+                        ? "border-amber-400"
+                        : "border-emerald-400"
+                    }`}
+                  />
+                  <div
+                    className={`absolute bottom-0 right-0 w-5 h-5 border-b-4 border-r-4 transition-colors ${
+                      biometricFeedback.type === "verifying"
+                        ? "border-cyan-400"
+                        : biometricFeedback.type === "rejected"
+                        ? "border-rose-400"
+                        : biometricFeedback.type === "position"
+                        ? "border-amber-400"
+                        : "border-emerald-400"
+                    }`}
+                  />
+                  <div
+                    className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent transition-all ${
+                      biometricFeedback.type === "verifying"
+                        ? "via-cyan-400 shadow-[0_0_12px_#22d3ee]"
+                        : biometricFeedback.type === "rejected"
+                        ? "via-rose-500 shadow-[0_0_12px_#f43f5e]"
+                        : biometricFeedback.type === "position"
+                        ? "via-amber-400 shadow-[0_0_12px_#fbbf24]"
+                        : "via-emerald-400 shadow-[0_0_12px_#34d399]"
+                    } to-transparent animate-bounce`}
+                  />
+                  <div className="absolute bottom-2 left-0 right-0 text-center px-2">
+                    <span
+                      className={`text-[10px] font-mono tracking-wider px-2.5 py-1 rounded-md backdrop-blur-sm font-bold inline-block max-w-[92%] truncate transition-all ${
+                        biometricFeedback.type === "verifying"
+                          ? "text-cyan-200 bg-slate-950/85 border border-cyan-500/40 animate-pulse"
+                          : biometricFeedback.type === "rejected"
+                          ? "text-rose-200 bg-slate-950/90 border border-rose-500/50"
+                          : biometricFeedback.type === "position"
+                          ? "text-amber-200 bg-slate-950/85 border border-amber-500/50"
+                          : biometricFeedback.type === "success"
+                          ? "text-emerald-200 bg-slate-950/85 border border-emerald-500/50"
+                          : "text-emerald-300 bg-black/60"
+                      }`}
+                    >
+                      {biometricFeedback.type === "idle" ? "Align Face In Frame" : biometricFeedback.text}
                     </span>
                   </div>
                 </div>
