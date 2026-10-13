@@ -47,6 +47,7 @@ import {
   buildPhotoUploadRequestMessage,
   dispatchBulkPhotoRequests
 } from '../lib/whatsappAutomation';
+import { supabase } from '../lib/supabase';
 
 export type StudentAttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Leave' | 'Holiday' | '';
 
