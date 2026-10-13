@@ -5,12 +5,14 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Staff } from '../types';
-import { Download, Upload, Save, Calendar, FileSpreadsheet, Search, Filter, Camera, CheckCircle2, X, Clock, ShieldCheck, Eye } from 'lucide-react';
+import { Download, Upload, Save, Calendar, FileSpreadsheet, Search, Filter, Camera, CheckCircle2, X, Clock, ShieldCheck, Eye, Building2, LogOut, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth } from 'date-fns';
 import { safeLocalStorage } from '../utils/safeStorage';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface StaffAttendanceProps {
   staffList: Staff[];
@@ -69,6 +71,7 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
   const [reportMonth, setReportMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [searchTerm, setSearchTerm] = useState('');
   const [auditSnapshot, setAuditSnapshot] = useState<AuditSnapshotData | null>(null);
+  const [selectedDossierStaff, setSelectedDossierStaff] = useState<Staff | null>(null);
   
   // Local state for attendance records
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
@@ -275,6 +278,88 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
     });
 
     return stats;
+  };
+
+  const formatPunchTime = (isoString?: string | null): string | null => {
+    if (!isoString) return null;
+    try {
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) {
+        return String(isoString).slice(0, 5);
+      }
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+    } catch {
+      return String(isoString);
+    }
+  };
+
+  const isPunchLate = (isoString?: string | null, collegeStartTime = '07:54'): boolean => {
+    if (!isoString) return false;
+    try {
+      const d = new Date(isoString);
+      if (!isNaN(d.getTime())) {
+        const punchMinutes = d.getHours() * 60 + d.getMinutes();
+        const [h, m] = collegeStartTime.split(':').map(Number);
+        const startMinutes = (h || 7) * 60 + (m || 54);
+        return punchMinutes > startMinutes;
+      }
+      if (typeof isoString === 'string' && isoString.includes(':')) {
+        const [ph, pm] = isoString.split(':').map(Number);
+        const punchMinutes = (ph || 0) * 60 + (pm || 0);
+        const [h, m] = collegeStartTime.split(':').map(Number);
+        const startMinutes = (h || 7) * 60 + (m || 54);
+        return punchMinutes > startMinutes;
+      }
+    } catch {}
+    return false;
+  };
+
+  const downloadStaffDossierPDF = (staff: Staff) => {
+    const doc = new jsPDF();
+    const title = `Superior College Jahanian (Faculty Attendance)\n30-Day Biometric Attendance Dossier - ${reportMonth}`;
+    
+    doc.setFontSize(13);
+    doc.text(title, 14, 15);
+    doc.setFontSize(9.5);
+    doc.text(`Faculty / Staff: ${staff.fullName}   |   ID: ${staff.id}   |   Role: ${staff.role || 'Faculty'}`, 14, 28);
+    
+    const [year, month] = reportMonth.split('-').map(Number);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const dossierRows = [];
+    
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dayDate = new Date(year, month - 1, d);
+      const dayName = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
+      const isSun = dayDate.getDay() === 0;
+      const rec = records.find((r: any) => r.staffId === staff.id && r.date === dateStr);
+      const cin = formatPunchTime(rec?.checkInTime || rec?.check_in_time || rec?.checkIn) || '-';
+      const cout = formatPunchTime(rec?.checkOutTime || rec?.check_out_time || rec?.checkOut) || '-';
+      const snap = getSnapshotUrl(rec) ? 'Biometric Face Match' : (rec ? 'Manual Entry' : '-');
+      const status = rec?.status || (isSun ? 'Sunday' : '-');
+      
+      dossierRows.push([
+        `${d} (${dayName})`,
+        dateStr,
+        status,
+        snap,
+        cin,
+        cout,
+        rec?.notes || '-'
+      ]);
+    }
+    
+    autoTable(doc, {
+      startY: 34,
+      head: [['Day', 'Date', 'Status', 'Biometric Mode', 'Check-In', 'Check-Out', 'Notes']],
+      body: dossierRows,
+      theme: 'grid',
+      headStyles: { fillColor: [6, 78, 67] },
+      styles: { fontSize: 8 }
+    });
+    
+    doc.save(`Staff_Biometric_Dossier_${staff.fullName.replace(/\s+/g, '_')}_${reportMonth}.pdf`);
+    toast.success('Staff 30-Day Biometric Dossier PDF downloaded successfully!');
   };
 
   const filteredStaff = useMemo(() => {
@@ -532,13 +617,14 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                     <TableHead className="font-black uppercase text-[10px] text-red-500 text-center">Absent</TableHead>
                     <TableHead className="font-black uppercase text-[10px] text-blue-500 text-center">Personal Leave</TableHead>
                     <TableHead className="font-black uppercase text-[10px] text-purple-500 text-center bg-purple-50/50">College Off</TableHead>
-                    <TableHead className="font-black uppercase text-[10px] text-indigo-500 text-center pr-8 bg-indigo-50/50">Public Holiday</TableHead>
+                    <TableHead className="font-black uppercase text-[10px] text-indigo-500 text-center bg-indigo-50/50">Public Holiday</TableHead>
+                    <TableHead className="font-black uppercase text-[10px] text-slate-400 pr-8 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredStaff.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="h-64 text-center text-slate-500">No staff members found.</TableCell>
+                      <TableCell colSpan={9} className="h-64 text-center text-slate-500">No staff members found.</TableCell>
                     </TableRow>
                   ) : (
                     filteredStaff.map(staff => {
@@ -562,7 +648,18 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                           <TableCell className="text-center font-bold text-red-600">{stats.absent > 0 ? stats.absent : '-'}</TableCell>
                           <TableCell className="text-center font-bold text-blue-600">{stats.personalLeave > 0 ? stats.personalLeave : '-'}</TableCell>
                           <TableCell className="text-center font-bold text-purple-600 bg-purple-50/30">{stats.collegeHoliday > 0 ? stats.collegeHoliday : '-'}</TableCell>
-                          <TableCell className="text-center pr-8 font-bold text-indigo-600 bg-indigo-50/30">{stats.publicHoliday > 0 ? stats.publicHoliday : '-'}</TableCell>
+                          <TableCell className="text-center font-bold text-indigo-600 bg-indigo-50/30">{stats.publicHoliday > 0 ? stats.publicHoliday : '-'}</TableCell>
+                          <TableCell className="text-right pr-8">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 rounded-lg text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100 font-bold text-xs gap-1 shadow-2xs cursor-pointer"
+                              onClick={() => setSelectedDossierStaff(staff)}
+                              title="Open 30-Day Biometric Attendance Dossier & Photo Audit"
+                            >
+                              <Eye size={13} /> Dossier 👁️
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       );
                     })
@@ -667,6 +764,252 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                 className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl px-5"
               >
                 Close Audit Record
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 30-Day Biometric Staff Attendance Dossier Modal */}
+      {selectedDossierStaff && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-teal-950 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-teal-300 font-bold overflow-hidden shadow-inner shrink-0">
+                  {selectedDossierStaff.photo ? (
+                    <img src={selectedDossierStaff.photo} alt={selectedDossierStaff.fullName} className="w-full h-full object-cover" />
+                  ) : (
+                    (selectedDossierStaff.fullName || 'S').slice(0, 2).toUpperCase()
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-extrabold text-white tracking-tight">{selectedDossierStaff.fullName}</h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-400/30">
+                      ID: {selectedDossierStaff.id} • {selectedDossierStaff.role}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 font-medium mt-0.5">
+                    Faculty 30-Day Gate Biometric Audit Dossier • Month: <span className="font-mono font-bold text-amber-300">{reportMonth}</span>
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => downloadStaffDossierPDF(selectedDossierStaff)}
+                  className="bg-white/10 hover:bg-white/20 border-white/20 text-white text-xs font-bold rounded-xl gap-1.5 cursor-pointer"
+                >
+                  <Download size={13} /> Export PDF
+                </Button>
+                <button
+                  onClick={() => setSelectedDossierStaff(null)}
+                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Metrics Bar */}
+            {(() => {
+              const stats = getMonthlyStats(selectedDossierStaff.id);
+              const [year, month] = reportMonth.split('-').map(Number);
+              const daysInMonth = new Date(year, month, 0).getDate();
+              let biometricCount = 0;
+              for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const rec = records.find((r: any) => r.staffId === selectedDossierStaff.id && r.date === dateStr);
+                if (getSnapshotUrl(rec) || rec?.verificationMethod === 'face_biometric') biometricCount++;
+              }
+
+              return (
+                <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-3 py-1 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 shadow-2xs">
+                      Days in Month: <strong className="text-slate-900">{daysInMonth}</strong>
+                    </span>
+                    <span className="px-3 py-1 bg-emerald-50 border border-emerald-200 rounded-xl font-bold text-emerald-800 shadow-2xs">
+                      Present: <strong className="text-emerald-900">{stats.present}</strong>
+                    </span>
+                    <span className="px-3 py-1 bg-amber-50 border border-amber-200 rounded-xl font-bold text-amber-800 shadow-2xs">
+                      Late: <strong className="text-amber-900">{stats.late}</strong>
+                    </span>
+                    <span className="px-3 py-1 bg-rose-50 border border-rose-200 rounded-xl font-bold text-rose-800 shadow-2xs">
+                      Absent: <strong className="text-rose-900">{stats.absent}</strong>
+                    </span>
+                    <span className="px-3 py-1 bg-blue-50 border border-blue-200 rounded-xl font-bold text-blue-800 shadow-2xs">
+                      Leave: <strong className="text-blue-900">{stats.personalLeave}</strong>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-teal-50 border border-teal-200 text-teal-900 font-extrabold text-[11px] shadow-2xs">
+                    <Camera size={13} className="text-teal-700" />
+                    Biometric Face Scans: {biometricCount} / {stats.present + stats.late}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Scrollable Table */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+              <Table>
+                <TableHeader className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
+                  <TableRow>
+                    <TableHead className="w-24 font-black uppercase text-[10px] text-slate-400">Date</TableHead>
+                    <TableHead className="w-28 font-black uppercase text-[10px] text-slate-400">Status</TableHead>
+                    <TableHead className="w-36 font-black uppercase text-[10px] text-slate-400">Scanned Face 📸</TableHead>
+                    <TableHead className="w-32 font-black uppercase text-[10px] text-slate-400">Check In</TableHead>
+                    <TableHead className="w-32 font-black uppercase text-[10px] text-slate-400">Check Out</TableHead>
+                    <TableHead className="font-black uppercase text-[10px] text-slate-400">Notes & Remarks</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(() => {
+                    const [year, month] = reportMonth.split('-').map(Number);
+                    const daysInMonth = new Date(year, month, 0).getDate();
+                    const rows = [];
+
+                    for (let d = 1; d <= daysInMonth; d++) {
+                      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                      const dayDate = new Date(year, month - 1, d);
+                      const dayName = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
+                      const isSun = dayDate.getDay() === 0;
+                      const rec = records.find((r: any) => r.staffId === selectedDossierStaff.id && r.date === dateStr);
+                      const snapUrl = getSnapshotUrl(rec);
+                      const cin = rec?.checkInTime || rec?.check_in_time || rec?.checkIn;
+                      const cout = rec?.checkOutTime || rec?.check_out_time || rec?.checkOut;
+                      const isLate = isPunchLate(cin, '07:54');
+                      const status = rec?.status || (isSun ? 'College Holiday' : '');
+
+                      rows.push(
+                        <TableRow key={dateStr} className={cn("hover:bg-slate-50/70 transition-colors", isSun && "bg-slate-50/50")}>
+                          <TableCell className="font-mono text-xs font-semibold text-slate-700">
+                            <div>
+                              <span>{dateStr.slice(8)} {dayDate.toLocaleDateString('en-US', { month: 'short' })}</span>
+                              <span className={cn("block text-[10px] font-bold", isSun ? "text-purple-600" : "text-slate-400")}>
+                                {dayName} {isSun && "(Sunday)"}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {status === 'Present' && (
+                              <span className="inline-flex items-center gap-1 font-bold text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                <CheckCircle2 size={12} className="text-emerald-600" /> Present
+                              </span>
+                            )}
+                            {status === 'Late' && (
+                              <span className="inline-flex items-center gap-1 font-bold text-xs text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-300">
+                                <Clock size={12} className="text-amber-600" /> Late
+                              </span>
+                            )}
+                            {status === 'Absent' && (
+                              <span className="inline-flex items-center gap-1 font-bold text-xs text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                                <AlertCircle size={12} className="text-rose-600" /> Absent
+                              </span>
+                            )}
+                            {status === 'Half Day' && (
+                              <span className="inline-flex items-center gap-1 font-bold text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                                Half Day
+                              </span>
+                            )}
+                            {status === 'Personal Leave' && (
+                              <span className="inline-flex items-center gap-1 font-bold text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                                Leave
+                              </span>
+                            )}
+                            {(status === 'College Holiday' || status === 'Public Holiday') && (
+                              <span className="inline-flex items-center gap-1 font-bold text-xs text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200">
+                                Holiday
+                              </span>
+                            )}
+                            {!status && (
+                              <span className="text-slate-300 font-mono text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {snapUrl ? (
+                              <button
+                                type="button"
+                                onClick={() => setAuditSnapshot({
+                                  staffName: selectedDossierStaff.fullName,
+                                  staffId: selectedDossierStaff.id,
+                                  role: selectedDossierStaff.role || 'Faculty',
+                                  registeredPhoto: selectedDossierStaff.photo,
+                                  snapshotUrl: snapUrl,
+                                  checkInTime: cin,
+                                  checkOutTime: cout,
+                                  status: status,
+                                  date: dateStr
+                                })}
+                                className="group relative w-10 h-10 rounded-xl overflow-hidden border-2 border-emerald-500 shadow-2xs hover:scale-105 transition-all cursor-pointer ring-2 ring-emerald-500/20"
+                                title="Click to view full photo comparison"
+                              >
+                                <img src={snapUrl} alt="Gate Snapshot" className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-black/25 group-hover:bg-transparent flex items-center justify-center transition-all">
+                                  <Camera size={12} className="text-white drop-shadow" />
+                                </div>
+                              </button>
+                            ) : rec?.verificationMethod === 'face_biometric' ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                Face Verified
+                              </span>
+                            ) : rec ? (
+                              <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+                                Manual ✍️
+                              </span>
+                            ) : (
+                              <span className="text-slate-300 text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {cin ? (
+                              <span className={cn(
+                                "inline-flex items-center gap-1 font-mono font-bold text-[11px] px-2 py-0.5 rounded-md border",
+                                isLate ? "bg-amber-50 text-amber-800 border-amber-300" : "bg-emerald-50 text-emerald-800 border-emerald-200"
+                              )}>
+                                <Clock size={11} className={isLate ? "text-amber-600" : "text-emerald-600"} />
+                                {formatPunchTime(cin)}
+                                {isLate && <span className="bg-amber-200 text-amber-900 text-[8px] font-black px-1 rounded uppercase">Late</span>}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300 font-mono text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {cout ? (
+                              <span className="inline-flex items-center gap-1 font-mono font-bold text-[11px] px-2 py-0.5 rounded-md border border-blue-200 bg-blue-50 text-blue-800">
+                                <LogOut size={11} className="text-blue-600" />
+                                {formatPunchTime(cout)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300 font-mono text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs text-slate-500 max-w-xs truncate">
+                            {rec?.notes || <span className="text-slate-300">—</span>}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }
+                    return rows;
+                  })()}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+              <span>Superior College Jahanian • Faculty Biometric Audit Trail</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setSelectedDossierStaff(null)}
+                className="rounded-xl font-bold px-5"
+              >
+                Close Dossier
               </Button>
             </div>
           </div>

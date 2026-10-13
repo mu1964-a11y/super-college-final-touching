@@ -21,6 +21,9 @@ import {
   ShieldCheck,
   Clock,
   Sparkles,
+  Eye,
+  Building2,
+  LogOut,
   X
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -52,6 +55,14 @@ export interface StudentAttendanceRecord {
   date: string; // YYYY-MM-DD
   status: StudentAttendanceStatus;
   notes: string;
+  checkInTime?: string;
+  check_in_time?: string;
+  checkOutTime?: string;
+  check_out_time?: string;
+  snapshotUrl?: string;
+  snapshot_url?: string;
+  verificationMethod?: 'face_biometric' | 'manual';
+  verification_method?: 'face_biometric' | 'manual';
 }
 
 export interface AttendanceWhatsAppStatus {
@@ -98,9 +109,12 @@ export default function AttendanceView({ data }: { data: any }) {
     registeredPhoto?: string;
     snapshotUrl: string;
     checkInTime?: string;
+    checkOutTime?: string;
     status?: string;
     date: string;
   } | null>(null);
+
+  const [selectedDossierStudent, setSelectedDossierStudent] = useState<any | null>(null);
 
   function getStudentSnapshotUrl(entry?: any): string | null {
     if (!entry) return null;
@@ -113,6 +127,40 @@ export default function AttendanceView({ data }: { data: any }) {
       } catch {}
     }
     return null;
+  }
+
+  function formatPunchTime(isoString?: string | null): string | null {
+    if (!isoString) return null;
+    try {
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) {
+        return String(isoString).slice(0, 5);
+      }
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+    } catch {
+      return String(isoString);
+    }
+  }
+
+  function isPunchLate(isoString?: string | null, collegeStartTime = '07:54'): boolean {
+    if (!isoString) return false;
+    try {
+      const d = new Date(isoString);
+      if (!isNaN(d.getTime())) {
+        const punchMinutes = d.getHours() * 60 + d.getMinutes();
+        const [h, m] = collegeStartTime.split(':').map(Number);
+        const startMinutes = (h || 7) * 60 + (m || 54);
+        return punchMinutes > startMinutes;
+      }
+      if (typeof isoString === 'string' && isoString.includes(':')) {
+        const [ph, pm] = isoString.split(':').map(Number);
+        const punchMinutes = (ph || 0) * 60 + (pm || 0);
+        const [h, m] = collegeStartTime.split(':').map(Number);
+        const startMinutes = (h || 7) * 60 + (m || 54);
+        return punchMinutes > startMinutes;
+      }
+    } catch {}
+    return false;
   }
 
   const [activeTab, setActiveTab] = useState<'daily' | 'report'>('daily');
@@ -617,6 +665,55 @@ export default function AttendanceView({ data }: { data: any }) {
     });
   };
 
+  const downloadStudentDossierPDF = (student: any) => {
+    const doc = new jsPDF();
+    const collegeName = data?.settings?.collegeName || 'Superior Group of Colleges Jahanian';
+    const title = `${collegeName}\n30-Day Biometric Attendance Dossier - ${reportMonth}`;
+    
+    doc.setFontSize(13);
+    doc.text(title, 14, 15);
+    doc.setFontSize(9.5);
+    doc.text(`Student: ${student.fullName}   |   ID: ${student.studentId || student.collegeNo || '-'}   |   Section: ${student.section || '-'}   |   Group: ${student.groupName || student.currentClass || '-'}`, 14, 28);
+    
+    const [year, month] = reportMonth.split('-').map(Number);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const dossierRows = [];
+    
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dayDate = new Date(year, month - 1, d);
+      const dayName = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
+      const isSun = dayDate.getDay() === 0;
+      const rec = records.find((r: any) => r.studentId === student.id && r.date === dateStr);
+      const cin = formatPunchTime(rec?.checkInTime || rec?.check_in_time) || '-';
+      const cout = formatPunchTime(rec?.checkOutTime || rec?.check_out_time) || '-';
+      const snap = getStudentSnapshotUrl(rec) ? 'Biometric Face Match' : (rec ? 'Manual Entry' : '-');
+      const status = rec?.status || (isSun ? 'Sunday' : '-');
+      
+      dossierRows.push([
+        `${d} (${dayName})`,
+        dateStr,
+        status,
+        snap,
+        cin,
+        cout,
+        rec?.notes || '-'
+      ]);
+    }
+    
+    autoTable(doc, {
+      startY: 34,
+      head: [['Day', 'Date', 'Status', 'Biometric Mode', 'Check-In', 'Check-Out', 'Notes']],
+      body: dossierRows,
+      theme: 'grid',
+      headStyles: { fillColor: [4, 120, 87] }, // Superior Teal
+      styles: { fontSize: 8 }
+    });
+    
+    doc.save(`Biometric_Dossier_${student.fullName.replace(/\s+/g, '_')}_${reportMonth}.pdf`);
+    toast.success('30-Day Biometric Dossier PDF downloaded successfully!');
+  };
+
   const getStudentPhone = (student: any) => {
     return student.fatherContact || student.contact || student.contactNumber || student.phone || student.mobile || '';
   };
@@ -1004,17 +1101,19 @@ export default function AttendanceView({ data }: { data: any }) {
               <Table>
                 <TableHeader className="bg-slate-50 border-b border-slate-100">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-20 pl-8 font-black uppercase text-[10px] tracking-wider text-slate-400">Roll No</TableHead>
+                    <TableHead className="w-16 pl-6 font-black uppercase text-[10px] tracking-wider text-slate-400">Roll No</TableHead>
                     <TableHead className="font-black uppercase text-[10px] tracking-wider text-slate-400">Student Info</TableHead>
-                    <TableHead className="w-56 font-black uppercase text-[10px] tracking-wider text-slate-400">Status</TableHead>
-                    <TableHead className="w-1/3 font-black uppercase text-[10px] tracking-wider text-slate-400">Notes</TableHead>
-                    <TableHead className="w-48 font-black uppercase text-[10px] tracking-wider text-slate-400 pr-8 text-right">WhatsApp Bot</TableHead>
+                    <TableHead className="w-36 font-black uppercase text-[10px] tracking-wider text-slate-400">Gate Biometric</TableHead>
+                    <TableHead className="w-44 font-black uppercase text-[10px] tracking-wider text-slate-400">Punch Timings</TableHead>
+                    <TableHead className="w-48 font-black uppercase text-[10px] tracking-wider text-slate-400">Status</TableHead>
+                    <TableHead className="w-40 font-black uppercase text-[10px] tracking-wider text-slate-400">Notes</TableHead>
+                    <TableHead className="w-40 font-black uppercase text-[10px] tracking-wider text-slate-400 pr-6 text-right">WhatsApp Bot</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                    {filteredStudents.length === 0 ? (
                      <TableRow>
-                       <TableCell colSpan={5} className="h-64 text-center">
+                       <TableCell colSpan={7} className="h-64 text-center">
                          <div className="flex flex-col items-center justify-center text-slate-400 space-y-2">
                             <CheckCircle2 size={32} className="opacity-20" />
                             <p className="font-medium">No students found matching your filters.</p>
@@ -1022,14 +1121,24 @@ export default function AttendanceView({ data }: { data: any }) {
                        </TableCell>
                      </TableRow>
                    ) : (
-                     filteredStudents.map((student: any) => (
+                     filteredStudents.map((student: any) => {
+                       const entry = dailyEntries[student.id];
+                       const existing = records.find((r: any) => r.studentId === student.id && r.date === selectedDate);
+                       const snapshotUrl = getStudentSnapshotUrl(existing) || getStudentSnapshotUrl(entry);
+                       const checkInTime = entry?.checkInTime || entry?.check_in_time || existing?.checkInTime || existing?.check_in_time;
+                       const checkOutTime = entry?.checkOutTime || entry?.check_out_time || existing?.checkOutTime || existing?.check_out_time;
+                       const isBiometric = Boolean(snapshotUrl || entry?.verificationMethod === 'face_biometric' || existing?.verificationMethod === 'face_biometric');
+                       const isLate = isPunchLate(checkInTime, data?.settings?.collegeStartTime || '07:54');
+                       const currentStatus = entry?.status || existing?.status || 'Present';
+
+                       return (
                        <TableRow key={student.id} className="hover:bg-slate-50/80 transition-colors">
-                         <TableCell className="pl-8 font-mono text-xs font-semibold text-slate-600">
+                         <TableCell className="pl-6 font-mono text-xs font-semibold text-slate-600">
                             {student.studentId || student.collegeNo || 'Pending'}
                          </TableCell>
                          <TableCell>
                            <div className="flex items-center gap-3">
-                             <div className="w-14 h-14 rounded-full bg-superior-teal/10 flex items-center justify-center text-superior-teal font-black text-base overflow-hidden border-2 border-slate-200 shadow-sm shrink-0 ring-2 ring-slate-100">
+                             <div className="w-12 h-12 rounded-full bg-superior-teal/10 flex items-center justify-center text-superior-teal font-black text-sm overflow-hidden border-2 border-slate-200 shadow-sm shrink-0 ring-2 ring-slate-100">
                                {student.photo ? (
                                  <img
                                    src={student.photo}
@@ -1049,20 +1158,101 @@ export default function AttendanceView({ data }: { data: any }) {
                                </div>
                                <div className="text-[11px] font-semibold tracking-wider uppercase text-slate-400">
                                  {student.section || 'Unassigned'} • {student.groupName || student.currentClass}
+                                </div>
+                             </div>
+                           </div>
+                         </TableCell>
+                         <TableCell>
+                           {snapshotUrl ? (
+                             <div className="flex items-center gap-2">
+                               <button
+                                 type="button"
+                                 onClick={() => setStudentAuditSnapshot({
+                                   studentName: student.fullName,
+                                   rollNo: student.studentId || student.collegeNo || 'Pending',
+                                   classInfo: `${student.section || ''} • ${student.groupName || student.currentClass || ''}`,
+                                   registeredPhoto: student.photo,
+                                   snapshotUrl: snapshotUrl,
+                                   checkInTime: checkInTime,
+                                   checkOutTime: checkOutTime,
+                                   status: currentStatus,
+                                   date: selectedDate
+                                 })}
+                                 className="group relative w-10 h-10 rounded-xl overflow-hidden border-2 border-emerald-500 shadow-2xs hover:scale-105 transition-all cursor-pointer shrink-0 ring-2 ring-emerald-500/20"
+                                 title="Click to zoom live gate camera snapshot"
+                               >
+                                 <img src={snapshotUrl} alt="Gate Snapshot" className="w-full h-full object-cover" />
+                                 <div className="absolute inset-0 bg-black/25 group-hover:bg-transparent flex items-center justify-center transition-all">
+                                   <Camera size={12} className="text-white drop-shadow" />
+                                 </div>
+                               </button>
+                               <div>
+                                 <span className="inline-flex items-center gap-1 font-bold text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 shadow-2xs">
+                                   <CheckCircle2 size={10} className="text-emerald-600" /> Face Match
+                                 </span>
+                                 <p className="text-[9px] text-slate-400 font-semibold mt-0.5">Biometric AI</p>
                                </div>
                              </div>
+                           ) : isBiometric ? (
+                             <div className="flex items-center gap-2">
+                               <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center shrink-0">
+                                 <ShieldCheck size={18} />
+                               </div>
+                               <span className="inline-flex items-center gap-1 font-bold text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                 Face Verified
+                               </span>
+                             </div>
+                           ) : (
+                             <div className="flex items-center gap-1.5">
+                               <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+                                 Manual ✍️
+                               </span>
+                             </div>
+                           )}
+                         </TableCell>
+                         <TableCell>
+                           <div className="flex flex-col gap-1 text-[11px]">
+                             {checkInTime ? (
+                               <div className="flex items-center gap-1.5">
+                                 <span className={cn(
+                                   "inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-md border text-[10px]",
+                                   isLate 
+                                     ? "bg-amber-50 text-amber-800 border-amber-300"
+                                     : "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                 )}>
+                                   <Clock size={11} className={isLate ? "text-amber-600" : "text-emerald-600"} />
+                                   In: {formatPunchTime(checkInTime)}
+                                   {isLate && <span className="bg-amber-200 text-amber-900 font-black px-1 rounded text-[8px] uppercase">Late</span>}
+                                 </span>
+                               </div>
+                             ) : (
+                               <span className="text-[10px] text-slate-400 font-medium">In: —</span>
+                             )}
+
+                             {checkOutTime ? (
+                               <div className="flex items-center gap-1.5">
+                                 <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-md border border-blue-200 bg-blue-50 text-blue-800 text-[10px]">
+                                   <LogOut size={11} className="text-blue-600" />
+                                   Out: {formatPunchTime(checkOutTime)}
+                                 </span>
+                               </div>
+                             ) : checkInTime ? (
+                               <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 w-fit">
+                                 <Building2 size={10} className="text-slate-400" /> On Campus
+                                </span>
+                             ) : null}
                            </div>
                          </TableCell>
                          <TableCell>
                            <div className="flex items-center bg-slate-50 inline-flex p-1 rounded-xl border border-slate-100">
                              {['Present', 'Absent', 'Late', 'Leave'].map(status => {
-                               const isActive = dailyEntries[student.id]?.status === status;
+                               const isActive = (dailyEntries[student.id]?.status || currentStatus) === status;
                                return (
                                  <button
                                    key={status}
                                    onClick={() => handleStatusChange(student, status as StudentAttendanceStatus)}
                                    className={cn(
-                                     "px-3 py-1.5 text-xs font-bold rounded-lg transition-all",
+                                     "px-2.5 py-1 text-xs font-bold rounded-lg transition-all",
                                      isActive 
                                        ? status === 'Present' ? "bg-emerald-500 text-white shadow-sm"
                                        : status === 'Absent' ? "bg-red-500 text-white shadow-sm"
@@ -1079,13 +1269,13 @@ export default function AttendanceView({ data }: { data: any }) {
                          </TableCell>
                          <TableCell>
                            <Input 
-                             placeholder="Add reason/note..." 
-                             className="h-10 rounded-xl text-sm border-slate-200 bg-slate-50 focus:bg-white"
+                             placeholder="Reason / note..." 
+                             className="h-9 rounded-xl text-xs border-slate-200 bg-slate-50 focus:bg-white w-full max-w-[150px]"
                              value={dailyEntries[student.id]?.notes || ''}
                              onChange={(e) => handleEntryChange(student.id, 'notes', e.target.value)}
                            />
                          </TableCell>
-                         <TableCell className="pr-8 text-right">
+                         <TableCell className="pr-6 text-right">
                            {(() => {
                              const wa = waStatuses[student.id];
                              const currentStatus = dailyEntries[student.id]?.status;
@@ -1180,7 +1370,8 @@ export default function AttendanceView({ data }: { data: any }) {
                            })()}
                          </TableCell>
                        </TableRow>
-                     ))
+                     );
+                   })
                    )}
                 </TableBody>
               </Table>
@@ -1236,6 +1427,15 @@ export default function AttendanceView({ data }: { data: any }) {
                           <TableCell className="text-center font-bold text-purple-600">{stats.holiday > 0 ? stats.holiday : '-'}</TableCell>
                           <TableCell className="pr-8 text-right">
                              <div className="flex items-center justify-end gap-1.5">
+                               <Button
+                                 variant="outline"
+                                 size="sm"
+                                 className="h-8 rounded-lg text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100 font-bold text-xs gap-1 shadow-2xs cursor-pointer"
+                                 onClick={() => setSelectedDossierStudent(student)}
+                                 title="Open 30-Day Biometric Attendance Dossier & Photo Audit"
+                               >
+                                 <Eye size={13} /> Dossier 👁️
+                               </Button>
                                <Button variant="ghost" size="sm" className="h-8 rounded-lg text-superior-teal hover:text-superior-teal hover:bg-superior-teal/10" onClick={() => downloadIndividualPDF(student)}>
                                  <FileText size={14} className="mr-1.5" /> PDF
                                </Button>
@@ -1423,6 +1623,14 @@ export default function AttendanceView({ data }: { data: any }) {
                     {studentAuditSnapshot.checkInTime ? new Date(studentAuditSnapshot.checkInTime).toLocaleString() : 'N/A'}
                   </span>
                 </div>
+                {studentAuditSnapshot.checkOutTime && (
+                  <div className="flex items-center justify-between text-slate-600 pt-1 border-t border-slate-200/60">
+                    <span className="font-medium flex items-center gap-1.5"><LogOut size={13} className="text-blue-500" /> Gate Departure Timestamp:</span>
+                    <span className="font-mono font-bold text-slate-800">
+                      {new Date(studentAuditSnapshot.checkOutTime).toLocaleString()}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between text-slate-600 pt-1 border-t border-slate-200/60">
                   <span className="font-medium">Verification Engine:</span>
                   <span className="font-bold text-emerald-700">Gate Kiosk AI Face Biometrics</span>
@@ -1436,6 +1644,247 @@ export default function AttendanceView({ data }: { data: any }) {
                 className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl px-5"
               >
                 Close Audit Record
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 30-Day Biometric Attendance Dossier Modal */}
+      {selectedDossierStudent && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-teal-950 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-teal-300 font-bold overflow-hidden shadow-inner shrink-0">
+                  {selectedDossierStudent.photo ? (
+                    <img src={selectedDossierStudent.photo} alt={selectedDossierStudent.fullName} className="w-full h-full object-cover" />
+                  ) : (
+                    (selectedDossierStudent.fullName || 'S').slice(0, 2).toUpperCase()
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-extrabold text-white tracking-tight">{selectedDossierStudent.fullName}</h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-400/30">
+                      Roll: {selectedDossierStudent.studentId || selectedDossierStudent.collegeNo || 'N/A'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 font-medium mt-0.5">
+                    30-Day Gate Biometric Audit Dossier • Month: <span className="font-mono font-bold text-amber-300">{reportMonth}</span> • {selectedDossierStudent.section}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => downloadStudentDossierPDF(selectedDossierStudent)}
+                  className="bg-white/10 hover:bg-white/20 border-white/20 text-white text-xs font-bold rounded-xl gap-1.5 cursor-pointer"
+                >
+                  <Download size={13} /> Export PDF
+                </Button>
+                <button
+                  onClick={() => setSelectedDossierStudent(null)}
+                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Month Metrics Bar */}
+            {(() => {
+              const stats = getMonthlyStats(selectedDossierStudent.id);
+              const [year, month] = reportMonth.split('-').map(Number);
+              const daysInMonth = new Date(year, month, 0).getDate();
+              let biometricCount = 0;
+              for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const rec = records.find((r: any) => r.studentId === selectedDossierStudent.id && r.date === dateStr);
+                if (getStudentSnapshotUrl(rec) || rec?.verificationMethod === 'face_biometric') biometricCount++;
+              }
+
+              return (
+                <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-3 py-1 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 shadow-2xs">
+                      Days in Month: <strong className="text-slate-900">{daysInMonth}</strong>
+                    </span>
+                    <span className="px-3 py-1 bg-emerald-50 border border-emerald-200 rounded-xl font-bold text-emerald-800 shadow-2xs">
+                      Hazir (P): <strong className="text-emerald-900">{stats.present}</strong>
+                    </span>
+                    <span className="px-3 py-1 bg-amber-50 border border-amber-200 rounded-xl font-bold text-amber-800 shadow-2xs">
+                      Late (L): <strong className="text-amber-900">{stats.late}</strong>
+                    </span>
+                    <span className="px-3 py-1 bg-rose-50 border border-rose-200 rounded-xl font-bold text-rose-800 shadow-2xs">
+                      Ghair Hazir (A): <strong className="text-rose-900">{stats.absent}</strong>
+                    </span>
+                    <span className="px-3 py-1 bg-blue-50 border border-blue-200 rounded-xl font-bold text-blue-800 shadow-2xs">
+                      Rukhsat: <strong className="text-blue-900">{stats.leave}</strong>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-teal-50 border border-teal-200 text-teal-900 font-extrabold text-[11px] shadow-2xs">
+                    <Camera size={13} className="text-teal-700" />
+                    Biometric Face Scans: {biometricCount} / {stats.present + stats.late}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Scrollable 30-Day Table */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+              <Table>
+                <TableHeader className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
+                  <TableRow>
+                    <TableHead className="w-24 font-black uppercase text-[10px] text-slate-400">Date</TableHead>
+                    <TableHead className="w-28 font-black uppercase text-[10px] text-slate-400">Status</TableHead>
+                    <TableHead className="w-36 font-black uppercase text-[10px] text-slate-400">Scanned Face 📸</TableHead>
+                    <TableHead className="w-32 font-black uppercase text-[10px] text-slate-400">Punch In</TableHead>
+                    <TableHead className="w-32 font-black uppercase text-[10px] text-slate-400">Punch Out</TableHead>
+                    <TableHead className="font-black uppercase text-[10px] text-slate-400">Notes & Remarks</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(() => {
+                    const [year, month] = reportMonth.split('-').map(Number);
+                    const daysInMonth = new Date(year, month, 0).getDate();
+                    const rows = [];
+
+                    for (let d = 1; d <= daysInMonth; d++) {
+                      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                      const dayDate = new Date(year, month - 1, d);
+                      const dayName = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
+                      const isSun = dayDate.getDay() === 0;
+                      const rec = records.find((r: any) => r.studentId === selectedDossierStudent.id && r.date === dateStr);
+                      const snapUrl = getStudentSnapshotUrl(rec);
+                      const cin = rec?.checkInTime || rec?.check_in_time;
+                      const cout = rec?.checkOutTime || rec?.check_out_time;
+                      const isLate = isPunchLate(cin, data?.settings?.collegeStartTime || '07:54');
+                      const status = rec?.status || (isSun ? 'Holiday' : '');
+
+                      rows.push(
+                        <TableRow key={dateStr} className={cn("hover:bg-slate-50/70 transition-colors", isSun && "bg-slate-50/50")}>
+                          <TableCell className="font-mono text-xs font-semibold text-slate-700">
+                            <div>
+                              <span>{dateStr.slice(8)} {dayDate.toLocaleDateString('en-US', { month: 'short' })}</span>
+                              <span className={cn("block text-[10px] font-bold", isSun ? "text-rose-500" : "text-slate-400")}>
+                                {dayName} {isSun && "(Sunday)"}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {status === 'Present' && (
+                              <span className="inline-flex items-center gap-1 font-bold text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                <CheckCircle2 size={12} className="text-emerald-600" /> Present
+                              </span>
+                            )}
+                            {status === 'Late' && (
+                              <span className="inline-flex items-center gap-1 font-bold text-xs text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-300">
+                                <Clock size={12} className="text-amber-600" /> Late
+                              </span>
+                            )}
+                            {status === 'Absent' && (
+                              <span className="inline-flex items-center gap-1 font-bold text-xs text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                                <AlertCircle size={12} className="text-rose-600" /> Absent
+                              </span>
+                            )}
+                            {status === 'Leave' && (
+                              <span className="inline-flex items-center gap-1 font-bold text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                                Rukhsat
+                              </span>
+                            )}
+                            {status === 'Holiday' && (
+                              <span className="inline-flex items-center gap-1 font-bold text-xs text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200">
+                                Holiday
+                              </span>
+                            )}
+                            {!status && (
+                              <span className="text-slate-300 font-mono text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {snapUrl ? (
+                              <button
+                                type="button"
+                                onClick={() => setStudentAuditSnapshot({
+                                  studentName: selectedDossierStudent.fullName,
+                                  rollNo: selectedDossierStudent.studentId || selectedDossierStudent.collegeNo || 'N/A',
+                                  classInfo: selectedDossierStudent.section || '',
+                                  registeredPhoto: selectedDossierStudent.photo,
+                                  snapshotUrl: snapUrl,
+                                  checkInTime: cin,
+                                  checkOutTime: cout,
+                                  status: status,
+                                  date: dateStr
+                                })}
+                                className="group relative w-10 h-10 rounded-xl overflow-hidden border-2 border-emerald-500 shadow-2xs hover:scale-105 transition-all cursor-pointer ring-2 ring-emerald-500/20"
+                                title="Click to view full photo comparison"
+                              >
+                                <img src={snapUrl} alt="Gate Snapshot" className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-black/25 group-hover:bg-transparent flex items-center justify-center transition-all">
+                                  <Camera size={12} className="text-white drop-shadow" />
+                                </div>
+                              </button>
+                            ) : rec?.verificationMethod === 'face_biometric' ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                Face Verified
+                              </span>
+                            ) : rec ? (
+                              <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+                                Manual ✍️
+                              </span>
+                            ) : (
+                              <span className="text-slate-300 text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {cin ? (
+                              <span className={cn(
+                                "inline-flex items-center gap-1 font-mono font-bold text-[11px] px-2 py-0.5 rounded-md border",
+                                isLate ? "bg-amber-50 text-amber-800 border-amber-300" : "bg-emerald-50 text-emerald-800 border-emerald-200"
+                              )}>
+                                <Clock size={11} className={isLate ? "text-amber-600" : "text-emerald-600"} />
+                                {formatPunchTime(cin)}
+                                {isLate && <span className="bg-amber-200 text-amber-900 text-[8px] font-black px-1 rounded uppercase">Late</span>}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300 font-mono text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {cout ? (
+                              <span className="inline-flex items-center gap-1 font-mono font-bold text-[11px] px-2 py-0.5 rounded-md border border-blue-200 bg-blue-50 text-blue-800">
+                                <LogOut size={11} className="text-blue-600" />
+                                {formatPunchTime(cout)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300 font-mono text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs text-slate-500 max-w-xs truncate">
+                            {rec?.notes || <span className="text-slate-300">—</span>}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }
+                    return rows;
+                  })()}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+              <span>Superior College Jahanian • Biometric AI Audit Trail</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setSelectedDossierStudent(null)}
+                className="rounded-xl font-bold px-5"
+              >
+                Close Dossier
               </Button>
             </div>
           </div>
