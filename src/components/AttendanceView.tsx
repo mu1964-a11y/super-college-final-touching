@@ -107,26 +107,59 @@ export default function AttendanceView({ data }: { data: any }) {
     rollNo: string;
     classInfo: string;
     registeredPhoto?: string;
-    snapshotUrl: string;
-    checkInTime?: string;
-    checkOutTime?: string;
+    entrySnapshotUrl?: string | null;
+    exitSnapshotUrl?: string | null;
+    snapshotUrl?: string | null;
+    checkInTime?: string | null;
+    checkOutTime?: string | null;
     status?: string;
     date: string;
   } | null>(null);
 
   const [selectedDossierStudent, setSelectedDossierStudent] = useState<any | null>(null);
 
-  function getStudentSnapshotUrl(entry?: any): string | null {
-    if (!entry) return null;
-    if (entry.snapshotUrl && entry.snapshotUrl.length > 10) return entry.snapshotUrl;
-    if (entry.snapshot_url && entry.snapshot_url.length > 10) return entry.snapshot_url;
-    if (entry.notes && typeof entry.notes === 'string' && entry.notes.startsWith('{')) {
+  function getStudentBiometrics(entry?: any, existing?: any): {
+    entrySnapshot: string | null;
+    exitSnapshot: string | null;
+    checkInTime: string | null;
+    checkOutTime: string | null;
+    isBiometric: boolean;
+  } {
+    const raw = existing || entry;
+    if (!raw) return { entrySnapshot: null, exitSnapshot: null, checkInTime: null, checkOutTime: null, isBiometric: false };
+
+    let entrySnap: string | null = raw.entrySnapshotUrl || raw.entry_snapshot_url || raw.snapshotUrl || raw.snapshot_url || null;
+    let exitSnap: string | null = raw.exitSnapshotUrl || raw.exit_snapshot_url || null;
+    let checkIn = raw.checkInTime || raw.check_in_time || null;
+    let checkOut = raw.checkOutTime || raw.check_out_time || null;
+    let isBio = Boolean(entrySnap || exitSnap || raw.verificationMethod === 'face_biometric' || raw.verification_method === 'face_biometric');
+
+    const notesStr = raw.notes || entry?.notes;
+    if (notesStr && typeof notesStr === 'string' && notesStr.startsWith('{')) {
       try {
-        const parsed = JSON.parse(entry.notes);
-        if (parsed.snapshot) return parsed.snapshot;
+        const parsed = JSON.parse(notesStr);
+        if (parsed.entry_snapshot) entrySnap = parsed.entry_snapshot;
+        if (parsed.exit_snapshot) exitSnap = parsed.exit_snapshot;
+        if (parsed.snapshot && !entrySnap) entrySnap = parsed.snapshot;
+        if (parsed.check_in_time && !checkIn) checkIn = parsed.check_in_time;
+        if (parsed.check_out_time && !checkOut) checkOut = parsed.check_out_time;
+        if (parsed.method === 'face_biometric' || parsed.verification_method === 'face_biometric') isBio = true;
       } catch {}
     }
-    return null;
+
+    return {
+      entrySnapshot: entrySnap,
+      exitSnapshot: exitSnap,
+      checkInTime: checkIn,
+      checkOutTime: checkOut,
+      isBiometric: isBio
+    };
+  }
+
+  function getStudentSnapshotUrl(entry?: any): string | null {
+    if (!entry) return null;
+    const bio = getStudentBiometrics(entry);
+    return bio.entrySnapshot || bio.exitSnapshot || null;
   }
 
   function formatPunchTime(isoString?: string | null): string | null {
@@ -1122,14 +1155,16 @@ export default function AttendanceView({ data }: { data: any }) {
                      </TableRow>
                    ) : (
                      filteredStudents.map((student: any) => {
-                       const entry = dailyEntries[student.id];
-                       const existing = records.find((r: any) => r.studentId === student.id && r.date === selectedDate);
-                       const snapshotUrl = getStudentSnapshotUrl(existing) || getStudentSnapshotUrl(entry);
-                       const checkInTime = entry?.checkInTime || entry?.check_in_time || existing?.checkInTime || existing?.check_in_time;
-                       const checkOutTime = entry?.checkOutTime || entry?.check_out_time || existing?.checkOutTime || existing?.check_out_time;
-                       const isBiometric = Boolean(snapshotUrl || entry?.verificationMethod === 'face_biometric' || existing?.verificationMethod === 'face_biometric');
-                       const isLate = isPunchLate(checkInTime, data?.settings?.collegeStartTime || '07:54');
-                       const currentStatus = entry?.status || existing?.status || 'Present';
+                      const entry = dailyEntries[student.id];
+                      const existing = records.find((r: any) => r.studentId === student.id && r.date === selectedDate);
+                      const bio = getStudentBiometrics(entry, existing);
+                      const entrySnapshot = bio.entrySnapshot;
+                      const exitSnapshot = bio.exitSnapshot;
+                      const checkInTime = bio.checkInTime;
+                      const checkOutTime = bio.checkOutTime;
+                      const isBiometric = bio.isBiometric;
+                      const isLate = isPunchLate(checkInTime, data?.settings?.collegeStartTime || '07:54');
+                      const currentStatus = entry?.status || existing?.status || 'Present';
 
                        return (
                        <TableRow key={student.id} className="hover:bg-slate-50/80 transition-colors">
@@ -1163,53 +1198,83 @@ export default function AttendanceView({ data }: { data: any }) {
                            </div>
                          </TableCell>
                          <TableCell>
-                           {snapshotUrl ? (
-                             <div className="flex items-center gap-2">
-                               <button
-                                 type="button"
-                                 onClick={() => setStudentAuditSnapshot({
-                                   studentName: student.fullName,
-                                   rollNo: student.studentId || student.collegeNo || 'Pending',
-                                   classInfo: `${student.section || ''} • ${student.groupName || student.currentClass || ''}`,
-                                   registeredPhoto: student.photo,
-                                   snapshotUrl: snapshotUrl,
-                                   checkInTime: checkInTime,
-                                   checkOutTime: checkOutTime,
-                                   status: currentStatus,
-                                   date: selectedDate
-                                 })}
-                                 className="group relative w-10 h-10 rounded-xl overflow-hidden border-2 border-emerald-500 shadow-2xs hover:scale-105 transition-all cursor-pointer shrink-0 ring-2 ring-emerald-500/20"
-                                 title="Click to zoom live gate camera snapshot"
-                               >
-                                 <img src={snapshotUrl} alt="Gate Snapshot" className="w-full h-full object-cover" />
-                                 <div className="absolute inset-0 bg-black/25 group-hover:bg-transparent flex items-center justify-center transition-all">
-                                   <Camera size={12} className="text-white drop-shadow" />
-                                 </div>
-                               </button>
-                               <div>
-                                 <span className="inline-flex items-center gap-1 font-bold text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 shadow-2xs">
-                                   <CheckCircle2 size={10} className="text-emerald-600" /> Face Match
-                                 </span>
-                                 <p className="text-[9px] text-slate-400 font-semibold mt-0.5">Biometric AI</p>
-                               </div>
-                             </div>
-                           ) : isBiometric ? (
-                             <div className="flex items-center gap-2">
-                               <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center shrink-0">
-                                 <ShieldCheck size={18} />
-                               </div>
-                               <span className="inline-flex items-center gap-1 font-bold text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                                 Face Verified
-                               </span>
-                             </div>
-                           ) : (
-                             <div className="flex items-center gap-1.5">
-                               <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                                 Manual ✍️
-                               </span>
-                             </div>
-                           )}
-                         </TableCell>
+                          {entrySnapshot || exitSnapshot ? (
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1.5">
+                                {entrySnapshot && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setStudentAuditSnapshot({
+                                      studentName: student.fullName,
+                                      rollNo: student.studentId || student.collegeNo || 'Pending',
+                                      classInfo: `${student.section || ''} • ${student.groupName || student.currentClass || ''}`,
+                                      registeredPhoto: student.photo,
+                                      entrySnapshotUrl: entrySnapshot,
+                                      exitSnapshotUrl: exitSnapshot,
+                                      snapshotUrl: entrySnapshot,
+                                      checkInTime: checkInTime,
+                                      checkOutTime: checkOutTime,
+                                      status: currentStatus,
+                                      date: selectedDate
+                                    })}
+                                    className="group relative w-9 h-9 rounded-xl overflow-hidden border-2 border-emerald-500 shadow-2xs hover:scale-105 transition-all cursor-pointer shrink-0 ring-2 ring-emerald-500/20"
+                                    title="Gate Arrival (Entry) Snapshot — Click to inspect"
+                                  >
+                                    <img src={entrySnapshot} alt="Entry Scan" className="w-full h-full object-cover" />
+                                    <span className="absolute bottom-0 inset-x-0 bg-emerald-700/90 text-[7px] font-black text-white text-center leading-tight py-0.2">IN</span>
+                                  </button>
+                                )}
+                                {exitSnapshot ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setStudentAuditSnapshot({
+                                      studentName: student.fullName,
+                                      rollNo: student.studentId || student.collegeNo || 'Pending',
+                                      classInfo: `${student.section || ''} • ${student.groupName || student.currentClass || ''}`,
+                                      registeredPhoto: student.photo,
+                                      entrySnapshotUrl: entrySnapshot,
+                                      exitSnapshotUrl: exitSnapshot,
+                                      snapshotUrl: exitSnapshot,
+                                      checkInTime: checkInTime,
+                                      checkOutTime: checkOutTime,
+                                      status: currentStatus,
+                                      date: selectedDate
+                                    })}
+                                    className="group relative w-9 h-9 rounded-xl overflow-hidden border-2 border-blue-500 shadow-2xs hover:scale-105 transition-all cursor-pointer shrink-0 ring-2 ring-blue-500/20"
+                                    title="Gate Departure (Exit) Snapshot — Click to inspect"
+                                  >
+                                    <img src={exitSnapshot} alt="Exit Scan" className="w-full h-full object-cover" />
+                                    <span className="absolute bottom-0 inset-x-0 bg-blue-700/90 text-[7px] font-black text-white text-center leading-tight py-0.2">OUT</span>
+                                  </button>
+                                ) : (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-[9px] font-bold text-slate-500 border border-slate-200" title="Student is currently on campus (Departure pending)">
+                                    🏢 In
+                                  </span>
+                                )}
+                              </div>
+                              <div className="hidden sm:block">
+                                <span className="inline-flex items-center gap-0.5 font-bold text-[9px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shadow-2xs">
+                                  <CheckCircle2 size={9} className="text-emerald-600" /> {exitSnapshot ? 'In+Out' : 'Gate Scan'}
+                                </span>
+                              </div>
+                            </div>
+                          ) : isBiometric ? (
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center shrink-0">
+                                <ShieldCheck size={16} />
+                              </div>
+                              <span className="inline-flex items-center gap-1 font-bold text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                Face Verified
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+                                Manual ✍️
+                              </span>
+                            </div>
+                          )}
+                        </TableCell>
                          <TableCell>
                            <div className="flex flex-col gap-1 text-[11px]">
                              {checkInTime ? (
@@ -1589,9 +1654,9 @@ export default function AttendanceView({ data }: { data: any }) {
               </div>
 
               {/* Side-by-side Photo Comparison */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-center space-y-2">
-                  <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">Registered Student ID</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="text-center space-y-1.5">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">1. Enrolled Master ID</p>
                   <div className="aspect-square rounded-2xl overflow-hidden border-2 border-slate-200 bg-slate-100 shadow-sm">
                     {studentAuditSnapshot.registeredPhoto ? (
                       <img src={studentAuditSnapshot.registeredPhoto} alt="Registered Student" className="w-full h-full object-cover" />
@@ -1601,17 +1666,41 @@ export default function AttendanceView({ data }: { data: any }) {
                       </div>
                     )}
                   </div>
-                  <span className="text-[10px] text-slate-500 font-semibold">Enrolled Profile</span>
+                  <span className="text-[9px] text-slate-500 font-semibold">Official Profile</span>
                 </div>
 
-                <div className="text-center space-y-2">
-                  <p className="text-[11px] font-black uppercase tracking-wider text-emerald-600 flex items-center justify-center gap-1">
-                    <Camera size={12} /> Live Gate Camera Scan
+                <div className="text-center space-y-1.5">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600 flex items-center justify-center gap-1">
+                    <Camera size={11} /> 2. Arrival Scan (IN)
                   </p>
                   <div className="aspect-square rounded-2xl overflow-hidden border-2 border-emerald-500 bg-slate-900 shadow-md ring-2 ring-emerald-500/20">
-                    <img src={studentAuditSnapshot.snapshotUrl} alt="Gate Camera Snapshot" className="w-full h-full object-cover" />
+                    {studentAuditSnapshot.entrySnapshotUrl || studentAuditSnapshot.snapshotUrl ? (
+                      <img src={studentAuditSnapshot.entrySnapshotUrl || studentAuditSnapshot.snapshotUrl} alt="Arrival Scan" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs font-bold">
+                        No Entry Scan
+                      </div>
+                    )}
                   </div>
-                  <span className="text-[10px] text-emerald-600 font-bold">Biometrically Verified</span>
+                  <span className="text-[9px] text-emerald-600 font-bold">Morning Entry</span>
+                </div>
+
+                <div className="text-center space-y-1.5">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-blue-600 flex items-center justify-center gap-1">
+                    <LogOut size={11} /> 3. Departure Scan (OUT)
+                  </p>
+                  <div className="aspect-square rounded-2xl overflow-hidden border-2 border-blue-500 bg-slate-900 shadow-md ring-2 ring-blue-500/20">
+                    {studentAuditSnapshot.exitSnapshotUrl ? (
+                      <img src={studentAuditSnapshot.exitSnapshotUrl} alt="Departure Scan" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-2 text-center bg-slate-800/80">
+                        <span className="text-xl mb-1">🏢</span>
+                        <span className="text-[9px] font-bold text-slate-300">On Campus</span>
+                        <span className="text-[8px] text-slate-400">Exit Pending</span>
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[9px] text-blue-600 font-bold">{studentAuditSnapshot.exitSnapshotUrl ? 'Afternoon Departure' : 'Still On Campus'}</span>
                 </div>
               </div>
 
@@ -1740,7 +1829,7 @@ export default function AttendanceView({ data }: { data: any }) {
                   <TableRow>
                     <TableHead className="w-24 font-black uppercase text-[10px] text-slate-400">Date</TableHead>
                     <TableHead className="w-28 font-black uppercase text-[10px] text-slate-400">Status</TableHead>
-                    <TableHead className="w-36 font-black uppercase text-[10px] text-slate-400">Scanned Face 📸</TableHead>
+                    <TableHead className="w-44 font-black uppercase text-[10px] text-slate-400">Gate Faces (IN / OUT) 📸</TableHead>
                     <TableHead className="w-32 font-black uppercase text-[10px] text-slate-400">Punch In</TableHead>
                     <TableHead className="w-32 font-black uppercase text-[10px] text-slate-400">Punch Out</TableHead>
                     <TableHead className="font-black uppercase text-[10px] text-slate-400">Notes & Remarks</TableHead>

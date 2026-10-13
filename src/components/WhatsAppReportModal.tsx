@@ -25,6 +25,9 @@ import {
   Sparkles,
   Eye,
   RefreshCw,
+  Copy,
+  RotateCcw,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatWhatsAppPhone } from "../lib/whatsappAutomation";
@@ -54,6 +57,17 @@ export interface WhatsAppReportModalProps {
   onFinished?: () => void;
 }
 
+export interface DispatchLogItem {
+  id: string;
+  name: string;
+  phone: string;
+  rollNo?: string;
+  status: 'sent' | 'failed' | 'skipped';
+  reason?: string;
+  time: string;
+  item: ReportRecipientItem;
+}
+
 export default function WhatsAppReportModal({
   open,
   onOpenChange,
@@ -76,7 +90,8 @@ export default function WhatsAppReportModal({
   const [sentCount, setSentCount] = useState<number>(0);
   const [failedCount, setFailedCount] = useState<number>(0);
   const [currentRecipient, setCurrentRecipient] = useState<ReportRecipientItem | null>(null);
-  const [dispatchLogs, setDispatchLogs] = useState<Array<{ name: string; phone: string; status: 'sent' | 'failed' | 'skipped'; time: string }>>([]);
+  const [dispatchLogs, setDispatchLogs] = useState<DispatchLogItem[]>([]);
+  const [auditFilter, setAuditFilter] = useState<'all' | 'sent' | 'failed'>('all');
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -180,9 +195,12 @@ export default function WhatsAppReportModal({
       if (!cleanPhone) {
         fCount++;
         setFailedCount(fCount);
+        const reason = !rawPhone || rawPhone.trim().length === 0
+          ? "Missing phone number in profile"
+          : `Invalid phone format: '${rawPhone}' (requires 10-11 digits e.g. 03001234567)`;
         setDispatchLogs((prev) => [
           ...prev,
-          { name: item.name, phone: rawPhone || "Missing", status: "skipped", time: timeStr },
+          { id: item.id, name: item.name, phone: rawPhone || "Missing", rollNo: item.rollNo, status: "skipped", reason, time: timeStr, item },
         ]);
         continue;
       }
@@ -200,23 +218,26 @@ export default function WhatsAppReportModal({
           setSentCount(sCount);
           setDispatchLogs((prev) => [
             ...prev,
-            { name: item.name, phone: cleanPhone, status: "sent", time: timeStr },
+            { id: item.id, name: item.name, phone: cleanPhone, rollNo: item.rollNo, status: "sent", reason: "Delivered successfully", time: timeStr, item },
           ]);
         } else {
+          const errData = await res.json().catch(() => ({}));
+          const reason = errData.error || errData.message || `Server error (HTTP ${res.status})`;
           fCount++;
           setFailedCount(fCount);
           setDispatchLogs((prev) => [
             ...prev,
-            { name: item.name, phone: cleanPhone, status: "failed", time: timeStr },
+            { id: item.id, name: item.name, phone: cleanPhone, rollNo: item.rollNo, status: "failed", reason, time: timeStr, item },
           ]);
         }
       } catch (err: any) {
         if (controller.signal.aborted) break;
         fCount++;
         setFailedCount(fCount);
+        const reason = err.name === 'AbortError' ? 'Aborted by user' : (err.message || 'Network / connection timeout');
         setDispatchLogs((prev) => [
           ...prev,
-          { name: item.name, phone: cleanPhone, status: "failed", time: timeStr },
+          { id: item.id, name: item.name, phone: cleanPhone, rollNo: item.rollNo, status: "failed", reason, time: timeStr, item },
         ]);
       }
 
@@ -230,6 +251,120 @@ export default function WhatsAppReportModal({
     setIsCompleted(true);
     toast.success(`WhatsApp Broadcast completed! Sent: ${sCount}, Failed: ${fCount}`);
     onFinished?.();
+  };
+
+  const handleRetryFailed = async () => {
+    const failedItems = dispatchLogs
+      .filter((l) => l.status === "failed" || l.status === "skipped")
+      .map((l) => l.item);
+
+    if (failedItems.length === 0) {
+      toast.info("No failed items to retry.");
+      return;
+    }
+
+    setIsDispatching(true);
+    setIsCompleted(false);
+    setCurrentIndex(0);
+    // Keep already sent logs, purge failed logs to re-audit them
+    const preservedSentLogs = dispatchLogs.filter((l) => l.status === "sent");
+    setDispatchLogs(preservedSentLogs);
+    setFailedCount(0);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    let sCount = sentCount;
+    let fCount = 0;
+
+    for (let i = 0; i < failedItems.length; i++) {
+      if (controller.signal.aborted) break;
+
+      const item = failedItems[i];
+      setCurrentIndex(i + 1);
+      setCurrentRecipient(item);
+
+      const rawPhone = item.phone || item.student?.fatherContact || item.student?.contact || "";
+      const cleanPhone = formatWhatsAppPhone(rawPhone);
+      const timeStr = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+      if (!cleanPhone) {
+        fCount++;
+        setFailedCount(fCount);
+        const reason = !rawPhone || rawPhone.trim().length === 0
+          ? "Missing phone number in profile"
+          : `Invalid phone format: '${rawPhone}' (requires 10-11 digits e.g. 03001234567)`;
+        setDispatchLogs((prev) => [
+          ...prev,
+          { id: item.id, name: item.name, phone: rawPhone || "Missing", rollNo: item.rollNo, status: "skipped", reason, time: timeStr, item },
+        ]);
+        continue;
+      }
+
+      try {
+        const res = await fetch("/api/whatsapp/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: cleanPhone, message: item.message }),
+          signal: controller.signal,
+        });
+
+        if (res.ok) {
+          sCount++;
+          setSentCount(sCount);
+          setDispatchLogs((prev) => [
+            ...prev,
+            { id: item.id, name: item.name, phone: cleanPhone, rollNo: item.rollNo, status: "sent", reason: "Delivered successfully", time: timeStr, item },
+          ]);
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          const reason = errData.error || errData.message || `Server error (HTTP ${res.status})`;
+          fCount++;
+          setFailedCount(fCount);
+          setDispatchLogs((prev) => [
+            ...prev,
+            { id: item.id, name: item.name, phone: cleanPhone, rollNo: item.rollNo, status: "failed", reason, time: timeStr, item },
+          ]);
+        }
+      } catch (err: any) {
+        if (controller.signal.aborted) break;
+        fCount++;
+        setFailedCount(fCount);
+        const reason = err.name === 'AbortError' ? 'Aborted by user' : (err.message || 'Network / connection timeout');
+        setDispatchLogs((prev) => [
+          ...prev,
+          { id: item.id, name: item.name, phone: cleanPhone, rollNo: item.rollNo, status: "failed", reason, time: timeStr, item },
+        ]);
+      }
+
+      if (i < failedItems.length - 1 && !controller.signal.aborted) {
+        await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
+      }
+    }
+
+    setIsDispatching(false);
+    setIsCompleted(true);
+    toast.success(`Retry complete! Delivered: ${sCount}, Still Failed: ${fCount}`);
+    onFinished?.();
+  };
+
+  const handleCopyFailedReport = () => {
+    const failedLogs = dispatchLogs.filter((l) => l.status === "failed" || l.status === "skipped");
+    if (failedLogs.length === 0) {
+      toast.info("No failed recipients to copy.");
+      return;
+    }
+    const reportText = `SUPERIOR COLLEGE JAHANIAN — WHATSAPP DISPATCH FAILURE REPORT
+Category: ${category} | Date: ${new Date().toLocaleDateString()}
+Total Failed / Skipped: ${failedLogs.length}
+--------------------------------------------------
+${failedLogs.map((l, idx) => `${idx + 1}. ${l.name} (${l.rollNo || 'N/A'})
+   Phone: ${l.phone}
+   Reason: ${l.reason || 'Unknown error'}`).join('\n\n')}
+--------------------------------------------------`;
+
+    navigator.clipboard.writeText(reportText);
+    toast.success("Failed recipient report copied to clipboard!");
   };
 
   const handleCancelDispatch = () => {
@@ -749,25 +884,70 @@ export default function WhatsAppReportModal({
           {/* 5. Dispatch Logs Scrollable */}
           {(isDispatching || isCompleted) && dispatchLogs.length > 0 && (
             <div className="space-y-2">
-              <label className="text-[11px] font-black uppercase tracking-wider text-slate-400">
-                Live Dispatch Audit Trail ({dispatchLogs.length} events):
-              </label>
-              <div className="bg-slate-900 text-slate-200 rounded-2xl p-3 font-mono text-[11px] max-h-48 overflow-y-auto space-y-1.5">
-                {dispatchLogs.map((log, idx) => (
-                  <div key={idx} className="flex items-center justify-between border-b border-slate-800 pb-1">
-                    <span className="truncate max-w-[280px]">
-                      {log.status === "sent" ? (
-                        <span className="text-emerald-400">✔ [SENT] </span>
-                      ) : (
-                        <span className="text-rose-400">✖ [{log.status.toUpperCase()}] </span>
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <FileText size={12} className="text-emerald-600" />
+                  Live Dispatch Audit Trail ({dispatchLogs.length} events):
+                </label>
+                <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[10px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setAuditFilter('all')}
+                    className={`px-2 py-0.5 rounded-md transition-all ${auditFilter === 'all' ? 'bg-white shadow-xs text-slate-900 font-extrabold' : 'text-slate-500 hover:text-slate-900'}`}
+                  >
+                    All ({dispatchLogs.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAuditFilter('sent')}
+                    className={`px-2 py-0.5 rounded-md transition-all ${auditFilter === 'sent' ? 'bg-emerald-600 text-white shadow-xs font-extrabold' : 'text-emerald-700 hover:text-emerald-900'}`}
+                  >
+                    Sent ({sentCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAuditFilter('failed')}
+                    className={`px-2 py-0.5 rounded-md transition-all ${auditFilter === 'failed' ? 'bg-rose-600 text-white shadow-xs font-extrabold' : 'text-rose-700 hover:text-rose-900'}`}
+                  >
+                    Failed ({failedCount})
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-slate-950 text-slate-200 rounded-2xl p-3 font-mono text-[11px] max-h-52 overflow-y-auto space-y-2 border border-slate-800 shadow-inner">
+                {dispatchLogs
+                  .filter((log) => {
+                    if (auditFilter === 'sent') return log.status === 'sent';
+                    if (auditFilter === 'failed') return log.status === 'failed' || log.status === 'skipped';
+                    return true;
+                  })
+                  .map((log, idx) => (
+                    <div key={idx} className="flex flex-col gap-1 border-b border-slate-800/80 pb-1.5 last:border-b-0 last:pb-0">
+                      <div className="flex items-center justify-between">
+                        <span className="truncate max-w-[340px] flex items-center gap-1.5">
+                          {log.status === "sent" ? (
+                            <span className="text-emerald-400 font-bold shrink-0">✔ [SENT]</span>
+                          ) : log.status === "skipped" ? (
+                            <span className="text-amber-400 font-bold shrink-0">⚠️ [SKIPPED]</span>
+                          ) : (
+                            <span className="text-rose-400 font-bold shrink-0">✖ [FAILED]</span>
+                          )}
+                          <span className="text-white font-semibold">{log.name}</span>
+                          {log.rollNo && <span className="text-[10px] text-slate-400 font-normal">({log.rollNo})</span>}
+                        </span>
+                        <span className="text-slate-400 text-[10px] shrink-0 font-mono">
+                          +{log.phone} • {log.time}
+                        </span>
+                      </div>
+                      {log.reason && (
+                        <div className="text-[10px] px-2 py-0.5 rounded bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+                          <span className={log.status === 'sent' ? 'text-emerald-300' : 'text-amber-300'}>
+                            {log.status === 'sent' ? 'Status: ' : 'Reason: '}{log.reason}
+                          </span>
+                        </div>
                       )}
-                      {log.name}
-                    </span>
-                    <span className="text-slate-400 text-[10px] shrink-0">
-                      {log.phone} • {log.time}
-                    </span>
-                  </div>
-                ))}
+                    </div>
+                  ))}
                 <div ref={logsEndRef} />
               </div>
             </div>
@@ -775,15 +955,49 @@ export default function WhatsAppReportModal({
 
           {/* 6. Completed Summary View */}
           {isCompleted && (
-            <div className="p-6 bg-emerald-50 rounded-3xl border border-emerald-200 text-center space-y-3">
-              <div className="w-14 h-14 bg-emerald-600 text-white rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-emerald-600/30">
-                <CheckCircle2 size={32} />
+            <div className="space-y-3">
+              <div className="p-6 bg-emerald-50 rounded-3xl border border-emerald-200 text-center space-y-2 shadow-xs">
+                <div className="w-12 h-12 bg-emerald-600 text-white rounded-2xl flex items-center justify-center mx-auto shadow-md shadow-emerald-600/30">
+                  <CheckCircle2 size={28} />
+                </div>
+                <h3 className="text-lg font-black text-emerald-900 font-serif">Broadcast Complete!</h3>
+                <p className="text-xs text-emerald-700 font-medium">
+                  Successfully dispatched WhatsApp messages to <span className="font-bold">{sentCount}</span> recipients.
+                  {failedCount > 0 && ` (${failedCount} messages failed or were skipped).`}
+                </p>
               </div>
-              <h3 className="text-lg font-black text-emerald-900 font-serif">Broadcast Complete!</h3>
-              <p className="text-xs text-emerald-700 font-medium">
-                Successfully dispatched WhatsApp messages to <span className="font-bold">{sentCount}</span> recipients.
-                {failedCount > 0 && ` (${failedCount} were skipped due to invalid/missing numbers).`}
-              </p>
+
+              {failedCount > 0 && (
+                <div className="p-4 bg-rose-50/80 rounded-2xl border border-rose-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="text-left">
+                    <p className="text-xs font-bold text-rose-900">
+                      ⚠️ {failedCount} Messages Not Delivered
+                    </p>
+                    <p className="text-[10px] text-rose-700">
+                      Missing/invalid phone numbers or temporary network disconnection.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleCopyFailedReport}
+                      className="h-8 text-xs font-bold border-rose-300 text-rose-800 hover:bg-rose-100/50"
+                    >
+                      <Copy size={12} className="mr-1.5" /> Copy Failure List
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleRetryFailed}
+                      className="h-8 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs"
+                    >
+                      <RotateCcw size={12} className="mr-1.5" /> Retry {failedCount} Failed
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

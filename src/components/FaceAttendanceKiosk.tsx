@@ -751,13 +751,52 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
     try {
       if (person.personType === "staff") {
         // --- STAFF BIOMETRIC ATTENDANCE ---
+        // Fetch existing staff scan for today to preserve morning arrival snapshot on evening exit
+        let existingEntrySnap: string | null = null;
+        let existingExitSnap: string | null = null;
+        let existingCheckIn: string | null = null;
+        let existingCheckOut: string | null = null;
+        try {
+          const { data: existRow } = await supabase
+            .from("staff_attendance")
+            .select("snapshot_url, check_in, check_out, check_in_time, check_out_time, notes")
+            .eq("staff_id", person.id)
+            .eq("date", todayDate)
+            .maybeSingle();
+          if (existRow) {
+            existingEntrySnap = existRow.snapshot_url;
+            existingCheckIn = existRow.check_in || existRow.check_in_time;
+            existingCheckOut = existRow.check_out || existRow.check_out_time;
+            if (existRow.notes && typeof existRow.notes === "string" && existRow.notes.startsWith("{")) {
+              try {
+                const p = JSON.parse(existRow.notes);
+                if (p.entry_snapshot) existingEntrySnap = p.entry_snapshot;
+                if (p.exit_snapshot) existingExitSnap = p.exit_snapshot;
+              } catch {}
+            }
+          }
+        } catch {}
+
+        const entrySnapshot = !isExit ? liveSnapshot : (existingEntrySnap || null);
+        const exitSnapshot = isExit ? liveSnapshot : (existingExitSnap || null);
+
+        const structuredNotes = JSON.stringify({
+          entry_snapshot: entrySnapshot,
+          exit_snapshot: exitSnapshot,
+          check_in_time: !isExit ? timeStr : (existingCheckIn || null),
+          check_out_time: isExit ? timeStr : (existingCheckOut || null),
+          verification_method: method === "face_recognition" ? "face_biometric" : "manual_kiosk",
+          last_action: isExit ? "Exit" : "Entry",
+        });
+
         const staffPayload: any = {
           staff_id: person.id,
           date: todayDate,
           status: attendanceStatus,
-          snapshot_url: liveSnapshot || undefined,
+          snapshot_url: entrySnapshot || liveSnapshot || undefined,
+          exit_snapshot_url: exitSnapshot || undefined,
           verification_method: method === "face_recognition" ? "face_biometric" : "manual_kiosk",
-          notes: `Gate Face Biometric ${isExit ? "Exit" : "Entry"} (${timeStr})${attendanceStatus === "Late" ? " [Late Arrival]" : ""}`,
+          notes: structuredNotes,
         };
         if (isExit) {
           staffPayload.check_out = timeStr;
@@ -777,13 +816,7 @@ export default function FaceAttendanceKiosk({ onBackToApp, standalone = false }:
             staff_id: person.id,
             date: todayDate,
             status: attendanceStatus,
-            notes: JSON.stringify({
-              method: "face_biometric",
-              direction: gateDirection,
-              time: timeStr,
-              status: attendanceStatus,
-              snapshot: liveSnapshot,
-            }),
+            notes: structuredNotes,
           };
           if (isExit) fallbackPayload.check_out = timeStr;
           else fallbackPayload.check_in = timeStr;
@@ -821,13 +854,52 @@ _Office of the Principal & College Administration_`;
 
       } else {
         // --- STUDENT BIOMETRIC ATTENDANCE ---
+        // Fetch existing student scan for today to preserve morning arrival snapshot on evening exit
+        let existingEntrySnap: string | null = null;
+        let existingExitSnap: string | null = null;
+        let existingCheckInTime: string | null = null;
+        let existingCheckOutTime: string | null = null;
+        try {
+          const { data: existRow } = await supabase
+            .from("student_attendance")
+            .select("snapshot_url, check_in_time, check_out_time, notes")
+            .eq("student_id", person.id)
+            .eq("date", todayDate)
+            .maybeSingle();
+          if (existRow) {
+            existingEntrySnap = existRow.snapshot_url;
+            existingCheckInTime = existRow.check_in_time;
+            existingCheckOutTime = existRow.check_out_time;
+            if (existRow.notes && typeof existRow.notes === "string" && existRow.notes.startsWith("{")) {
+              try {
+                const p = JSON.parse(existRow.notes);
+                if (p.entry_snapshot) existingEntrySnap = p.entry_snapshot;
+                if (p.exit_snapshot) existingExitSnap = p.exit_snapshot;
+              } catch {}
+            }
+          }
+        } catch {}
+
+        const entrySnapshot = !isExit ? liveSnapshot : (existingEntrySnap || null);
+        const exitSnapshot = isExit ? liveSnapshot : (existingExitSnap || null);
+
+        const structuredNotes = JSON.stringify({
+          entry_snapshot: entrySnapshot,
+          exit_snapshot: exitSnapshot,
+          check_in_time: !isExit ? new Date().toISOString() : (existingCheckInTime || null),
+          check_out_time: isExit ? new Date().toISOString() : (existingCheckOutTime || null),
+          verification_method: method === "face_recognition" ? "face_biometric" : "manual_kiosk",
+          last_action: isExit ? "Exit" : "Entry",
+        });
+
         const studentPayload: any = {
           student_id: person.id,
           date: todayDate,
           status: attendanceStatus,
-          snapshot_url: liveSnapshot || undefined,
+          snapshot_url: entrySnapshot || liveSnapshot || undefined,
+          exit_snapshot_url: exitSnapshot || undefined,
           verification_method: method === "face_recognition" ? "face_biometric" : "manual_kiosk",
-          notes: `Gate Face Biometric ${isExit ? "Exit" : "Entry"} (${timeStr})${attendanceStatus === "Late" ? " [Late Arrival]" : ""}`,
+          notes: structuredNotes,
         };
         if (isExit) {
           studentPayload.check_out_time = new Date().toISOString();
@@ -845,13 +917,7 @@ _Office of the Principal & College Administration_`;
             student_id: person.id,
             date: todayDate,
             status: attendanceStatus,
-            notes: JSON.stringify({
-              method: "face_biometric",
-              direction: gateDirection,
-              time: timeStr,
-              status: attendanceStatus,
-              snapshot: liveSnapshot,
-            }),
+            notes: structuredNotes,
           };
           await supabase.from("student_attendance").upsert(fallbackPayload, { onConflict: "student_id,date" });
         }

@@ -45,24 +45,47 @@ interface AuditSnapshotData {
   staffId: string;
   role: string;
   registeredPhoto?: string;
-  snapshotUrl: string;
+  entrySnapshotUrl?: string | null;
+  exitSnapshotUrl?: string | null;
+  snapshotUrl?: string | null;
   checkInTime?: string;
   checkOutTime?: string;
   status?: string;
   date: string;
 }
 
-function getSnapshotUrl(entry?: Partial<AttendanceRecord>): string | null {
-  if (!entry) return null;
-  if (entry.snapshotUrl && entry.snapshotUrl.length > 10) return entry.snapshotUrl;
-  if (entry.snapshot_url && entry.snapshot_url.length > 10) return entry.snapshot_url;
-  if (entry.notes && entry.notes.startsWith('{')) {
+function getStaffBiometrics(entry?: Partial<AttendanceRecord>): {
+  entrySnapshot: string | null;
+  exitSnapshot: string | null;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  isBiometric: boolean;
+} {
+  if (!entry) return { entrySnapshot: null, exitSnapshot: null, checkInTime: null, checkOutTime: null, isBiometric: false };
+  let entrySnap: string | null = (entry as any).entrySnapshotUrl || (entry as any).entry_snapshot_url || (entry as any).snapshotUrl || (entry as any).snapshot_url || null;
+  let exitSnap: string | null = (entry as any).exitSnapshotUrl || (entry as any).exit_snapshot_url || null;
+  let checkIn = entry.checkInTime || (entry as any).check_in_time || null;
+  let checkOut = entry.checkOutTime || (entry as any).check_out_time || null;
+  let isBio = Boolean(entrySnap || exitSnap || entry.verificationMethod === 'face_biometric' || (entry as any).verification_method === 'face_biometric');
+
+  if (entry.notes && typeof entry.notes === 'string' && entry.notes.startsWith('{')) {
     try {
-      const parsed = JSON.parse(entry.notes);
-      if (parsed.snapshot) return parsed.snapshot;
+      const p = JSON.parse(entry.notes);
+      if (p.entry_snapshot) entrySnap = p.entry_snapshot;
+      if (p.exit_snapshot) exitSnap = p.exit_snapshot;
+      if (p.snapshot && !entrySnap) entrySnap = p.snapshot;
+      if (p.check_in_time && !checkIn) checkIn = p.check_in_time;
+      if (p.check_out_time && !checkOut) checkOut = p.check_out_time;
+      if (p.verification_method === 'face_biometric' || p.method === 'face_biometric') isBio = true;
     } catch {}
   }
-  return null;
+  return { entrySnapshot: entrySnap, exitSnapshot: exitSnap, checkInTime: checkIn, checkOutTime: checkOut, isBiometric: isBio };
+}
+
+function getSnapshotUrl(entry?: Partial<AttendanceRecord>): string | null {
+  if (!entry) return null;
+  const bio = getStaffBiometrics(entry);
+  return bio.entrySnapshot || bio.exitSnapshot || null;
 }
 
 export default function StaffAttendance({ staffList, attendanceRecords = [], onSaveAttendance }: StaffAttendanceProps) {
@@ -507,51 +530,83 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                           </div>
                         </TableCell>
                         <TableCell>
-                          {isBiometric ? (
-                            <div className="flex items-center gap-2">
-                              {snapshotUrl ? (
-                                <button 
-                                  type="button"
-                                  onClick={() => setAuditSnapshot({
-                                    staffName: staff.fullName,
-                                    staffId: staff.id,
-                                    role: staff.role || 'Faculty',
-                                    registeredPhoto: staff.photo,
-                                    snapshotUrl: snapshotUrl,
-                                    checkInTime: entry?.checkInTime || entry?.check_in_time,
-                                    checkOutTime: entry?.checkOutTime || entry?.check_out_time,
-                                    status: entry?.status,
-                                    date: selectedDate
-                                  })}
-                                  className="group relative w-9 h-9 rounded-xl overflow-hidden border-2 border-emerald-500 shadow-2xs hover:scale-105 transition-all cursor-pointer shrink-0"
-                                  title="Click to view gate camera snapshot comparison"
-                                >
-                                  <img src={snapshotUrl} alt="Gate Snapshot" className="w-full h-full object-cover" />
-                                  <div className="absolute inset-0 bg-black/25 group-hover:bg-transparent flex items-center justify-center transition-all">
-                                    <Camera size={11} className="text-white drop-shadow" />
-                                  </div>
-                                </button>
-                              ) : (
+                          {(() => {
+                            const staffBio = getStaffBiometrics(entry);
+                            const entrySnap = staffBio.entrySnapshot;
+                            const exitSnap = staffBio.exitSnapshot;
+                            return (entrySnap || exitSnap) ? (
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1.5">
+                                  {entrySnap && (
+                                    <button 
+                                      type="button"
+                                      onClick={() => setAuditSnapshot({
+                                        staffName: staff.fullName,
+                                        staffId: staff.id,
+                                        role: staff.role || 'Faculty',
+                                        registeredPhoto: staff.photo,
+                                        entrySnapshotUrl: entrySnap,
+                                        exitSnapshotUrl: exitSnap,
+                                        snapshotUrl: entrySnap,
+                                        checkInTime: entry?.checkInTime || entry?.check_in_time,
+                                        checkOutTime: entry?.checkOutTime || entry?.check_out_time,
+                                        status: entry?.status,
+                                        date: selectedDate
+                                      })}
+                                      className="group relative w-9 h-9 rounded-xl overflow-hidden border-2 border-emerald-500 shadow-2xs hover:scale-105 transition-all cursor-pointer shrink-0"
+                                      title="Gate Arrival (Entry) Snapshot"
+                                    >
+                                      <img src={entrySnap} alt="Entry Scan" className="w-full h-full object-cover" />
+                                      <span className="absolute bottom-0 inset-x-0 bg-emerald-700/90 text-[7px] font-black text-white text-center leading-tight">IN</span>
+                                    </button>
+                                  )}
+                                  {exitSnap ? (
+                                    <button 
+                                      type="button"
+                                      onClick={() => setAuditSnapshot({
+                                        staffName: staff.fullName,
+                                        staffId: staff.id,
+                                        role: staff.role || 'Faculty',
+                                        registeredPhoto: staff.photo,
+                                        entrySnapshotUrl: entrySnap,
+                                        exitSnapshotUrl: exitSnap,
+                                        snapshotUrl: exitSnap,
+                                        checkInTime: entry?.checkInTime || entry?.check_in_time,
+                                        checkOutTime: entry?.checkOutTime || entry?.check_out_time,
+                                        status: entry?.status,
+                                        date: selectedDate
+                                      })}
+                                      className="group relative w-9 h-9 rounded-xl overflow-hidden border-2 border-blue-500 shadow-2xs hover:scale-105 transition-all cursor-pointer shrink-0"
+                                      title="Gate Departure (Exit) Snapshot"
+                                    >
+                                      <img src={exitSnap} alt="Exit Scan" className="w-full h-full object-cover" />
+                                      <span className="absolute bottom-0 inset-x-0 bg-blue-700/90 text-[7px] font-black text-white text-center leading-tight">OUT</span>
+                                    </button>
+                                  ) : (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-[9px] font-bold text-slate-500 border border-slate-200" title="Staff is currently on campus (Departure pending)">
+                                      🏢 In
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="inline-flex items-center gap-1 font-bold text-[9px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                  <CheckCircle2 size={9} className="text-emerald-600" /> {exitSnap ? 'In+Out' : 'Match'}
+                                </span>
+                              </div>
+                            ) : isBiometric ? (
+                              <div className="flex items-center gap-2">
                                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
                                   <ShieldCheck size={16} />
                                 </div>
-                              )}
-                              <div>
                                 <span className="inline-flex items-center gap-1 font-bold text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                                  <CheckCircle2 size={10} className="text-emerald-600" /> Face Match
+                                  Face Verified
                                 </span>
-                                {(entry?.checkInTime || entry?.check_in_time) && (
-                                  <p className="text-[9px] text-slate-400 font-mono mt-0.5">
-                                    {new Date(entry?.checkInTime || entry?.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                  </p>
-                                )}
                               </div>
-                            </div>
-                          ) : (
-                            <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                              Manual Entry
-                            </span>
-                          )}
+                            ) : (
+                              <span className="text-[10px] text-slate-400 bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                                Manual Entry
+                              </span>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell>
                           <Select 
@@ -709,9 +764,9 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
               </div>
 
               {/* Side-by-side Photo Comparison */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-center space-y-2">
-                  <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">Registered Profile Photo</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="text-center space-y-1.5">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">1. Registered Profile</p>
                   <div className="aspect-square rounded-2xl overflow-hidden border-2 border-slate-200 bg-slate-100 shadow-sm">
                     {auditSnapshot.registeredPhoto ? (
                       <img src={auditSnapshot.registeredPhoto} alt="Registered Profile" className="w-full h-full object-cover" />
@@ -721,17 +776,41 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                       </div>
                     )}
                   </div>
-                  <span className="text-[10px] text-slate-500 font-semibold">Database Reference</span>
+                  <span className="text-[9px] text-slate-500 font-semibold">Database Reference</span>
                 </div>
 
-                <div className="text-center space-y-2">
-                  <p className="text-[11px] font-black uppercase tracking-wider text-emerald-600 flex items-center justify-center gap-1">
-                    <Camera size={12} /> Gate Camera Scanned
+                <div className="text-center space-y-1.5">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600 flex items-center justify-center gap-1">
+                    <Camera size={11} /> 2. Arrival Scan (IN)
                   </p>
                   <div className="aspect-square rounded-2xl overflow-hidden border-2 border-emerald-500 bg-slate-900 shadow-md ring-2 ring-emerald-500/20">
-                    <img src={auditSnapshot.snapshotUrl} alt="Gate Camera Snapshot" className="w-full h-full object-cover" />
+                    {auditSnapshot.entrySnapshotUrl || auditSnapshot.snapshotUrl ? (
+                      <img src={auditSnapshot.entrySnapshotUrl || auditSnapshot.snapshotUrl} alt="Arrival Scan" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs font-bold">
+                        No Entry Scan
+                      </div>
+                    )}
                   </div>
-                  <span className="text-[10px] text-emerald-600 font-bold">Live Verified at Gate</span>
+                  <span className="text-[9px] text-emerald-600 font-bold">Morning Entry</span>
+                </div>
+
+                <div className="text-center space-y-1.5">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-blue-600 flex items-center justify-center gap-1">
+                    <LogOut size={11} /> 3. Departure Scan (OUT)
+                  </p>
+                  <div className="aspect-square rounded-2xl overflow-hidden border-2 border-blue-500 bg-slate-900 shadow-md ring-2 ring-blue-500/20">
+                    {auditSnapshot.exitSnapshotUrl ? (
+                      <img src={auditSnapshot.exitSnapshotUrl} alt="Departure Scan" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-2 text-center bg-slate-800/80">
+                        <span className="text-xl mb-1">🏢</span>
+                        <span className="text-[9px] font-bold text-slate-300">On Campus</span>
+                        <span className="text-[8px] text-slate-400">Exit Pending</span>
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[9px] text-blue-600 font-bold">{auditSnapshot.exitSnapshotUrl ? 'Afternoon Departure' : 'Still On Campus'}</span>
                 </div>
               </div>
 
