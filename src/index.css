@@ -62,7 +62,6 @@
     border-style: solid;
     border-color: var(--border, currentColor);
     outline: none !important;
-    border-radius: 0 !important;
   }
 
   .rounded-full {
@@ -76,8 +75,31 @@
   .rounded-xl { border-radius: 0.75rem !important; }
   .rounded-2xl { border-radius: 1rem !important; }
   .rounded-3xl { border-radius: 1.5rem !important; }
+  .rounded-4xl { border-radius: 2rem !important; }
+  .rounded-\[1\.5rem\] { border-radius: 1.5rem !important; }
+  .rounded-\[1\.8rem\] { border-radius: 1.8rem !important; }
+  .rounded-\[2rem\] { border-radius: 2rem !important; }
+  .rounded-\[2\.5rem\] { border-radius: 2.5rem !important; }
+  .rounded-\[3rem\] { border-radius: 3rem !important; }
+  .rounded-\[24px\] { border-radius: 24px !important; }
+  .rounded-\[32px\] { border-radius: 32px !important; }
+  .rounded-\[40px\] { border-radius: 40px !important; }
   .rounded-r-md { border-top-right-radius: 0.375rem !important; border-bottom-right-radius: 0.375rem !important; }
   .rounded-l-md { border-top-left-radius: 0.375rem !important; border-bottom-left-radius: 0.375rem !important; }
+  .rounded-r-xl { border-top-right-radius: 0.75rem !important; border-bottom-right-radius: 0.75rem !important; }
+  .rounded-l-xl { border-top-left-radius: 0.75rem !important; border-bottom-left-radius: 0.75rem !important; }
+  .rounded-r-2xl { border-top-right-radius: 1rem !important; border-bottom-right-radius: 1rem !important; }
+  .rounded-l-2xl { border-top-left-radius: 1rem !important; border-bottom-left-radius: 1rem !important; }
+  .rounded-r-3xl { border-top-right-radius: 1.5rem !important; border-bottom-right-radius: 1.5rem !important; }
+  .rounded-l-3xl { border-top-left-radius: 1.5rem !important; border-bottom-left-radius: 1.5rem !important; }
+  .rounded-t-lg { border-top-left-radius: 0.5rem !important; border-top-right-radius: 0.5rem !important; }
+  .rounded-b-lg { border-bottom-left-radius: 0.5rem !important; border-bottom-right-radius: 0.5rem !important; }
+  .rounded-t-xl { border-top-left-radius: 0.75rem !important; border-top-right-radius: 0.75rem !important; }
+  .rounded-b-xl { border-bottom-left-radius: 0.75rem !important; border-bottom-right-radius: 0.75rem !important; }
+  .rounded-t-2xl { border-top-left-radius: 1rem !important; border-top-right-radius: 1rem !important; }
+  .rounded-b-2xl { border-bottom-left-radius: 1rem !important; border-bottom-right-radius: 1rem !important; }
+  .rounded-t-3xl { border-top-left-radius: 1.5rem !important; border-top-right-radius: 1.5rem !important; }
+  .rounded-b-3xl { border-bottom-left-radius: 1.5rem !important; border-bottom-right-radius: 1.5rem !important; }
 
   *:focus, *:focus-visible {
     outline: none !important;
@@ -141,6 +163,49 @@
 
   .superior-shadow-gold {
     @apply shadow-[0_10px_30px_rgba(201,168,76,0.15)];
+  }
+
+  .spatial-glass {
+    @apply bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border border-slate-200/80 dark:border-white/10 shadow-[0_16px_50px_rgba(8,90,78,0.06)];
+  }
+
+  .spatial-card {
+    background: rgba(255, 255, 255, 0.82) !important;
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    border: 1px solid rgba(226, 232, 240, 0.8) !important;
+    border-radius: 1.5rem !important;
+    box-shadow: 0 16px 40px rgba(8, 90, 78, 0.05), 0 2px 6px rgba(0, 0, 0, 0.02) !important;
+    position: relative !important;
+    overflow: hidden !important;
+  }
+
+  .dark .spatial-card {
+    background: rgba(15, 23, 42, 0.78) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  .spatial-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .dark .spatial-card::before {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+  }
+
+  .spatial-pill {
+    border-radius: 9999px !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
   }
 }
 

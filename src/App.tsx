@@ -1909,10 +1909,49 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#fcfdfd] dark:bg-slate-950">
-        {/* Header - Unified Navigation */}
-        {/* Header - Unified Navigation */}
-        <header className="h-20 min-h-[80px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex items-center justify-between px-5 md:px-6 border-b border-slate-100 dark:border-slate-800 sticky top-0 z-30 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.06)]">
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#fcfdfd] dark:bg-slate-950 relative">
+        {/* Global VisionOS Volumetric Spatial Ambient Atmosphere */}
+        <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+          <motion.div
+            animate={{
+              x: [0, 50, -20, 0],
+              y: [0, 30, -30, 0],
+              scale: [1, 1.1, 0.95, 1],
+            }}
+            transition={{ duration: 25, repeat: Infinity, ease: "easeInOut" }}
+            className="absolute top-[5%] -left-32 w-[550px] h-[550px] bg-superior-teal/10 dark:bg-emerald-500/10 rounded-full blur-[140px]"
+          />
+          <motion.div
+            animate={{
+              x: [0, -40, 30, 0],
+              y: [0, 50, -20, 0],
+              scale: [1, 1.15, 0.9, 1],
+            }}
+            transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
+            className="absolute top-[30%] -right-28 w-[500px] h-[500px] bg-superior-gold/10 dark:bg-amber-500/10 rounded-full blur-[130px]"
+          />
+          <motion.div
+            animate={{
+              x: [0, 30, -30, 0],
+              y: [0, -30, 30, 0],
+              scale: [1, 1.08, 1],
+            }}
+            transition={{ duration: 28, repeat: Infinity, ease: "easeInOut" }}
+            className="absolute bottom-[20%] left-[25%] w-[480px] h-[480px] bg-cyan-500/8 dark:bg-blue-600/10 rounded-full blur-[140px]"
+          />
+          <motion.div
+            animate={{
+              x: [0, -25, 25, 0],
+              y: [0, 40, -25, 0],
+              scale: [1, 1.12, 1],
+            }}
+            transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
+            className="absolute bottom-[5%] right-[15%] w-[420px] h-[420px] bg-rose-500/8 dark:bg-purple-600/8 rounded-full blur-[130px]"
+          />
+        </div>
+
+        {/* Header - VisionOS Floating Spatial Navigation Dock */}
+        <header className="mx-3 sm:mx-6 my-2.5 h-18 min-h-[72px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl flex items-center justify-between px-4 sm:px-6 rounded-3xl border border-slate-200/80 dark:border-white/10 sticky top-2.5 z-30 shadow-[0_12px_40px_rgba(0,0,0,0.06)] before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-white/60 before:to-transparent overflow-hidden">
           <div className="flex items-center gap-3 md:gap-4">
             <Button
               variant="ghost"
@@ -2145,38 +2184,38 @@ export default function App() {
           </div>
         </header>
 
-        {/* Alert Strip - Refined */}
+        {/* Alert Strip - VisionOS Spatial Pill */}
         {defaultersCount > 0 && !hideLedgerAlert && (
-          <div className="bg-superior-teal text-white px-10 py-2.5 flex items-center justify-between gap-4 overflow-hidden relative">
-            <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-5 pointer-events-none" />
+          <div className="mx-3 sm:mx-6 mb-2 rounded-2xl bg-superior-teal/95 dark:bg-emerald-950/80 backdrop-blur-xl text-white px-5 sm:px-6 py-2.5 flex items-center justify-between gap-4 overflow-hidden relative shadow-[0_8px_30px_rgba(8,90,78,0.22)] border border-emerald-400/20 z-20">
+            <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top_right,rgba(201,168,76,0.18),transparent_60%)] pointer-events-none" />
             <div className="flex items-center gap-3 relative z-10">
-              <div className="w-6 h-6 rounded-lg bg-superior-gold/20 flex items-center justify-center text-superior-gold">
+              <div className="w-7 h-7 rounded-xl bg-superior-gold/20 border border-superior-gold/30 flex items-center justify-center text-superior-gold shadow-2xs">
                 <AlertTriangle size={14} />
               </div>
-              <p className="text-[10px] font-bold uppercase tracking-widest leading-none">
+              <p className="text-[11px] font-bold uppercase tracking-widest leading-none">
                 Ledger Alert:{" "}
-                <span className="text-superior-gold">
+                <span className="text-superior-gold font-black">
                   {defaultersCount} Defaulters
                 </span>{" "}
                 detected
               </p>
             </div>
-            <div className="flex items-center gap-4 relative z-10">
+            <div className="flex items-center gap-3 relative z-10">
               <button
                 onClick={() => handleNavClick("fee-boys")}
-                className="text-[10px] font-black uppercase tracking-[0.2em] bg-white/10 hover:bg-white/20 px-4 py-1.5 rounded-lg border border-white/10 transition-all"
+                className="text-[10px] font-black uppercase tracking-[0.2em] bg-white/10 hover:bg-white/20 px-3.5 py-1.5 rounded-xl border border-white/20 transition-all hover:scale-[1.02] active:scale-95 shadow-2xs"
               >
                 Review Ledger →
               </button>
-              <button onClick={() => setHideLedgerAlert(true)} className="text-white/50 hover:text-white transition-colors p-1">
-                 <X size={16} />
+              <button onClick={() => setHideLedgerAlert(true)} className="text-white/60 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10">
+                 <X size={15} />
               </button>
             </div>
           </div>
         )}
 
         {/* Content Area */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto relative z-10">
           <div className="w-full max-w-full p-4 sm:p-6 lg:p-8">
             <AnimatePresence mode="wait">
               

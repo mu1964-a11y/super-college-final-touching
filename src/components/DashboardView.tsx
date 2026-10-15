@@ -1293,7 +1293,7 @@ export default function DashboardView({
       </div>
 
       {/* Hero Banner - VisionOS Spatial Glass Cockpit */}
-      <div className="relative overflow-hidden rounded-[2.5rem] p-6 lg:p-8 border border-white/20 dark:border-white/10 shadow-[0_20px_60px_rgba(8,90,78,0.22)] bg-gradient-to-br from-superior-teal via-superior-teal/95 to-slate-900/90 backdrop-blur-3xl z-10 before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-white/50 before:to-transparent">
+      <div style={{ borderRadius: "2.5rem" }} className="relative overflow-hidden rounded-[2.5rem] p-6 lg:p-8 border border-white/20 dark:border-white/10 shadow-[0_20px_60px_rgba(8,90,78,0.22)] bg-gradient-to-br from-superior-teal via-superior-teal/95 to-slate-900/90 backdrop-blur-3xl z-10 before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-white/50 before:to-transparent">
         <div className="absolute top-0 right-0 w-2/3 h-full bg-[radial-gradient(ellipse_at_top_right,rgba(201,168,76,0.18),transparent_60%)] pointer-events-none" />
         <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-white/5 rounded-full blur-3xl" />
         <div className="relative z-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
