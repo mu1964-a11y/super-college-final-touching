@@ -86,6 +86,7 @@ import StaffSubjects from './StaffSubjects';
 import StaffTimetable from './StaffTimetable';
 import ExecutiveIDCardModal from './ExecutiveIDCardModal';
 import BiometricEnrollmentModal from './BiometricEnrollmentModal';
+import InstantBiometricVerifyModal from './InstantBiometricVerifyModal';
 
 export default function StaffView({ data, initialFilter, title, hideNavigation }: { data: any, initialFilter?: string | null, title?: string, hideNavigation?: boolean }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -100,6 +101,7 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isBiometricModalOpen, setIsBiometricModalOpen] = useState(false);
   const [biometricTargetStaff, setBiometricTargetStaff] = useState<Staff | null>(null);
+  const [isSpotCheckOpen, setIsSpotCheckOpen] = useState(false);
   const [dialogType, setDialogType] = useState<'profile' | 'edit' | 'delete' | 'bulkDelete' | null>(null);
   const [cardStaffMember, setCardStaffMember] = useState<Staff | null>(null);
 
@@ -621,6 +623,15 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
             <span className="hidden sm:inline">Biometric Enroll</span>
           </Button>
 
+          <Button
+            onClick={() => setIsSpotCheckOpen(true)}
+            className="h-12 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black uppercase tracking-wider text-xs flex items-center gap-2 shadow-md shadow-emerald-700/20"
+            title="Instant 1-Touch Spot-Check Scanner (Student & Staff Identification)"
+          >
+            <Fingerprint size={16} className="animate-pulse" />
+            <span>Spot-Check Verify</span>
+          </Button>
+
           <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
             <button
               type="button"
@@ -662,136 +673,159 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
           {filteredStaff.map((member: Staff) => (
             <motion.div
               key={member.id}
-              whileHover={{ y: -4 }}
+              whileHover={{ y: -3 }}
               className={cn(
-                "bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden relative group transition-all duration-300 shadow-xs hover:shadow-lg hover:border-superior-teal/30 flex flex-col justify-between",
+                "bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-3xl overflow-hidden relative group transition-all duration-300 shadow-sm hover:shadow-xl hover:border-superior-teal/40 flex flex-col justify-between",
                 selectedStaffIds.includes(member.id) && "ring-2 ring-superior-teal ring-offset-2"
               )}
             >
-              {/* Header Banner */}
-              <div className="bg-gradient-to-r from-superior-teal to-teal-800 h-16 relative overflow-hidden px-4 pt-3 flex items-start justify-between">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-8 -mt-8 blur-xl pointer-events-none"></div>
-                <div className="z-10">
-                  <Checkbox 
-                    checked={selectedStaffIds.includes(member.id)} 
-                    onCheckedChange={() => toggleSelectStaff(member.id)}
-                    className="w-4 h-4 bg-white/40 backdrop-blur-md border-white/40 rounded-md data-[state=checked]:bg-superior-teal data-[state=checked]:border-white"
-                  />
+              {/* Profile Top Bar */}
+              <div className="p-4 pb-3 flex items-start gap-3.5">
+                {/* 100% Fully Visible Unclipped Avatar */}
+                <div className="relative shrink-0">
+                  <div className="w-16 h-16 rounded-2xl border-2 border-slate-200/90 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 overflow-hidden shadow-sm flex items-center justify-center">
+                    {member.photo ? (
+                      <img 
+                        src={member.photo} 
+                        alt={member.fullName} 
+                        className="w-full h-full object-cover object-top" 
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          const parent = target.parentElement;
+                          if (parent) {
+                            parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-teal-50 dark:bg-teal-950/40 text-superior-teal font-black text-xl">${member.fullName ? member.fullName.charAt(0).toUpperCase() : 'T'}</div>`;
+                          }
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-teal-50 dark:bg-teal-950/40 text-superior-teal font-black text-xl">
+                        {member.fullName ? member.fullName.charAt(0).toUpperCase() : 'T'}
+                      </div>
+                    )}
+                  </div>
+                  {/* Active/Inactive Status Dot */}
+                  <span className={cn(
+                    "absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center",
+                    member.status === 'Active' ? "bg-emerald-500" : "bg-slate-400"
+                  )}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                  </span>
                 </div>
 
-                <div className="z-10 flex items-center gap-1.5 flex-wrap justify-end">
-                  {member.fingerprintTemplate ? (
-                    <Badge className="rounded-lg px-2 py-0.5 font-bold text-[9px] bg-emerald-500/90 hover:bg-emerald-600 text-white shadow-xs flex items-center gap-1 border-none">
-                      <Fingerprint size={10} /> FP Enrolled
-                    </Badge>
-                  ) : (
-                    <Badge className="rounded-lg px-2 py-0.5 font-bold text-[9px] bg-amber-500/90 hover:bg-amber-600 text-white shadow-xs flex items-center gap-1 border-none">
-                      <Fingerprint size={10} /> Missing FP
-                    </Badge>
-                  )}
-                  <Badge className={cn(
-                    "rounded-lg px-2 py-0.5 font-black uppercase tracking-wider text-[9px] border-none shadow-xs",
-                    member.status === 'Active' ? "bg-emerald-600 text-white" : "bg-slate-500 text-white"
-                  )}>
-                    {member.status}
-                  </Badge>
+                {/* Identity Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <span className="text-[10px] font-mono font-black text-superior-gold uppercase tracking-wider">
+                      {member.id}
+                    </span>
+                    {getRoleBadge(member.role)}
+                  </div>
+                  <h3 className="font-black text-slate-900 dark:text-white text-base tracking-tight truncate group-hover:text-superior-teal transition-colors" title={member.fullName}>
+                    {member.fullName}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate">
+                    {member.designation || member.role || 'Staff Member'}
+                  </p>
                 </div>
               </div>
 
-              {/* Avatar + Main Details */}
-              <div className="px-4 pt-2 pb-4 bg-white dark:bg-slate-900 flex-1 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-end justify-between -mt-9 mb-2.5">
-                    <div className="w-16 h-16 rounded-2xl border-2 border-white dark:border-slate-800 bg-slate-100 dark:bg-slate-800 overflow-hidden shadow-md shrink-0 ring-1 ring-slate-200/50">
-                      {member.photo ? (
-                        <img 
-                          src={member.photo} 
-                          alt="" 
-                          className="w-full h-full object-cover object-[center_top]" 
-                          referrerPolicy="no-referrer" 
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.style.display = 'none';
-                            const parent = target.parentElement;
-                            if (parent) {
-                              parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-superior-gold/10 text-superior-gold font-bold text-lg">${member.fullName ? member.fullName.charAt(0).toUpperCase() : 'T'}</div>`;
-                            }
-                          }}
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-400 font-bold text-xl">
-                          {member.fullName ? member.fullName.charAt(0).toUpperCase() : 'T'}
-                        </div>
+              {/* Prominent Biometric Status Strip */}
+              <div className="px-4 py-2 border-y border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/30 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className={cn(
+                    "w-7 h-7 rounded-xl flex items-center justify-center shrink-0",
+                    member.fingerprintTemplate 
+                      ? "bg-emerald-500/15 text-emerald-600 dark:bg-emerald-500/25 dark:text-emerald-400" 
+                      : "bg-rose-500/15 text-rose-600 dark:bg-rose-500/25 dark:text-rose-400"
+                  )}>
+                    <Fingerprint size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className={cn(
+                        "text-[11px] font-black tracking-tight",
+                        member.fingerprintTemplate ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                      )}>
+                        {member.fingerprintTemplate ? "Biometric Enrolled" : "Biometric Missing"}
+                      </span>
+                      {member.fingerprintTemplate && (
+                        <CheckCircle2 size={12} className="text-emerald-600 dark:text-emerald-400" />
                       )}
                     </div>
-                    <div className="text-right">
-                      {getRoleBadge(member.role)}
-                    </div>
-                  </div>
-
-                  <div className="mb-3">
-                    <h3 className="font-bold text-base text-slate-900 dark:text-white tracking-tight group-hover:text-superior-teal transition-colors line-clamp-1" title={member.fullName}>
-                      {member.fullName}
-                    </h3>
-                    <p className="text-[10px] font-mono text-superior-gold font-black tracking-widest uppercase mt-0.5">
-                      {member.id}
+                    <p className="text-[10px] text-slate-400 truncate">
+                      {member.fingerprintTemplate 
+                        ? `${member.fingerprintFinger || 'Thumb'} Registered` 
+                        : "Fingerprint required"}
                     </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 mb-3">
-                    <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
-                      <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Contact</p>
-                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate" title={member.contact || "N/A"}>
-                        {member.contact || "N/A"}
-                      </p>
-                    </div>
-                    <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
-                      <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Monthly Salary</p>
-                      <p className="text-xs font-black text-slate-800 dark:text-slate-100 truncate">
-                        Rs. {(member.salary || 0).toLocaleString()}
-                      </p>
-                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <Separator className="mb-3 opacity-50" />
-                  <div className="flex items-center justify-between gap-1.5">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => {
-                        setBiometricTargetStaff(member);
-                        setIsBiometricModalOpen(true);
-                      }}
-                      className={cn(
-                        "h-8 flex-1 rounded-xl text-[10px] font-bold px-2 flex items-center justify-center gap-1 transition-all",
-                        member.fingerprintTemplate 
-                          ? "border-emerald-200 text-emerald-700 bg-emerald-50/60 hover:bg-emerald-100" 
-                          : "border-amber-200 text-amber-700 bg-amber-50/60 hover:bg-amber-100"
-                      )}
-                      title="Enroll or Update Biometric Fingerprint"
-                    >
-                      <Fingerprint size={12} className={member.fingerprintTemplate ? "text-emerald-600" : "text-amber-600"} />
-                      <span>{member.fingerprintTemplate ? "FP Ready" : "Scan FP"}</span>
-                    </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    setBiometricTargetStaff(member);
+                    setIsBiometricModalOpen(true);
+                  }}
+                  className={cn(
+                    "h-7 px-2.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all shrink-0",
+                    member.fingerprintTemplate
+                      ? "bg-emerald-100/80 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                      : "bg-gradient-to-r from-rose-500 to-amber-600 hover:from-rose-600 hover:to-amber-700 text-white shadow-xs animate-pulse"
+                  )}
+                >
+                  <Fingerprint size={12} className="mr-1" />
+                  {member.fingerprintTemplate ? "Manage" : "Scan Now"}
+                </Button>
+              </div>
 
+              {/* Key Stats: Contact & Salary */}
+              <div className="p-4 pt-3 space-y-2">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Contact</p>
+                    <p className="font-bold text-slate-800 dark:text-slate-200 truncate" title={member.contact || "N/A"}>
+                      {member.contact || "N/A"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Monthly Salary</p>
+                    <p className="font-black text-emerald-700 dark:text-emerald-400 truncate">
+                      Rs. {(member.salary || 0).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Card Action Footer */}
+                <div className="pt-2 flex items-center justify-between gap-1.5 border-t border-slate-100 dark:border-slate-800/80">
+                  <div className="flex items-center gap-1.5">
+                    <Checkbox 
+                      checked={selectedStaffIds.includes(member.id)} 
+                      onCheckedChange={() => toggleSelectStaff(member.id)}
+                      className="w-4 h-4 rounded-md"
+                    />
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Select</span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      className="h-8 rounded-xl text-[10px] font-black uppercase tracking-wider border-slate-200 hover:bg-superior-teal hover:text-white px-3" 
+                      className="h-8 rounded-xl text-[11px] font-bold border-slate-200 hover:bg-superior-teal hover:text-white px-3 transition-colors" 
                       onClick={() => {
                         setSelectedStaff(member);
                         setDialogType('profile');
                       }}
                     >
-                      <Eye size={12} className="mr-1" /> Profile
+                      <Eye size={13} className="mr-1 text-superior-teal group-hover:text-white" /> View
                     </Button>
-                    
+
                     <DropdownMenu>
                       <DropdownMenuTrigger render={
                         <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
-                          <MoreHorizontal size={14} />
+                          <MoreHorizontal size={15} />
                         </Button>
                       } />
                       <DropdownMenuContent align="end" className="rounded-2xl p-2 min-w-[200px] border-slate-100 shadow-xl">
@@ -1017,7 +1051,7 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
       </TabsContent>
 
       <TabsContent value="attendance" className="space-y-8 mt-0 focus-visible:outline-none">
-        <StaffAttendance staffList={data.staff || filteredStaff} attendanceRecords={data.staffAttendance} onSaveAttendance={data.bulkSaveStaffAttendance} />
+        <StaffAttendance staffList={data.staff || filteredStaff} attendanceRecords={data.staffAttendance} onSaveAttendance={data.bulkSaveStaffAttendance} data={data} />
       </TabsContent>
 
       <TabsContent value="payroll" className="space-y-8 mt-0 focus-visible:outline-none">
@@ -1184,9 +1218,19 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
           fingerprintFinger: biometricTargetStaff.fingerprintFinger,
           fingerprintEnrolledAt: biometricTargetStaff.fingerprintEnrolledAt,
         } : null}
-        onEnrollmentSaved={(_personId, _personType, _template, _finger) => {
+        onEnrollmentSaved={(personId, personType, template, finger) => {
+          data.updateFingerprintRecord?.(personId, personType, template, finger);
           data.fetchData?.(true);
         }}
+      />
+
+      {/* Instant 1-Touch Spot-Check Scanner (Student & Staff Identification) */}
+      <InstantBiometricVerifyModal
+        isOpen={isSpotCheckOpen}
+        onClose={() => setIsSpotCheckOpen(false)}
+        studentsList={data.students || []}
+        staffList={data.staff || []}
+        data={data}
       />
     </div>
   );

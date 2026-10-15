@@ -891,6 +891,31 @@ export function useSupabaseData(user: any) {
     }
   };
 
+  const updateFingerprintRecord = useCallback((personId: string, personType: 'student' | 'staff', template: string, finger: string) => {
+    const enrolledAt = new Date().toISOString();
+    if (personType === 'staff') {
+      setStaff(prev => prev.map(s => s.id === personId ? {
+        ...s,
+        fingerprintTemplate: template,
+        fingerprintFinger: finger,
+        fingerprintEnrolledAt: enrolledAt
+      } : s));
+    } else {
+      setStudents(prev => prev.map(s => (s.id === personId || (s as any).studentId === personId || s.admissionId === personId) ? {
+        ...s,
+        fingerprintTemplate: template,
+        fingerprintFinger: finger,
+        fingerprintEnrolledAt: enrolledAt
+      } : s));
+      setAdmissions(prev => prev.map(a => (a.id === personId || a.studentId === personId) ? {
+        ...a,
+        fingerprintTemplate: template,
+        fingerprintFinger: finger,
+        fingerprintEnrolledAt: enrolledAt
+      } : a));
+    }
+  }, []);
+
   const ctx = { user, generateStudentId, leads, setLeads, admissions, setAdmissions, students, setStudents, staff, setStaff, staffAttendance, setStaffAttendance, staffTimetable, setStaffTimetable, staffAdvances, setStaffAdvances, expenses, setExpenses, incomes, setIncomes, academicRecords, setAcademicRecords, salaryPayments, setSalaryPayments, studentAttendance, setStudentAttendance, settings, setSettings, permissions, setPermissions, notifications, setNotifications, isBulkOperatingRef, logActivity, fetchData, archiveRecords, deletedArchive, setDeletedArchive };
   const leadsOps = useLeadsOperations(ctx);
   const admissionsOps = useAdmissionsOperations(ctx);
@@ -934,5 +959,11 @@ export function useSupabaseData(user: any) {
     academicRecords,
     salaryPayments,
     generateStudentId,
+    fetchData,
+    updateFingerprintRecord,
+    setStaff,
+    setStudents,
+    setAdmissions,
+    setLeads,
   };
 }

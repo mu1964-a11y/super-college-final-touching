@@ -46,8 +46,10 @@ import {
   Activity,
   Wifi,
   Archive,
+  Fingerprint,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import InstantBiometricVerifyModal from "./components/InstantBiometricVerifyModal";
 import { useSupabaseData } from "./hooks/useSupabaseData";
 import { supabase, isSupabaseConfigured } from "./lib/supabase";
 import { safeLocalStorage } from "./utils/safeStorage";
@@ -301,15 +303,19 @@ export default function App() {
   });
 
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isGlobalSpotCheckOpen, setIsGlobalSpotCheckOpen] = useState(false);
   const [dossierStudent, setDossierStudent] = useState<any | null>(null);
   const [dossierInitialTab, setDossierInitialTab] = useState<'profile' | 'financials' | 'academic' | 'whatsapp'>('profile');
 
-  // Global Ctrl+K / Cmd+K keyboard shortcut listener for Spotlight Search
+  // Global Ctrl+K (Spotlight) & Ctrl+B (Biometric Spot-Check) keyboard shortcuts
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setIsCommandPaletteOpen((prev) => !prev);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setIsGlobalSpotCheckOpen((prev) => !prev);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -2013,6 +2019,19 @@ export default function App() {
               </select>
             </div>
 
+            {/* Global Biometric Spot-Check Scanner Trigger */}
+            <button
+              onClick={() => setIsGlobalSpotCheckOpen(true)}
+              className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-300/80 dark:border-emerald-800/80 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 hover:from-emerald-500/20 hover:to-teal-500/20 text-emerald-800 dark:text-emerald-300 transition-all duration-200 shadow-2xs group cursor-pointer"
+              title="Instant 1-Touch Spot-Check Scanner (Ctrl + B)"
+            >
+              <Fingerprint size={15} className="text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform animate-pulse" />
+              <span className="text-xs font-bold tracking-tight">Spot-Check</span>
+              <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-mono font-bold bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 rounded border border-emerald-200 dark:border-emerald-800 shadow-2xs">
+                Ctrl B
+              </kbd>
+            </button>
+
             {/* Spotlight Command Palette Trigger */}
             <button
               onClick={() => setIsCommandPaletteOpen(true)}
@@ -2308,6 +2327,15 @@ export default function App() {
         onOpenWhatsApp={(phone) => {
           handleNavClick("whatsapp-center");
         }}
+      />
+
+      {/* Universal Biometric Spot-Check Scanner Modal */}
+      <InstantBiometricVerifyModal
+        isOpen={isGlobalSpotCheckOpen}
+        onClose={() => setIsGlobalSpotCheckOpen(false)}
+        studentsList={data.students || []}
+        staffList={data.staff || []}
+        data={data}
       />
 
       <Toaster position="top-right" richColors />

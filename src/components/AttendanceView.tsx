@@ -2278,8 +2278,9 @@ export default function AttendanceView({ data }: { data: any }) {
           targetPerson={biometricEnrollTarget}
           studentsList={students}
           staffList={data?.staff || []}
-          onEnrollmentSaved={() => {
-            data?.fetchData?.();
+          onEnrollmentSaved={(personId, personType, template, finger) => {
+            data?.updateFingerprintRecord?.(personId, personType, template, finger);
+            data?.fetchData?.(true);
           }}
         />
       )}

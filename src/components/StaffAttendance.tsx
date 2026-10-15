@@ -19,6 +19,7 @@ interface StaffAttendanceProps {
   staffList: Staff[];
   attendanceRecords?: any[];
   onSaveAttendance?: (records: any[]) => void;
+  data?: any;
 }
 
 export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Half Day' | 'Personal Leave' | 'College Holiday' | 'Public Holiday' | '';
@@ -100,7 +101,7 @@ function getSnapshotUrl(entry?: Partial<AttendanceRecord>): string | null {
   return bio.entrySnapshot || bio.exitSnapshot || null;
 }
 
-export default function StaffAttendance({ staffList, attendanceRecords = [], onSaveAttendance }: StaffAttendanceProps) {
+export default function StaffAttendance({ staffList, attendanceRecords = [], onSaveAttendance, data }: StaffAttendanceProps) {
   const [activeTab, setActiveTab] = useState<'daily' | 'report'>('daily');
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [reportMonth, setReportMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
@@ -1190,8 +1191,9 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
           }}
           targetPerson={biometricTargetStaff}
           staffList={staffList}
-          onEnrollmentSaved={() => {
-            // Updated in Supabase
+          onEnrollmentSaved={(personId, personType, template, finger) => {
+            data?.updateFingerprintRecord?.(personId, personType, template, finger);
+            data?.fetchData?.(true);
           }}
         />
       )}

@@ -1528,8 +1528,9 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           }
           studentsList={data?.students || []}
           staffList={data?.staff || []}
-          onEnrollmentSaved={() => {
-            data?.fetchData?.();
+          onEnrollmentSaved={(personId, personType, template, finger) => {
+            data?.updateFingerprintRecord?.(personId, personType, template, finger);
+            data?.fetchData?.(true);
           }}
         />
       )}
