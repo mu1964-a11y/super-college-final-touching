@@ -219,7 +219,10 @@ export function useSupabaseData(user: any) {
           photo: resolvedPhoto, // Mapping photo_url from DB or linked student to photo in app
           feeHistory: a.fee_history || [],
           feeLedger: a.fee_ledger || null,
-          source: a.source || (a.reference && a.reference.includes('[Source:') ? a.reference.match(/\[Source:\s*([^\]]+)\]/)?.[1] : undefined) || 'Campus Desk'
+          source: a.source || (a.reference && a.reference.includes('[Source:') ? a.reference.match(/\[Source:\s*([^\]]+)\]/)?.[1] : undefined) || 'Campus Desk',
+          fingerprintTemplate: a.fingerprint_template || (a as any).fingerprintTemplate || undefined,
+          fingerprintFinger: a.fingerprint_finger || (a as any).fingerprintFinger || undefined,
+          fingerprintEnrolledAt: a.fingerprint_enrolled_at || (a as any).fingerprintEnrolledAt || undefined
         };
       }));
       if (studentsData) {
@@ -283,7 +286,10 @@ export function useSupabaseData(user: any) {
             installments: s.fee_ledger?.installments || [],
             transactions: s.fee_ledger?.transactions || []
           },
-          feeHistory: s.fee_history || []
+          feeHistory: s.fee_history || [],
+          fingerprintTemplate: s.fingerprint_template || linkedAdmission?.fingerprint_template || (s as any).fingerprintTemplate || undefined,
+          fingerprintFinger: s.fingerprint_finger || linkedAdmission?.fingerprint_finger || (s as any).fingerprintFinger || undefined,
+          fingerprintEnrolledAt: s.fingerprint_enrolled_at || linkedAdmission?.fingerprint_enrolled_at || (s as any).fingerprintEnrolledAt || undefined
         };
         });
 
@@ -361,7 +367,10 @@ export function useSupabaseData(user: any) {
                 sessionEndDate: a.session_end_date,
                 academicPart: a.academic_part || 'Part-1',
                 programType: a.program_type || 'Yearly',
-                currentSemester: a.current_semester || 0
+                currentSemester: a.current_semester || 0,
+                fingerprintTemplate: a.fingerprint_template || (a as any).fingerprintTemplate || undefined,
+                fingerprintFinger: a.fingerprint_finger || (a as any).fingerprintFinger || undefined,
+                fingerprintEnrolledAt: a.fingerprint_enrolled_at || (a as any).fingerprintEnrolledAt || undefined
               } as any);
             }
           });
@@ -384,7 +393,10 @@ export function useSupabaseData(user: any) {
         cnic: st.cnic,
         qualification: st.qualification,
         specialization: st.specialization,
-        subjects: st.subjects
+        subjects: st.subjects,
+        fingerprintTemplate: st.fingerprint_template || (st as any).fingerprintTemplate || undefined,
+        fingerprintFinger: st.fingerprint_finger || (st as any).fingerprintFinger || undefined,
+        fingerprintEnrolledAt: st.fingerprint_enrolled_at || (st as any).fingerprintEnrolledAt || undefined
       })));
       if (staffAttendanceData) setStaffAttendance(staffAttendanceData.map(a => {
         let parsedNotes: any = null;

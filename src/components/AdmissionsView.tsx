@@ -39,6 +39,7 @@ import {
   Sparkles,
   Share2,
   FileText,
+  Fingerprint,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
@@ -92,6 +93,7 @@ import FeeReceipt from "./FeeReceipt";
 import AdmissionSlip from "./AdmissionSlip";
 import { compressImage } from "../lib/imageUtils";
 import { sendAutoAdmissionNotice, buildAdmissionNoticeMessage } from "../lib/whatsappAutomation";
+import { secugenService } from "../lib/secugenService";
 import WhatsAppReportModal, { ReportRecipientItem } from "./WhatsAppReportModal";
 import PhotoEditorModal from "./PhotoEditorModal";
 
@@ -4058,6 +4060,9 @@ function AdmissionForm({
     programType: admission?.programType || "Yearly",
     currentSemester: admission?.currentSemester || 0,
     concessionReason: admission?.concessionReason || "",
+    fingerprintTemplate: admission?.fingerprintTemplate || "",
+    fingerprintFinger: admission?.fingerprintFinger || "Right Thumb (دایاں انگوٹھا)",
+    fingerprintEnrolledAt: admission?.fingerprintEnrolledAt || "",
   });
 
   // Sync form data when admission changes to prevent data leak
@@ -4108,9 +4113,57 @@ function AdmissionForm({
         programType: admission.programType || "Yearly",
         currentSemester: admission.currentSemester || 0,
         concessionReason: admission.concessionReason || "",
+        fingerprintTemplate: admission.fingerprintTemplate || "",
+        fingerprintFinger: admission.fingerprintFinger || "Right Thumb (دایاں انگوٹھا)",
+        fingerprintEnrolledAt: admission.fingerprintEnrolledAt || "",
       });
     }
   }, [admission, admission?.id]);
+
+  const [isScanningFP, setIsScanningFP] = useState(false);
+  const [fpQuality, setFpQuality] = useState<number | null>(null);
+  const [fpBmp, setFpBmp] = useState<string | null>(null);
+
+  const handleScanThumb = async () => {
+    setIsScanningFP(true);
+    toast.info("Please place student's right thumb firmly on the SecuGen scanner...", { id: "secugen-adm" });
+    try {
+      const res = await secugenService.captureFingerprint({
+        timeoutMs: 12000,
+        quality: 50,
+        templateFormat: "ISO",
+      });
+      if (res.success && res.templateBase64) {
+        setFormData((prev) => ({
+          ...prev,
+          fingerprintTemplate: res.templateBase64,
+          fingerprintFinger: "Right Thumb (دایاں انگوٹھا)",
+          fingerprintEnrolledAt: new Date().toISOString(),
+        }));
+        setFpQuality(res.quality);
+        if (res.bmpBase64) setFpBmp(res.bmpBase64);
+        toast.success(`Thumb impression captured successfully! (Quality: ${res.quality}%)`, { id: "secugen-adm" });
+      } else {
+        toast.error(res.error || "Failed to capture fingerprint. Ensure device is plugged in.", { id: "secugen-adm" });
+      }
+    } catch (err: any) {
+      toast.error(`Scanner error: ${err.message || String(err)}`, { id: "secugen-adm" });
+    } finally {
+      setIsScanningFP(false);
+    }
+  };
+
+  const handleClearThumb = () => {
+    setFormData((prev) => ({
+      ...prev,
+      fingerprintTemplate: "",
+      fingerprintFinger: "",
+      fingerprintEnrolledAt: "",
+    }));
+    setFpQuality(null);
+    setFpBmp(null);
+    toast.info("Thumb impression removed from form.");
+  };
 
   const handleAutoSuggestRollNo = () => {
     const targetSection = (formData.section || "").trim().toLowerCase();
@@ -4434,6 +4487,9 @@ function AdmissionForm({
       concessionReason: formData.concessionReason || undefined,
       gender: formData.gender,
       photo: formData.photo || "",
+      fingerprintTemplate: formData.fingerprintTemplate || undefined,
+      fingerprintFinger: formData.fingerprintFinger || undefined,
+      fingerprintEnrolledAt: formData.fingerprintEnrolledAt || (formData.fingerprintTemplate ? new Date().toISOString() : undefined),
       status: formData.status || status,
       isAdmitted: formData.status === "Admitted/Confirmed" || received > 0,
       session:
@@ -4825,6 +4881,103 @@ function AdmissionForm({
                         </span>
                       </div>
                     )}
+                  </div>
+
+                  {/* Biometric Thumb Impression Scanner Widget */}
+                  <div className="shrink-0 flex flex-col items-center justify-center p-4 bg-white rounded-3xl border border-slate-200/80 shadow-xs min-w-[210px]">
+                    <div className="text-center mb-2.5">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <Fingerprint size={15} className="text-superior-teal" />
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-800">Thumb Impression</span>
+                      </div>
+                      <span className="text-[9px] text-slate-400 font-medium">SecuGen HU20-A Scanner</span>
+                    </div>
+
+                    <div
+                      className={cn(
+                        "w-24 h-28 rounded-2xl border-2 flex flex-col items-center justify-center transition-all relative overflow-hidden mb-3",
+                        formData.fingerprintTemplate
+                          ? "border-emerald-500 bg-emerald-50/60 text-emerald-700 shadow-inner"
+                          : isScanningFP
+                          ? "border-amber-400 bg-amber-50 text-amber-600 animate-pulse"
+                          : "border-dashed border-slate-300 bg-slate-50 text-slate-400"
+                      )}
+                    >
+                      {fpBmp ? (
+                        <img
+                          src={`data:image/bmp;base64,${fpBmp}`}
+                          alt="Fingerprint"
+                          className="w-full h-full object-contain p-1"
+                        />
+                      ) : formData.fingerprintTemplate ? (
+                        <div className="flex flex-col items-center justify-center text-center p-2">
+                          <Fingerprint size={40} className="text-emerald-600 mb-1" />
+                          <span className="text-[9px] font-black uppercase text-emerald-800 leading-tight">
+                            Enrolled
+                          </span>
+                          {fpQuality && (
+                            <span className="text-[8px] font-bold text-emerald-600">
+                              {fpQuality}% Quality
+                            </span>
+                          )}
+                        </div>
+                      ) : isScanningFP ? (
+                        <div className="flex flex-col items-center justify-center text-center p-2">
+                          <Fingerprint size={40} className="text-amber-500 animate-bounce mb-1" />
+                          <span className="text-[8px] font-bold text-amber-700">
+                            Place Thumb...
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center text-center p-2">
+                          <Fingerprint size={38} className="text-slate-300 mb-1" />
+                          <span className="text-[9px] font-bold text-slate-400 text-center leading-tight">
+                            Thumb Not Scanned
+                          </span>
+                        </div>
+                      )}
+
+                      {formData.fingerprintTemplate && (
+                        <div className="absolute top-1.5 right-1.5 bg-emerald-500 text-white p-1 rounded-full shadow-xs">
+                          <CheckCircle2 size={12} />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 w-full">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={isScanningFP}
+                        onClick={handleScanThumb}
+                        className={cn(
+                          "flex-1 h-8 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all",
+                          formData.fingerprintTemplate
+                            ? "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200"
+                            : "bg-[#085a4e] hover:bg-[#064e43] text-white shadow-xs"
+                        )}
+                      >
+                        <Fingerprint size={12} className="mr-1" />
+                        {isScanningFP
+                          ? "Scanning..."
+                          : formData.fingerprintTemplate
+                          ? "Rescan"
+                          : "Scan Thumb"}
+                      </Button>
+
+                      {formData.fingerprintTemplate && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={handleClearThumb}
+                          title="Clear thumb impression"
+                          className="h-8 w-8 p-0 rounded-xl text-rose-500 hover:text-rose-700 hover:bg-rose-50 border-rose-200 shrink-0"
+                        >
+                          <Trash2 size={12} />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
 

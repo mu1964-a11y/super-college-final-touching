@@ -26,7 +26,10 @@ export function useStudentsOperations(ctx: any) {
         photo: student.photo,
         total_package: student.totalPackage,
         monthly_fee: student.monthlyFee,
-        academic_part: student.academicPart || 'Part-1'
+        academic_part: student.academicPart || 'Part-1',
+        fingerprint_template: (student as any).fingerprintTemplate || null,
+        fingerprint_finger: (student as any).fingerprintFinger || null,
+        fingerprint_enrolled_at: (student as any).fingerprintEnrolledAt || ((student as any).fingerprintTemplate ? new Date().toISOString() : null)
       });
       if (error) throw error;
       logActivity("Student Added", {
@@ -48,7 +51,7 @@ export function useStudentsOperations(ctx: any) {
         const oldStudent = students.find((s: any) => s.id === id);
         const changes = diffObjects(oldStudent, updates, STUDENT_FIELD_LABELS);
 
-        const { error } = await supabase.from('students').update({
+        const updatePayload: any = {
           full_name: updates.fullName,
           father_name: updates.fatherName,
           college_no: updates.collegeNo,
@@ -73,7 +76,15 @@ export function useStudentsOperations(ctx: any) {
           fee_history: updates.feeHistory,
           academic_part: updates.academicPart,
           session: updates.session
-        }).eq('id', id);
+        };
+
+        if ((updates as any).fingerprintTemplate !== undefined) {
+          updatePayload.fingerprint_template = (updates as any).fingerprintTemplate || null;
+          updatePayload.fingerprint_finger = (updates as any).fingerprintFinger || null;
+          updatePayload.fingerprint_enrolled_at = (updates as any).fingerprintEnrolledAt || ((updates as any).fingerprintTemplate ? new Date().toISOString() : null);
+        }
+
+        const { error } = await supabase.from('students').update(updatePayload).eq('id', id);
         
         if (error) throw error;
         fetchData(true);

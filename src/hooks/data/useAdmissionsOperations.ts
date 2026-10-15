@@ -96,7 +96,10 @@ export function useAdmissionsOperations(ctx: any) {
         session: admission.session || settings?.academicSession,
         session_start_date: admission.sessionStartDate || null,
         session_end_date: admission.sessionEndDate || null,
-        academic_part: admission.academicPart || 'Part-1'
+        academic_part: admission.academicPart || 'Part-1',
+        fingerprint_template: (admission as any).fingerprintTemplate || null,
+        fingerprint_finger: (admission as any).fingerprintFinger || null,
+        fingerprint_enrolled_at: (admission as any).fingerprintEnrolledAt || ((admission as any).fingerprintTemplate ? new Date().toISOString() : null)
       }).select().single();
       if (error) throw error;
 
@@ -186,7 +189,10 @@ export function useAdmissionsOperations(ctx: any) {
             photo: admission.photo || null,
             photo_url: admission.photo || null,
             email: admission.email || '',
-            blood_group: admission.bloodGroup || null
+            blood_group: admission.bloodGroup || null,
+            fingerprint_template: (admission as any).fingerprintTemplate || null,
+            fingerprint_finger: (admission as any).fingerprintFinger || null,
+            fingerprint_enrolled_at: (admission as any).fingerprintEnrolledAt || ((admission as any).fingerprintTemplate ? new Date().toISOString() : null)
           });
         } catch (stErr) {
           console.error("Auto-sync student creation error:", stErr);
@@ -288,6 +294,9 @@ export function useAdmissionsOperations(ctx: any) {
         if (updates.academicPart !== undefined) dbUpdates.academic_part = updates.academicPart;
         if (updates.feeLedger !== undefined) dbUpdates.fee_ledger = updates.feeLedger;
         if (updates.feeHistory !== undefined) dbUpdates.fee_history = updates.feeHistory;
+        if ((updates as any).fingerprintTemplate !== undefined) dbUpdates.fingerprint_template = (updates as any).fingerprintTemplate || null;
+        if ((updates as any).fingerprintFinger !== undefined) dbUpdates.fingerprint_finger = (updates as any).fingerprintFinger || null;
+        if ((updates as any).fingerprintEnrolledAt !== undefined) dbUpdates.fingerprint_enrolled_at = (updates as any).fingerprintEnrolledAt || null;
 
         if (Object.keys(dbUpdates).length > 0) {
           const { error } = await supabase.from('admissions').update(dbUpdates).eq('id', id);
@@ -336,7 +345,10 @@ export function useAdmissionsOperations(ctx: any) {
               session: updates.session || existingAdmission?.session,
               session_start_date: updates.sessionStartDate || existingAdmission?.sessionStartDate || null,
               session_end_date: updates.sessionEndDate || existingAdmission?.sessionEndDate || null,
-              academic_part: updates.academicPart || existingAdmission?.academicPart || 'Part-1'
+              academic_part: updates.academicPart || existingAdmission?.academicPart || 'Part-1',
+              fingerprint_template: (updates as any).fingerprintTemplate || (existingAdmission as any)?.fingerprintTemplate || null,
+              fingerprint_finger: (updates as any).fingerprintFinger || (existingAdmission as any)?.fingerprintFinger || null,
+              fingerprint_enrolled_at: (updates as any).fingerprintEnrolledAt || (existingAdmission as any)?.fingerprintEnrolledAt || null
             });
           } else {
             // Keep existing student details in sync (ONLY update fields that were actually passed)
@@ -364,6 +376,9 @@ export function useAdmissionsOperations(ctx: any) {
             if (updates.feeReceived !== undefined) studentUpdates.fee_received = updates.feeReceived;
             if (updates.session !== undefined) studentUpdates.session = updates.session;
             if (updates.academicPart !== undefined) studentUpdates.academic_part = updates.academicPart;
+            if ((updates as any).fingerprintTemplate !== undefined) studentUpdates.fingerprint_template = (updates as any).fingerprintTemplate || null;
+            if ((updates as any).fingerprintFinger !== undefined) studentUpdates.fingerprint_finger = (updates as any).fingerprintFinger || null;
+            if ((updates as any).fingerprintEnrolledAt !== undefined) studentUpdates.fingerprint_enrolled_at = (updates as any).fingerprintEnrolledAt || null;
             
             if (Object.keys(studentUpdates).length > 0) {
               await supabase.from('students').update(studentUpdates).eq('admission_id', id);

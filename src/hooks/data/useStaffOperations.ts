@@ -14,18 +14,21 @@ export function useStaffOperations(ctx: any) {
           full_name: member.fullName,
           father_name: member.fatherName,
           cnic: member.cnic,
-          dob: member.dob,
+          dob: member.dob && String(member.dob).trim() ? member.dob : null,
           role: member.role,
           contact: member.contact,
           address: member.address,
           base_salary: member.baseSalary,
           salary: member.salary,
-          join_date: member.joinDate,
+          join_date: member.joinDate && String(member.joinDate).trim() ? member.joinDate : null,
           photo: member.photo,
           status: member.status,
           subjects: member.subjects,
           qualification: member.qualification,
-          specialization: member.specialization
+          specialization: member.specialization,
+          fingerprint_template: member.fingerprintTemplate || null,
+          fingerprint_finger: member.fingerprintFinger || null,
+          fingerprint_enrolled_at: member.fingerprintTemplate ? new Date().toISOString() : null,
         });
         if (error) {
           setStaff((prev: Staff[]) => prev.filter(s => s.id !== member.id));
@@ -58,23 +61,35 @@ export function useStaffOperations(ctx: any) {
         const changes = diffObjects(oldMember, updates, STAFF_FIELD_LABELS);
 
         setStaff((prev: Staff[]) => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-        const { error } = await supabase.from('staff').update({
+
+        const updatePayload: any = {
           full_name: updates.fullName,
           father_name: updates.fatherName,
           cnic: updates.cnic,
-          dob: updates.dob,
           role: updates.role,
           contact: updates.contact,
           address: updates.address,
           base_salary: updates.baseSalary,
           salary: updates.salary,
-          join_date: updates.joinDate,
           photo: updates.photo,
           status: updates.status,
           subjects: updates.subjects,
           qualification: updates.qualification,
           specialization: updates.specialization
-        }).eq('id', id);
+        };
+        if (updates.dob !== undefined) {
+          updatePayload.dob = updates.dob && String(updates.dob).trim() ? updates.dob : null;
+        }
+        if (updates.joinDate !== undefined) {
+          updatePayload.join_date = updates.joinDate && String(updates.joinDate).trim() ? updates.joinDate : null;
+        }
+        if (updates.fingerprintTemplate !== undefined) {
+          updatePayload.fingerprint_template = updates.fingerprintTemplate || null;
+          updatePayload.fingerprint_finger = updates.fingerprintFinger || null;
+          updatePayload.fingerprint_enrolled_at = updates.fingerprintTemplate ? new Date().toISOString() : null;
+        }
+
+        const { error } = await supabase.from('staff').update(updatePayload).eq('id', id);
         if (error) throw error;
         
         logActivity("Staff Updated", {
