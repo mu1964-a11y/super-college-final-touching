@@ -300,17 +300,30 @@ export default function BiometricEnrollmentModal({
           )
         );
       } else {
-        // Update students table
-        const { error: studentErr } = await supabase
+        // Update students table by direct primary key
+        let { error: studentErr } = await supabase
           .from("students")
           .update({
             fingerprint_template: templateToSave,
             fingerprint_finger: fingerLabel,
             fingerprint_enrolled_at: enrolledAt,
           })
-          .or(`id.eq.${selectedPerson.id},admission_id.eq.${selectedPerson.id}`);
+          .eq("id", selectedPerson.id);
 
-        // Also sync admissions table
+        // Fallback update by admission_id if needed
+        const admId = (selectedPerson as any).admissionId || selectedPerson.id;
+        if (admId) {
+          await supabase
+            .from("students")
+            .update({
+              fingerprint_template: templateToSave,
+              fingerprint_finger: fingerLabel,
+              fingerprint_enrolled_at: enrolledAt,
+            })
+            .eq("admission_id", admId);
+        }
+
+        // Also sync admissions table by id and student_id
         await supabase
           .from("admissions")
           .update({
@@ -318,11 +331,19 @@ export default function BiometricEnrollmentModal({
             fingerprint_finger: fingerLabel,
             fingerprint_enrolled_at: enrolledAt,
           })
-          .or(`id.eq.${selectedPerson.id},student_id.eq.${selectedPerson.id}`);
+          .eq("id", selectedPerson.id);
+
+        await supabase
+          .from("admissions")
+          .update({
+            fingerprint_template: templateToSave,
+            fingerprint_finger: fingerLabel,
+            fingerprint_enrolled_at: enrolledAt,
+          })
+          .eq("student_id", selectedPerson.id);
 
         if (studentErr) {
-          console.error("Supabase student fingerprint update error:", studentErr);
-          throw studentErr;
+          console.warn("Direct student id update warning (fallback applied):", studentErr);
         }
 
         // Update local students list immediately

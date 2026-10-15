@@ -29,7 +29,8 @@ import {
   Loader2,
   CheckCircle2,
   X,
-  Fingerprint
+  Fingerprint,
+  BookOpen
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { 
@@ -318,8 +319,8 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
   }, [initialFilter]);
 
   const roleGroups: Record<string, StaffRole[]> = {
-    'Management': ['Directors', 'Coordinator'],
-    'Academic': ['Lecturer', 'Exam Controller', 'Librarian', 'Lab Attendant'],
+    'Management': ['Principal', 'Vice Principal', 'Directors', 'Coordinator'],
+    'Academic': ['Lecturer', 'Faculty', 'Exam Controller', 'Exam Officer', 'Librarian', 'Lab Attendant'],
     'Administration': ['Admin Officer', 'Accountant', 'Receptionist'],
     'Support': ['Office Boy', 'Guard', 'Gardener', 'Sweeper']
   };
@@ -1576,6 +1577,21 @@ function StaffProfile({ member, data, onEdit, onShowCard }: { member: Staff, dat
   );
 }
 
+const QUICK_TEACHING_SUBJECTS = [
+  'English',
+  'Urdu',
+  'Physics',
+  'Chemistry',
+  'Biology',
+  'Mathematics',
+  'Computer Science',
+  'Economics',
+  'Islamic Studies',
+  'Pak Studies',
+  'Accounting',
+  'Commerce'
+];
+
 function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, data: any, onClose?: () => void, onDelete?: () => void }) {
   const [formData, setFormData] = useState({
     fullName: member.fullName || '',
@@ -1588,10 +1604,11 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
     salary: member.salary || 0,
     baseSalary: member.baseSalary || member.salary || 0,
     subjects: member.subjects || [],
-    role: member.role,
-    status: member.status,
+    role: member.role || 'Lecturer',
+    status: member.status || 'Active',
     photo: member.photo || ''
   });
+  const [customSubjectInput, setCustomSubjectInput] = useState('');
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1610,6 +1627,26 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
     }
   };
 
+  const toggleSubject = (sub: string) => {
+    setFormData(prev => {
+      const exists = prev.subjects.includes(sub);
+      return {
+        ...prev,
+        subjects: exists ? prev.subjects.filter(s => s !== sub) : [...prev.subjects, sub]
+      };
+    });
+  };
+
+  const handleAddCustomSubject = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = customSubjectInput.trim();
+    if (!trimmed) return;
+    if (!formData.subjects.includes(trimmed)) {
+      setFormData(prev => ({ ...prev, subjects: [...prev.subjects, trimmed] }));
+    }
+    setCustomSubjectInput('');
+  };
+
   const handleDelete = () => {
     if (onDelete) onDelete();
   };
@@ -1621,104 +1658,272 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
   };
 
   return (
-    <DialogContent className="max-w-[90vw] w-[90vw] max-h-[92vh] overflow-y-auto p-6 bg-white rounded-3xl">
-      <DialogHeader>
-        <DialogTitle className="text-2xl font-serif text-superior-teal">Edit Staff Profile</DialogTitle>
-      </DialogHeader>
-      <div className="space-y-6 py-4">
-        <div className="flex justify-center mb-6">
-          <div className="relative group">
-            <div className="w-32 h-32 rounded-full border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center overflow-hidden transition-colors group-hover:border-superior-teal shadow-inner">
+    <DialogContent className="max-w-2xl sm:max-w-3xl w-full max-h-[90vh] overflow-y-auto p-0 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+      <div className="bg-gradient-to-r from-superior-teal to-emerald-900 text-white p-5 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20">
+            <User size={20} className="text-superior-gold" />
+          </div>
+          <div>
+            <DialogTitle className="text-lg font-black tracking-tight text-white">Edit Staff Profile</DialogTitle>
+            <p className="text-xs text-white/70">Modify credentials, administrative designation & teaching subjects</p>
+          </div>
+        </div>
+        <span className="font-mono text-xs px-2.5 py-1 rounded-xl bg-white/10 text-superior-gold font-bold border border-white/15">
+          {member.id}
+        </span>
+      </div>
+
+      <div className="p-5 sm:p-6 space-y-5">
+        {/* Top Profile Strip with Photo */}
+        <div className="flex items-center gap-4 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
+          <div className="relative group shrink-0">
+            <div className="w-20 h-20 rounded-2xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 flex items-center justify-center overflow-hidden shadow-sm">
               {formData.photo ? (
-                <img src={formData.photo} alt="" className="w-full h-full object-cover object-[center_top] rounded-full" referrerPolicy="no-referrer" />
+                <img src={formData.photo} alt="" className="w-full h-full object-cover object-top rounded-2xl" referrerPolicy="no-referrer" />
               ) : (
-                <>
-                  <Camera className="text-slate-400 mb-2" size={24} />
-                  <span className="text-[10px] text-slate-500 font-bold uppercase">Upload Photo</span>
-                </>
+                <div className="flex flex-col items-center justify-center text-slate-400">
+                  <Camera size={22} />
+                  <span className="text-[9px] font-bold uppercase mt-1">Photo</span>
+                </div>
               )}
             </div>
-            <label className="absolute inset-0 cursor-pointer">
+            <label className="absolute -bottom-1 -right-1 p-1.5 bg-superior-teal hover:bg-superior-teal/90 text-white rounded-xl cursor-pointer shadow-md border-2 border-white dark:border-slate-800 transition-all">
+              <Camera size={13} />
               <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
             </label>
           </div>
+          <div className="min-w-0 flex-1">
+            <h4 className="font-black text-slate-800 dark:text-white text-base truncate">{formData.fullName || "Unnamed Staff Member"}</h4>
+            <p className="text-xs text-slate-500 font-medium">Designation: <span className="text-superior-teal font-bold">{formData.role}</span></p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Click camera icon to change passport photo for biometric gate & ID cards.</p>
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Full Name</Label>
-            <Input value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} />
+
+        {/* Section 1: Identity & Designation */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <Briefcase size={14} className="text-superior-teal" />
+            <span>Designation & Teaching Roles</span>
           </div>
-          <div className="space-y-2">
-            <Label>Father's Name</Label>
-            <Input value={formData.fatherName} onChange={e => setFormData({...formData, fatherName: e.target.value})} />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Full Name *</Label>
+              <Input 
+                className="h-9 text-xs rounded-xl"
+                value={formData.fullName} 
+                onChange={e => setFormData({...formData, fullName: e.target.value})} 
+                placeholder="Enter full name"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Father's Name</Label>
+              <Input 
+                className="h-9 text-xs rounded-xl"
+                value={formData.fatherName} 
+                onChange={e => setFormData({...formData, fatherName: e.target.value})} 
+                placeholder="Enter father's name"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Primary Designation / Administrative Role</Label>
+              <Select value={formData.role || ""} onValueChange={(v: any) => setFormData({...formData, role: v})}>
+                <SelectTrigger className="h-9 text-xs rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-56">
+                  {STAFF_ROLES.map(role => (
+                    <SelectItem key={role} value={role} className="text-xs">{role}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Qualification</Label>
+              <Input 
+                className="h-9 text-xs rounded-xl"
+                value={formData.qualification} 
+                onChange={e => setFormData({...formData, qualification: e.target.value})} 
+                placeholder="e.g. M.Sc Physics, M.Phil"
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label>CNIC</Label>
-            <Input value={formData.cnic} onChange={e => setFormData({...formData, cnic: e.target.value})} />
+
+          {/* Dual-Role: Teaching Subjects Selector */}
+          <div className="p-3.5 rounded-2xl bg-teal-50/60 dark:bg-teal-950/20 border border-teal-200/60 dark:border-teal-800/40 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <BookOpen size={14} className="text-superior-teal" />
+                <Label className="text-xs font-black text-teal-950 dark:text-teal-200">
+                  Teaching Subjects (Dual-Role: e.g. Principal or Lecturer teaching subjects)
+                </Label>
+              </div>
+              <span className="text-[10px] font-bold text-teal-700 dark:text-teal-300">
+                {formData.subjects.length} Selected
+              </span>
+            </div>
+
+            {/* Quick-select pills */}
+            <div className="flex flex-wrap gap-1.5">
+              {QUICK_TEACHING_SUBJECTS.map(subj => {
+                const isSelected = formData.subjects.includes(subj);
+                return (
+                  <button
+                    key={subj}
+                    type="button"
+                    onClick={() => toggleSubject(subj)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all border",
+                      isSelected
+                        ? "bg-superior-teal text-white border-superior-teal shadow-2xs scale-102"
+                        : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-superior-teal/50"
+                    )}
+                  >
+                    {isSelected ? `✓ ${subj}` : `+ ${subj}`}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Custom subject adder */}
+            <div className="flex gap-2 pt-1">
+              <Input
+                placeholder="Type custom subject and press Add..."
+                className="h-8 text-xs rounded-xl bg-white dark:bg-slate-800"
+                value={customSubjectInput}
+                onChange={e => setCustomSubjectInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomSubject(); } }}
+              />
+              <Button 
+                type="button"
+                size="sm" 
+                variant="outline" 
+                onClick={() => handleAddCustomSubject()}
+                className="h-8 px-3 text-xs rounded-xl font-bold border-teal-300 text-superior-teal hover:bg-teal-100/50"
+              >
+                Add
+              </Button>
+            </div>
+
+            {formData.subjects.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                <span className="text-[10px] text-slate-400 font-bold self-center">Assigned:</span>
+                {formData.subjects.map(s => (
+                  <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-superior-teal dark:text-teal-300 text-[10px] font-bold border border-teal-200 dark:border-teal-800">
+                    {s}
+                    <button type="button" onClick={() => toggleSubject(s)} className="text-slate-400 hover:text-rose-500">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="space-y-2">
-            <Label>Contact Number</Label>
-            <Input value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} />
+        </div>
+
+        {/* Section 2: Contact & Identification */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <Phone size={14} className="text-superior-teal" />
+            <span>Contact & Identity</span>
           </div>
-          <div className="space-y-2">
-            <Label>Date of Birth</Label>
-            <Input type="date" value={formData.dob} onChange={e => setFormData({...formData, dob: e.target.value})} />
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">CNIC Number</Label>
+              <Input 
+                className="h-9 text-xs rounded-xl"
+                value={formData.cnic} 
+                onChange={e => setFormData({...formData, cnic: e.target.value})} 
+                placeholder="36104-XXXXXXX-X"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Contact Number</Label>
+              <Input 
+                className="h-9 text-xs rounded-xl"
+                value={formData.contact} 
+                onChange={e => setFormData({...formData, contact: e.target.value})} 
+                placeholder="0300-XXXXXXX"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Date of Birth</Label>
+              <Input 
+                type="date"
+                className="h-9 text-xs rounded-xl"
+                value={formData.dob} 
+                onChange={e => setFormData({...formData, dob: e.target.value})} 
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label>Qualification</Label>
-            <Input value={formData.qualification} onChange={e => setFormData({...formData, qualification: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Monthly Salary (Rs.)</Label>
-            <Input type="number" value={formData.salary} onChange={e => setFormData({...formData, salary: Number(e.target.value), baseSalary: Number(e.target.value)})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Subjects (Comma separated)</Label>
+
+          <div className="space-y-1">
+            <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Residential Address</Label>
             <Input 
-              placeholder="e.g. Physics, Math" 
-              value={formData.subjects?.join(', ')} 
-              onChange={e => setFormData({...formData, subjects: e.target.value.split(',').map(s => s.trim())})} 
+              className="h-9 text-xs rounded-xl"
+              value={formData.address} 
+              onChange={e => setFormData({...formData, address: e.target.value})} 
+              placeholder="Enter full address"
             />
           </div>
-          <div className="space-y-2">
-            <Label>Designation</Label>
-            <Select value={formData.role || ""} onValueChange={(v: any) => setFormData({...formData, role: v})}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STAFF_ROLES.map(role => (
-                  <SelectItem key={role} value={role}>{role}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        </div>
+
+        {/* Section 3: Payroll & Status */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <CreditCard size={14} className="text-superior-teal" />
+            <span>Payroll & Status</span>
           </div>
-          <div className="space-y-2">
-            <Label>Status</Label>
-            <Select value={formData.status || ""} onValueChange={(v: any) => setFormData({...formData, status: v})}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Active">Active</SelectItem>
-                <SelectItem value="Inactive">Inactive</SelectItem>
-              </SelectContent>
-            </Select>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Monthly Base Salary (Rs.)</Label>
+              <Input 
+                type="number"
+                className="h-9 text-xs rounded-xl"
+                value={formData.salary} 
+                onChange={e => setFormData({...formData, salary: Number(e.target.value), baseSalary: Number(e.target.value)})} 
+                placeholder="e.g. 50000"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Account Status</Label>
+              <Select value={formData.status || ""} onValueChange={(v: any) => setFormData({...formData, status: v})}>
+                <SelectTrigger className="h-9 text-xs rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Active" className="text-xs">Active</SelectItem>
+                  <SelectItem value="Inactive" className="text-xs">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
-        <div className="space-y-2">
-          <Label>Address</Label>
-          <Input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
-        </div>
-        <div className="pt-4 flex gap-3">
-          <Button variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={handleDelete}>
-            <Trash2 size={18} className="mr-2" /> Delete Staff
+
+        {/* Action Buttons */}
+        <div className="pt-3 flex items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800">
+          <Button 
+            variant="ghost" 
+            type="button"
+            className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs h-9 rounded-xl font-bold" 
+            onClick={handleDelete}
+          >
+            <Trash2 size={15} className="mr-1.5" /> Delete Staff
           </Button>
-          <div className="flex-1" />
-          <Button variant="outline" type="button" onClick={onClose}>Cancel</Button>
-          <Button className="bg-superior-teal text-white hover:bg-superior-teal/90" onClick={handleSave}>
-            Save Changes
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" type="button" onClick={onClose} className="h-9 px-4 text-xs rounded-xl font-bold">
+              Cancel
+            </Button>
+            <Button 
+              className="bg-superior-teal text-white hover:bg-superior-teal/90 h-9 px-5 text-xs rounded-xl font-bold shadow-sm" 
+              onClick={handleSave}
+            >
+              Save Profile Changes
+            </Button>
+          </div>
         </div>
       </div>
     </DialogContent>
@@ -1743,6 +1948,7 @@ function AddStaffDialog({ data }: { data: any }) {
     status: 'Active' as const,
     photo: ''
   });
+  const [customSubjectInput, setCustomSubjectInput] = useState('');
 
   React.useEffect(() => {
     // Generate next staff ID automatically
@@ -1760,10 +1966,6 @@ function AddStaffDialog({ data }: { data: any }) {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (!formData.id) { 
-        toast.error("Please enter Staff ID first to associate photo!");
-        return;
-      }
       const toastId = toast.loading("Processing photo...");
       try {
         const compressedBase64 = await compressImage(file);
@@ -1778,17 +1980,29 @@ function AddStaffDialog({ data }: { data: any }) {
     }
   };
 
-  const handleSave = () => {
-    if (!formData.id || !formData.fullName || !formData.cnic) {
-      toast.error("Please fill in all required fields including Staff ID");
-      return;
-    }
+  const toggleSubject = (sub: string) => {
+    setFormData(prev => {
+      const exists = prev.subjects.includes(sub);
+      return {
+        ...prev,
+        subjects: exists ? prev.subjects.filter(s => s !== sub) : [...prev.subjects, sub]
+      };
+    });
+  };
 
-    // Validation for format: SGC-[Letter]-[3 or more digits]
-    // Allowing some flexibility as per user request example 'SGC-T-XXX'
-    const idPattern = /^SGC-[A-Z]-\d{3,5}$/i;
-    if (!idPattern.test(formData.id)) {
-      toast.error("Invalid ID Format! Use 'SGC-X-000' (e.g., SGC-T-123)");
+  const handleAddCustomSubject = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = customSubjectInput.trim();
+    if (!trimmed) return;
+    if (!formData.subjects.includes(trimmed)) {
+      setFormData(prev => ({ ...prev, subjects: [...prev.subjects, trimmed] }));
+    }
+    setCustomSubjectInput('');
+  };
+
+  const handleSave = () => {
+    if (!formData.id || !formData.fullName) {
+      toast.error("Please enter staff full name!");
       return;
     }
 
@@ -1800,101 +2014,272 @@ function AddStaffDialog({ data }: { data: any }) {
     }
 
     data.addStaff({ ...formData });
-    toast.success("Staff member added successfully!");
+    toast.success("Staff member enrolled successfully!");
   };
 
   return (
-    <DialogContent className="max-w-[90vw] w-[90vw] max-h-[92vh] overflow-y-auto p-6 bg-white rounded-3xl">
-      <DialogHeader>
-        <DialogTitle className="text-2xl font-serif text-superior-teal">Add New Staff Member</DialogTitle>
-      </DialogHeader>
-      <div className="space-y-6 py-4">
-        <div className="flex justify-center mb-6">
-          <div className="relative group">
-            <div className="w-32 h-32 rounded-full border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center overflow-hidden transition-colors group-hover:border-superior-teal shadow-inner">
+    <DialogContent className="max-w-2xl sm:max-w-3xl w-full max-h-[90vh] overflow-y-auto p-0 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+      <div className="bg-gradient-to-r from-superior-teal to-emerald-900 text-white p-5 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20">
+            <User size={20} className="text-superior-gold" />
+          </div>
+          <div>
+            <DialogTitle className="text-lg font-black tracking-tight text-white">Add New Staff / Faculty Member</DialogTitle>
+            <p className="text-xs text-white/70">Register employee details, administrative role & teaching subjects</p>
+          </div>
+        </div>
+        <span className="font-mono text-xs px-2.5 py-1 rounded-xl bg-white/10 text-superior-gold font-bold border border-white/15">
+          {formData.id}
+        </span>
+      </div>
+
+      <div className="p-5 sm:p-6 space-y-5">
+        {/* Top Profile Strip with Photo */}
+        <div className="flex items-center gap-4 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
+          <div className="relative group shrink-0">
+            <div className="w-20 h-20 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 flex items-center justify-center overflow-hidden shadow-sm">
               {formData.photo ? (
-                <img src={formData.photo} alt="" className="w-full h-full object-cover object-[center_top] rounded-full" referrerPolicy="no-referrer" />
+                <img src={formData.photo} alt="" className="w-full h-full object-cover object-top rounded-2xl" referrerPolicy="no-referrer" />
               ) : (
-                <>
-                  <Camera className="text-slate-400 mb-2" size={24} />
-                  <span className="text-[10px] text-slate-500 font-bold uppercase">Upload Photo</span>
-                </>
+                <div className="flex flex-col items-center justify-center text-slate-400">
+                  <Camera size={22} />
+                  <span className="text-[9px] font-bold uppercase mt-1">Upload</span>
+                </div>
               )}
             </div>
-            <label className="absolute inset-0 cursor-pointer">
+            <label className="absolute -bottom-1 -right-1 p-1.5 bg-superior-teal hover:bg-superior-teal/90 text-white rounded-xl cursor-pointer shadow-md border-2 border-white dark:border-slate-800 transition-all">
+              <Camera size={13} />
               <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
             </label>
           </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono font-bold bg-superior-gold/15 text-superior-gold px-2 py-0.5 rounded-md border border-superior-gold/25">
+                {formData.id}
+              </span>
+              <span className="text-xs text-slate-400">• New Enrollment</span>
+            </div>
+            <h4 className="font-black text-slate-800 dark:text-white text-base truncate mt-1">
+              {formData.fullName || "Enter Staff Name Below"}
+            </h4>
+            <p className="text-[11px] text-slate-400">Passport photo is used for Biometric Tablet Gate Attendance and Faculty ID Cards.</p>
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label className="flex items-center gap-1 group">
-              Staff ID
-            </Label>
-            <Input 
-              value={formData.id} 
-              readOnly
-              className="font-mono uppercase tracking-wider bg-slate-50 cursor-not-allowed"
-            />
+
+        {/* Section 1: Designation & Role */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <Briefcase size={14} className="text-superior-teal" />
+            <span>Designation & Teaching Roles</span>
           </div>
-          <div className="space-y-2">
-            <Label>Full Name <span className="text-rose-500">*</span></Label>
-            <Input placeholder="Enter full name" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Full Name *</Label>
+              <Input 
+                className="h-9 text-xs rounded-xl"
+                value={formData.fullName} 
+                onChange={e => setFormData({...formData, fullName: e.target.value})} 
+                placeholder="Enter full name"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Father's Name</Label>
+              <Input 
+                className="h-9 text-xs rounded-xl"
+                value={formData.fatherName} 
+                onChange={e => setFormData({...formData, fatherName: e.target.value})} 
+                placeholder="Enter father's name"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Primary Designation / Administrative Role</Label>
+              <Select value={formData.role || ""} onValueChange={(v: any) => setFormData({...formData, role: v})}>
+                <SelectTrigger className="h-9 text-xs rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-56">
+                  {STAFF_ROLES.map(role => (
+                    <SelectItem key={role} value={role} className="text-xs">{role}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Qualification</Label>
+              <Input 
+                className="h-9 text-xs rounded-xl"
+                value={formData.qualification} 
+                onChange={e => setFormData({...formData, qualification: e.target.value})} 
+                placeholder="e.g. M.Sc English, M.Phil"
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label>Father's Name</Label>
-            <Input placeholder="Enter father's name" value={formData.fatherName} onChange={e => setFormData({...formData, fatherName: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>CNIC</Label>
-            <Input placeholder="00000-0000000-0" value={formData.cnic} onChange={e => setFormData({...formData, cnic: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Contact Number</Label>
-            <Input placeholder="0300-0000000" value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Date of Birth</Label>
-            <Input type="date" value={formData.dob} onChange={e => setFormData({...formData, dob: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Designation</Label>
-            <Select value={formData.role || ""} onValueChange={(v: any) => setFormData({...formData, role: v})}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STAFF_ROLES.map(role => (
-                  <SelectItem key={role} value={role}>{role}</SelectItem>
+
+          {/* Dual-Role: Teaching Subjects Selector */}
+          <div className="p-3.5 rounded-2xl bg-teal-50/60 dark:bg-teal-950/20 border border-teal-200/60 dark:border-teal-800/40 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <BookOpen size={14} className="text-superior-teal" />
+                <Label className="text-xs font-black text-teal-950 dark:text-teal-200">
+                  Teaching Subjects (Dual-Role: e.g. Principal or Lecturer teaching subjects)
+                </Label>
+              </div>
+              <span className="text-[10px] font-bold text-teal-700 dark:text-teal-300">
+                {formData.subjects.length} Selected
+              </span>
+            </div>
+
+            {/* Quick-select pills */}
+            <div className="flex flex-wrap gap-1.5">
+              {QUICK_TEACHING_SUBJECTS.map(subj => {
+                const isSelected = formData.subjects.includes(subj);
+                return (
+                  <button
+                    key={subj}
+                    type="button"
+                    onClick={() => toggleSubject(subj)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all border",
+                      isSelected
+                        ? "bg-superior-teal text-white border-superior-teal shadow-2xs scale-102"
+                        : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-superior-teal/50"
+                    )}
+                  >
+                    {isSelected ? `✓ ${subj}` : `+ ${subj}`}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Custom subject adder */}
+            <div className="flex gap-2 pt-1">
+              <Input
+                placeholder="Type custom subject and press Add..."
+                className="h-8 text-xs rounded-xl bg-white dark:bg-slate-800"
+                value={customSubjectInput}
+                onChange={e => setCustomSubjectInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomSubject(); } }}
+              />
+              <Button 
+                type="button"
+                size="sm" 
+                variant="outline" 
+                onClick={() => handleAddCustomSubject()}
+                className="h-8 px-3 text-xs rounded-xl font-bold border-teal-300 text-superior-teal hover:bg-teal-100/50"
+              >
+                Add
+              </Button>
+            </div>
+
+            {formData.subjects.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                <span className="text-[10px] text-slate-400 font-bold self-center">Assigned:</span>
+                {formData.subjects.map(s => (
+                  <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-superior-teal dark:text-teal-300 text-[10px] font-bold border border-teal-200 dark:border-teal-800">
+                    {s}
+                    <button type="button" onClick={() => toggleSubject(s)} className="text-slate-400 hover:text-rose-500">×</button>
+                  </span>
                 ))}
-              </SelectContent>
-            </Select>
+              </div>
+            )}
           </div>
-          <div className="space-y-2">
-            <Label>Qualification</Label>
-            <Input placeholder="e.g. M.Sc Physics" value={formData.qualification} onChange={e => setFormData({...formData, qualification: e.target.value})} />
+        </div>
+
+        {/* Section 2: Contact & Identification */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <Phone size={14} className="text-superior-teal" />
+            <span>Contact & Identity</span>
           </div>
-          <div className="space-y-2">
-            <Label>Monthly Salary (Rs.)</Label>
-            <Input type="number" value={formData.salary} onChange={e => setFormData({...formData, salary: Number(e.target.value), baseSalary: Number(e.target.value)})} />
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">CNIC Number</Label>
+              <Input 
+                className="h-9 text-xs rounded-xl"
+                value={formData.cnic} 
+                onChange={e => setFormData({...formData, cnic: e.target.value})} 
+                placeholder="36104-XXXXXXX-X"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Contact Number</Label>
+              <Input 
+                className="h-9 text-xs rounded-xl"
+                value={formData.contact} 
+                onChange={e => setFormData({...formData, contact: e.target.value})} 
+                placeholder="0300-XXXXXXX"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Date of Birth</Label>
+              <Input 
+                type="date"
+                className="h-9 text-xs rounded-xl"
+                value={formData.dob} 
+                onChange={e => setFormData({...formData, dob: e.target.value})} 
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label>Subjects (Comma separated)</Label>
+
+          <div className="space-y-1">
+            <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Residential Address</Label>
             <Input 
-              placeholder="e.g. Physics, Math" 
-              value={formData.subjects.join(', ')} 
-              onChange={e => setFormData({...formData, subjects: e.target.value.split(',').map(s => s.trim())})} 
+              className="h-9 text-xs rounded-xl"
+              value={formData.address} 
+              onChange={e => setFormData({...formData, address: e.target.value})} 
+              placeholder="Enter full address"
             />
           </div>
         </div>
-        <div className="space-y-2">
-          <Label>Address</Label>
-          <Input placeholder="Enter residential address" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+
+        {/* Section 3: Payroll & Status */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <CreditCard size={14} className="text-superior-teal" />
+            <span>Payroll & Status</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Monthly Base Salary (Rs.)</Label>
+              <Input 
+                type="number"
+                className="h-9 text-xs rounded-xl"
+                value={formData.salary} 
+                onChange={e => setFormData({...formData, salary: Number(e.target.value), baseSalary: Number(e.target.value)})} 
+                placeholder="e.g. 50000"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Account Status</Label>
+              <Select value={formData.status || ""} onValueChange={(v: any) => setFormData({...formData, status: v})}>
+                <SelectTrigger className="h-9 text-xs rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Active" className="text-xs">Active</SelectItem>
+                  <SelectItem value="Inactive" className="text-xs">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </div>
-        <div className="pt-4 flex gap-3">
-          <DialogClose nativeButton={true} render={<button className="flex-1 h-10 rounded-md border border-slate-200 hover:bg-slate-50 transition-colors font-medium text-sm" />}>Cancel</DialogClose>
+
+        {/* Action Buttons */}
+        <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
+          <DialogClose nativeButton={true} render={<button className="h-9 px-4 text-xs rounded-xl font-bold border border-slate-200 hover:bg-slate-50 transition-colors" />}>
+            Cancel
+          </DialogClose>
           <DialogClose nativeButton={true} render={
-            <button className="flex-1 h-10 rounded-md bg-superior-teal text-white hover:bg-superior-teal/90 transition-colors font-medium text-sm" onClick={handleSave}>
+            <button 
+              className="h-9 px-5 text-xs rounded-xl font-bold bg-superior-teal text-white hover:bg-superior-teal/90 transition-colors shadow-sm"
+              onClick={handleSave}
+            >
               Add Staff Member
             </button>
           } />

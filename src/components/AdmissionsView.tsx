@@ -40,6 +40,7 @@ import {
   Share2,
   FileText,
   Fingerprint,
+  Smartphone,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
@@ -1259,7 +1260,7 @@ export default function AdmissionsView({
                 </button>
               }
             ></DialogTrigger>
-            <DialogContent className="max-w-[90vw] w-[90vw] max-h-[92vh] overflow-y-auto rounded-[2.5rem] border-none p-0 shadow-2xl">
+            <DialogContent className="max-w-4xl lg:max-w-5xl w-full max-h-[92vh] overflow-y-auto rounded-3xl border-none p-0 shadow-2xl">
               <div className="bg-superior-teal p-8 text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-80 h-80 bg-white/5 rounded-full -mr-40 -mt-40 blur-3xl" />
                 <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-superior-gold/10 rounded-full blur-2xl" />
@@ -2240,7 +2241,7 @@ export default function AdmissionsView({
         open={dialogType === "edit"}
         onOpenChange={(open) => !open && setDialogType(null)}
       >
-        <DialogContent className="max-w-[90vw] w-[90vw] max-h-[92vh] overflow-y-auto rounded-[2.5rem] border-none p-0 shadow-2xl">
+        <DialogContent className="max-w-4xl lg:max-w-5xl w-full max-h-[92vh] overflow-y-auto rounded-3xl border-none p-0 shadow-2xl">
           <div className="bg-superior-teal p-10 text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 p-8 opacity-10">
               <ScrollText size={120} />
@@ -2612,7 +2613,7 @@ function EditAdmissionDialog({
   };
 
   return (
-    <DialogContent className="max-w-[90vw] w-[90vw] max-h-[92vh] overflow-y-auto p-6 bg-white rounded-3xl">
+    <DialogContent className="max-w-3xl w-full max-h-[92vh] overflow-y-auto p-6 bg-white rounded-3xl shadow-2xl">
       <DialogHeader className="border-b border-slate-100 pb-4">
         <DialogTitle className="text-3xl font-black text-superior-teal uppercase tracking-tight flex items-center gap-3">
           <Edit className="text-superior-gold" /> Edit Admission Instance

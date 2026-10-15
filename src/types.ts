@@ -206,10 +206,14 @@ export interface SalaryPayment {
 }
 
 export type StaffRole = 
+  | 'Principal'
+  | 'Vice Principal'
   | 'Directors' 
   | 'Coordinator' 
   | 'Lecturer' 
+  | 'Faculty'
   | 'Exam Controller' 
+  | 'Exam Officer'
   | 'Admin Officer' 
   | 'Accountant' 
   | 'Librarian' 

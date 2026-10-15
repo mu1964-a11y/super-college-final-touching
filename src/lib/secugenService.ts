@@ -146,10 +146,19 @@ function callSecuGenApi(
         if (xhr.readyState === 4) {
           if (xhr.status === 200) {
             try {
-              const data = JSON.parse(xhr.responseText);
+              const text = xhr.responseText ? xhr.responseText.trim() : "";
+              if (!text) {
+                reject(new Error("Empty response from scanner service"));
+                return;
+              }
+              if (text.startsWith("<") || text.startsWith("<!DOCTYPE")) {
+                reject(new Error("Scanner port returned HTML page instead of SecuGen JSON. Verify SgiBioSrv Windows service."));
+                return;
+              }
+              const data = JSON.parse(text);
               resolve(data);
-            } catch (err) {
-              reject(err);
+            } catch (err: any) {
+              reject(new Error(`Scanner payload parse error: ${err?.message || String(err)}`));
             }
           } else {
             reject(new Error(`HTTP ${xhr.status}`));

@@ -31,10 +31,14 @@ export const SUBJECTS = [
 ];
 
 export const STAFF_ROLES = [
+  'Principal',
+  'Vice Principal',
   'Directors',
   'Coordinator',
   'Lecturer',
+  'Faculty',
   'Exam Controller',
+  'Exam Officer',
   'Librarian',
   'Lab Attendant',
   'Admin Officer',

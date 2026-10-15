@@ -768,148 +768,165 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
 
       {/* Students View */}
       {viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 lg:gap-6">
-          {visibleStudents.map((student: Student) => (
-            <motion.div
-              key={student.id}
-              whileHover={{ y: -5 }}
-              className={cn(
-                "bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden relative group",
-                selectedStudents.includes(student.id) && "ring-4 ring-superior-teal ring-offset-4"
-              )}
-            >
-              <div className="absolute top-4 left-4 z-20">
-                <Checkbox 
-                  checked={selectedStudents.includes(student.id)} 
-                  onCheckedChange={() => toggleSelectStudent(student.id)}
-                  className="bg-white/80 backdrop-blur-sm border-white/20 rounded-md"
-                />
-              </div>
-              <div className="bg-superior-teal h-24 relative">
-                <div className="absolute top-3 left-5">
-                  {getDefaulterBadge(student)}
-                </div>
-                <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    title="Send WhatsApp Circular to Parents"
-                    className="h-8 w-8 rounded-lg bg-emerald-600/70 hover:bg-emerald-600 text-white border-white/20 shadow-none transition-all active:scale-95" 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSendSingleStudentWhatsApp(student);
-                    }}
-                  >
-                    <MessageSquare size={14} />
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    title="Profile"
-                    className="h-8 w-8 rounded-lg bg-white/10 hover:bg-white/20 text-white border-white/20 shadow-none transition-all active:scale-95" 
-                    onClick={() => {
-                      setSelectedStudent(student);
-                      setDialogType('profile');
-                    }}
-                  >
-                    <Eye size={14} />
-                  </Button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5 lg:gap-4.5">
+          {visibleStudents.map((student: Student) => {
+            const isViaBot = (student.reference || '').toLowerCase().includes('whatsapp') || 
+              (student.notes && JSON.stringify(student.notes).toLowerCase().includes('whatsapp')) ||
+              (student.admissionId && (data.admissions || []).some((a: any) => (a.id === student.admissionId || a.studentId === student.id) && (a.reference || '').toLowerCase().includes('whatsapp')));
+            
+            const totalAtt = (student.attendance?.present || 0) + (student.attendance?.absent || 0);
+            const attPercent = totalAtt > 0 ? Math.round(((student.attendance?.present || 0) / totalAtt) * 100) : 0;
+            const balK = (Math.max(0, (student.totalPackage || 0) - (student.feeReceived || (student.feeLedger?.totalReceived || 0))) / 1000).toFixed(1);
 
-                  <DropdownMenu>
-                    <DropdownMenuTrigger className="h-8 w-8 flex-shrink-0 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 transition-all flex items-center justify-center text-white outline-hidden">
-                      <MoreHorizontal size={14} />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="rounded-2xl p-2 min-w-[200px] border-slate-100 shadow-2xl">
-                      <DropdownMenuItem 
-                        className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-emerald-600 hover:bg-emerald-50" 
-                        onClick={() => handleSendSingleStudentWhatsApp(student)}
-                      >
-                        <MessageSquare size={16} /> Send WhatsApp Circular
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
-                        onClick={() => {
-                          setSelectedStudent(student);
-                          setDialogType('profile_academic');
-                        }}
-                      >
-                        <Award size={16} className="text-emerald-500" /> Academic Records
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
-                        onClick={() => {
-                          setSelectedStudent(student);
-                          setDialogType('profile_fees');
-                        }}
-                      >
-                        <Wallet size={16} className="text-superior-gold" /> Fee Statement
-                      </DropdownMenuItem>
-                      <Separator className="my-2 bg-slate-50" />
-                      <DropdownMenuItem 
-                        className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
-                        onClick={() => {
-                          setSelectedStudent(student);
-                          setDialogType('id_card');
-                        }}
-                      >
-                        <CreditCard size={16} className="text-emerald-500" /> Official ID Card
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
-                        onClick={() => {
-                          setSelectedStudent(student);
-                          setDialogType('receipt');
-                        }}
-                      >
-                        <Download size={16} className="text-superior-teal" /> Download Receipt
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-teal-600 hover:bg-teal-50" 
-                        onClick={() => {
-                          setPhotoEditorStudent(student);
-                          setIsPhotoEditorOpen(true);
-                        }}
-                      >
-                        <Camera size={16} /> Crop & Edit Photo
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
-                        onClick={() => {
-                          setSelectedStudent(student);
-                          setDialogType('edit');
-                        }}
-                      >
-                        <Edit size={16} className="text-slate-400" /> Edit Details
-                      </DropdownMenuItem>
-                      <Separator className="my-2 bg-slate-50" />
-                      <DropdownMenuItem 
-                        className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-rose-600 hover:bg-rose-50"
-                        onClick={() => {
-                          setSelectedStudent(student);
-                          setDialogType('delete');
-                        }}
-                      >
-                        <Trash2 size={16} /> Delete Record
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+            return (
+              <motion.div
+                key={student.id}
+                whileHover={{ y: -3 }}
+                className={cn(
+                  "bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 hover:border-superior-teal/50 transition-all duration-200 overflow-hidden relative group shadow-xs hover:shadow-md flex flex-col justify-between",
+                  selectedStudents.includes(student.id) && "ring-2 ring-superior-teal"
+                )}
+              >
+                {/* Top Header Strip with Monospace Roll No & Fast Actions */}
+                <div className="px-3 py-2 flex items-center justify-between gap-1.5 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-800/30">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Checkbox 
+                      checked={selectedStudents.includes(student.id)} 
+                      onCheckedChange={() => toggleSelectStudent(student.id)}
+                      className="rounded-md"
+                    />
+                    <span className="text-[10px] font-mono font-black text-superior-gold tracking-wider truncate">
+                      {student.id}
+                    </span>
+                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-200/60 dark:bg-slate-700 text-slate-600 dark:text-slate-300 shrink-0">
+                      {student.academicPart || 'Part-1'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    {getDefaulterBadge(student)}
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      title="Send WhatsApp Circular"
+                      className="h-6.5 w-6.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 p-0" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSendSingleStudentWhatsApp(student);
+                      }}
+                    >
+                      <MessageSquare size={12} />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      title="View Student Profile"
+                      className="h-6.5 w-6.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 p-0" 
+                      onClick={() => {
+                        setSelectedStudent(student);
+                        setDialogType('profile');
+                      }}
+                    >
+                      <Eye size={12} />
+                    </Button>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger className="h-6.5 w-6.5 flex-shrink-0 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all flex items-center justify-center outline-hidden">
+                        <MoreHorizontal size={13} />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="rounded-2xl p-2 min-w-[200px] border-slate-100 shadow-2xl">
+                        <DropdownMenuItem 
+                          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-emerald-600 hover:bg-emerald-50" 
+                          onClick={() => handleSendSingleStudentWhatsApp(student)}
+                        >
+                          <MessageSquare size={16} /> Send WhatsApp Circular
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
+                          onClick={() => {
+                            setSelectedStudent(student);
+                            setDialogType('profile_academic');
+                          }}
+                        >
+                          <Award size={16} className="text-emerald-500" /> Academic Records
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
+                          onClick={() => {
+                            setSelectedStudent(student);
+                            setDialogType('profile_fees');
+                          }}
+                        >
+                          <Wallet size={16} className="text-superior-gold" /> Fee Statement
+                        </DropdownMenuItem>
+                        <Separator className="my-2 bg-slate-50" />
+                        <DropdownMenuItem 
+                          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
+                          onClick={() => {
+                            setSelectedStudent(student);
+                            setDialogType('id_card');
+                          }}
+                        >
+                          <CreditCard size={16} className="text-emerald-500" /> Official ID Card
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
+                          onClick={() => {
+                            setSelectedStudent(student);
+                            setDialogType('receipt');
+                          }}
+                        >
+                          <Download size={16} className="text-superior-teal" /> Download Receipt
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-teal-600 hover:bg-teal-50" 
+                          onClick={() => {
+                            setPhotoEditorStudent(student);
+                            setIsPhotoEditorOpen(true);
+                          }}
+                        >
+                          <Camera size={16} /> Crop & Edit Photo
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-slate-700" 
+                          onClick={() => {
+                            setSelectedStudent(student);
+                            setDialogType('edit');
+                          }}
+                        >
+                          <Edit size={16} className="text-slate-400" /> Edit Details
+                        </DropdownMenuItem>
+                        <Separator className="my-2 bg-slate-50" />
+                        <DropdownMenuItem 
+                          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer font-bold text-rose-600 hover:bg-rose-50"
+                          onClick={() => {
+                            setSelectedStudent(student);
+                            setDialogType('delete');
+                          }}
+                        >
+                          <Trash2 size={16} /> Delete Record
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
 
-                <div className="absolute -bottom-10 left-5">
+                {/* Identity Block: Modern Avatar & Names */}
+                <div className="p-3 pb-2 flex items-start gap-2.5">
                   <div 
                     onClick={(e) => {
                       e.stopPropagation();
                       setPhotoEditorStudent(student);
                       setIsPhotoEditorOpen(true);
                     }}
-                    className="w-20 h-20 rounded-full border-4 border-white bg-slate-100 overflow-hidden shadow-xl shadow-superior-teal/10 ring-2 ring-superior-teal/15 cursor-pointer relative group"
+                    className="w-13 h-13 rounded-2xl border-2 border-slate-200/90 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 overflow-hidden shadow-xs flex items-center justify-center shrink-0 cursor-pointer relative group/avatar"
                     title="Click to Crop & Edit Photo (Passport Studio)"
                   >
                     {student.photo ? (
                       <img 
                         src={student.photo} 
                         alt="" 
-                        className="w-full h-full object-cover object-[center_top] rounded-full group-hover:opacity-75 transition-opacity" 
+                        className="w-full h-full object-cover object-top" 
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
@@ -917,78 +934,102 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                         }}
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-slate-200 text-slate-500 font-bold text-2xl rounded-full group-hover:bg-slate-300 transition-colors">
+                      <div className="w-full h-full flex items-center justify-center bg-teal-50 dark:bg-teal-950/40 text-superior-teal font-black text-base">
                         {student.fullName ? student.fullName.charAt(0).toUpperCase() : 'S'}
                       </div>
                     )}
-                    <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Camera size={18} className="text-white" />
+                    <div className="absolute inset-0 bg-black/40 rounded-2xl flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity">
+                      <Camera size={14} className="text-white" />
                     </div>
                   </div>
-                </div>
-              </div>
-              <div className="pt-14 pb-6 px-5 bg-white">
-                <div className="flex justify-between items-start mb-5">
-                  <div>
-                    <h3 className="font-display font-black text-lg text-slate-800 tracking-tight leading-tight line-clamp-1">
+
+                  <div className="flex-1 min-w-0">
+                    <h3 
+                      onClick={() => { setSelectedStudent(student); setDialogType('profile'); }}
+                      className="font-black text-slate-900 dark:text-white text-sm tracking-tight truncate hover:text-superior-teal cursor-pointer transition-colors" 
+                      title={student.fullName}
+                    >
                       <HighlightText text={student.fullName} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
                     </h3>
-                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                      <p className="text-[10px] font-black text-superior-gold uppercase tracking-[0.3em]">{student.id}</p>
-                      {((student.reference || '').toLowerCase().includes('whatsapp') || 
-                        (student.notes && JSON.stringify(student.notes).toLowerCase().includes('whatsapp')) ||
-                        (student.admissionId && (data.admissions || []).some((a: any) => (a.id === student.admissionId || a.studentId === student.id) && (a.reference || '').toLowerCase().includes('whatsapp')))) && (
-                        <span className="text-[8px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded flex items-center gap-0.5 shadow-2xs">
-                          🤖 Via WhatsApp Bot
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
+                      S/D: <HighlightText text={student.fatherName} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
+                    </p>
+                    <div className="flex items-center gap-1 mt-1 flex-wrap">
+                      <span className="text-[9px] font-bold text-superior-teal bg-superior-teal/10 px-1.5 py-0.5 rounded-md truncate max-w-[130px]" title={student.category}>
+                        {student.category}
+                      </span>
+                      {student.section && (
+                        <span className="text-[9px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md">
+                          Sec {student.section}
+                        </span>
+                      )}
+                      {isViaBot && (
+                        <span className="text-[8px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-1 py-0.2 rounded">
+                          🤖 Bot
                         </span>
                       )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em] mb-1">Guardian</p>
-                    <p className="text-sm font-black text-slate-600">
-                      <HighlightText text={student.fatherName} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
-                    </p>
-                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  <div className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100 relative group overflow-hidden">
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1.5 flex items-center gap-1"><School size={10} /> Admitted In</p>
-                    <p className="text-xs font-black text-superior-teal truncate" title={student.category}>{student.category}</p>
-                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mt-0.5 truncate" title={student.group}>{student.group}</p>
+                {/* Prominent Biometric Status Strip (Matches Staff Directory) */}
+                <div className="px-3 py-1.5 border-y border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/30 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Fingerprint size={13} className={student.fingerprintTemplate ? "text-emerald-600" : "text-amber-500"} />
+                    <span className={cn(
+                      "text-[10px] font-bold truncate",
+                      student.fingerprintTemplate ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"
+                    )}>
+                      {student.fingerprintTemplate ? "Thumb Enrolled" : "Thumb Missing"}
+                    </span>
                   </div>
-                  <div className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1.5 flex items-center gap-1"><CheckCircle2 size={10} /> Attendance</p>
-                    <p className="text-xs font-black text-emerald-600">
-                      {Math.round((student.attendance?.present / ((student.attendance?.present || 0) + (student.attendance?.absent || 0) || 1)) * 100) || 0}% Present
-                    </p>
-                  </div>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setBiometricTargetStudent(student);
+                      setIsBiometricModalOpen(true);
+                    }}
+                    className={cn(
+                      "h-6 px-2 rounded-md text-[9px] font-black uppercase tracking-wider transition-all shrink-0",
+                      student.fingerprintTemplate
+                        ? "bg-emerald-100/80 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                        : "bg-amber-500 hover:bg-amber-600 text-white shadow-2xs"
+                    )}
+                  >
+                    {student.fingerprintTemplate ? "Manage" : "Scan"}
+                  </Button>
                 </div>
 
-                <Separator className="mb-5 bg-slate-100" />
-
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Package / Installment</p>
-                    <div className="flex items-baseline gap-2">
-                      <p className="text-lg font-display font-black text-slate-800 tracking-tight">Rs. {(student.monthlyFee || 0).toLocaleString()}</p>
-                      <span className="text-[10px] font-bold text-rose-500 underline decoration-rose-500/30">Bal: {(Math.max(0, (student.totalPackage || 0) - (student.feeReceived || 0)) / 1000).toFixed(1)}k</span>
+                {/* Key Metrics: Attendance & Fee / Balance */}
+                <div className="px-3 py-2 grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-1.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                    <p className="text-[8px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Attendance</p>
+                    <p className="text-xs font-black text-emerald-600 dark:text-emerald-400">
+                      {attPercent}% Present
+                    </p>
+                  </div>
+                  <div className="p-1.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                    <p className="text-[8px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Installment</p>
+                    <div className="flex items-baseline justify-between gap-1">
+                      <span className="font-bold text-slate-800 dark:text-white text-xs truncate">Rs. {(student.monthlyFee || 0).toLocaleString()}</span>
+                      <span className="text-[9px] font-bold text-rose-500 shrink-0">Bal:{balK}k</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Direct Printable Action Buttons on Card */}
-                <div className="flex items-center gap-1.5 pt-3 border-t border-slate-100 mt-3" onClick={(e) => e.stopPropagation()}>
+                {/* Bottom Direct Printable Action Buttons */}
+                <div className="p-2.5 pt-0 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={() => {
                       setSelectedStudent(student);
                       setDialogType('id_card');
                     }}
-                    className="flex-1 h-7.5 rounded-xl bg-emerald-50/80 hover:bg-emerald-100 text-emerald-700 hover:text-emerald-800 border-emerald-200/70 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-1 shadow-2xs transition-all active:scale-95 px-1.5"
+                    className="flex-1 h-7 rounded-xl bg-emerald-50/80 hover:bg-emerald-100 text-emerald-700 hover:text-emerald-800 border-emerald-200/70 font-bold text-[9px] uppercase tracking-wider flex items-center justify-center gap-1 shadow-2xs transition-all active:scale-95 px-1"
                     title="Print Student ID Card"
                   >
                     <CreditCard size={11} className="text-emerald-600 shrink-0" />
@@ -997,12 +1038,11 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={() => {
                       setSelectedStudent(student);
                       setDialogType('receipt');
                     }}
-                    className="flex-1 h-7.5 rounded-xl bg-teal-50/80 hover:bg-teal-100 text-teal-700 hover:text-teal-800 border-teal-200/70 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-1 shadow-2xs transition-all active:scale-95 px-1.5"
+                    className="flex-1 h-7 rounded-xl bg-teal-50/80 hover:bg-teal-100 text-teal-700 hover:text-teal-800 border-teal-200/70 font-bold text-[9px] uppercase tracking-wider flex items-center justify-center gap-1 shadow-2xs transition-all active:scale-95 px-1"
                     title="Download Fee Receipt"
                   >
                     <Receipt size={11} className="text-teal-600 shrink-0" />
@@ -1011,21 +1051,20 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={() => {
                       setSelectedStudent(student);
                       setDialogType('profile_fees');
                     }}
-                    className="flex-1 h-7.5 rounded-xl bg-amber-50/80 hover:bg-amber-100 text-amber-800 hover:text-amber-900 border-amber-200/70 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-1 shadow-2xs transition-all active:scale-95 px-1.5"
+                    className="flex-1 h-7 rounded-xl bg-amber-50/80 hover:bg-amber-100 text-amber-800 hover:text-amber-900 border-amber-200/70 font-bold text-[9px] uppercase tracking-wider flex items-center justify-center gap-1 shadow-2xs transition-all active:scale-95 px-1"
                     title="Fee Statement & Vouchers"
                   >
                     <Wallet size={11} className="text-amber-700 shrink-0" />
                     Statement
                   </Button>
                 </div>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </div>
       ) : (
         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden auto-mx-4">
@@ -1342,7 +1381,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
       </Dialog>
 
       <Dialog open={dialogType !== null && dialogType.startsWith('profile')} onOpenChange={(open) => !open && setDialogType(null)}>
-        <DialogContent className="max-w-4xl w-full max-h-[90vh] overflow-y-auto p-0 border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl">
+        <DialogContent className="max-w-5xl xl:max-w-6xl w-[94vw] max-h-[92vh] overflow-y-auto overflow-x-hidden p-0 border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl">
           {selectedStudent && (
             <StudentProfile 
               student={selectedStudent} 
@@ -1706,30 +1745,30 @@ function StudentProfile({ student, data, initialTab = 'overview', onEdit, onDown
               <h3 className="text-lg font-black text-superior-teal flex items-center gap-2">
                 <CreditCard size={18} /> Financial Summary
               </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-center">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Tuition Fee</p>
-                  <p className="text-2xl font-display font-black text-slate-700">Rs. {(student.totalFeeFinalized || 0).toLocaleString()}</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-center">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Tuition Fee</p>
+                  <p className="text-xl font-display font-black text-slate-700">Rs. {(student.totalFeeFinalized || 0).toLocaleString()}</p>
                 </div>
-                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-center">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Misc Funds</p>
-                  <p className="text-2xl font-display font-black text-slate-700">Rs. {(student.miscFunds || 0).toLocaleString()}</p>
+                <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-center">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Misc Funds</p>
+                  <p className="text-xl font-display font-black text-slate-700">Rs. {(student.miscFunds || 0).toLocaleString()}</p>
                 </div>
-                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-center">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Admission Fee</p>
-                  <p className="text-2xl font-display font-black text-slate-700">Rs. {(student.admissionFee || 0).toLocaleString()}</p>
+                <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-center">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Admission Fee</p>
+                  <p className="text-xl font-display font-black text-slate-700">Rs. {(student.admissionFee || 0).toLocaleString()}</p>
                 </div>
-                <div className="bg-superior-teal/5 p-6 rounded-2xl border border-superior-teal/10 shadow-sm flex flex-col justify-center">
-                  <p className="text-[9px] font-black text-superior-teal uppercase tracking-widest mb-2">Total Package</p>
-                  <p className="text-2xl font-display font-black text-superior-teal">Rs. {(student.totalPackage || 0).toLocaleString()}</p>
+                <div className="bg-superior-teal/5 p-4.5 rounded-2xl border border-superior-teal/10 shadow-sm flex flex-col justify-center">
+                  <p className="text-[9px] font-black text-superior-teal uppercase tracking-widest mb-1.5">Total Package</p>
+                  <p className="text-xl font-display font-black text-superior-teal">Rs. {(student.totalPackage || 0).toLocaleString()}</p>
                 </div>
-                <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 shadow-sm flex flex-col justify-center">
-                  <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-2">Received</p>
-                  <p className="text-2xl font-display font-black text-emerald-700">Rs. {(student.feeReceived || (student.feeLedger?.totalReceived || 0)).toLocaleString()}</p>
+                <div className="bg-emerald-50 p-4.5 rounded-2xl border border-emerald-100 shadow-sm flex flex-col justify-center">
+                  <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-1.5">Received</p>
+                  <p className="text-xl font-display font-black text-emerald-700">Rs. {(student.feeReceived || (student.feeLedger?.totalReceived || 0)).toLocaleString()}</p>
                 </div>
-                <div className="bg-rose-50 p-6 rounded-2xl border border-rose-100 shadow-sm flex flex-col justify-center">
-                  <p className="text-[9px] font-black text-rose-600 uppercase tracking-widest mb-2">Remaining Balance</p>
-                  <p className="text-2xl font-display font-black text-rose-700">Rs. {Math.max(0, (student.totalPackage || 0) - (student.feeReceived || 0)).toLocaleString()}</p>
+                <div className="bg-rose-50 p-4.5 rounded-2xl border border-rose-100 shadow-sm flex flex-col justify-center">
+                  <p className="text-[9px] font-black text-rose-600 uppercase tracking-widest mb-1.5">Remaining Balance</p>
+                  <p className="text-xl font-display font-black text-rose-700">Rs. {Math.max(0, (student.totalPackage || 0) - (student.feeReceived || 0)).toLocaleString()}</p>
                 </div>
               </div>
 
@@ -2104,7 +2143,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
   };
 
   return (
-    <DialogContent className="max-w-[90vw] w-[90vw] max-h-[92vh] overflow-y-auto p-6 bg-white rounded-3xl">
+    <DialogContent className="max-w-3xl w-full max-h-[92vh] overflow-y-auto p-6 bg-white rounded-3xl shadow-2xl">
       <DialogHeader>
         <DialogTitle className="text-2xl font-serif text-superior-teal">Edit Student Profile</DialogTitle>
       </DialogHeader>
