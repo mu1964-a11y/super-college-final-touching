@@ -126,6 +126,46 @@ export function getSecuGenErrorMessage(errorCode: number): string {
   }
 }
 
+function callSecuGenApi(
+  url: string,
+  endpoint: string,
+  params: Record<string, string>,
+  timeoutMs = 10000
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    try {
+      const xhr = new XMLHttpRequest();
+      const body = Object.entries(params)
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join("&");
+
+      xhr.timeout = timeoutMs;
+      xhr.open("POST", `${url}${endpoint}`, true);
+
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState === 4) {
+          if (xhr.status === 200) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              resolve(data);
+            } catch (err) {
+              reject(err);
+            }
+          } else {
+            reject(new Error(`HTTP ${xhr.status}`));
+          }
+        }
+      };
+
+      xhr.onerror = () => reject(new Error("Network or SSL handshake failed"));
+      xhr.ontimeout = () => reject(new Error("SecuGen request timed out"));
+      xhr.send(body);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 class SecuGenService {
   private activeUrl: string | null = null;
   private isChecking = false;
@@ -165,31 +205,20 @@ class SecuGenService {
 
     for (const url of probeUrls) {
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-        // SecuGen WebAPI probes using a rapid 150ms timeout SGIFPCapture call
-        const formParams = new URLSearchParams();
-        formParams.append("Timeout", "150");
-        formParams.append("Quality", "50");
-        formParams.append("licstr", "");
-        formParams.append("templateFormat", "ISO");
-        formParams.append("imageWSQRate", "0.75");
-
-        const response = await fetch(`${url}/SGIFPCapture`, {
-          method: "POST",
-          signal: controller.signal,
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            Accept: "application/json",
+        const data = await callSecuGenApi(
+          url,
+          "/SGIFPCapture",
+          {
+            Timeout: "150",
+            Quality: "50",
+            licstr: "",
+            templateFormat: "ISO",
+            imageWSQRate: "0.75",
           },
-          body: formParams.toString(),
-        });
+          2500
+        );
 
-        clearTimeout(timeoutId);
-
-        if (response && response.ok) {
-          const data = await response.json();
+        if (data) {
           serviceRunning = true;
           foundUrl = url;
 
@@ -209,9 +238,6 @@ class SecuGenService {
               errorCode: errCode,
               raw: data,
             };
-          } else if (errCode === 51 || errCode === 52 || errCode === 53 || errCode === 55 || errCode === 56) {
-            // Service is running, but scanner is unplugged or driver issue
-            deviceFound = false;
           } else {
             deviceFound = false;
           }
@@ -219,7 +245,7 @@ class SecuGenService {
         }
       } catch (err: any) {
         if (url.startsWith("https://")) {
-          // In Chrome/Edge, fetch fails due to self-signed certificate on localhost:8443
+          // In Chrome/Edge, XMLHttpRequest fails due to untrusted self-signed certificate on localhost:8443
           isSslCertificateRequired = true;
         }
       }
@@ -268,36 +294,19 @@ class SecuGenService {
     const templateFormat = options.templateFormat || "ISO";
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout + 3000);
-
-      const formParams = new URLSearchParams();
-      formParams.append("Timeout", String(timeout));
-      formParams.append("Quality", String(quality));
-      formParams.append("licstr", "");
-      formParams.append("templateFormat", templateFormat);
-      formParams.append("imageWSQRate", "0.75");
-
-      const response = await fetch(`${status.activeUrl}/SGIFPCapture`, {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
+      const data = await callSecuGenApi(
+        status.activeUrl,
+        "/SGIFPCapture",
+        {
+          Timeout: String(timeout),
+          Quality: String(quality),
+          licstr: "",
+          templateFormat,
+          imageWSQRate: "0.75",
         },
-        body: formParams.toString(),
-      });
+        timeout + 3000
+      );
 
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        return {
-          success: false,
-          error: `SecuGen capture request failed (HTTP ${response.status})`,
-        };
-      }
-
-      const data = await response.json();
       const errorCode = typeof data.ErrorCode === "number" ? data.ErrorCode : -1;
 
       if (errorCode !== 0) {
@@ -326,13 +335,6 @@ class SecuGenService {
         errorCode: 0,
       };
     } catch (err: any) {
-      if (err.name === "AbortError") {
-        return {
-          success: false,
-          errorCode: 54,
-          error: "Fingerprint capture timed out. Please place your finger flat on the optical sensor and try again.",
-        };
-      }
       return {
         success: false,
         error: `Fingerprint capture error: ${err.message || String(err)}`,
@@ -378,31 +380,18 @@ class SecuGenService {
     }
 
     try {
-      const formParams = new URLSearchParams();
-      formParams.append("template1", template1);
-      formParams.append("template2", template2);
-      formParams.append("licstr", "");
-      formParams.append("templateFormat", templateFormat);
-
-      const response = await fetch(`${status.activeUrl}/SGIMatchScore`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
+      const data = await callSecuGenApi(
+        status.activeUrl,
+        "/SGIMatchScore",
+        {
+          template1,
+          template2,
+          licstr: "",
+          templateFormat,
         },
-        body: formParams.toString(),
-      });
+        5000
+      );
 
-      if (!response.ok) {
-        return {
-          success: false,
-          matchingScore: 0,
-          isMatched: false,
-          error: `Match request failed (HTTP ${response.status})`,
-        };
-      }
-
-      const data = await response.json();
       const errorCode = typeof data.ErrorCode === "number" ? data.ErrorCode : -1;
 
       if (errorCode !== 0) {
