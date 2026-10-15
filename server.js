@@ -128,20 +128,45 @@ async function startServer() {
         extra_info1: "new",
         notes: `[Source: ${leadSource}] Submitted via website form on ${(/* @__PURE__ */ new Date()).toLocaleString()}`
       };
-      let { data, error } = await supabase.from("leads").insert({
-        ...basePayload,
-        source: leadSource
-      }).select().single();
-      if (error && (error.code === "PGRST204" || (error.message || "").includes("'source'"))) {
-        const retry = await supabase.from("leads").insert(basePayload).select().single();
-        data = retry.data;
-        error = retry.error;
+      const inputAppId = (req.body?.extra_info2 || req.body?.appId || "").trim();
+      let existingLead = null;
+      if (inputAppId) {
+        const { data: leadByAppId } = await supabase.from("leads").select("id, extra_info2, student_name").eq("extra_info2", inputAppId).maybeSingle();
+        existingLead = leadByAppId;
       }
-      if (error) {
-        console.error("[Public Leads API] Supabase Insert Error:", error);
-        return res.status(500).json({ success: false, error: error.message });
+      if (!existingLead && resolvedPhone) {
+        const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1e3).toISOString();
+        const { data: leadByPhone } = await supabase.from("leads").select("id, extra_info2, student_name").eq("father_phone", resolvedPhone).gte("date_added", fiveMinsAgo).limit(1).maybeSingle();
+        existingLead = leadByPhone;
       }
-      const resolvedAppId = data?.extra_info2 || req.body?.extra_info2 || "SCJ-2026-" + Math.floor(1e3 + Math.random() * 9e3);
+      let data = existingLead;
+      let error = null;
+      const resolvedAppId = inputAppId || existingLead?.extra_info2 || "SCJ-2026-" + Math.floor(1e3 + Math.random() * 9e3);
+      if (!existingLead) {
+        const fullPayload = {
+          ...basePayload,
+          extra_info2: resolvedAppId,
+          source: leadSource
+        };
+        const insertRes = await supabase.from("leads").insert(fullPayload).select().single();
+        data = insertRes.data;
+        error = insertRes.error;
+        if (error && (error.code === "PGRST204" || (error.message || "").includes("'source'"))) {
+          const fallbackPayload = {
+            ...basePayload,
+            extra_info2: resolvedAppId
+          };
+          const retry = await supabase.from("leads").insert(fallbackPayload).select().single();
+          data = retry.data;
+          error = retry.error;
+        }
+        if (error) {
+          console.error("[Public Leads API] Supabase Insert Error:", error);
+          return res.status(500).json({ success: false, error: error.message });
+        }
+      } else {
+        console.log(`[Public Leads API] Duplicate lead suppressed for ${resolvedPhone} (Existing ID: ${existingLead.id}). Skipping duplicate insert.`);
+      }
       try {
         const welcomeText = `\u{1F393} *SUPERIOR COLLEGE JAHANIAN*
 ---------------------------------------

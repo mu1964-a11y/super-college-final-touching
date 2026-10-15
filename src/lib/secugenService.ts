@@ -73,11 +73,11 @@ export interface EnrolledCandidate {
 
 // Standard candidate ports used by SecuGen WebAPI service on Windows
 const SECUGEN_CANDIDATE_URLS = [
-  "https://127.0.0.1:8443", // Official SecuGen WebAPI default (HTTPS)
-  "http://127.0.0.1:8000",  // Official SecuGen HTTP fallback
+  "https://localhost:8443", // Official SecuGen WebAPI default (HTTPS - SSL cert issued to 'localhost')
+  "https://127.0.0.1:8443",
   "http://localhost:8000",
-  "http://127.0.0.1:8080",
-  "https://localhost:8443",
+  "http://127.0.0.1:8000",
+  "http://localhost:8080",
 ];
 
 // Decodes SecuGen standard error codes to human-friendly Urdu/English instructions
@@ -91,34 +91,38 @@ export function getSecuGenErrorMessage(errorCode: number): string {
       return "Function failed";
     case 3:
       return "Invalid parameter";
-    case 4:
-      return "Not used";
     case 5:
-      return "DLL load failed";
-    case 6:
-      return "DLL unload failed";
-    case 7:
-      return "String buffer too small";
+      return "SecuGen DLL load failed";
     case 8:
-      return "Driver load failed";
-    case 9:
-      return "Invalid driver handle";
+    case 56:
+      return "SecuGen USB driver load failed. Please install the SecuGen device driver.";
     case 10:
-      return "Not connected";
     case 51:
+    case 53:
+    case 55:
       return "SecuGen HU20-A Scanner not found. Please plug in the USB cable.";
     case 52:
-      return "Capture timed out. Finger was not placed on the scanner in time.";
-    case 53:
-      return "Capture operation cancelled.";
+      return "SecuGen sensor chip initialization failed. Unplug and replug the USB scanner.";
     case 54:
-      return "Fingerprint quality was too low. Please place your finger firmly and flat.";
-    case 55:
-      return "Device is busy or already in use by another process.";
+      return "Fingerprint capture timed out. Finger was not placed on the scanner in time.";
+    case 57:
+      return "Wrong fingerprint image format.";
+    case 58:
+      return "Lack of USB bandwidth.";
+    case 59:
+      return "SecuGen device is busy or in use by another application.";
+    case 60:
+      return "Cannot get serial number of SecuGen device.";
+    case 61:
+      return "Unsupported fingerprint reader device.";
+    case 63:
+      return "SgiBioSrv service not ready. Try again.";
     case 101:
       return "Fake finger detected.";
+    case 10004:
+      return "Browser Origin check failed or license expired.";
     default:
-      return `SecuGen hardware error code #${errorCode}`;
+      return `SecuGen hardware status code #${errorCode}`;
   }
 }
 
@@ -153,7 +157,6 @@ class SecuGenService {
     let foundUrl: string | null = null;
     let deviceInfo: SecuGenDeviceInfo | undefined;
     let isSslCertificateRequired = false;
-    let lastError: string | undefined;
 
     // Prioritize previously working activeUrl if known
     const probeUrls = this.activeUrl
@@ -163,21 +166,24 @@ class SecuGenService {
     for (const url of probeUrls) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1800);
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
 
-        // SecuGen WebAPI SGIDeviceInfo endpoint
-        const response = await fetch(`${url}/SGIDeviceInfo`, {
-          method: "GET",
+        // SecuGen WebAPI probes using a rapid 150ms timeout SGIFPCapture call
+        const formParams = new URLSearchParams();
+        formParams.append("Timeout", "150");
+        formParams.append("Quality", "50");
+        formParams.append("licstr", "");
+        formParams.append("templateFormat", "ISO");
+        formParams.append("imageWSQRate", "0.75");
+
+        const response = await fetch(`${url}/SGIFPCapture`, {
+          method: "POST",
           signal: controller.signal,
-          headers: { Accept: "application/json" },
-        }).catch(async () => {
-          // Some WebAPI versions require POST for SGIDeviceInfo
-          return await fetch(`${url}/SGIDeviceInfo`, {
-            method: "POST",
-            signal: controller.signal,
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({}),
-          });
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Accept: "application/json",
+          },
+          body: formParams.toString(),
         });
 
         clearTimeout(timeoutId);
@@ -187,13 +193,14 @@ class SecuGenService {
           serviceRunning = true;
           foundUrl = url;
 
-          const errCode = typeof data.ErrorCode === "number" ? data.ErrorCode : 0;
-          if (errCode === 0 || errCode === 51) {
-            deviceFound = errCode === 0;
+          const errCode = typeof data.ErrorCode === "number" ? data.ErrorCode : -1;
+          // ErrorCode 0 (finger captured) or 54 (capture timed out with no finger on sensor) means hardware is ready!
+          if (errCode === 0 || errCode === 54) {
+            deviceFound = true;
             deviceInfo = {
-              deviceMake: data.DeviceMake || "SecuGen",
-              deviceModel: data.DeviceModel || "HU20-A (Hamster Pro 20)",
-              deviceSerial: data.DeviceSerial || data.Serial || "Unknown",
+              deviceMake: "SecuGen",
+              deviceModel: "HU20-A (Hamster Pro 20)",
+              deviceSerial: data.SerialNumber || data.DeviceSerial || "Ready",
               imageWidth: data.ImageWidth || 300,
               imageHeight: data.ImageHeight || 400,
               brightness: data.Brightness,
@@ -202,15 +209,19 @@ class SecuGenService {
               errorCode: errCode,
               raw: data,
             };
+          } else if (errCode === 51 || errCode === 52 || errCode === 53 || errCode === 55 || errCode === 56) {
+            // Service is running, but scanner is unplugged or driver issue
+            deviceFound = false;
+          } else {
+            deviceFound = false;
           }
-          break; // Found working port!
+          break; // Found working service!
         }
       } catch (err: any) {
-        if (err?.name === "TypeError" && url.startsWith("https://")) {
-          // In Chrome/Edge, fetch failed due to untrusted self-signed certificate on 127.0.0.1:8443
+        if (url.startsWith("https://")) {
+          // In Chrome/Edge, fetch fails due to self-signed certificate on localhost:8443
           isSslCertificateRequired = true;
         }
-        lastError = err?.message || String(err);
       }
     }
 
@@ -227,8 +238,8 @@ class SecuGenService {
       isSslCertificateRequired: !serviceRunning && isSslCertificateRequired,
       error: !serviceRunning
         ? isSslCertificateRequired
-          ? "SecuGen WebAPI service detected, but browser SSL permission is required for https://127.0.0.1:8443."
-          : "SecuGen WebAPI Windows service is not running or not installed on this PC."
+          ? "SecuGen WebAPI service detected, but browser SSL permission is required for https://localhost:8443."
+          : "SecuGen WebAPI Windows service is not running. Please launch SgiBioSrv."
         : !deviceFound
         ? "SecuGen service is running, but HU20-A scanner is not detected. Please verify USB connection."
         : undefined,
@@ -260,34 +271,21 @@ class SecuGenService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout + 3000);
 
-      const params = {
-        Timeout: timeout,
-        Quality: quality,
-        templateFormat: templateFormat,
-        imageWSQRate: 0,
-      };
+      const formParams = new URLSearchParams();
+      formParams.append("Timeout", String(timeout));
+      formParams.append("Quality", String(quality));
+      formParams.append("licstr", "");
+      formParams.append("templateFormat", templateFormat);
+      formParams.append("imageWSQRate", "0.75");
 
       const response = await fetch(`${status.activeUrl}/SGIFPCapture`, {
         method: "POST",
         signal: controller.signal,
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
         },
-        body: JSON.stringify(params),
-      }).catch(async (fetchErr) => {
-        // Fallback to URL-encoded form data if JSON endpoint is rejected
-        const formParams = new URLSearchParams();
-        formParams.append("Timeout", String(timeout));
-        formParams.append("Quality", String(quality));
-        formParams.append("templateFormat", templateFormat);
-        formParams.append("imageWSQRate", "0");
-
-        return await fetch(`${status.activeUrl}/SGIFPCapture`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: formParams.toString(),
-        });
+        body: formParams.toString(),
       });
 
       clearTimeout(timeoutId);
@@ -331,8 +329,8 @@ class SecuGenService {
       if (err.name === "AbortError") {
         return {
           success: false,
-          errorCode: 52,
-          error: "Fingerprint capture timed out. Please place your finger on the sensor and try again.",
+          errorCode: 54,
+          error: "Fingerprint capture timed out. Please place your finger flat on the optical sensor and try again.",
         };
       }
       return {
@@ -380,25 +378,19 @@ class SecuGenService {
     }
 
     try {
+      const formParams = new URLSearchParams();
+      formParams.append("template1", template1);
+      formParams.append("template2", template2);
+      formParams.append("licstr", "");
+      formParams.append("templateFormat", templateFormat);
+
       const response = await fetch(`${status.activeUrl}/SGIMatchScore`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          template1,
-          template2,
-          templateFormat,
-        }),
-      }).catch(async () => {
-        const formParams = new URLSearchParams();
-        formParams.append("template1", template1);
-        formParams.append("template2", template2);
-        formParams.append("templateFormat", templateFormat);
-
-        return await fetch(`${status.activeUrl}/SGIMatchScore`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: formParams.toString(),
-        });
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: formParams.toString(),
       });
 
       if (!response.ok) {

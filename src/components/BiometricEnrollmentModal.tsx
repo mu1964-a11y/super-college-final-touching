@@ -445,7 +445,7 @@ export default function BiometricEnrollmentModal({
             <div className="flex items-center gap-2">
               {deviceStatus.isSslCertificateRequired && (
                 <a
-                  href="https://127.0.0.1:8443/SGIDeviceInfo"
+                  href="https://localhost:8443"
                   target="_blank"
                   rel="noreferrer"
                   className="px-2.5 py-1 rounded-lg bg-amber-400 text-slate-950 font-black text-[10px] uppercase tracking-wider hover:bg-amber-300 transition-colors flex items-center gap-1"
@@ -487,7 +487,7 @@ export default function BiometricEnrollmentModal({
                 <strong>Plug in USB Scanner</strong>: Connect SecuGen Hamster Pro 20 (HU20-A) to any USB 2.0/3.0 port. The blue light will illuminate.
               </li>
               <li>
-                <strong>Browser SSL Acceptance (One-Time)</strong>: If browser shows &quot;WebAPI Not Detected&quot;, click &quot;Allow SSL Certificate&quot; above, then click &quot;Advanced &gt; Proceed to 127.0.0.1 (unsafe)&quot;. Chrome will permanently allow it.
+                <strong>Browser SSL Acceptance (One-Time)</strong>: If browser shows &quot;WebAPI Not Detected&quot;, click &quot;Allow SSL Certificate&quot; above, then click &quot;Advanced &gt; Proceed to localhost (unsafe)&quot;. Chrome will permanently allow it.
               </li>
               <li>
                 <strong>Capture &amp; Enroll</strong>: Select finger, place finger flat on optical glass for Sample 1, then place again for Sample 2 to verify.
