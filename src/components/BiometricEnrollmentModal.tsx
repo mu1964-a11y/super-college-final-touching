@@ -445,7 +445,7 @@ export default function BiometricEnrollmentModal({
             <div className="flex items-center gap-2">
               {deviceStatus.isSslCertificateRequired && (
                 <a
-                  href="https://localhost:8443"
+                  href="https://localhost:8443/SGIFPCapture"
                   target="_blank"
                   rel="noreferrer"
                   className="px-2.5 py-1 rounded-lg bg-amber-400 text-slate-950 font-black text-[10px] uppercase tracking-wider hover:bg-amber-300 transition-colors flex items-center gap-1"
