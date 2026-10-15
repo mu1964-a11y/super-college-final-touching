@@ -5,7 +5,7 @@ import { diffObjects, STAFF_FIELD_LABELS } from '../../utils/changeTracker';
 import { sendStaffEnrollmentNotice } from '../../lib/whatsappAutomation';
 
 export function useStaffOperations(ctx: any) {
-  const { generateStudentId, user, staff, setStaff, isBulkOperatingRef, logActivity, fetchData, settings } = ctx;
+  const { generateStudentId, user, staff, setStaff, staffAttendance, setStaffAttendance, staffTimetable, setStaffTimetable, staffAdvances, setStaffAdvances, isBulkOperatingRef, logActivity, fetchData, settings } = ctx;
   const addStaff = async (member: Staff) => {
       try {
         setStaff((prev: Staff[]) => [...prev, member]);
@@ -109,8 +109,13 @@ export function useStaffOperations(ctx: any) {
   const deleteStaff = async (id: string) => {
       try {
         const oldMember = staff.find((s: any) => s.id === id);
+        // Instant optimistic removal from UI (0ms)
+        setStaff((prev: Staff[]) => prev.filter(s => s.id !== id));
         const { error } = await supabase.from('staff').delete().eq('id', id);
-        if (error) throw error;
+        if (error) {
+          if (oldMember) setStaff((prev: Staff[]) => [...prev, oldMember]);
+          throw error;
+        }
         await fetchData(true);
         logActivity("Staff Deleted", {
           summary: `Staff member ${oldMember?.fullName || id} removed`,
@@ -187,6 +192,10 @@ export function useStaffOperations(ctx: any) {
   const addTimetableEntry = async (entry: any) => {
     try {
       const validUuid = entry.id && entry.id.length === 36 ? entry.id : crypto.randomUUID();
+      const optimisticEntry = { ...entry, id: validUuid };
+      if (setStaffTimetable) {
+        setStaffTimetable((prev: any[]) => [...(prev || []), optimisticEntry]);
+      }
       const { error } = await supabase.from('staff_timetable').insert({
         id: validUuid,
         staff_id: entry.staffId,
@@ -199,7 +208,7 @@ export function useStaffOperations(ctx: any) {
       });
       if (error) throw error;
       toast.success("Timetable entry added successfully");
-      fetchData(true);
+      if (fetchData) fetchData(true);
     } catch (e: any) {
       toast.error(`Failed to add timetable entry: ${e.message}`);
     }
@@ -207,10 +216,13 @@ export function useStaffOperations(ctx: any) {
 
   const removeTimetableEntry = async (id: string) => {
     try {
+      if (setStaffTimetable) {
+        setStaffTimetable((prev: any[]) => (prev || []).filter((t: any) => t.id !== id));
+      }
       const { error } = await supabase.from('staff_timetable').delete().eq('id', id);
       if (error) throw error;
       toast.success("Timetable entry removed");
-      fetchData(true);
+      if (fetchData) fetchData(true);
     } catch (e: any) {
       toast.error(`Failed to remove timetable entry: ${e.message}`);
     }
@@ -218,6 +230,19 @@ export function useStaffOperations(ctx: any) {
 
   const recordStaffAdvance = async (advance: any) => {
     try {
+      const optimisticAdvance = {
+        id: `adv-${Date.now()}`,
+        staffId: advance.staffId,
+        amount: advance.amount,
+        date: advance.date || new Date().toISOString(),
+        deductionPerMonth: advance.deductionPerMonth || 0,
+        remainingBalance: advance.remainingBalance,
+        monthsCount: advance.monthsCount || 1,
+        notes: advance.notes
+      };
+      if (setStaffAdvances) {
+        setStaffAdvances((prev: any[]) => [optimisticAdvance, ...(prev || [])]);
+      }
       const { error } = await supabase.from('staff_advances').insert({
         staff_id: advance.staffId,
         amount: advance.amount,
@@ -229,7 +254,7 @@ export function useStaffOperations(ctx: any) {
       });
       if (error) throw error;
       toast.success("Advance recorded successfully");
-      fetchData(true);
+      if (fetchData) fetchData(true);
     } catch (e: any) {
       toast.error(`Failed to record advance: ${e.message}`);
     }
@@ -237,6 +262,9 @@ export function useStaffOperations(ctx: any) {
 
   const updateStaffAdvance = async (id: string, updates: any) => {
     try {
+      if (setStaffAdvances) {
+        setStaffAdvances((prev: any[]) => (prev || []).map((a: any) => a.id === id ? { ...a, remainingBalance: updates.remainingBalance } : a));
+      }
       const { error } = await supabase.from('staff_advances').update({
         remaining_balance: updates.remainingBalance
       }).eq('id', id);

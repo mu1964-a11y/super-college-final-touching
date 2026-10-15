@@ -1342,7 +1342,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
       </Dialog>
 
       <Dialog open={dialogType !== null && dialogType.startsWith('profile')} onOpenChange={(open) => !open && setDialogType(null)}>
-        <DialogContent className="max-w-[98vw] w-[98vw] h-[95vh] max-h-[95vh] overflow-y-auto p-0 border-none bg-white rounded-3xl">
+        <DialogContent className="max-w-4xl w-full max-h-[90vh] overflow-y-auto p-0 border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl">
           {selectedStudent && (
             <StudentProfile 
               student={selectedStudent} 
@@ -1607,84 +1607,91 @@ function StudentProfile({ student, data, initialTab = 'overview', onEdit, onDown
 
   return (
     <div className="w-full">
-      <div className="bg-superior-teal p-6 md:p-10 text-white relative">
-        <div className="flex flex-col md:flex-row gap-6 md:gap-10 items-center md:items-center relative z-10">
+      <div className="bg-gradient-to-r from-[#064e43] via-[#085a4e] to-[#04332c] p-5 md:p-6 text-white relative">
+        <div className="flex flex-col md:flex-row gap-5 md:gap-6 items-center relative z-10">
           <div className="relative group shrink-0">
-            <div className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-white/30 bg-white/10 backdrop-blur-md overflow-hidden shadow-2xl ring-4 ring-white/10">
+            <div className="w-24 h-24 md:w-28 md:h-28 rounded-2xl border-2 border-white/30 bg-white/10 backdrop-blur-md overflow-hidden shadow-xl ring-2 ring-white/10 flex items-center justify-center">
               {student.photo ? (
-                <img src={student.photo} alt="" className="w-full h-full object-cover object-[center_top] rounded-full" referrerPolicy="no-referrer" />
+                <img src={student.photo} alt="" className="w-full h-full object-cover object-top" referrerPolicy="no-referrer" />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-white/40">
-                  <User size={64} />
+                <div className="w-full h-full flex items-center justify-center text-white/50">
+                  <User size={40} />
                 </div>
               )}
             </div>
-            <label className="absolute bottom-0 right-0 p-2.5 bg-superior-gold text-white rounded-full cursor-pointer hover:scale-110 active:scale-95 transition-all border-2 border-white shadow-lg">
-              <Camera size={18} />
+            <label className="absolute -bottom-1.5 -right-1.5 p-2 bg-superior-gold text-slate-950 rounded-xl cursor-pointer hover:scale-110 active:scale-95 transition-all border-2 border-white shadow-md">
+              <Camera size={14} />
               <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
             </label>
           </div>
           
-          <div className="text-center md:text-left flex-1">
-            <div className="inline-flex items-center gap-2 bg-superior-gold/20 text-superior-gold border border-superior-gold/30 mb-3 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">
-              <GraduationCap size={12} /> Student Identity Card
+          <div className="text-center md:text-left flex-1 min-w-0">
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mb-1.5">
+              <span className="inline-flex items-center gap-1.5 bg-superior-gold/20 text-superior-gold border border-superior-gold/30 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider">
+                <GraduationCap size={11} /> Student Profile
+              </span>
+              {(student as any).fingerprintTemplate ? (
+                <span className="inline-flex items-center gap-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+                  <Fingerprint size={11} className="text-emerald-400" />
+                  Thumb Enrolled
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 bg-amber-500/20 text-amber-200 border border-amber-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+                  <Fingerprint size={11} className="text-amber-400" />
+                  Thumb Missing
+                </span>
+              )}
             </div>
-            <h2 className="text-3xl md:text-5xl font-serif font-bold mb-2 tracking-tight">{student.fullName}</h2>
-              <div className="flex flex-wrap justify-center md:justify-start gap-3 md:gap-6 text-sm md:text-base opacity-90">
-                <p className="font-mono font-bold text-superior-gold">{student.id}</p>
-                <span className="hidden md:block opacity-30">|</span>
-                <div className="flex items-center gap-2">
-                  <User size={16} className="text-superior-gold" />
-                  <span>Father: {student.fatherName}</span>
-                </div>
-                <span className="hidden md:block opacity-30">|</span>
-                <div className="flex items-center gap-2">
-                  <Calendar size={16} className="text-superior-gold" />
-                  <span>{student.academicPart} - {student.session}</span>
-                </div>
-                <span className="hidden md:block opacity-30">|</span>
-                <div className="flex items-center gap-2">
-                  <Filter size={16} className="text-superior-gold" />
-                  <span>{student.category} - Section {student.section}</span>
-                </div>
-              </div>
+            <h2 className="text-2xl md:text-3xl font-display font-black tracking-tight truncate">{student.fullName}</h2>
+            <div className="flex flex-wrap justify-center md:justify-start items-center gap-2 text-xs opacity-90 mt-1">
+              <span className="font-mono font-bold text-superior-gold bg-black/20 px-2 py-0.5 rounded-md">{student.id}</span>
+              <span className="opacity-40">•</span>
+              <span>Father: <strong>{student.fatherName}</strong></span>
+              <span className="opacity-40">•</span>
+              <span>{student.academicPart} ({student.session || 'Active'})</span>
+              <span className="opacity-40">•</span>
+              <span className="text-emerald-300 font-bold">{student.category} - Sec {student.section}</span>
+            </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-wrap items-center justify-center md:justify-end gap-2 shrink-0">
             {onPrintIDCard && (
               <Button 
-                className="bg-emerald-600 text-white hover:bg-emerald-700 font-bold rounded-xl h-12 shadow-md gap-2"
+                size="sm"
+                className="bg-emerald-600 text-white hover:bg-emerald-700 font-bold rounded-xl h-8.5 px-3 text-xs shadow-xs gap-1.5"
                 onClick={onPrintIDCard}
               >
-                <CreditCard size={18} /> Official ID Card
+                <CreditCard size={14} /> ID Card
               </Button>
             )}
             <Button 
-              className="bg-white text-slate-800 hover:bg-slate-100 font-bold rounded-xl h-12"
+              variant="outline"
+              size="sm"
+              className="bg-white/10 hover:bg-white/20 text-white border-white/20 font-bold rounded-xl h-8.5 px-3 text-xs"
               onClick={onDownloadReceipt}
             >
-              <Download className="mr-2" size={18} /> Download Receipt
+              <Download size={14} className="mr-1.5" /> Receipt
             </Button>
             <Button 
-              className="bg-superior-gold text-white hover:bg-superior-gold/90 font-bold rounded-xl h-12"
+              size="sm"
+              className="bg-superior-gold text-slate-950 hover:bg-superior-gold/90 font-bold rounded-xl h-8.5 px-3 text-xs shadow-xs"
               onClick={onEdit}
             >
-              <Edit className="mr-2" size={18} /> Edit Profile
+              <Edit size={14} className="mr-1.5" /> Edit
             </Button>
           </div>
         </div>
         
         {/* Decorative elements */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -mr-48 -mt-48 blur-3xl"></div>
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-superior-gold/5 rounded-full -ml-32 -mb-32 blur-2xl"></div>
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl pointer-events-none"></div>
       </div>
 
-      <div className="p-6 md:p-10">
+      <div className="p-5 md:p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="inline-flex w-auto mb-8 bg-slate-100 p-1 rounded-xl border border-slate-200">
-            <TabsTrigger value="overview" className="px-8 rounded-lg data-[state=active]:bg-white">Overview</TabsTrigger>
-            <TabsTrigger value="fees" className="px-8 rounded-lg data-[state=active]:bg-white">Fee History</TabsTrigger>
-            <TabsTrigger value="academic" className="px-8 rounded-lg data-[state=active]:bg-white">Academic</TabsTrigger>
+          <TabsList className="inline-flex w-auto mb-5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+            <TabsTrigger value="overview" className="px-5 py-1.5 text-xs font-bold rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-xs">Overview</TabsTrigger>
+            <TabsTrigger value="fees" className="px-5 py-1.5 text-xs font-bold rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-xs">Fee History</TabsTrigger>
+            <TabsTrigger value="academic" className="px-5 py-1.5 text-xs font-bold rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-xs">Academic</TabsTrigger>
           </TabsList>
           
           <TabsContent value="overview" className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">

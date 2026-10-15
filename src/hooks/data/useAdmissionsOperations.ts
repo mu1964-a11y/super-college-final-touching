@@ -194,6 +194,45 @@ export function useAdmissionsOperations(ctx: any) {
             fingerprint_finger: (admission as any).fingerprintFinger || null,
             fingerprint_enrolled_at: (admission as any).fingerprintEnrolledAt || ((admission as any).fingerprintTemplate ? new Date().toISOString() : null)
           });
+          if (setStudents) {
+            const newStudentObj: any = {
+              id: finalStudentId,
+              admissionId: data.id,
+              fullName: admission.fullName,
+              fatherName: admission.fatherName,
+              collegeNo: admission.collegeNo || '',
+              bayFormNo: admission.bayFormNo || '',
+              dob: admission.dob || '',
+              previousClass: admission.previousClass || '',
+              boardRollNo: admission.boardRollNo || '',
+              previousMarks: admission.previousMarks ?? 0,
+              category: admission.category || 'N/A',
+              group: admission.group || 'N/A',
+              section: admission.section || 'A',
+              subjects: admission.subjects || [],
+              contact: admission.contactNumber || 'N/A',
+              address: admission.address || '',
+              gender: derivedGender,
+              admissionFee: admission.admissionFee || 0,
+              miscFunds: admission.miscFunds || 0,
+              totalFeeFinalized: admission.totalFeeFinalized || admission.totalPackage || 0,
+              totalPackage: admission.totalPackage || 0,
+              feeReceived: admission.feeReceived || 0,
+              feeLedger: initialLedger,
+              monthlyFee: calculatedMonthlyFee,
+              totalInstallments: installments,
+              session: admission.session || settings?.academicSession,
+              academicPart: admission.academicPart || 'Part-1',
+              feeHistory: initialHistory || [],
+              photo: admission.photo || '',
+              email: admission.email || '',
+              bloodGroup: admission.bloodGroup || '',
+              fingerprintTemplate: (admission as any).fingerprintTemplate || undefined,
+              fingerprintFinger: (admission as any).fingerprintFinger || undefined,
+              attendance: { present: 0, absent: 0, late: 0, leave: 0, percentage: 100 }
+            };
+            setStudents((prev: any[]) => [newStudentObj, ...(prev || [])]);
+          }
         } catch (stErr) {
           console.error("Auto-sync student creation error:", stErr);
         }
@@ -248,6 +287,29 @@ export function useAdmissionsOperations(ctx: any) {
             if (updates.status === 'Prospective' || updates.status === 'Not Paid') {
                 updates.status = 'Admitted/Confirmed';
             }
+        }
+
+        // Instant optimistic in-memory update (0ms, zero-reload)
+        setAdmissions((prev: Admission[]) => prev.map(a => a.id === id ? {
+          ...a,
+          ...updates,
+          ...(updatedStudentId ? { studentId: updatedStudentId } : {})
+        } : a));
+
+        if (setStudents) {
+          setStudents((prev: Student[]) => prev.map(s => (s.admissionId === id || s.id === (updatedStudentId || existingAdmission?.studentId)) ? {
+            ...s,
+            ...(updates.fullName !== undefined ? { fullName: updates.fullName } : {}),
+            ...(updates.fatherName !== undefined ? { fatherName: updates.fatherName } : {}),
+            ...(updates.section !== undefined ? { section: updates.section } : {}),
+            ...(updates.group !== undefined ? { group: updates.group } : {}),
+            ...(updates.category !== undefined ? { category: updates.category } : {}),
+            ...(updates.totalPackage !== undefined ? { totalPackage: updates.totalPackage } : {}),
+            ...(updates.feeReceived !== undefined ? { feeReceived: updates.feeReceived } : {}),
+            ...(updates.photo !== undefined ? { photo: updates.photo } : {}),
+            ...((updates as any).fingerprintTemplate !== undefined ? { fingerprintTemplate: (updates as any).fingerprintTemplate } : {}),
+            ...((updates as any).fingerprintFinger !== undefined ? { fingerprintFinger: (updates as any).fingerprintFinger } : {}),
+          } : s));
         }
 
         const dbUpdates: any = {};
@@ -406,6 +468,12 @@ export function useAdmissionsOperations(ctx: any) {
     try {
       const targetAdmission = admissions.find((a: any) => a.id === id);
       const studentId = targetAdmission?.studentId;
+
+      // Instant optimistic in-memory removal (0ms, zero-reload)
+      setAdmissions((prev: any[]) => prev.filter((a: any) => a.id !== id));
+      if (setStudents && studentId) {
+        setStudents((prev: any[]) => prev.filter((s: any) => s.admissionId !== id && s.id !== studentId));
+      }
 
       // 0. Save full snapshot to Deleted Archive before deletion
       if (targetAdmission && typeof archiveRecords === 'function') {

@@ -5,9 +5,14 @@ import { calculateStudentFeeBreakdown } from '../../lib/feeCalculations';
 import { sendAutoFeeReceiptNotice } from '../../lib/whatsappAutomation';
 
 export function useAccountsOperations(ctx: any) {
-  const { generateStudentId, user, admissions, students, staff, expenses, setExpenses, fetchData, logActivity, settings } = ctx;
+  const { generateStudentId, user, admissions, students, staff, expenses, setExpenses, incomes, setIncomes, salaryPayments, setSalaryPayments, fetchData, logActivity, settings } = ctx;
   const addIncome = async (inc: Omit<Income, 'id'>) => {
     try {
+      const createdId = `inc-${Date.now()}`;
+      const newInc: Income = { id: createdId, ...inc };
+      if (setIncomes) {
+        setIncomes((prev: Income[]) => [newInc, ...(prev || [])]);
+      }
       const { error } = await supabase.from('income').insert({
         student_id: inc.studentId,
         student_name: inc.studentName,
@@ -22,6 +27,7 @@ export function useAccountsOperations(ctx: any) {
       });
       if (error) throw error;
       toast.success("Payment recorded");
+      if (fetchData) fetchData(true);
     } catch (e) {
       toast.error("Failed to record income");
     }
@@ -152,6 +158,22 @@ export function useAccountsOperations(ctx: any) {
       };
 
       // 1. Record in Income table (Roznamcha Inflow)
+      const feeIncomeRecord: Income = {
+        id: `inc-fee-${Date.now()}`,
+        studentId: targetId,
+        studentName: targetName,
+        feeType: safePayment.feeType || 'Monthly Installment',
+        amount: safePayment.amountPaid,
+        month: safePayment.month,
+        year: safePayment.year,
+        date: safePayment.datePaid || new Date().toISOString().split('T')[0],
+        status: safePayment.status,
+        paymentMethod: (safePayment as any).paymentMethod || 'Cash'
+      };
+      if (setIncomes) {
+        setIncomes((prev: Income[]) => [feeIncomeRecord, ...(prev || [])]);
+      }
+
       const { error: incomeError } = await supabase.from('income').insert({
         student_id: targetId,
         student_name: targetName, 
@@ -462,6 +484,40 @@ export function useAccountsOperations(ctx: any) {
 
   const addSalaryPayment = async (payment: Omit<SalaryPayment, 'id'>) => {
       try {
+        const generatedId = `sal-${Date.now()}`;
+        const newPayment: SalaryPayment = {
+          id: generatedId,
+          staffId: payment.staffId,
+          staffName: payment.staffName,
+          amount: Number(payment.amount),
+          month: payment.month,
+          year: Number(payment.year),
+          date: payment.date,
+          paymentMethod: payment.paymentMethod,
+          status: payment.status || 'Paid',
+          receiptNumber: payment.receiptNumber || `SAL-${Date.now().toString().slice(-6)}`
+        };
+
+        // Instant optimistic update for salary payments in memory (0ms)
+        if (setSalaryPayments) {
+          setSalaryPayments((prev: SalaryPayment[]) => [newPayment, ...(prev || [])]);
+        }
+
+        // Instant optimistic update for expenses in memory (0ms)
+        const expDesc = `Salary: ${payment.staffName} (${payment.month} ${payment.year})`;
+        const newExp: Expense = {
+          id: `exp-sal-${Date.now()}`,
+          date: payment.date,
+          category: 'Salaries',
+          amount: Number(payment.amount),
+          description: expDesc,
+          addedBy: user?.email || 'Admin Office',
+          paymentMethod: payment.paymentMethod || 'Cash'
+        };
+        if (setExpenses) {
+          setExpenses((prev: Expense[]) => [newExp, ...(prev || [])]);
+        }
+
         const { error } = await supabase.from('salary_payments').insert({
           staff_id: payment.staffId,
           staff_name: payment.staffName,
@@ -475,16 +531,16 @@ export function useAccountsOperations(ctx: any) {
         });
         if (error) throw error;
         
-        // Also record as expense
+        // Also record as expense in DB
         await supabase.from('expenses').insert({
-          description: `Salary: ${payment.staffName} (${payment.month} ${payment.year})`,
+          description: expDesc,
           amount: payment.amount,
           category: 'Salaries',
           date: payment.date,
           recorded_by: user?.email
         });
 
-        toast.success("Salary payment recorded");
+        toast.success("Salary payment recorded successfully!");
         if (fetchData) fetchData(true);
       } catch (e: any) {
         toast.error(`Salary payment failed: ${e.message}`);

@@ -51,6 +51,9 @@ export function useStudentsOperations(ctx: any) {
         const oldStudent = students.find((s: any) => s.id === id);
         const changes = diffObjects(oldStudent, updates, STUDENT_FIELD_LABELS);
 
+        // Immediate optimistic in-memory update (0ms)
+        setStudents((prev: Student[]) => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+
         const updatePayload: any = {
           full_name: updates.fullName,
           father_name: updates.fatherName,

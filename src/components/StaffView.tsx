@@ -87,6 +87,7 @@ import StaffTimetable from './StaffTimetable';
 import ExecutiveIDCardModal from './ExecutiveIDCardModal';
 import BiometricEnrollmentModal from './BiometricEnrollmentModal';
 import InstantBiometricVerifyModal from './InstantBiometricVerifyModal';
+import StaffSalarySlipModal from './StaffSalarySlipModal';
 
 export default function StaffView({ data, initialFilter, title, hideNavigation }: { data: any, initialFilter?: string | null, title?: string, hideNavigation?: boolean }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -382,208 +383,96 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
   };
 
   return (
-    <div className="space-y-8 pb-12">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-        <div>
-          <div className="flex items-center gap-3">
-            <h3 className="text-3xl font-display font-black text-slate-900 dark:text-white tracking-tight">
-              {title || "Staff Management"}
-            </h3>
-            {!title && (
-              <>
-                <span className="text-slate-300 dark:text-slate-700 text-2xl">/</span>
-                <span className="urdu-text text-2xl text-superior-gold font-medium">اسٹاف مینجمنٹ</span>
-              </>
-            )}
-          </div>
-          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1 uppercase tracking-wider">
-            Faculty Directory &bull; Payroll Engine &bull; Attendance & Timetable
-          </p>
-        </div>
-        
-        {!hideNavigation && (
-          <div className="flex items-center gap-4">
-            <div className="bg-white dark:bg-slate-900 px-5 py-3.5 rounded-2xl flex items-center gap-4 border border-slate-200/80 dark:border-slate-800 shadow-sm">
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-inner">
-                <Users size={20} />
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Total Staff</p>
-                <p className="text-xl font-display font-black text-slate-800 dark:text-white tracking-tight">{data.staff.length}</p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <Tabs value={activeModule} onValueChange={(v: any) => setActiveModule(v)} className="w-full space-y-6">
-        {!hideNavigation && (
-          <TabsList className="bg-slate-100/80 dark:bg-slate-900/80 p-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 h-auto flex flex-wrap gap-2 w-full justify-start overflow-x-auto">
-            <TabsTrigger value="directory" className="rounded-xl px-5 py-2.5 font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#064e43] data-[state=active]:to-[#085a4e] data-[state=active]:text-white data-[state=active]:shadow-md transition-all flex items-center gap-2">
-              <Users size={15} /> Directory
-            </TabsTrigger>
-            <TabsTrigger value="attendance" className="rounded-xl px-5 py-2.5 font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#064e43] data-[state=active]:to-[#085a4e] data-[state=active]:text-white data-[state=active]:shadow-md transition-all flex items-center gap-2">
-              <Calendar size={15} /> Attendance
-            </TabsTrigger>
-            <TabsTrigger value="payroll" className="rounded-xl px-5 py-2.5 font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#064e43] data-[state=active]:to-[#085a4e] data-[state=active]:text-white data-[state=active]:shadow-md transition-all flex items-center gap-2">
-              <CreditCard size={15} /> Payroll & Salaries
-            </TabsTrigger>
-            <TabsTrigger value="timetable" className="rounded-xl px-5 py-2.5 font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#064e43] data-[state=active]:to-[#085a4e] data-[state=active]:text-white data-[state=active]:shadow-md transition-all flex items-center gap-2">
-              <Clock size={15} /> Timetable
-            </TabsTrigger>
-            <TabsTrigger value="subjects" className="rounded-xl px-5 py-2.5 font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#064e43] data-[state=active]:to-[#085a4e] data-[state=active]:text-white data-[state=active]:shadow-md transition-all flex items-center gap-2">
-              <GraduationCap size={15} /> Subjects
-            </TabsTrigger>
-          </TabsList>
-        )}
-
-        <TabsContent value="directory" className="space-y-8 mt-0 focus-visible:outline-none">
-          {/* Bulk Actions Bar */}
-          {selectedStaffIds.length > 0 && (
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="sticky top-4 z-30 flex items-center justify-between p-4 bg-superior-teal rounded-2xl shadow-2xl text-white mb-6 border border-white/10"
-        >
-          <div className="flex items-center gap-4 pl-2">
-            <Checkbox 
-              checked={selectedStaffIds.length === filteredStaff.length} 
-              onCheckedChange={toggleSelectAll} 
-              className="border-white data-[state=checked]:bg-white data-[state=checked]:text-superior-teal"
-            />
-            <div className="flex flex-col">
-              <p className="text-sm font-black uppercase tracking-widest">
-                {selectedStaffIds.length} staff member{selectedStaffIds.length > 1 ? 's' : ''} selected
-              </p>
-              {selectedStaffIds.length < filteredStaff.length && (
-                <button 
-                  onClick={() => setSelectedStaffIds(filteredStaff.map(s => s.id))}
-                  className="text-[10px] font-black underline uppercase tracking-tighter opacity-70 hover:opacity-100 text-left"
-                >
-                  Select all {filteredStaff.length} matching staff
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => setSelectedStaffIds([])}
-              className="h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 font-black text-[10px] uppercase tracking-widest px-6"
-            >
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleBulkDelete}
-              variant="destructive" 
-              className="h-10 rounded-xl bg-white text-rose-600 hover:bg-rose-50 border-none font-black text-[10px] uppercase tracking-widest px-6 shadow-lg shadow-black/20"
-            >
-              <Trash2 size={14} className="mr-2" /> Delete
-            </Button>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Category Tabs & Biometric Photo Filters */}
-      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-6">
-        <Tabs value={roleFilter} className="w-auto" onValueChange={setRoleFilter}>
-          <TabsList className="bg-slate-100/80 dark:bg-slate-900/80 p-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 h-auto flex flex-wrap max-w-fit">
-            <TabsTrigger value="all" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">All ({data.staff.length})</TabsTrigger>
-            <TabsTrigger value="Management" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Management</TabsTrigger>
-            <TabsTrigger value="Academic" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Academic</TabsTrigger>
-            <TabsTrigger value="Administration" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Admin</TabsTrigger>
-            <TabsTrigger value="Support" className="rounded-xl font-bold px-5 py-2 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 data-[state=active]:shadow-sm transition-all">Support</TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        {/* Biometric Photo Filters & Request Photos Button */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="bg-slate-100/80 dark:bg-slate-900/80 p-1 rounded-2xl border border-slate-200/80 dark:border-slate-800 flex items-center gap-1">
-            <button
-              onClick={() => setPhotoFilter('all')}
-              className={cn(
-                "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
-                photoFilter === 'all'
-                  ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              )}
-            >
-              All Photos ({data.staff.length})
-            </button>
-            <button
-              onClick={() => setPhotoFilter('with-photo')}
-              className={cn(
-                "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
-                photoFilter === 'with-photo'
-                  ? "bg-emerald-600 text-white shadow-sm"
-                  : "text-slate-500 hover:text-emerald-600"
-              )}
-            >
-              <Camera size={13} />
-              Enrolled ({staffWithPhotos.length})
-            </button>
-            <button
-              onClick={() => setPhotoFilter('missing-photo')}
-              className={cn(
-                "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
-                photoFilter === 'missing-photo'
-                  ? "bg-amber-600 text-white shadow-sm"
-                  : "text-slate-500 hover:text-amber-600"
-              )}
-            >
-              <AlertCircle size={13} />
-              Missing ({staffWithoutPhotos.length})
-            </button>
-          </div>
-
-          <Button
-            onClick={() => setShowPhotoModal(true)}
-            size="sm"
-            className="h-9 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5"
-            title="Request staff profile photos on WhatsApp for Biometric Gate Attendance"
-          >
-            <Smartphone size={14} />
-            <span>Request Photos ({staffWithoutPhotos.length})</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* Filters Bar */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-wrap items-center gap-4 mb-8 hover:border-emerald-500/30 transition-all duration-300">
-        <div className="flex items-center gap-3 pr-4 border-r border-slate-200 dark:border-slate-800">
-          <Checkbox 
-            id="select-all-staff"
-            checked={selectedStaffIds.length === filteredStaff.length && filteredStaff.length > 0} 
-            onCheckedChange={toggleSelectAll} 
-            className="w-4 h-4 rounded-md border-slate-300 dark:border-slate-600 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600 transition-all"
-          />
-          <Label htmlFor="select-all-staff" className="text-[10px] font-black text-slate-400 cursor-pointer uppercase tracking-widest">Select All</Label>
-        </div>
-
-        <div className="relative flex-1 min-w-[280px]">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
-          <Input 
-            placeholder="Search staff by name, role, or ID..." 
-            className="pl-11 h-11 rounded-xl bg-slate-50 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-900 focus:border-emerald-500/40 text-slate-800 dark:text-slate-100 transition-all font-medium text-sm"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
+    <div className="space-y-4 pb-12">
+      {/* Compact Unified Header Line (< 45px) */}
+      <div className="flex flex-wrap justify-between items-center gap-3">
         <div className="flex items-center gap-3">
+          <h2 className="text-xl font-display font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+            <span>{title || "Staff Directory"}</span>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+              {data.staff.length}
+            </span>
+          </h2>
+
+          {!hideNavigation && (
+            <div className="hidden sm:flex items-center bg-slate-100/90 dark:bg-slate-800/90 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700/80 gap-1">
+              <button
+                type="button"
+                onClick={() => setActiveModule('directory')}
+                className={cn(
+                  "px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                  activeModule === 'directory'
+                    ? "bg-white dark:bg-slate-700 text-superior-teal dark:text-emerald-300 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                )}
+              >
+                <Users size={13} /> Directory
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveModule('attendance')}
+                className={cn(
+                  "px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                  activeModule === 'attendance'
+                    ? "bg-white dark:bg-slate-700 text-superior-teal dark:text-emerald-300 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                )}
+              >
+                <Calendar size={13} /> Attendance
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveModule('payroll')}
+                className={cn(
+                  "px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                  activeModule === 'payroll'
+                    ? "bg-white dark:bg-slate-700 text-superior-teal dark:text-emerald-300 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                )}
+              >
+                <CreditCard size={13} /> Payroll
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveModule('timetable')}
+                className={cn(
+                  "px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                  activeModule === 'timetable'
+                    ? "bg-white dark:bg-slate-700 text-superior-teal dark:text-emerald-300 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                )}
+              >
+                <Clock size={13} /> Timetable
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveModule('subjects')}
+                className={cn(
+                  "px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                  activeModule === 'subjects'
+                    ? "bg-white dark:bg-slate-700 text-superior-teal dark:text-emerald-300 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                )}
+              >
+                <GraduationCap size={13} /> Subjects
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger render={
-              <Button variant="outline" className="h-12 w-12 rounded-2xl border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700">
-                <MoreHorizontal size={18} />
+              <Button variant="outline" size="sm" className="h-8.5 px-2.5 rounded-xl border-slate-200 text-slate-500 hover:bg-slate-50 text-xs font-bold">
+                <MoreHorizontal size={15} />
               </Button>
             } />
             <DropdownMenuContent align="end" className="w-56 p-2 rounded-2xl shadow-xl shadow-slate-200/50">
               <div className="px-2 py-1.5 text-[10px] font-black tracking-widest text-slate-400 uppercase">
                 Bulk Actions
               </div>
-              <DropdownMenuItem onClick={handleDownloadTemplate} className="rounded-lg py-3 cursor-pointer">
-                <FileSpreadsheet size={16} className="mr-2 text-superior-teal" />
+              <DropdownMenuItem onClick={handleDownloadTemplate} className="rounded-lg py-2 cursor-pointer text-xs">
+                <FileSpreadsheet size={15} className="mr-2 text-superior-teal" />
                 Download Format Template
               </DropdownMenuItem>
               <div className="relative">
@@ -593,72 +482,27 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                   accept=".xlsx, .xls, .csv"
                   onChange={handleBulkImport}
                 />
-                <DropdownMenuItem className="rounded-lg py-3 cursor-pointer">
-                  <Upload size={16} className="mr-2 text-blue-600" />
+                <DropdownMenuItem className="rounded-lg py-2 cursor-pointer text-xs">
+                  <Upload size={15} className="mr-2 text-blue-600" />
                   Bulk Import Staff
                 </DropdownMenuItem>
               </div>
-              <Separator className="my-2" />
-              <DropdownMenuItem onClick={handleExportExcel} className="rounded-lg py-3 cursor-pointer">
-                <Download size={16} className="mr-2 text-emerald-600" />
+              <Separator className="my-1.5" />
+              <DropdownMenuItem onClick={handleExportExcel} className="rounded-lg py-2 cursor-pointer text-xs">
+                <Download size={15} className="mr-2 text-emerald-600" />
                 Export to Excel
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportCSV} className="rounded-lg py-3 cursor-pointer">
-                <Download size={16} className="mr-2 text-superior-gold" />
+              <DropdownMenuItem onClick={handleExportCSV} className="rounded-lg py-2 cursor-pointer text-xs">
+                <Download size={15} className="mr-2 text-superior-gold" />
                 Export to CSV
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button
-            variant="outline"
-            onClick={() => {
-              setBiometricTargetStaff(null);
-              setIsBiometricModalOpen(true);
-            }}
-            className="h-12 px-4 rounded-2xl border-slate-200 text-slate-700 hover:bg-slate-50 font-black uppercase tracking-wider text-xs flex items-center gap-2"
-            title="Open Biometric Fingerprint Manager"
-          >
-            <Fingerprint size={16} className="text-superior-teal" />
-            <span className="hidden sm:inline">Biometric Enroll</span>
-          </Button>
-
-          <Button
-            onClick={() => setIsSpotCheckOpen(true)}
-            className="h-12 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black uppercase tracking-wider text-xs flex items-center gap-2 shadow-md shadow-emerald-700/20"
-            title="Instant 1-Touch Spot-Check Scanner (Student & Staff Identification)"
-          >
-            <Fingerprint size={16} className="animate-pulse" />
-            <span>Spot-Check Verify</span>
-          </Button>
-
-          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-            <button
-              type="button"
-              className={cn(
-                "px-3.5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all",
-                viewMode === 'grid' ? "bg-white dark:bg-slate-700 text-superior-teal shadow-xs" : "text-slate-400 hover:text-slate-600"
-              )}
-              onClick={() => setViewMode('grid')}
-            >
-              Grid
-            </button>
-            <button
-              type="button"
-              className={cn(
-                "px-3.5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all",
-                viewMode === 'list' ? "bg-white dark:bg-slate-700 text-superior-teal shadow-xs" : "text-slate-400 hover:text-slate-600"
-              )}
-              onClick={() => setViewMode('list')}
-            >
-              List
-            </button>
-          </div>
-
           <Dialog>
             <DialogTrigger nativeButton={true} render={
-              <button className="h-12 px-6 rounded-2xl bg-superior-teal text-white font-black uppercase tracking-widest text-xs hover:bg-superior-teal/90 shadow-lg shadow-superior-teal/10 transition-all flex items-center justify-center">
-                <Plus size={18} className="mr-2" /> Add Staff Member
+              <button className="h-8.5 px-4 rounded-xl bg-superior-teal text-white font-bold text-xs hover:bg-superior-teal/90 shadow-sm transition-all flex items-center justify-center gap-1.5">
+                <Plus size={15} /> Add Staff
               </button>
             }>
             </DialogTrigger>
@@ -666,6 +510,196 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
           </Dialog>
         </div>
       </div>
+
+      <Tabs value={activeModule} onValueChange={(v: any) => setActiveModule(v)} className="w-full space-y-3">
+        <TabsContent value="directory" className="space-y-4 mt-0 focus-visible:outline-none">
+          {/* Bulk Actions Bar */}
+          {selectedStaffIds.length > 0 && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="sticky top-4 z-30 flex items-center justify-between p-3 bg-superior-teal rounded-2xl shadow-xl text-white mb-2 border border-white/10"
+            >
+              <div className="flex items-center gap-3 pl-1">
+                <Checkbox 
+                  checked={selectedStaffIds.length === filteredStaff.length} 
+                  onCheckedChange={toggleSelectAll} 
+                  className="border-white data-[state=checked]:bg-white data-[state=checked]:text-superior-teal"
+                />
+                <div className="flex flex-col">
+                  <p className="text-xs font-black uppercase tracking-wider">
+                    {selectedStaffIds.length} staff member{selectedStaffIds.length > 1 ? 's' : ''} selected
+                  </p>
+                  {selectedStaffIds.length < filteredStaff.length && (
+                    <button 
+                      onClick={() => setSelectedStaffIds(filteredStaff.map(s => s.id))}
+                      className="text-[10px] font-bold underline opacity-80 hover:opacity-100 text-left"
+                    >
+                      Select all {filteredStaff.length} matching staff
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setSelectedStaffIds([])}
+                  className="h-8 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 text-xs px-4"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleBulkDelete}
+                  variant="destructive" 
+                  size="sm"
+                  className="h-8 rounded-xl bg-white text-rose-600 hover:bg-rose-50 border-none font-bold text-xs px-4 shadow-sm"
+                >
+                  <Trash2 size={13} className="mr-1.5" /> Delete
+                </Button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Compact Filter Toolbar (< 44px) */}
+          <div className="bg-white dark:bg-slate-900 px-3 py-2 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[260px]">
+              <div className="flex items-center gap-2 pr-2 border-r border-slate-200 dark:border-slate-800">
+                <Checkbox 
+                  id="select-all-staff"
+                  checked={selectedStaffIds.length === filteredStaff.length && filteredStaff.length > 0} 
+                  onCheckedChange={toggleSelectAll} 
+                  className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                />
+                <Label htmlFor="select-all-staff" className="text-[10px] font-bold text-slate-400 cursor-pointer uppercase tracking-wider">All</Label>
+              </div>
+
+              <div className="relative flex-1 min-w-[160px] max-w-xs">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                <Input 
+                  placeholder="Search staff..." 
+                  className="pl-8 h-8 rounded-xl bg-slate-50 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700 text-xs font-medium text-slate-800 dark:text-slate-100"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+
+              {/* Role Filter Pills */}
+              <div className="flex items-center bg-slate-100/80 dark:bg-slate-800/80 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 text-[11px]">
+                {['all', 'Management', 'Academic', 'Administration', 'Support'].map((role) => (
+                  <button
+                    key={role}
+                    type="button"
+                    onClick={() => setRoleFilter(role)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg font-bold transition-all",
+                      roleFilter === role
+                        ? "bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-xs"
+                        : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    {role === 'all' ? `All (${data.staff.length})` : role === 'Administration' ? 'Admin' : role}
+                  </button>
+                ))}
+              </div>
+
+              {/* Photo Filter Pills */}
+              <div className="flex items-center bg-slate-100/80 dark:bg-slate-800/80 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setPhotoFilter('all')}
+                  className={cn(
+                    "px-2 py-1 rounded-lg font-bold transition-all",
+                    photoFilter === 'all' ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs" : "text-slate-500"
+                  )}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPhotoFilter('with-photo')}
+                  className={cn(
+                    "px-2 py-1 rounded-lg font-bold transition-all flex items-center gap-1",
+                    photoFilter === 'with-photo' ? "bg-emerald-600 text-white shadow-xs" : "text-slate-500 hover:text-emerald-600"
+                  )}
+                >
+                  <Camera size={11} />
+                  <span>Enrolled ({staffWithPhotos.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPhotoFilter('missing-photo')}
+                  className={cn(
+                    "px-2 py-1 rounded-lg font-bold transition-all flex items-center gap-1",
+                    photoFilter === 'missing-photo' ? "bg-amber-600 text-white shadow-xs" : "text-slate-500 hover:text-amber-600"
+                  )}
+                >
+                  <AlertCircle size={11} />
+                  <span>Missing ({staffWithoutPhotos.length})</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setBiometricTargetStaff(null);
+                  setIsBiometricModalOpen(true);
+                }}
+                className="h-8 px-2.5 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs flex items-center gap-1"
+                title="Open Biometric Fingerprint Manager"
+              >
+                <Fingerprint size={13} className="text-superior-teal" />
+                <span className="hidden xl:inline">Biometric Enroll</span>
+              </Button>
+
+              <Button
+                size="sm"
+                onClick={() => setIsSpotCheckOpen(true)}
+                className="h-8 px-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-xs flex items-center gap-1 shadow-xs"
+                title="Instant 1-Touch Spot-Check Scanner"
+              >
+                <Fingerprint size={13} className="animate-pulse" />
+                <span>Spot-Check</span>
+              </Button>
+
+              <Button
+                onClick={() => setShowPhotoModal(true)}
+                variant="outline"
+                size="sm"
+                className="h-8 px-2.5 rounded-xl border-emerald-300 bg-emerald-50 text-emerald-800 font-bold text-xs flex items-center gap-1"
+                title="Request staff profile photos on WhatsApp"
+              >
+                <Smartphone size={13} />
+                <span className="hidden sm:inline">Request Photos</span>
+              </Button>
+
+              <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl">
+                <button
+                  type="button"
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-xs font-bold transition-all",
+                    viewMode === 'grid' ? "bg-white dark:bg-slate-700 text-superior-teal shadow-xs" : "text-slate-400 hover:text-slate-600"
+                  )}
+                  onClick={() => setViewMode('grid')}
+                >
+                  Grid
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-xs font-bold transition-all",
+                    viewMode === 'list' ? "bg-white dark:bg-slate-700 text-superior-teal shadow-xs" : "text-slate-400 hover:text-slate-600"
+                  )}
+                  onClick={() => setViewMode('list')}
+                >
+                  List
+                </button>
+              </div>
+            </div>
+          </div>
 
       {/* Staff View (Grid or List) */}
       {viewMode === 'grid' ? (
@@ -1026,7 +1060,7 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
       </Dialog>
 
       <Dialog open={dialogType === 'profile'} onOpenChange={(open) => !open && setDialogType(null)}>
-        <DialogContent className="max-w-[98vw] w-[98vw] h-[95vh] max-h-[95vh] overflow-y-auto p-0 border-none bg-white rounded-3xl">
+        <DialogContent className="max-w-4xl w-full max-h-[90vh] overflow-y-auto p-0 border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl">
           {selectedStaff && (
             <StaffProfile 
               member={selectedStaff} 
@@ -1238,6 +1272,7 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
 
 function StaffProfile({ member, data, onEdit, onShowCard }: { member: Staff, data: any, onEdit?: () => void, onShowCard?: () => void }) {
   const [imageError, setImageError] = useState(false);
+  const [selectedSlipPayment, setSelectedSlipPayment] = useState<any | null>(null);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1258,105 +1293,154 @@ function StaffProfile({ member, data, onEdit, onShowCard }: { member: Staff, dat
   };
 
   return (
-    <div className="w-full">
-      <div className="bg-slate-800 p-6 md:p-10 text-white relative">
-        <div className="flex flex-col md:flex-row gap-6 md:gap-10 items-center md:items-center relative z-10">
+    <div className="w-full bg-white dark:bg-slate-900 rounded-3xl overflow-hidden flex flex-col">
+      {/* Executive Profile Header */}
+      <div className="bg-gradient-to-r from-[#064e43] via-[#085a4e] to-teal-900 p-6 md:p-8 text-white relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-superior-gold/10 rounded-full -ml-32 -mb-32 blur-2xl pointer-events-none" />
+
+        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 relative z-10">
+          {/* Avatar with Camera upload */}
           <div className="relative group shrink-0">
-            <div className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-white/30 bg-white/10 backdrop-blur-md overflow-hidden shadow-2xl ring-4 ring-white/10">
+            <div className="w-24 h-24 md:w-28 md:h-28 rounded-2xl border-4 border-white/20 bg-white/10 backdrop-blur-md overflow-hidden shadow-2xl ring-2 ring-white/20 flex items-center justify-center">
               {member.photo && !imageError ? (
                 <img 
                   src={member.photo} 
-                  alt="" 
-                  className="w-full h-full object-cover object-[center_top] rounded-full" 
+                  alt={member.fullName} 
+                  className="w-full h-full object-cover object-top rounded-2xl" 
                   referrerPolicy="no-referrer"
                   onError={() => setImageError(true)}
                 />
-              ) : member.photo && imageError ? (
-                <div className="w-full h-full flex items-center justify-center bg-superior-gold/10 text-superior-gold font-bold text-3xl rounded-full">
-                  {member.fullName ? member.fullName.charAt(0).toUpperCase() : 'T'}
-                </div>
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-white/40">
-                  <User size={64} />
+                <div className="w-full h-full flex items-center justify-center bg-white/10 text-superior-gold font-black text-3xl">
+                  {member.fullName ? member.fullName.charAt(0).toUpperCase() : 'T'}
                 </div>
               )}
             </div>
-            <label className="absolute bottom-0 right-0 p-2.5 bg-superior-gold text-superior-teal rounded-full cursor-pointer hover:scale-110 active:scale-95 transition-all border-2 border-white shadow-lg">
-              <Camera size={18} />
+            <label 
+              className="absolute -bottom-1 -right-1 p-2 bg-superior-gold text-slate-950 rounded-xl cursor-pointer hover:scale-110 active:scale-95 transition-all shadow-md border-2 border-white dark:border-slate-800"
+              title="Upload / Change Staff Photo"
+            >
+              <Camera size={14} />
               <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
             </label>
           </div>
-          
-          <div className="text-center md:text-left flex-1">
-            <div className="inline-flex items-center gap-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 mb-3 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">
-              <Briefcase size={12} /> Official Staff Member
+
+          {/* Identity & Badges */}
+          <div className="flex-1 text-center sm:text-left min-w-0">
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
+              <span className="font-mono text-xs font-black tracking-widest text-superior-gold bg-black/30 px-2.5 py-0.5 rounded-lg border border-superior-gold/30">
+                {member.id}
+              </span>
+              <Badge className={cn(
+                "rounded-lg px-2.5 py-0.5 font-black uppercase tracking-wider text-[10px] border-none",
+                member.status === 'Active' ? "bg-emerald-500 text-white" : "bg-slate-500 text-white"
+              )}>
+                {member.status}
+              </Badge>
+              {member.fingerprintTemplate ? (
+                <Badge className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold flex items-center gap-1">
+                  <Fingerprint size={12} className="text-emerald-400" /> Thumb Registered ({member.fingerprintFinger || 'Finger'})
+                </Badge>
+              ) : (
+                <Badge className="bg-rose-500/20 text-rose-300 border border-rose-400/30 text-[10px] font-bold flex items-center gap-1">
+                  <Fingerprint size={12} className="text-rose-400" /> Biometric Missing
+                </Badge>
+              )}
             </div>
-            <h2 className="text-3xl md:text-5xl font-serif font-bold mb-2 tracking-tight">{member.fullName}</h2>
-            <div className="flex flex-wrap justify-center md:justify-start gap-3 md:gap-6 text-sm md:text-base opacity-90">
-              <p className="font-mono font-bold text-superior-gold">{member.id}</p>
-              <span className="hidden md:block opacity-30">|</span>
-              <div className="flex items-center gap-2">
-                <Briefcase size={16} className="text-superior-gold" />
-                <span>{member.role}</span>
+
+            <h2 className="text-2xl md:text-3xl font-display font-black tracking-tight text-white truncate" title={member.fullName}>
+              {member.fullName}
+            </h2>
+
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-xs opacity-90 mt-2 font-medium">
+              <div className="flex items-center gap-1.5">
+                <Briefcase size={14} className="text-superior-gold" />
+                <span>{member.role || 'Staff Member'}</span>
               </div>
-              <span className="hidden md:block opacity-30">|</span>
-              <div className="flex items-center gap-2">
-                <Calendar size={16} className="text-superior-gold" />
-                <span>Joined: {member.joinDate}</span>
+              <span className="opacity-40">•</span>
+              <div className="flex items-center gap-1.5">
+                <Calendar size={14} className="text-superior-gold" />
+                <span>Joined: {member.joinDate || 'N/A'}</span>
               </div>
+              {member.contact && (
+                <>
+                  <span className="opacity-40">•</span>
+                  <div className="flex items-center gap-1.5">
+                    <Phone size={14} className="text-superior-gold" />
+                    <span>{member.contact}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
-        
-        {/* Decorative elements */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -mr-48 -mt-48 blur-3xl"></div>
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-superior-gold/5 rounded-full -ml-32 -mb-32 blur-2xl"></div>
       </div>
 
-      <div className="p-6 md:p-10 space-y-10">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12">
-          <div className="space-y-6">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-3 text-lg">
-              <User size={20} className="text-superior-teal" /> Personal Information
+      {/* Main Content Area */}
+      <div className="p-6 md:p-8 space-y-6 flex-1 overflow-y-auto">
+        {/* Personal & Professional Info Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Card 1: Personal & Contact */}
+          <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-3.5">
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2 border-b border-slate-200/60 dark:border-slate-700/60 pb-2">
+              <User size={15} className="text-superior-teal" /> Personal Information
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <InfoItem label="Father's Name" value={member.fatherName} />
-              <InfoItem label="CNIC" value={member.cnic} />
-              <InfoItem label="Date of Birth" value={member.dob} />
-              <InfoItem label="Contact" value={member.contact} />
-              <InfoItem label="Designation" value={member.role} />
-              <div className="sm:col-span-2">
-                <InfoItem label="Address" value={member.address} />
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Father's Name</p>
+                <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5 truncate">{member.fatherName || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">CNIC</p>
+                <p className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-0.5 truncate">{member.cnic || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Contact Number</p>
+                <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5 truncate">{member.contact || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date of Birth</p>
+                <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5 truncate">{member.dob || 'N/A'}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Residential Address</p>
+                <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">{member.address || 'N/A'}</p>
               </div>
             </div>
           </div>
 
-          <div className="space-y-6">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-3 text-lg">
-              <GraduationCap size={20} className="text-superior-teal" /> Professional Details
+          {/* Card 2: Professional Details & Financials */}
+          <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-3.5">
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2 border-b border-slate-200/60 dark:border-slate-700/60 pb-2">
+              <GraduationCap size={15} className="text-superior-teal" /> Professional & Financial
             </h3>
-            <div className="space-y-6">
-              <InfoItem label="Qualification" value={member.qualification || 'N/A'} />
-              {member.role === 'Lecturer' && (
-                <div className="space-y-3">
-                  <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Specializations</p>
-                  <div className="flex flex-wrap gap-2">
-                    {member.specialization?.map(s => (
-                      <Badge key={s} variant="outline" className="text-xs bg-slate-50 px-3 py-1 border-slate-200">{s}</Badge>
-                    ))}
-                  </div>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Designation / Role</p>
+                <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5 truncate">{member.role || 'Lecturer'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Highest Qualification</p>
+                <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5 truncate">{member.qualification || 'N/A'}</p>
+              </div>
+              <div className="col-span-2 p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Monthly Base Salary</p>
+                  <p className="text-xl font-black text-emerald-800 dark:text-emerald-200 mt-0.5">
+                    Rs. {(member.salary || member.baseSalary || 0).toLocaleString()}
+                  </p>
                 </div>
-              )}
-              <div className="p-5 bg-emerald-50 rounded-2xl border border-emerald-100">
-                <p className="text-[10px] text-emerald-600 uppercase font-bold mb-1 tracking-wider">Monthly Salary</p>
-                <p className="text-2xl font-bold text-emerald-700">Rs. {(member.salary || 0).toLocaleString()}</p>
+                <Badge className="bg-emerald-600 text-white font-bold text-[10px]">Active Payroll</Badge>
               </div>
               {member.subjects && member.subjects.length > 0 && (
-                <div className="space-y-3">
-                  <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Teaching Subjects</p>
-                  <div className="flex flex-wrap gap-2">
+                <div className="col-span-2">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Assigned Teaching Subjects</p>
+                  <div className="flex flex-wrap gap-1.5">
                     {member.subjects.map(s => (
-                      <Badge key={s} variant="outline" className="text-xs bg-superior-teal/5 text-superior-teal px-3 py-1 border-superior-teal/20">{s}</Badge>
+                      <Badge key={s} variant="outline" className="text-xs font-bold bg-white dark:bg-slate-800 text-superior-teal dark:text-emerald-400 border-slate-200 dark:border-slate-700 px-2.5 py-0.5">
+                        {s}
+                      </Badge>
                     ))}
                   </div>
                 </div>
@@ -1365,96 +1449,129 @@ function StaffProfile({ member, data, onEdit, onShowCard }: { member: Staff, dat
           </div>
         </div>
 
-        <div className="space-y-6 pt-6 border-t border-slate-100">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
-              <CreditCard size={20} className="text-superior-teal" /> Salary Payment History
-            </h3>
+        {/* Salary Payment History Section */}
+        <div className="space-y-3 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
+          <div className="flex items-center justify-between flex-wrap gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center">
+                <CreditCard size={16} />
+              </div>
+              <div>
+                <h3 className="font-black text-sm text-slate-900 dark:text-white">Salary Payment History</h3>
+                <p className="text-[10px] text-slate-400">Past disbursements & downloadable official slips</p>
+              </div>
+            </div>
+
             <Dialog>
               <DialogTrigger nativeButton={true} render={
-                <button className="h-8 px-3 rounded-md bg-superior-teal text-white font-bold text-xs flex items-center justify-center hover:bg-superior-teal/90">
-                  <Plus size={14} className="mr-1" /> Record Payment
+                <button className="h-8 px-3 rounded-xl bg-superior-teal text-white font-bold text-xs flex items-center gap-1.5 hover:bg-superior-teal/90 shadow-sm cursor-pointer transition-all">
+                  <Plus size={14} /> Record Salary Payment
                 </button>
-              }>
-              </DialogTrigger>
+              } />
               <RecordSalaryDialog member={member} data={data} />
             </Dialog>
           </div>
-          <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <Table>
-              <TableHeader className="bg-slate-50">
-                <TableRow>
-                  <TableHead className="text-[10px] font-bold uppercase">Month/Year</TableHead>
-                  <TableHead className="text-[10px] font-bold uppercase">Amount</TableHead>
-                  <TableHead className="text-[10px] font-bold uppercase">Date</TableHead>
-                  <TableHead className="text-[10px] font-bold uppercase">Method</TableHead>
-                  <TableHead className="text-[10px] font-bold uppercase">Status</TableHead>
-                  <TableHead className="text-[10px] font-bold uppercase text-right">Receipt</TableHead>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-800">
+            <Table>
+              <TableHeader className="bg-slate-50/80 dark:bg-slate-800/80">
+                <TableRow className="border-none">
+                  <TableHead className="text-[10px] font-black uppercase tracking-wider text-slate-500">Month / Year</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase tracking-wider text-slate-500">Amount Paid</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase tracking-wider text-slate-500">Payment Date</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase tracking-wider text-slate-500">Method</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase tracking-wider text-slate-500">Status</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase tracking-wider text-slate-500 text-right pr-4">Salary Slip</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {data.salaryPayments?.filter((p: any) => p.staffId === member.id).length > 0 ? (
                   data.salaryPayments.filter((p: any) => p.staffId === member.id).map((payment: any) => (
-                    <TableRow key={payment.id}>
-                      <TableCell className="font-bold text-slate-700">{payment.month} {payment.year}</TableCell>
-                      <TableCell className="font-bold text-emerald-600">Rs. {(payment.amount || 0).toLocaleString()}</TableCell>
-                      <TableCell className="text-sm text-slate-500">{payment.date}</TableCell>
-                      <TableCell className="text-sm text-slate-500">{payment.paymentMethod}</TableCell>
-                      <TableCell>
-                        <Badge className="bg-emerald-100 text-emerald-700 text-[9px] font-black uppercase">{payment.status}</Badge>
+                    <TableRow key={payment.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/60">
+                      <TableCell className="font-bold text-xs text-slate-800 dark:text-slate-200">
+                        {payment.month} {payment.year}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" className="text-superior-teal h-8 w-8 p-0">
-                          <Printer size={14} />
+                      <TableCell className="font-black text-xs text-emerald-700 dark:text-emerald-400">
+                        Rs. {(payment.amount || 0).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+                        {payment.date}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-600 dark:text-slate-300 font-semibold">
+                        {payment.paymentMethod || 'Cash'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 text-[10px] font-bold border-none">
+                          {payment.status || 'Paid'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right pr-4">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="h-7 px-2.5 rounded-lg border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/40 text-[11px] font-bold gap-1 shadow-2xs cursor-pointer"
+                          onClick={() => setSelectedSlipPayment(payment)}
+                          title="Print / Download Official Salary Slip"
+                        >
+                          <Printer size={13} className="text-emerald-600 dark:text-emerald-400" />
+                          <span>Print Slip</span>
                         </Button>
                       </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-8 text-center text-slate-400 italic text-sm">No salary records found.</TableCell>
+                    <TableCell colSpan={6} className="py-8 text-center text-slate-400 italic text-xs">
+                      No previous salary payment records found for {member.fullName}.
+                    </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
           </div>
         </div>
-        </div>
 
-        {member.role === 'Lecturer' && (
-          <div className="space-y-6 pt-6 border-t border-slate-100">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
-                <Users size={20} className="text-superior-teal" /> Assigned Students
-              </h3>
-              <Button size="sm" variant="outline" className="text-xs font-bold border-slate-200"><Plus size={14} className="mr-1" /> Assign Student</Button>
-            </div>
-            <div className="bg-slate-50 p-12 rounded-3xl border border-dashed border-slate-200 text-center">
-              <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-100">
-                <Users size={24} className="text-slate-300" />
-              </div>
-              <p className="text-sm text-slate-400 font-medium italic">No students currently assigned to this teacher.</p>
-            </div>
-          </div>
-        )}
-
-        <div className="flex flex-col sm:flex-row justify-end gap-4 pt-8 border-t border-slate-100">
+        {/* Modal Footer Actions */}
+        <div className="flex flex-col sm:flex-row justify-end items-center gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
           <Button 
             variant="outline" 
-            className="h-11 px-6 text-superior-teal border-superior-teal/20 hover:bg-superior-teal/5 font-bold"
+            className="h-10 px-5 text-superior-teal border-superior-teal/30 hover:bg-superior-teal/5 font-bold rounded-xl text-xs flex items-center gap-2"
             onClick={onShowCard}
           >
-            <CreditCard size={18} className="mr-2" /> Official ID Card
+            <CreditCard size={15} /> Official ID Card
           </Button>
           <Button 
-            className="h-11 px-10 bg-superior-teal text-white hover:bg-superior-teal/90 font-bold"
+            className="h-10 px-8 bg-superior-teal text-white hover:bg-superior-teal/90 font-bold rounded-xl text-xs shadow-md shadow-superior-teal/10"
             onClick={onEdit}
           >
-            Edit Profile
+            <Edit size={14} className="mr-1.5" /> Edit Profile Details
           </Button>
         </div>
       </div>
+
+      {/* Official Salary Slip Print Modal */}
+      {selectedSlipPayment && (
+        <StaffSalarySlipModal
+          isOpen={Boolean(selectedSlipPayment)}
+          onClose={() => setSelectedSlipPayment(null)}
+          staff={member}
+          month={`${selectedSlipPayment.month} ${selectedSlipPayment.year}`}
+          baseSalary={member.baseSalary || member.salary || 0}
+          extraAllowance={0}
+          extraLecturesCount={0}
+          extraLectureRate={0}
+          leavesTaken={0}
+          leaveDeduction={0}
+          lateMinutes={0}
+          lateDeduction={0}
+          advanceDeduction={0}
+          netSalary={selectedSlipPayment.amount || member.salary || 0}
+          totalRemainingAdvance={0}
+          totalLecturesCount={0}
+          regularLecturesCount={0}
+          settings={data?.settings}
+        />
+      )}
     </div>
   );
 }

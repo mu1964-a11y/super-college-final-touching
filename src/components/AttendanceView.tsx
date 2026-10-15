@@ -995,201 +995,212 @@ export default function AttendanceView({ data }: { data: any }) {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h2 className="text-3xl font-display font-black text-superior-teal tracking-tight flex items-center gap-3">
-            <CheckCircle2 size={32} className="text-superior-gold" />
-            Students Attendance
+    <div className="space-y-3">
+      {/* Compact Top Header Line (< 45px) */}
+      <div className="flex flex-wrap justify-between items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h2 className="text-xl font-display font-black text-superior-teal tracking-tight flex items-center gap-2">
+            <CheckCircle2 size={20} className="text-superior-gold" />
+            <span>Students Attendance</span>
           </h2>
-          <p className="text-slate-500 mt-1 font-medium italic">Track daily presence and maintain precise records</p>
+
+          {/* Daily / Monthly Switcher */}
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/80 text-xs">
+            <button
+              type="button"
+              onClick={() => setActiveTab('daily')}
+              className={cn(
+                "px-2.5 py-1 rounded-lg font-bold transition-all",
+                activeTab === 'daily' ? "bg-superior-teal text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
+              )}
+            >
+              Daily Entry
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('report')}
+              className={cn(
+                "px-2.5 py-1 rounded-lg font-bold transition-all",
+                activeTab === 'report' ? "bg-superior-teal text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
+              )}
+            >
+              Monthly Report
+            </button>
+          </div>
+
+          {/* Date Picker inline */}
+          {activeTab === 'daily' ? (
+            <div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded-xl border border-slate-200 text-xs">
+              <CalendarDays size={13} className="text-slate-400" />
+              <Input 
+                type="date" 
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="border-none bg-transparent h-7 p-0 focus-visible:ring-0 w-[125px] text-xs font-semibold"
+              />
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded-xl border border-slate-200 text-xs">
+              <CalendarDays size={13} className="text-slate-400" />
+              <Input 
+                type="month" 
+                value={reportMonth}
+                onChange={(e) => setReportMonth(e.target.value)}
+                className="border-none bg-transparent h-7 p-0 focus-visible:ring-0 w-[125px] text-xs font-semibold"
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Quick Tools Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger render={
+              <Button variant="outline" size="sm" className="h-8.5 px-2.5 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs flex items-center gap-1">
+                <MoreHorizontal size={14} />
+                <span className="hidden sm:inline">Terminals & Tools</span>
+              </Button>
+            } />
+            <DropdownMenuContent align="end" className="w-60 p-2 rounded-2xl shadow-xl border-slate-200">
+              <DropdownMenuItem onClick={() => window.open('/?gate=true', '_blank')} className="rounded-lg py-2 cursor-pointer text-xs font-semibold">
+                <Camera size={14} className="mr-2 text-emerald-600" /> Open Gate Face Kiosk
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => window.open('/?biometric=true', '_blank')} className="rounded-lg py-2 cursor-pointer text-xs font-semibold">
+                <Fingerprint size={14} className="mr-2 text-amber-600" /> Biometric Desk (SecuGen)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => {
+                setBiometricEnrollTarget(null);
+                setIsBiometricEnrollModalOpen(true);
+              }} className="rounded-lg py-2 cursor-pointer text-xs font-semibold">
+                <Fingerprint size={14} className="mr-2 text-teal-600" /> Enroll Fingerprints
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowPhotoModal(true)} className="rounded-lg py-2 cursor-pointer text-xs font-semibold">
+                <Smartphone size={14} className="mr-2 text-indigo-600" /> Request Missing Photos ({studentsWithoutPhotos.length})
+              </DropdownMenuItem>
+              {data?.syncAdmissionsToStudents && (
+                <>
+                  <Separator className="my-1.5" />
+                  <DropdownMenuItem onClick={() => data.syncAdmissionsToStudents?.()} className="rounded-lg py-2 cursor-pointer text-xs font-semibold text-superior-teal">
+                    <RefreshCw size={14} className="mr-2" /> Sync Students
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {activeTab === 'daily' ? (
+            <>
+              <Button 
+                size="sm"
+                onClick={() => setShowCloseoutModal(true)}
+                className="h-8.5 px-3 bg-gradient-to-r from-amber-500 via-orange-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5"
+                title="Daily Flash Summary & Closeout"
+              >
+                <Sparkles size={13} className="text-amber-200 animate-pulse" />
+                <span>Daily Flash ⚡</span>
+              </Button>
+              <Button 
+                size="sm"
+                className="h-8.5 px-3.5 bg-superior-teal hover:bg-superior-teal/90 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5" 
+                onClick={handleSaveDaily}
+              >
+                <Save size={14} /> Save
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="h-8.5 px-3 rounded-xl border-superior-teal text-superior-teal text-xs font-bold" 
+                onClick={downloadSectionPDF}
+              >
+                <Download size={14} className="mr-1.5" /> Download PDF
+              </Button>
+              <Button 
+                size="sm"
+                className="h-8.5 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5" 
+                onClick={handleOpenBulkMonthlyModal}
+              >
+                <MessageSquare size={14} /> Broadcast
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div className="flex flex-wrap items-center gap-4 flex-1">
-            <div className="relative min-w-[200px] flex-1 max-w-sm">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <Input 
-                placeholder="Search by student name..." 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-12 h-12 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-medium"
-              />
-            </div>
-            
+      {/* Compact Filters & Quick Marking Ribbon (< 42px) */}
+      <div className="bg-white p-2.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[260px]">
+          <div className="relative flex-1 min-w-[160px] max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            <Input 
+              placeholder="Search student..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8 h-8 rounded-xl bg-slate-50 border-slate-200 text-xs font-medium"
+            />
+          </div>
+          
+          <div className="w-[150px]">
             <Select value={classFilter} onValueChange={setClassFilter}>
-              <SelectTrigger className="w-[180px] h-12 rounded-2xl bg-slate-50 border-transparent">
+              <SelectTrigger className="h-8 rounded-xl bg-slate-50 border-slate-200 text-xs font-semibold">
                 <SelectValue placeholder="Class" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Classes</SelectItem>
+                <SelectItem value="all" className="text-xs">All Classes</SelectItem>
                 {classOptions.map(cls => (
-                   <SelectItem key={cls} value={cls}>{cls}</SelectItem>
+                   <SelectItem key={cls} value={cls} className="text-xs">{cls}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+          </div>
 
+          <div className="w-[130px]">
             <Select value={sectionFilter} onValueChange={setSectionFilter}>
-              <SelectTrigger className="w-[180px] h-12 rounded-2xl bg-slate-50 border-transparent">
+              <SelectTrigger className="h-8 rounded-xl bg-slate-50 border-slate-200 text-xs font-semibold">
                 <SelectValue placeholder="Section" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Sections</SelectItem>
+                <SelectItem value="all" className="text-xs">All Sections</SelectItem>
                 {sectionOptions.map(sec => (
-                  <SelectItem key={sec} value={sec}>{sec}</SelectItem>
+                  <SelectItem key={sec} value={sec} className="text-xs">{sec}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-t border-slate-100 pt-6">
-            <div className="flex items-center gap-2">
-              <Button 
-                variant={activeTab === 'daily' ? 'default' : 'outline'}
-                onClick={() => setActiveTab('daily')}
-                className={cn("rounded-xl h-10 w-32", activeTab === 'daily' ? "bg-superior-teal text-white shadow-md shadow-superior-teal/20" : "")}
-              >
-                Daily Entry
-              </Button>
-              <Button 
-                variant={activeTab === 'report' ? 'default' : 'outline'}
-                onClick={() => setActiveTab('report')}
-                className={cn("rounded-xl h-10 w-32", activeTab === 'report' ? "bg-superior-teal text-white shadow-md shadow-superior-teal/20" : "")}
-              >
-                Monthly Report
-              </Button>
-
-              <Button 
-                variant="outline"
-                onClick={() => window.open('/?gate=true', '_blank')}
-                className="rounded-xl h-10 px-3 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 font-semibold flex items-center gap-1.5 shadow-sm"
-                title="Open Gate Face Attendance Terminal"
-              >
-                <Camera size={16} className="text-emerald-600" />
-                <span className="hidden sm:inline">Gate Face Kiosk</span>
-              </Button>
-
-              <Button 
-                variant="outline"
-                onClick={() => window.open('/?biometric=true', '_blank')}
-                className="rounded-xl h-10 px-3 bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 font-bold flex items-center gap-1.5 shadow-sm"
-                title="Open SecuGen HU20-A Biometric Attendance Desk"
-              >
-                <Fingerprint size={16} className="text-amber-600" />
-                <span className="hidden sm:inline">Biometric Desk (SecuGen)</span>
-              </Button>
-
-              <Button 
-                variant="outline"
-                onClick={() => {
-                  setBiometricEnrollTarget(null);
-                  setIsBiometricEnrollModalOpen(true);
-                }}
-                className="rounded-xl h-10 px-3 bg-teal-50 text-teal-800 border-teal-200 hover:bg-teal-100 font-bold flex items-center gap-1.5 shadow-sm"
-                title="Enroll Student Fingerprints"
-              >
-                <Fingerprint size={16} className="text-teal-600" />
-                <span>Enroll Fingerprints</span>
-              </Button>
-
-              <Button 
-                variant="outline"
-                onClick={() => setShowPhotoModal(true)}
-                className="rounded-xl h-10 px-3 bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 font-semibold flex items-center gap-1.5 shadow-sm"
-                title="Send WhatsApp Request for Missing Photos"
-              >
-                <Smartphone size={16} className="text-indigo-600" />
-                <span>Request Photos ({studentsWithoutPhotos.length})</span>
-              </Button>
-            </div>
-            
-            {activeTab === 'daily' ? (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1 mr-4">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    className="h-11 rounded-xl text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-200"
-                    onClick={() => markAllFiltered('Present')}
-                  >
-                    All Present
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    className="h-11 rounded-xl text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
-                    onClick={() => markAllFiltered('Absent')}
-                  >
-                    All Absent
-                  </Button>
-                </div>
-
-                <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
-                  <CalendarDays size={16} className="text-slate-400" />
-                  <Input 
-                    type="date" 
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="border-none bg-transparent h-8 focus-visible:ring-0 w-[140px] text-sm font-medium"
-                  />
-                </div>
-                {data?.syncAdmissionsToStudents && (
-                  <Button 
-                    variant="outline" 
-                    onClick={() => data.syncAdmissionsToStudents?.()}
-                    className="rounded-xl h-11 px-6 border-superior-teal/30 text-superior-teal hover:bg-superior-teal/5 bg-superior-teal/5"
-                    title="If student is missing or save fails, click to synchronize"
-                  >
-                    <RefreshCw size={16} className="mr-2" /> Sync Students
-                  </Button>
-                )}
-                <Button 
-                  variant="outline"
-                  className="rounded-xl h-11 px-5 border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-bold"
-                  onClick={handleOpenBulkDailyModal}
-                  title="Send WhatsApp Attendance Alerts to Absentees or All Students in this class"
-                >
-                  <MessageSquare size={16} className="mr-2 text-emerald-600" /> WhatsApp Alerts
-                </Button>
-                <Button 
-                  onClick={() => setShowCloseoutModal(true)}
-                  className="rounded-xl h-11 px-5 bg-gradient-to-r from-amber-500 via-orange-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white font-extrabold shadow-md shadow-indigo-500/20 flex items-center gap-2 cursor-pointer"
-                  title="Open Daily Attendance Closeout & Principal Flash Summary Dashboard"
-                >
-                  <Sparkles size={16} className="text-amber-200 animate-pulse" />
-                  <span>Daily Flash & Closeout ⚡</span>
-                </Button>
-                <Button className="rounded-xl h-11 px-6 bg-superior-teal hover:bg-superior-teal/90 shadow-md shadow-superior-teal/20" onClick={handleSaveDaily}>
-                   <Save size={18} className="mr-2" /> Save Attendance
-                </Button>
-              </div>
-            ) : (
-               <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
-                    <CalendarDays size={16} className="text-slate-400" />
-                    <Input 
-                      type="month" 
-                      value={reportMonth}
-                      onChange={(e) => setReportMonth(e.target.value)}
-                      className="border-none bg-transparent h-8 focus-visible:ring-0 w-[140px] text-sm font-medium"
-                    />
-                  </div>
-                  <Button variant="outline" className="rounded-xl h-11 border-superior-teal text-superior-teal" onClick={downloadSectionPDF}>
-                     <Download size={18} className="mr-2" /> Download Section PDF
-                  </Button>
-                  <Button 
-                    className="rounded-xl h-11 px-5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-600/20" 
-                    onClick={handleOpenBulkMonthlyModal}
-                    title="Broadcast monthly attendance summaries to all students in section"
-                  >
-                     <MessageSquare size={16} className="mr-2" /> Broadcast Monthly Reports
-                  </Button>
-               </div>
-            )}
-        </div>
+        {activeTab === 'daily' && (
+          <div className="flex items-center gap-1.5">
+            <Button 
+              variant="outline" 
+              size="sm"
+              className="h-8 px-2.5 rounded-xl text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-xs font-bold"
+              onClick={() => markAllFiltered('Present')}
+            >
+              All Present
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm"
+              className="h-8 px-2.5 rounded-xl text-rose-700 bg-rose-50 hover:bg-rose-100 border-rose-200 text-xs font-bold"
+              onClick={() => markAllFiltered('Absent')}
+            >
+              All Absent
+            </Button>
+            <Button 
+              variant="outline"
+              size="sm"
+              className="h-8 px-2.5 rounded-xl border-emerald-500 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-xs flex items-center gap-1"
+              onClick={handleOpenBulkDailyModal}
+              title="Send WhatsApp Attendance Alerts"
+            >
+              <MessageSquare size={13} className="text-emerald-600" />
+              <span className="hidden sm:inline">WhatsApp Alerts</span>
+            </Button>
+          </div>
+        )}
       </div>
 
       <Card className="bg-white border-none shadow-xl shadow-slate-200/50 rounded-[2rem] overflow-hidden">

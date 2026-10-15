@@ -1152,26 +1152,44 @@ export default function AdmissionsView({
   };
 
   return (
-    <div className="space-y-8 pb-12">
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-        <div>
-          <div className="flex flex-col items-start gap-1.5">
-            <div className="flex items-center gap-3">
-              <h2 className="text-3xl font-display font-black text-slate-900 dark:text-slate-100 tracking-tight">
-                Admission Pipeline
-              </h2>
-              <span className="text-slate-300 dark:text-slate-700 text-2xl">/</span>
-              <span className="urdu-text text-2xl text-superior-gold font-medium">
-                ایڈمیشن پائپ لائن
-              </span>
-            </div>
-            <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-              Session {data?.settings?.academicSession || "2026-28"} • Candidate Intake & Verification
-            </p>
+    <div className="space-y-3 pb-12">
+      {/* Compact Header Line (< 45px) */}
+      <div className="flex flex-wrap justify-between items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h2 className="text-xl font-display font-black text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
+            <span>Admission Pipeline</span>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+              {summaryStats.total}
+            </span>
+          </h2>
+
+          {/* Inline Program Group Selector */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700 text-xs">
+            {[
+              { id: 'all', label: 'All Groups' },
+              { id: 'fsc', label: 'Inter' },
+              { id: 'dit', label: 'DIT' },
+              { id: 'ukl3', label: 'UKL3' },
+              { id: 'bs', label: 'BS' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setLocalProgram(tab.id)}
+                className={cn(
+                  "px-2.5 py-1 rounded-lg font-bold transition-all whitespace-nowrap",
+                  (localProgram || 'all') === tab.id
+                    ? "bg-white dark:bg-slate-700 text-superior-teal dark:text-superior-gold shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
-        <div className="flex flex-wrap gap-3">
+
+        <div className="flex items-center gap-2">
           <input
             type="file"
             ref={fileInputRef}
@@ -1185,48 +1203,49 @@ export default function AdmissionsView({
               render={
                 <Button
                   variant="outline"
-                  className="rounded-xl border-slate-200 font-black uppercase tracking-widest text-[10px] h-12 px-6 shadow-sm hover:bg-slate-50 transition-all"
+                  size="sm"
+                  className="rounded-xl border-slate-200 text-slate-700 font-bold text-xs h-8.5 px-3 shadow-xs hover:bg-slate-50 transition-all flex items-center gap-1.5"
                 >
-                  <MoreHorizontal size={16} className="mr-2 text-slate-400" />
-                  Bulk Actions
+                  <MoreHorizontal size={14} className="text-slate-400" />
+                  <span>Actions</span>
                 </Button>
               }
             />
-            <DropdownMenuContent className="w-56 rounded-xl shadow-2xl border-none p-2">
+            <DropdownMenuContent className="w-56 rounded-2xl shadow-2xl border-none p-2">
               <DropdownMenuItem
                 onClick={handleDownloadFormat}
-                className="rounded-lg py-3 cursor-pointer"
+                className="rounded-lg py-2 cursor-pointer text-xs font-semibold"
               >
-                <FileSpreadsheet size={16} className="mr-2 text-emerald-600" />
+                <FileSpreadsheet size={15} className="mr-2 text-emerald-600" />
                 Download Format Template
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => fileInputRef.current?.click()}
-                className="rounded-lg py-3 cursor-pointer"
+                className="rounded-lg py-2 cursor-pointer text-xs font-semibold"
               >
-                <Upload size={16} className="mr-2 text-blue-600" />
+                <Upload size={15} className="mr-2 text-blue-600" />
                 Bulk Import Admissions
               </DropdownMenuItem>
-              <Separator className="my-2" />
+              <Separator className="my-1.5" />
               <DropdownMenuItem
                 onClick={() => handleExportPDF()}
-                className="rounded-lg py-3 cursor-pointer text-slate-700 hover:text-slate-900"
+                className="rounded-lg py-2 cursor-pointer text-xs font-semibold text-rose-600"
               >
-                <FileText size={16} className="mr-2 text-rose-600" />
+                <FileText size={15} className="mr-2 text-rose-600" />
                 Export to PDF Report
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleExportExcel()}
-                className="rounded-lg py-3 cursor-pointer"
+                className="rounded-lg py-2 cursor-pointer text-xs font-semibold text-emerald-600"
               >
-                <Download size={16} className="mr-2 text-emerald-600" />
+                <Download size={15} className="mr-2 text-emerald-600" />
                 Export to Excel
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleExportCSV()}
-                className="rounded-lg py-3 cursor-pointer"
+                className="rounded-lg py-2 cursor-pointer text-xs font-semibold text-amber-600"
               >
-                <Download size={16} className="mr-2 text-superior-gold" />
+                <Download size={15} className="mr-2 text-amber-600" />
                 Export to CSV
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -1235,26 +1254,26 @@ export default function AdmissionsView({
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger
               render={
-                <button className="h-12 px-8 rounded-xl bg-superior-teal text-white font-black uppercase tracking-widest text-[10px] hover:bg-superior-teal/90 transition-all shadow-xl shadow-superior-teal/10 flex items-center justify-center">
-                  <Plus size={18} className="mr-2" /> New Admission
+                <button className="h-8.5 px-3.5 rounded-xl bg-superior-teal text-white font-bold text-xs hover:bg-superior-teal/90 transition-all shadow-xs flex items-center justify-center gap-1.5">
+                  <Plus size={15} /> New Admission
                 </button>
               }
             ></DialogTrigger>
             <DialogContent className="max-w-[90vw] w-[90vw] max-h-[92vh] overflow-y-auto rounded-[2.5rem] border-none p-0 shadow-2xl">
-              <div className="bg-superior-teal p-10 text-white relative overflow-hidden">
+              <div className="bg-superior-teal p-8 text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-80 h-80 bg-white/5 rounded-full -mr-40 -mt-40 blur-3xl" />
                 <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-superior-gold/10 rounded-full blur-2xl" />
                 <DialogHeader className="relative z-10">
-                  <DialogTitle className="text-4xl font-display font-black tracking-tight uppercase">
+                  <DialogTitle className="text-3xl font-display font-black tracking-tight uppercase">
                     Student Admission Form
                   </DialogTitle>
-                  <p className="text-white/60 text-xs font-black uppercase tracking-[0.3em] mt-2">
+                  <p className="text-white/60 text-xs font-black uppercase tracking-[0.3em] mt-1">
                     Session {data?.settings?.academicSession || "2026-28"} ·{" "}
                     {data?.settings?.collegeName || "Jahanian Campus"}
                   </p>
                 </DialogHeader>
               </div>
-              <div className="p-10">
+              <div className="p-8">
                 {isAddDialogOpen && (
                   <AdmissionForm
                     data={data}
@@ -1384,323 +1403,176 @@ export default function AdmissionsView({
         </DialogContent>
       </Dialog>
 
-      {/* Group Navigation Tabs */}
-      <Tabs
-        value={localProgram || "all"}
-        onValueChange={(val) => setLocalProgram(val)}
-        className="w-full mb-6"
-      >
-        <TabsList className="bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-2xl w-full flex items-center justify-start overflow-x-auto scrollbar-hide h-auto border border-slate-200/70 dark:border-slate-700/80">
-          <TabsTrigger
-            value="all"
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+      {/* High-Density Quick Status Chips Ribbon */}
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-[#064e43] text-white px-3 py-1.5 rounded-2xl shadow-xs border border-emerald-500/20 text-xs">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              setFeeFilter("all");
+              setAdmittedFilter("all");
+            }}
+            className={cn(
+              "px-2.5 py-1 rounded-xl font-bold transition-all flex items-center gap-1.5",
+              feeFilter === "all" && admittedFilter === "all" ? "bg-white text-[#064e43] shadow-xs" : "text-white/80 hover:text-white hover:bg-white/10"
+            )}
           >
-            All Groups
-          </TabsTrigger>
-          <TabsTrigger
-            value="fsc"
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+            <span>Total:</span>
+            <span className="font-black">{summaryStats.total}</span>
+          </button>
+          <span className="text-white/30">•</span>
+          <button
+            type="button"
+            onClick={() => setFeeFilter("Full Paid")}
+            className={cn(
+              "px-2.5 py-1 rounded-xl font-bold transition-all flex items-center gap-1.5",
+              feeFilter === "Full Paid" ? "bg-emerald-400 text-slate-900 shadow-xs" : "text-emerald-300 hover:text-white hover:bg-white/10"
+            )}
           >
-            <School size={15} className="mr-2 inline-block" />
-            Inter
-          </TabsTrigger>
-          <TabsTrigger
-            value="dit"
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+            <span>Full Paid:</span>
+            <span className="font-black">{summaryStats.fullPaid}</span>
+          </button>
+          <span className="text-white/30">•</span>
+          <button
+            type="button"
+            onClick={() => setFeeFilter("Partial Paid")}
+            className={cn(
+              "px-2.5 py-1 rounded-xl font-bold transition-all flex items-center gap-1.5",
+              feeFilter === "Partial Paid" ? "bg-amber-400 text-slate-900 shadow-xs" : "text-amber-300 hover:text-white hover:bg-white/10"
+            )}
           >
-            <GraduationCap size={15} className="mr-2 inline-block" />
-            DIT
-          </TabsTrigger>
-          <TabsTrigger
-            value="ukl3"
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
+            <span>Partial:</span>
+            <span className="font-black">{summaryStats.partialPaid}</span>
+          </button>
+          <span className="text-white/30">•</span>
+          <button
+            type="button"
+            onClick={() => setFeeFilter("Not Paid")}
+            className={cn(
+              "px-2.5 py-1 rounded-xl font-bold transition-all flex items-center gap-1.5",
+              feeFilter === "Not Paid" ? "bg-rose-400 text-slate-900 shadow-xs" : "text-rose-300 hover:text-white hover:bg-white/10"
+            )}
           >
-            <Globe size={15} className="mr-2 inline-block" />
-            UKL3
-          </TabsTrigger>
-          <TabsTrigger
-            value="bs"
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
-          >
-            <GraduationCap size={15} className="mr-2 inline-block" />
-            BS
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      <div className="space-y-4 mb-6">
-        <div className="bg-gradient-to-r from-[#064e43] via-[#053d34] to-[#042822] rounded-3xl p-3.5 shadow-xl text-white relative overflow-hidden border border-emerald-500/20">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-superior-gold/10 blur-3xl -translate-y-1/2 translate-x-1/2 rounded-full pointer-events-none" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 relative z-10">
-            <SummaryCard
-              label="Overall Applicant Pipeline"
-              value={summaryStats.total}
-              active={feeFilter === "all" && admittedFilter === "all"}
-              onClick={() => {
-                setFeeFilter("all");
-                setAdmittedFilter("all");
-              }}
-              isDark={true}
-              hoverColor="hover:bg-white/10 hover:border-white/20"
-              iconColor="text-white"
-              bgColor="bg-white/10"
-              icon={Users}
-            />
-            <SummaryCard
-              label="Overall Full Paid"
-              value={summaryStats.fullPaid}
-              active={feeFilter === "Full Paid"}
-              onClick={() => setFeeFilter("Full Paid")}
-              isDark={true}
-              hoverColor="hover:bg-emerald-500/20 hover:border-emerald-500/30"
-              iconColor="text-emerald-400"
-              bgColor="bg-emerald-500/10"
-              icon={CheckCircle2}
-            />
-            <SummaryCard
-              label="Overall Partial Paid"
-              value={summaryStats.partialPaid}
-              active={feeFilter === "Partial Paid"}
-              onClick={() => setFeeFilter("Partial Paid")}
-              isDark={true}
-              hoverColor="hover:bg-amber-500/20 hover:border-amber-500/30"
-              iconColor="text-amber-400"
-              bgColor="bg-amber-500/10"
-              icon={CreditCard}
-            />
-            <SummaryCard
-              label="Overall Unpaid"
-              value={summaryStats.unpaid}
-              active={feeFilter === "Not Paid"}
-              onClick={() => setFeeFilter("Not Paid")}
-              isDark={true}
-              hoverColor="hover:bg-rose-500/20 hover:border-rose-500/30"
-              iconColor="text-rose-400"
-              bgColor="bg-rose-500/10"
-              icon={AlertCircle}
-            />
-          </div>
+            <span>Unpaid:</span>
+            <span className="font-black">{summaryStats.unpaid}</span>
+          </button>
         </div>
 
         {program && programStats.total > 0 && (
-          <>
-            <div className="w-full flex justify-center py-1 overflow-visible relative z-0">
-              <svg
-                viewBox="0 0 1000 10"
-                preserveAspectRatio="none"
-                className="w-full h-[6px] opacity-90 drop-shadow-md"
-              >
-                <path
-                  d="M 0 5 Q 500 10 1000 5 Q 500 0 0 5 Z"
-                  fill="url(#orange-lens)"
-                />
-                <defs>
-                  <linearGradient
-                    id="orange-lens"
-                    x1="0"
-                    y1="0"
-                    x2="1000"
-                    y2="0"
-                    gradientUnits="userSpaceOnUse"
-                  >
-                    <stop offset="0%" stopColor="#f97316" stopOpacity="0" />
-                    <stop offset="20%" stopColor="#f97316" stopOpacity="0.6" />
-                    <stop offset="50%" stopColor="#ea580c" stopOpacity="1" />
-                    <stop offset="80%" stopColor="#f97316" stopOpacity="0.6" />
-                    <stop offset="100%" stopColor="#f97316" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-              </svg>
-            </div>
-
-            <div className="bg-[#053b32] rounded-[1.5rem] p-3 shadow-xl text-white relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-superior-gold/5 blur-3xl -translate-y-1/2 translate-x-1/2 rounded-full pointer-events-none" />
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 relative z-10">
-                <SummaryCard
-                  label={`${programTitle} Pipeline`}
-                  value={programStats.total}
-                  subValue={
-                    program === "fsc"
-                      ? `(P1: ${programStats.part1}, P2: ${programStats.part2})`
-                      : program === "ukl3"
-                        ? `(DIT: ${programStats.dit}, BS: ${programStats.bs})`
-                        : ""
-                  }
-                  active={false}
-                  onClick={() => {}}
-                  isDark={true}
-                  hoverColor="hover:bg-white/10 hover:border-white/20"
-                  iconColor="text-white"
-                  bgColor="bg-white/10"
-                  icon={Users}
-                />
-                <SummaryCard
-                  label={`${programTitle} Full Paid`}
-                  value={programStats.fullPaid}
-                  active={false}
-                  onClick={() => {}}
-                  isDark={true}
-                  hoverColor="hover:bg-emerald-500/20 hover:border-emerald-500/30"
-                  iconColor="text-emerald-400"
-                  bgColor="bg-emerald-500/10"
-                  icon={CheckCircle2}
-                />
-                <SummaryCard
-                  label={`${programTitle} Partial Paid`}
-                  value={programStats.partialPaid}
-                  active={false}
-                  onClick={() => {}}
-                  isDark={true}
-                  hoverColor="hover:bg-amber-500/20 hover:border-amber-500/30"
-                  iconColor="text-amber-400"
-                  bgColor="bg-amber-500/10"
-                  icon={CreditCard}
-                />
-                <SummaryCard
-                  label={`${programTitle} Unpaid`}
-                  value={programStats.unpaid}
-                  active={false}
-                  onClick={() => {}}
-                  isDark={true}
-                  hoverColor="hover:bg-rose-500/20 hover:border-rose-500/30"
-                  iconColor="text-rose-400"
-                  bgColor="bg-rose-500/10"
-                  icon={AlertCircle}
-                />
-              </div>
-            </div>
-          </>
+          <div className="hidden lg:flex items-center gap-1 text-[11px] text-emerald-200 bg-white/10 px-2.5 py-0.5 rounded-xl">
+            <span className="font-bold">{programTitle}:</span>
+            <span>{programStats.total}</span>
+            {program === "fsc" && <span className="opacity-70">(P1: {programStats.part1}, P2: {programStats.part2})</span>}
+          </div>
         )}
       </div>
 
-      {/* 1-Click Photo Filter Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 bg-slate-50/90 p-3 rounded-2xl border border-slate-200/60 shadow-2xs">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 mr-1 flex items-center gap-1.5">
-            <Camera size={14} className="text-superior-teal" />
-            Photo Filter:
-          </span>
-          <button
-            onClick={() => setPhotoFilter("all")}
-            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
-              photoFilter === "all"
-                ? "bg-slate-900 text-white shadow-xs"
-                : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
-            }`}
-          >
-            <span>All Records</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${photoFilter === "all" ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}`}>
-              {photoStats.total}
-            </span>
-          </button>
+      {/* High-Density Unified Filter Toolbar */}
+      <div className="bg-white dark:bg-slate-900 p-2.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+          <div className="relative flex-1 min-w-[160px] max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            <Input
+              placeholder="Search name, father, ID..."
+              className="pl-8 h-8 rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-xs font-medium"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
 
-          <button
-            onClick={() => setPhotoFilter("with-photo")}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
-              photoFilter === "with-photo"
-                ? "bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/20"
-                : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/80"
-            }`}
-          >
-            <Camera size={13} />
-            <span>With Photos (Lagi Hui Hain)</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${photoFilter === "with-photo" ? "bg-emerald-800 text-white" : "bg-emerald-200/80 text-emerald-800"}`}>
-              {photoStats.withPhoto}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setPhotoFilter("missing-photo")}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
-              photoFilter === "missing-photo"
-                ? "bg-amber-600 text-white shadow-xs ring-2 ring-amber-500/20"
-                : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200/80"
-            }`}
-          >
-            <AlertCircle size={13} />
-            <span>Missing Photos</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${photoFilter === "missing-photo" ? "bg-amber-800 text-white" : "bg-amber-200/80 text-amber-800"}`}>
-              {photoStats.missingPhoto}
-            </span>
-          </button>
-        </div>
-
-        {photoFilter === "missing-photo" && photoStats.missingPhoto > 0 && (
-          <Button
-            size="sm"
-            onClick={() => handleOpenBulkWhatsAppModal()}
-            className="h-8 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs"
-          >
-            <MessageSquare size={13} />
-            <span>Request Photos via WhatsApp ({photoStats.missingPhoto})</span>
-          </Button>
-        )}
-      </div>
-
-      {/* Filters Bar */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-wrap items-center gap-5 mb-8 hover:border-superior-teal/20 transition-all duration-500">
-        <div className="relative flex-1 min-w-[320px]">
-          <Search
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-            size={18}
-          />
-          <Input
-            placeholder="Search by name, father name or ID..."
-            className="pl-12 h-12 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-medium"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
-        <div className="flex items-center gap-4">
           <Select value={genderFilter} onValueChange={setGenderFilter}>
-            <SelectTrigger className="w-[140px] h-12 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-slate-700">
+            <SelectTrigger className="w-[110px] h-8 rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-xs font-bold">
               <SelectValue placeholder="Gender" />
             </SelectTrigger>
-            <SelectContent className="rounded-xl border-slate-100 shadow-xl">
-              <SelectItem value="all">All Genders</SelectItem>
-              <SelectItem value="Male">Boys Only</SelectItem>
-              <SelectItem value="Female">Girls Only</SelectItem>
+            <SelectContent className="rounded-xl border-slate-200 shadow-xl">
+              <SelectItem value="all" className="text-xs">All Genders</SelectItem>
+              <SelectItem value="Male" className="text-xs">Boys Only</SelectItem>
+              <SelectItem value="Female" className="text-xs">Girls Only</SelectItem>
             </SelectContent>
           </Select>
 
           <Select value={admittedFilter} onValueChange={setAdmittedFilter}>
-            <SelectTrigger className="w-[170px] h-12 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-slate-700">
+            <SelectTrigger className="w-[125px] h-8 rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-xs font-bold">
               <SelectValue placeholder="Admission" />
             </SelectTrigger>
-            <SelectContent className="rounded-xl border-slate-100 shadow-xl">
-              <SelectItem value="all">All Applicants</SelectItem>
-              <SelectItem value="Admitted">Admitted Only</SelectItem>
-              <SelectItem value="Prospective">Prospective Only</SelectItem>
+            <SelectContent className="rounded-xl border-slate-200 shadow-xl">
+              <SelectItem value="all" className="text-xs">All Statuses</SelectItem>
+              <SelectItem value="Admitted" className="text-xs">Admitted Only</SelectItem>
+              <SelectItem value="Prospective" className="text-xs">Prospective</SelectItem>
             </SelectContent>
           </Select>
 
           <Select value={feeFilter} onValueChange={setFeeFilter}>
-            <SelectTrigger className="w-[180px] h-12 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-slate-700">
+            <SelectTrigger className="w-[125px] h-8 rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-xs font-bold">
               <SelectValue placeholder="Fee Status" />
             </SelectTrigger>
-            <SelectContent className="rounded-xl border-slate-100 shadow-xl">
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="Full Paid">Full Paid</SelectItem>
-              <SelectItem value="Partial Paid">Partial Paid</SelectItem>
-              <SelectItem value="Not Paid">Not Paid</SelectItem>
+            <SelectContent className="rounded-xl border-slate-200 shadow-xl">
+              <SelectItem value="all" className="text-xs">All Fees</SelectItem>
+              <SelectItem value="Full Paid" className="text-xs">Full Paid</SelectItem>
+              <SelectItem value="Partial Paid" className="text-xs">Partial Paid</SelectItem>
+              <SelectItem value="Not Paid" className="text-xs">Not Paid</SelectItem>
             </SelectContent>
           </Select>
 
-          <Button
-            onClick={() => handleOpenBulkWhatsAppModal()}
-            className="h-12 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-sm shrink-0"
-            title="Broadcast Admission Notices to Filtered Applicants"
-          >
-            <MessageSquare size={16} />
-            <span className="hidden sm:inline">Broadcast WhatsApp</span>
-          </Button>
+          {/* Photo Filter Pills */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setPhotoFilter("all")}
+              className={cn(
+                "px-2 py-1 rounded-lg font-bold transition-all",
+                photoFilter === "all" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs" : "text-slate-500"
+              )}
+            >
+              All ({photoStats.total})
+            </button>
+            <button
+              type="button"
+              onClick={() => setPhotoFilter("with-photo")}
+              className={cn(
+                "px-2 py-1 rounded-lg font-bold transition-all flex items-center gap-1",
+                photoFilter === "with-photo" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-500 hover:text-emerald-600"
+              )}
+            >
+              <Camera size={11} />
+              <span>Enrolled ({photoStats.withPhoto})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPhotoFilter("missing-photo")}
+              className={cn(
+                "px-2 py-1 rounded-lg font-bold transition-all flex items-center gap-1",
+                photoFilter === "missing-photo" ? "bg-amber-600 text-white shadow-xs" : "text-slate-500 hover:text-amber-600"
+              )}
+            >
+              <AlertCircle size={11} />
+              <span>Missing ({photoStats.missingPhoto})</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          {photoStats.missingPhoto > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleOpenBulkWhatsAppModal()}
+              className="h-8 px-2.5 rounded-xl border-amber-300 bg-amber-50 text-amber-800 font-bold text-xs flex items-center gap-1"
+              title="Request Missing Photos via WhatsApp"
+            >
+              <Smartphone size={13} />
+              <span className="hidden sm:inline">Request Photos ({photoStats.missingPhoto})</span>
+            </Button>
+          )}
 
           <Button
-            variant="outline"
-            className="h-12 w-12 rounded-xl border-slate-100 bg-slate-50 hover:bg-white transition-all p-0"
+            size="sm"
+            onClick={() => handleOpenBulkWhatsAppModal()}
+            className="h-8 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs"
+            title="Broadcast Admission Notices"
           >
-            <Filter size={18} className="text-slate-400" />
+            <MessageSquare size={14} />
+            <span className="hidden sm:inline">Broadcast WhatsApp</span>
           </Button>
         </div>
       </div>

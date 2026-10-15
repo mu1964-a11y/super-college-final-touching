@@ -431,269 +431,174 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
   );
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-        <div className="shrink-0 flex items-center gap-3">
-          <h2 className="text-3xl font-display font-black text-superior-teal tracking-tight whitespace-nowrap">
-            Leads Pipeline
-          </h2>
-          <span className="text-slate-300 text-2xl">/</span>
-          <span className="urdu-text text-2xl text-superior-gold font-medium whitespace-nowrap mt-1">مارکیٹنگ ڈیٹا</span>
-        </div>
-
-        <div className="shrink-0 flex items-center gap-4">
-          <Button 
-             onClick={generateFullReport}
-             variant="outline"
-             className="shrink-0 h-14 rounded-2xl border-slate-200 text-xs font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 gap-2 shadow-sm px-6"
-          >
-             <FileText size={16} className="text-superior-teal" /> Full Report
-          </Button>
-          <div className="bg-white px-6 py-2 rounded-2xl border border-slate-100 flex items-center gap-4 shadow-sm h-14">
-            <div className="text-right whitespace-nowrap hidden md:block">
-              <p className="text-[11px] font-black text-slate-700 leading-none uppercase tracking-widest mt-0.5">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-superior-teal/5 flex items-center justify-center text-superior-teal shadow-inner shrink-0">
-              <Database size={20} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Horizontal Insights & Pipeline Funnel */}
-      <div className="w-full bg-[#053b32] px-6 py-5 rounded-[2rem] shadow-xl text-white relative overflow-hidden flex flex-col xl:flex-row items-center justify-between gap-6 transition-all duration-500">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-superior-gold/5 blur-3xl -translate-y-1/2 translate-x-1/2 rounded-full pointer-events-none" />
-          
-          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 md:gap-8 flex-1 relative z-10 w-full">
-            <div className="flex items-center gap-3">
-               <div className="w-11 h-11 rounded-[1rem] bg-emerald-500/10 flex items-center justify-center shrink-0 border border-emerald-500/20">
-                  <BarChart3 className="text-emerald-400" size={22} />
-               </div>
-               <div>
-                 <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest leading-none mb-1.5">Total Leads</p>
-                 <p className="text-2xl font-black text-white leading-none">{filteredLeads.length}</p>
-               </div>
-            </div>
-
-            <div className="hidden sm:block h-10 w-px bg-white/10"></div>
-
-            {/* Pipeline Funnel Quick Filter Badges */}
-            <div className="flex items-center flex-wrap gap-2">
-              {[
-                { id: 'all', label: 'All', count: leads.length, color: 'bg-white/10 text-white hover:bg-white/20' },
-                { id: 'new', label: 'New', count: pipelineCounts.new, color: 'bg-blue-500/20 text-blue-200 border-blue-400/30 hover:bg-blue-500/30' },
-                { id: 'contacted', label: 'Contacted', count: pipelineCounts.contacted, color: 'bg-amber-500/20 text-amber-200 border-amber-400/30 hover:bg-amber-500/30' },
-                { id: 'visiting', label: 'Visiting', count: pipelineCounts.visiting, color: 'bg-purple-500/20 text-purple-200 border-purple-400/30 hover:bg-purple-500/30' },
-                { id: 'form_issued', label: 'Form Issued', count: pipelineCounts.form_issued, color: 'bg-indigo-500/20 text-indigo-200 border-indigo-400/30 hover:bg-indigo-500/30' },
-                { id: 'converted', label: 'Admitted', count: pipelineCounts.converted, color: 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30 hover:bg-emerald-500/30' }
-              ].map(f => (
-                <button
-                  key={f.id}
-                  onClick={() => setConvertedFilter(f.id)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer",
-                    convertedFilter === f.id
-                      ? "bg-superior-gold text-slate-950 border-superior-gold shadow-md scale-105"
-                      : f.color
-                  )}
-                >
-                  <span>{f.label}</span>
-                  <span className={cn(
-                    "px-1.5 py-0.2 rounded-full text-[10px] font-black",
-                    convertedFilter === f.id ? "bg-slate-950/20 text-slate-950" : "bg-black/20"
-                  )}>
-                    {f.count}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <div className="hidden xl:block h-10 w-px bg-white/10"></div>
-
-            <div className="hidden lg:flex flex-col justify-center flex-1">
-               <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest leading-none mb-2">Top Feeder Schools</p>
-               <div className="flex flex-wrap gap-1.5 overflow-hidden max-h-[70px]">
-                 {leadsBySchool.slice(0, 4).map(([school]) => (
-                   <Badge key={school} variant="outline" className="text-[10px] bg-white/5 text-white/90 border-white/20 px-2.5 py-0.5 whitespace-normal text-left h-auto rounded-full border">
-                     {school}
-                   </Badge>
-                 ))}
-               </div>
-            </div>
-          </div>
-      </div>
-
-      <div className="w-full flex justify-center py-1 overflow-visible relative z-0">
-        <svg
-          viewBox="0 0 1000 10"
-          preserveAspectRatio="none"
-          className="w-full h-[6px] opacity-90 drop-shadow-md"
-        >
-          <path
-            d="M 0 5 Q 500 10 1000 5 Q 500 0 0 5 Z"
-            fill="url(#orange-lens)"
-          />
-          <defs>
-            <linearGradient id="orange-lens" x1="0" y1="0" x2="1000" y2="0" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#f97316" stopOpacity="0" />
-              <stop offset="20%" stopColor="#f97316" stopOpacity="0.6" />
-              <stop offset="50%" stopColor="#ea580c" stopOpacity="1" />
-              <stop offset="80%" stopColor="#f97316" stopOpacity="0.6" />
-              <stop offset="100%" stopColor="#f97316" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-        </svg>
-      </div>
-
-      {/* Search and Filters */}
-      <div className="bg-[#f8fbfa] p-5 md:p-6 rounded-[1.5rem] border border-slate-200/60 shadow-sm flex flex-col gap-5 mb-10 transition-all duration-500 w-full relative z-10">
-        
-        {/* Row 1: Search & Main Action */}
-        <div className="flex flex-col lg:flex-row gap-4 w-full">
-          <div className="relative flex-1 group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-superior-teal transition-colors" size={18} />
-            <Input 
-              placeholder="Search by Student Name, School, Phone, City, or Specific Village/Town..." 
-              className="pl-12 h-12 bg-white border-slate-200 focus:bg-white focus:border-superior-teal/40 focus:ring-4 focus:ring-superior-teal/5 rounded-md transition-all font-medium text-slate-700 shadow-sm"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <div className="flex items-center gap-3 w-full lg:w-auto">
-            <Button 
-              className="bg-[#053b32] text-white hover:bg-[#042f28] rounded-md h-12 px-6 shrink-0 font-bold uppercase tracking-[0.1em] text-[11px] transition-all shadow-md active:scale-95 flex items-center gap-2 flex-1 lg:flex-initial"
-              onClick={() => setDialogType('add')}
-            >
-              <Plus size={18} /> Add Lead Record
-            </Button>
-            <Button
-              onClick={() => handleOpenBulkWhatsAppModal()}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-md h-12 px-6 shrink-0 font-bold uppercase tracking-[0.1em] text-[11px] transition-all shadow-md active:scale-95 flex items-center gap-2 flex-1 lg:flex-initial"
-              title="Broadcast WhatsApp Welcome & Prospectus to Filtered Leads"
-            >
-              <MessageSquare size={16} /> Broadcast WhatsApp
-            </Button>
-          </div>
-        </div>
-
-        {/* Row 2: Expanded Filters */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="space-y-1.5">
-            <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Filter by School</Label>
-            <Select value={schoolFilter} onValueChange={setSchoolFilter}>
-              <SelectTrigger className="h-11 rounded-md bg-white border-slate-200 focus:bg-white focus:border-superior-teal/40 focus:ring-4 focus:ring-superior-teal/5 transition-all font-semibold text-slate-700 shadow-sm w-full">
-                <SelectValue placeholder="All Schools" />
-              </SelectTrigger>
-              <SelectContent className="rounded-md border-slate-200 shadow-xl max-h-[400px] min-w-[350px]">
-                <SelectItem value="all" className="font-bold">All Schools Pool</SelectItem>
-                {schools.map(s => <SelectItem key={s} value={s} className="text-sm py-2 px-3 whitespace-nowrap">{s}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Filter by Area/Village</Label>
-            <Select value={areaFilter} onValueChange={setAreaFilter}>
-              <SelectTrigger className="h-11 rounded-md bg-white border-slate-200 focus:bg-white focus:border-superior-teal/40 focus:ring-4 focus:ring-superior-teal/5 transition-all font-semibold text-slate-700 shadow-sm w-full">
-                <SelectValue placeholder="All Area/City" />
-              </SelectTrigger>
-              <SelectContent className="rounded-md border-slate-200 shadow-xl max-h-[400px] min-w-[300px]">
-                <SelectItem value="all" className="font-bold">All Geographical Areas</SelectItem>
-                {areas.map(a => <SelectItem key={a} value={a} className="text-sm py-2 px-3 whitespace-nowrap">{a}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Filter by Class</Label>
-            <Select value={classFilter} onValueChange={setClassFilter}>
-              <SelectTrigger className="h-11 rounded-md bg-white border-slate-200 focus:bg-white focus:border-superior-teal/40 focus:ring-4 focus:ring-superior-teal/5 transition-all font-semibold text-slate-700 shadow-sm w-full">
-                <SelectValue placeholder="All Classes" />
-              </SelectTrigger>
-              <SelectContent className="rounded-md border-slate-200 shadow-xl max-h-[400px] min-w-[250px]">
-                <SelectItem value="all" className="font-bold">All Class Levels</SelectItem>
-                {classes.map(c => <SelectItem key={c} value={c} className="text-sm py-2 px-3 whitespace-nowrap">{c}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Lead Source</Label>
-            <Select value={sourceFilter} onValueChange={setSourceFilter}>
-              <SelectTrigger className="h-11 rounded-md bg-white border-slate-200 focus:bg-white focus:border-superior-teal/40 focus:ring-4 focus:ring-superior-teal/5 transition-all font-semibold text-slate-700 shadow-sm w-full">
-                <SelectValue placeholder="All Sources" />
-              </SelectTrigger>
-              <SelectContent className="rounded-md border-slate-200 shadow-xl">
-                <SelectItem value="all" className="font-bold text-slate-700">All Sources Pool</SelectItem>
-                <SelectItem value="Website Form" className="font-bold text-blue-600">🌐 Website Form</SelectItem>
-                <SelectItem value="WhatsApp AI" className="font-bold text-emerald-600">💬 WhatsApp AI</SelectItem>
-                <SelectItem value="Campus Desk" className="font-bold text-slate-700">🏢 Campus Desk</SelectItem>
-                {sources.filter(s => !['Website Form', 'WhatsApp AI', 'Campus Desk'].includes(s)).map(s => (
-                  <SelectItem key={s} value={s} className="font-medium text-slate-600">{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Pipeline Stage</Label>
-            <Select value={convertedFilter} onValueChange={setConvertedFilter}>
-              <SelectTrigger className="h-11 rounded-md bg-white border-slate-200 focus:bg-white focus:border-superior-teal/40 focus:ring-4 focus:ring-superior-teal/5 transition-all font-semibold text-slate-700 shadow-sm w-full">
-                <SelectValue placeholder="All Stages" />
-              </SelectTrigger>
-              <SelectContent className="rounded-md border-slate-200 shadow-xl">
-                <SelectItem value="all" className="font-bold text-slate-700">All Pipeline Stages</SelectItem>
-                <SelectItem value="new" className="font-bold text-blue-600">New Raw Leads ({pipelineCounts.new})</SelectItem>
-                <SelectItem value="contacted" className="font-bold text-amber-600">Contacted ({pipelineCounts.contacted})</SelectItem>
-                <SelectItem value="visiting" className="font-bold text-purple-600">Campus Visit ({pipelineCounts.visiting})</SelectItem>
-                <SelectItem value="form_issued" className="font-bold text-indigo-600">Form Issued ({pipelineCounts.form_issued})</SelectItem>
-                <SelectItem value="converted" className="font-bold text-emerald-600">Converted / Admitted ({pipelineCounts.converted})</SelectItem>
-                <SelectItem value="pending" className="font-bold text-slate-600">All Unconverted</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {/* Row 4: Totals & Formats */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-3 border-t border-slate-200/60 w-full">
-          <div className="flex items-center gap-2.5 px-4 py-2 bg-white text-[#053b32] rounded-md border border-slate-200 shadow-sm w-full md:w-auto overflow-hidden">
-            <Info size={16} className="text-superior-teal shrink-0" />
-            <span className="text-[10px] font-bold uppercase tracking-wider truncate">
-              {searchTerm || schoolFilter !== 'all' || areaFilter !== 'all' || classFilter !== 'all' 
-                ? `Showing ${filteredLeads.length} Records Found`
-                : `Total Leads in System: ${leads.length}`}
+    <div className="space-y-3">
+      {/* Compact Top Header & Pipeline Ribbon (< 45px) */}
+      <div className="flex flex-wrap justify-between items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h2 className="text-xl font-display font-black text-superior-teal tracking-tight flex items-center gap-2 whitespace-nowrap">
+            <span>Leads Pipeline</span>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-800 border border-emerald-500/20">
+              {filteredLeads.length}
             </span>
+          </h2>
+
+          {/* Inline Pipeline Funnel Quick Filter Badges */}
+          <div className="flex items-center flex-wrap gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/80">
+            {[
+              { id: 'all', label: 'All', count: leads.length },
+              { id: 'new', label: 'New', count: pipelineCounts.new },
+              { id: 'contacted', label: 'Contacted', count: pipelineCounts.contacted },
+              { id: 'visiting', label: 'Visiting', count: pipelineCounts.visiting },
+              { id: 'form_issued', label: 'Form Issued', count: pipelineCounts.form_issued },
+              { id: 'converted', label: 'Admitted', count: pipelineCounts.converted }
+            ].map(f => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setConvertedFilter(f.id)}
+                className={cn(
+                  "px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer",
+                  convertedFilter === f.id
+                    ? "bg-[#053b32] text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                )}
+              >
+                <span>{f.label}</span>
+                <span className={cn(
+                  "px-1.5 py-0.2 rounded-full text-[10px] font-black",
+                  convertedFilter === f.id ? "bg-white/20 text-white" : "bg-slate-200/80 text-slate-700"
+                )}>
+                  {f.count}
+                </span>
+              </button>
+            ))}
           </div>
-          
-          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleFileUpload} 
-              className="hidden" 
-              accept=".xlsx, .xls"
-            />
-            <div className="flex flex-col items-end">
-              <Button variant="ghost" className="rounded-md text-slate-500 hover:text-superior-teal hover:bg-slate-200/50 gap-2 font-bold uppercase tracking-widest text-[10px] h-9 px-3" onClick={() => fileInputRef.current?.click()}>
-                <Upload size={14} /> Bulk Import
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button 
+            onClick={generateFullReport}
+            variant="outline"
+            size="sm"
+            className="h-8.5 rounded-xl border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 gap-1.5 shadow-xs px-3"
+          >
+            <FileText size={14} className="text-superior-teal" />
+            <span className="hidden sm:inline">Report</span>
+          </Button>
+          <Button 
+            size="sm"
+            className="bg-[#053b32] text-white hover:bg-[#042f28] rounded-xl h-8.5 px-3.5 font-bold text-xs transition-all shadow-xs flex items-center gap-1.5"
+            onClick={() => setDialogType('add')}
+          >
+            <Plus size={15} /> Add Lead
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => handleOpenBulkWhatsAppModal()}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl h-8.5 px-3.5 font-bold text-xs transition-all shadow-xs flex items-center gap-1.5"
+            title="Broadcast WhatsApp Welcome & Prospectus"
+          >
+            <MessageSquare size={14} />
+            <span className="hidden md:inline">Broadcast</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* High-Density Filter Bar (< 42px) */}
+      <div className="bg-white p-2.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-wrap items-center gap-2 w-full">
+        <div className="relative flex-1 min-w-[180px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+          <Input 
+            placeholder="Search name, school, phone, area..." 
+            className="pl-8 h-8 text-xs bg-slate-50 border-slate-200 rounded-xl font-medium text-slate-700"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        <div className="w-[170px]">
+          <Select value={schoolFilter} onValueChange={setSchoolFilter}>
+            <SelectTrigger className="h-8 rounded-xl bg-slate-50 border-slate-200 text-xs font-semibold text-slate-700 w-full">
+              <SelectValue placeholder="All Schools" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border-slate-200 shadow-xl max-h-[300px] min-w-[280px]">
+              <SelectItem value="all" className="font-bold text-xs">All Schools Pool</SelectItem>
+              {schools.map(s => <SelectItem key={s} value={s} className="text-xs py-1.5 whitespace-nowrap">{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="w-[150px]">
+          <Select value={areaFilter} onValueChange={setAreaFilter}>
+            <SelectTrigger className="h-8 rounded-xl bg-slate-50 border-slate-200 text-xs font-semibold text-slate-700 w-full">
+              <SelectValue placeholder="All Area/City" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border-slate-200 shadow-xl max-h-[300px] min-w-[220px]">
+              <SelectItem value="all" className="font-bold text-xs">All Geographical Areas</SelectItem>
+              {areas.map(a => <SelectItem key={a} value={a} className="text-xs py-1.5 whitespace-nowrap">{a}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="w-[130px]">
+          <Select value={classFilter} onValueChange={setClassFilter}>
+            <SelectTrigger className="h-8 rounded-xl bg-slate-50 border-slate-200 text-xs font-semibold text-slate-700 w-full">
+              <SelectValue placeholder="All Classes" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border-slate-200 shadow-xl max-h-[300px] min-w-[180px]">
+              <SelectItem value="all" className="font-bold text-xs">All Class Levels</SelectItem>
+              {classes.map(c => <SelectItem key={c} value={c} className="text-xs py-1.5 whitespace-nowrap">{c}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="w-[140px]">
+          <Select value={sourceFilter} onValueChange={setSourceFilter}>
+            <SelectTrigger className="h-8 rounded-xl bg-slate-50 border-slate-200 text-xs font-semibold text-slate-700 w-full">
+              <SelectValue placeholder="All Sources" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border-slate-200 shadow-xl">
+              <SelectItem value="all" className="font-bold text-xs text-slate-700">All Sources</SelectItem>
+              <SelectItem value="Website Form" className="font-bold text-xs text-blue-600">🌐 Website Form</SelectItem>
+              <SelectItem value="WhatsApp AI" className="font-bold text-xs text-emerald-600">💬 WhatsApp AI</SelectItem>
+              <SelectItem value="Campus Desk" className="font-bold text-xs text-slate-700">🏢 Campus Desk</SelectItem>
+              {sources.filter(s => !['Website Form', 'WhatsApp AI', 'Campus Desk'].includes(s)).map(s => (
+                <SelectItem key={s} value={s} className="text-xs text-slate-600">{s}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-1.5 ml-auto">
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileUpload} 
+            className="hidden" 
+            accept=".xlsx, .xls"
+          />
+          <DropdownMenu>
+            <DropdownMenuTrigger render={
+              <Button variant="outline" size="sm" className="h-8 px-2.5 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs flex items-center gap-1">
+                <MoreHorizontal size={14} />
+                <span className="hidden sm:inline">Actions</span>
               </Button>
-              <button onClick={downloadSampleExcel} className="text-[9px] font-bold uppercase tracking-widest text-slate-400 hover:text-superior-teal hover:underline mt-0.5 pr-3">Download Format</button>
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger className="rounded-md text-slate-500 hover:text-superior-teal hover:bg-slate-200/50 gap-2 font-bold uppercase tracking-widest text-[10px] h-9 px-3 flex items-center justify-center border border-transparent outline-hidden transition-all">
-                <Download size={14} /> Export
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="rounded-2xl border-slate-100 shadow-xl p-2">
-                <DropdownMenuItem onClick={exportToExcel} className="gap-3 p-3 rounded-xl font-bold text-emerald-600 cursor-pointer">
-                  <FileSpreadsheet size={16} /> Export to Excel
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={exportToPDF} className="gap-3 p-3 rounded-xl font-bold text-rose-600 cursor-pointer">
-                  <FileText size={16} /> Export to PDF
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+            } />
+            <DropdownMenuContent align="end" className="w-52 p-2 rounded-2xl shadow-xl border-slate-200">
+              <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="rounded-lg py-2 cursor-pointer text-xs font-semibold">
+                <Upload size={14} className="mr-2 text-blue-600" /> Bulk Import
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={downloadSampleExcel} className="rounded-lg py-2 cursor-pointer text-xs font-semibold">
+                <FileSpreadsheet size={14} className="mr-2 text-slate-500" /> Download Format
+              </DropdownMenuItem>
+              <Separator className="my-1.5" />
+              <DropdownMenuItem onClick={exportToExcel} className="rounded-lg py-2 cursor-pointer text-xs font-semibold text-emerald-600">
+                <FileSpreadsheet size={14} className="mr-2 text-emerald-600" /> Export Excel
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={exportToPDF} className="rounded-lg py-2 cursor-pointer text-xs font-semibold text-rose-600">
+                <FileText size={14} className="mr-2 text-rose-600" /> Export PDF
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
