@@ -38,6 +38,7 @@ import {
   MessageSquare,
   Sparkles,
   Share2,
+  FileText,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
@@ -85,6 +86,8 @@ import { HighlightText } from "./HighlightText";
 import { toast } from "sonner";
 import { exportElementToPdf } from "../utils/documentExporter";
 import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import FeeReceipt from "./FeeReceipt";
 import AdmissionSlip from "./AdmissionSlip";
 import { compressImage } from "../lib/imageUtils";
@@ -576,8 +579,12 @@ export default function AdmissionsView({
     setDialogType("bulkDelete");
   };
 
-  const handleExportCSV = () => {
-    const exportData = filteredAdmissions.map((a) => ({
+  const handleExportCSV = (customList?: Admission[]) => {
+    const target = customList || (selectedAdmissions.length > 0
+      ? filteredAdmissions.filter((a) => selectedAdmissions.includes(a.id))
+      : filteredAdmissions);
+
+    const exportData = target.map((a) => ({
       "Student ID": a.studentId || "PENDING",
       "Registration #": a.id,
       Name: a.fullName,
@@ -585,15 +592,19 @@ export default function AdmissionsView({
       Gender: a.gender,
       DOB: a.dob,
       CNIC: a.cnic,
+      Contact: a.contactNumber || a.fatherContact || "",
       Category: a.category,
       "Program/Group": a.group,
-      Session: a.session,
-      "Total Package": a.totalPackage || "",
+      Section: a.section || "",
+      Session: a.session || selectedSession || "",
+      "Total Package": a.totalPackage || a.totalFeeFinalized || 0,
+      "Fee Received": a.feeReceived || 0,
+      "Remaining Balance": (Number(a.totalPackage || a.totalFeeFinalized || 0) - Number(a.feeReceived || 0)),
       Status: a.status,
     }));
 
     if (exportData.length === 0) {
-      toast.error("No data to export");
+      toast.error("No candidate data to export");
       return;
     }
 
@@ -606,7 +617,7 @@ export default function AdmissionsView({
       link.setAttribute("href", url);
       link.setAttribute(
         "download",
-        `admissions_export_${new Date().toISOString().split("T")[0]}.csv`,
+        `admissions_export_${selectedSession || '2026-28'}_${new Date().toISOString().split("T")[0]}.csv`,
       );
       link.style.visibility = "hidden";
       document.body.appendChild(link);
@@ -615,8 +626,12 @@ export default function AdmissionsView({
     }
   };
 
-  const handleExportExcel = () => {
-    const exportData = filteredAdmissions.map((a) => ({
+  const handleExportExcel = (customList?: Admission[]) => {
+    const target = customList || (selectedAdmissions.length > 0
+      ? filteredAdmissions.filter((a) => selectedAdmissions.includes(a.id))
+      : filteredAdmissions);
+
+    const exportData = target.map((a) => ({
       "Student ID": a.studentId || "PENDING",
       "Registration #": a.id,
       Name: a.fullName,
@@ -624,15 +639,19 @@ export default function AdmissionsView({
       Gender: a.gender,
       DOB: a.dob,
       CNIC: a.cnic,
+      Contact: a.contactNumber || a.fatherContact || "",
       Category: a.category,
       "Program/Group": a.group,
-      Session: a.session,
-      "Total Package": a.totalPackage || "",
+      Section: a.section || "",
+      Session: a.session || selectedSession || "",
+      "Total Package": a.totalPackage || a.totalFeeFinalized || 0,
+      "Fee Received": a.feeReceived || 0,
+      "Remaining Balance": (Number(a.totalPackage || a.totalFeeFinalized || 0) - Number(a.feeReceived || 0)),
       Status: a.status,
     }));
 
     if (exportData.length === 0) {
-      toast.error("No data to export");
+      toast.error("No candidate data to export");
       return;
     }
 
@@ -641,8 +660,222 @@ export default function AdmissionsView({
     XLSX.utils.book_append_sheet(wb, ws, "Admissions");
     XLSX.writeFile(
       wb,
-      `admissions_export_${new Date().toISOString().split("T")[0]}.xlsx`,
+      `admissions_export_${selectedSession || '2026-28'}_${new Date().toISOString().split("T")[0]}.xlsx`,
     );
+    toast.success(`Excel file downloaded with ${target.length} records!`);
+  };
+
+  const handleExportPDF = (customList?: Admission[]) => {
+    const target = customList || (selectedAdmissions.length > 0
+      ? filteredAdmissions.filter((a) => selectedAdmissions.includes(a.id))
+      : filteredAdmissions);
+
+    if (target.length === 0) {
+      toast.error("No candidate records found to export.");
+      return;
+    }
+
+    try {
+      toast.loading("Generating Admissions PDF Report...", { id: "adm-pdf" });
+      const doc = new jsPDF("landscape", "pt", "a4");
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+
+      const isCustomSelection = selectedAdmissions.length > 0 && target.length === selectedAdmissions.length;
+      const sessionLabel = selectedSession || data?.settings?.academicSession || "2026-28";
+      const campusLabel = data?.settings?.campusName || data?.settings?.collegeName || "Jahanian Campus";
+
+      // 1. TOP HEADER BANNER (Superior Teal #085a4e)
+      doc.setFillColor(8, 90, 78);
+      doc.rect(0, 0, pageWidth, 58, "F");
+
+      // College Title
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(15);
+      doc.text("SUPERIOR GROUP OF COLLEGES", 36, 25);
+
+      // Gold Subtitle
+      doc.setTextColor(201, 168, 76);
+      doc.setFontSize(10.5);
+      doc.text("ADMISSIONS PIPELINE & CANDIDATE INTAKE REPORT", 36, 40);
+
+      // Right Campus & Session badge
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.text(`${campusLabel}  |  Session ${sessionLabel}`, pageWidth - 36, 28, { align: "right" });
+      doc.setFontSize(7.5);
+      doc.setTextColor(200, 230, 220);
+      doc.text(`Generated on ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} at ${new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}`, pageWidth - 36, 42, { align: "right" });
+
+      // 2. CONTEXT & METADATA BAR (Explains what this record is)
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(36, 68, pageWidth - 72, 34, 5, 5, "FD");
+
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+
+      const scopeText = isCustomSelection 
+        ? `Scope: Selected Candidates (${target.length} records)` 
+        : `Scope: Filtered Pipeline (${target.length} records)`;
+      const groupText = `Program: ${localProgram && localProgram !== 'all' ? localProgram.toUpperCase() : 'All Programs'}`;
+      const feeText = `Fee Category: ${feeFilter === 'all' ? 'All (Full Paid, Partial, Unpaid)' : feeFilter}`;
+      const userText = `Admin: ${data?.currentUser?.displayName || data?.currentUser?.email?.split('@')[0] || 'Administrator'}`;
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(8, 90, 78);
+      doc.text(scopeText, 48, 82);
+      doc.setTextColor(71, 85, 105);
+      doc.setFont("helvetica", "normal");
+      doc.text(`|   ${groupText}   |   ${feeText}   |   ${userText}`, 48 + doc.getTextWidth(scopeText) + 8, 82);
+
+      // Financial totals
+      let totalGross = 0;
+      let totalReceived = 0;
+      target.forEach((a) => {
+        const pkg = Number(a.totalPackage || a.totalFeeFinalized || 0);
+        const rec = Number(a.feeReceived || 0);
+        totalGross += pkg;
+        totalReceived += rec;
+      });
+      const totalRemaining = totalGross - totalReceived;
+
+      doc.setFont("helvetica", "bold");
+      doc.text(
+        `Total Package: Rs. ${totalGross.toLocaleString()}   |   Received: Rs. ${totalReceived.toLocaleString()}   |   Outstanding Balance: Rs. ${totalRemaining.toLocaleString()}`,
+        48,
+        93
+      );
+
+      // 3. TABLE GENERATION
+      autoTable(doc, {
+        startY: 110,
+        margin: { left: 36, right: 36, bottom: 55 },
+        head: [[
+          "#",
+          "Student ID",
+          "Applicant Name",
+          "Father Name",
+          "Contact / WhatsApp",
+          "Program & Group",
+          "Sec",
+          "Total Fee",
+          "Paid",
+          "Remaining",
+          "Status"
+        ]],
+        body: target.map((a, idx) => {
+          const pkg = Number(a.totalPackage || a.totalFeeFinalized || 0);
+          const rec = Number(a.feeReceived || 0);
+          const rem = pkg - rec;
+          let statusText = "Pending";
+          if (a.isAdmitted || (a.status as string) === "Admitted") statusText = "Admitted";
+          else if (rec >= pkg && pkg > 0) statusText = "Full Paid";
+          else if (rec > 0) statusText = "Partial Paid";
+          else statusText = "Unpaid";
+
+          return [
+            String(idx + 1),
+            a.studentId || a.collegeNo || `Pending (${a.id.slice(-4)})`,
+            a.fullName || "-",
+            a.fatherName || "-",
+            a.contactNumber || a.fatherContact || "-",
+            `${a.category || ''} ${a.group ? `(${a.group})` : ''}`.trim() || "-",
+            a.section && a.section !== '-' ? a.section : "-",
+            `Rs. ${pkg.toLocaleString()}`,
+            `Rs. ${rec.toLocaleString()}`,
+            `Rs. ${rem.toLocaleString()}`,
+            statusText
+          ];
+        }),
+        foot: [[
+          "Total",
+          "",
+          `${target.length} Candidate(s)`,
+          "",
+          "",
+          "",
+          "",
+          `Rs. ${totalGross.toLocaleString()}`,
+          `Rs. ${totalReceived.toLocaleString()}`,
+          `Rs. ${totalRemaining.toLocaleString()}`,
+          ""
+        ]],
+        theme: "grid",
+        styles: {
+          fontSize: 7.5,
+          cellPadding: 3.5,
+          valign: "middle",
+          lineColor: [226, 232, 240],
+          lineWidth: 0.5,
+        },
+        headStyles: {
+          fillColor: [8, 90, 78],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+          fontSize: 8,
+          halign: "center",
+        },
+        columnStyles: {
+          0: { cellWidth: 22, halign: "center" },
+          1: { cellWidth: 68, fontStyle: "bold", textColor: [8, 90, 78] },
+          2: { cellWidth: 95, fontStyle: "bold" },
+          3: { cellWidth: 90 },
+          4: { cellWidth: 80 },
+          5: { cellWidth: 90 },
+          6: { cellWidth: 28, halign: "center" },
+          7: { cellWidth: 65, halign: "right", fontStyle: "bold" },
+          8: { cellWidth: 62, halign: "right", textColor: [16, 149, 106], fontStyle: "bold" },
+          9: { cellWidth: 65, halign: "right", textColor: [225, 29, 72], fontStyle: "bold" },
+          10: { cellWidth: 55, halign: "center", fontStyle: "bold" },
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252],
+        },
+        footStyles: {
+          fillColor: [241, 245, 249],
+          textColor: [15, 23, 42],
+          fontStyle: "bold",
+          fontSize: 8,
+          halign: "right",
+        },
+        didDrawPage: () => {
+          const str = `Page ${doc.getNumberOfPages()}`;
+          doc.setFontSize(7.5);
+          doc.setTextColor(148, 163, 184);
+          doc.text(str, pageWidth - 40, pageHeight - 16, { align: "right" });
+          doc.text("Superior Group of Colleges Jahanian • Official Admissions Record", 36, pageHeight - 16);
+        }
+      });
+
+      // 4. SIGNATURE LINES on the last page
+      const finalY = (doc as any).lastAutoTable?.finalY || 400;
+      const signatureY = finalY + 45 > pageHeight - 40 ? pageHeight - 35 : finalY + 35;
+      
+      if (signatureY < pageHeight - 20) {
+        doc.setDrawColor(203, 213, 225);
+        doc.setLineWidth(0.8);
+        doc.line(60, signatureY, 200, signatureY);
+        doc.line(340, signatureY, 480, signatureY);
+        doc.line(620, signatureY, 760, signatureY);
+
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(71, 85, 105);
+        doc.text("Prepared By (Incharge)", 130, signatureY + 12, { align: "center" });
+        doc.text("Accounts Verification", 410, signatureY + 12, { align: "center" });
+        doc.text("Principal / Campus Director", 690, signatureY + 12, { align: "center" });
+      }
+
+      const fileName = `SGC_Admissions_${sessionLabel.replace(/[^a-zA-Z0-9]/g, '_')}_${isCustomSelection ? 'Selected_' + target.length : 'All_' + target.length}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      doc.save(fileName);
+      toast.success(`PDF Report successfully generated for ${target.length} candidate(s)!`, { id: "adm-pdf" });
+    } catch (err: any) {
+      console.error("PDF Export Error:", err);
+      toast.error(`Failed to generate PDF: ${err.message}`, { id: "adm-pdf" });
+    }
   };
 
   const handleDownloadFormat = () => {
@@ -973,6 +1206,13 @@ export default function AdmissionsView({
                 Bulk Import Admissions
               </DropdownMenuItem>
               <Separator className="my-2" />
+              <DropdownMenuItem
+                onClick={() => handleExportPDF()}
+                className="rounded-lg py-3 cursor-pointer text-slate-700 hover:text-slate-900"
+              >
+                <FileText size={16} className="mr-2 text-rose-600" />
+                Export to PDF Report
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={handleExportExcel}
                 className="rounded-lg py-3 cursor-pointer"
@@ -1466,53 +1706,93 @@ export default function AdmissionsView({
       {/* Bulk Actions Bar */}
       {selectedAdmissions.length > 0 && (
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="sticky top-4 z-30 flex items-center justify-between p-4 bg-superior-teal rounded-2xl shadow-2xl text-white mb-6 border border-white/10"
+          initial={{ opacity: 0, y: -10, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -10, scale: 0.98 }}
+          className="sticky top-4 z-30 flex flex-wrap items-center justify-between gap-3 p-3.5 sm:p-4 bg-gradient-to-r from-[#085a4e] via-[#0b6e60] to-[#085a4e] rounded-2xl shadow-2xl text-white mb-6 border border-emerald-400/30 backdrop-blur-md"
         >
-          <div className="flex items-center gap-4 pl-2">
+          <div className="flex items-center gap-3 pl-1">
             <Checkbox
-              checked={selectedAdmissions.length === filteredAdmissions.length}
+              checked={
+                selectedAdmissions.length === filteredAdmissions.length &&
+                filteredAdmissions.length > 0
+              }
               onCheckedChange={toggleSelectAll}
-              className="border-white data-[state=checked]:bg-white data-[state=checked]:text-superior-teal"
+              className="border-white/80 data-[state=checked]:bg-white data-[state=checked]:text-[#085a4e] rounded-md h-4.5 w-4.5"
             />
             <div className="flex flex-col">
-              <p className="text-sm font-black uppercase tracking-widest">
-                {selectedAdmissions.length} record
-                {selectedAdmissions.length > 1 ? "s" : ""} selected
-              </p>
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-xs font-black tracking-wide">
+                  {selectedAdmissions.length} Selected
+                </span>
+                <span className="text-[11px] text-emerald-100/90 font-semibold hidden md:inline">
+                  ({Math.round((selectedAdmissions.length / (filteredAdmissions.length || 1)) * 100)}% of {filteredAdmissions.length} matching)
+                </span>
+              </div>
               {selectedAdmissions.length < filteredAdmissions.length && (
                 <button
+                  type="button"
                   onClick={() =>
                     setSelectedAdmissions(filteredAdmissions.map((a) => a.id))
                   }
-                  className="text-[10px] font-black underline uppercase tracking-tighter opacity-70 hover:opacity-100 text-left"
+                  className="text-[11px] font-bold text-amber-300 hover:text-white underline underline-offset-2 transition-colors text-left mt-0.5"
                 >
-                  Select all {filteredAdmissions.length} matching records
+                  Select all {filteredAdmissions.length} matching candidates
                 </button>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center flex-wrap gap-2">
+            {/* Quick Bulk PDF Report */}
             <Button
-              variant="outline"
-              onClick={() => setSelectedAdmissions([])}
-              className="h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 font-black text-[10px] uppercase tracking-widest px-4"
+              onClick={() => handleExportPDF()}
+              className="h-9 sm:h-10 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[11px] uppercase tracking-wider px-3.5 shadow-md flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 border-none"
+              title="Download official PDF report for selected candidates"
             >
-              Cancel
+              <FileText size={15} className="text-slate-950 shrink-0" />
+              <span>Download PDF ({selectedAdmissions.length})</span>
             </Button>
+
+            {/* Excel Export */}
+            <Button
+              onClick={() => handleExportExcel()}
+              variant="outline"
+              className="h-9 sm:h-10 rounded-xl border-white/30 bg-white/10 hover:bg-white/20 text-white font-bold text-[11px] uppercase tracking-wider px-3 hidden sm:flex items-center gap-1.5 transition-colors"
+              title="Export selected candidates to Excel"
+            >
+              <FileSpreadsheet size={15} className="text-emerald-300 shrink-0" />
+              <span>Excel</span>
+            </Button>
+
+            {/* WhatsApp Broadcast */}
             <Button
               onClick={() => handleOpenBulkWhatsAppModal(selectedAdmissions)}
-              className="h-10 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 border-none font-black text-[10px] uppercase tracking-widest px-4 shadow-lg shadow-black/20 flex items-center gap-1.5"
+              className="h-9 sm:h-10 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-[11px] uppercase tracking-wider px-3.5 shadow-md flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 border-none"
+              title="Send WhatsApp notice to selected candidates"
             >
-              <MessageSquare size={14} /> WhatsApp ({selectedAdmissions.length})
+              <MessageSquare size={14} className="shrink-0" />
+              <span>WhatsApp ({selectedAdmissions.length})</span>
             </Button>
+
+            {/* Bulk Delete */}
             <Button
               onClick={handleBulkDelete}
               variant="destructive"
-              className="h-10 rounded-xl bg-white text-rose-600 hover:bg-rose-50 border-none font-black text-[10px] uppercase tracking-widest px-4 shadow-lg shadow-black/20"
+              className="h-9 sm:h-10 rounded-xl bg-rose-500/90 hover:bg-rose-600 text-white font-black text-[11px] uppercase tracking-wider px-3 shadow-md flex items-center gap-1 transition-colors border-none"
+              title="Delete selected candidates"
             >
-              <Trash2 size={14} className="mr-1.5" /> Delete All Selected
+              <Trash2 size={14} className="shrink-0" />
+              <span className="hidden lg:inline">Delete</span>
+            </Button>
+
+            {/* Clear / Cancel */}
+            <Button
+              variant="ghost"
+              onClick={() => setSelectedAdmissions([])}
+              className="h-9 sm:h-10 rounded-xl hover:bg-white/15 text-white/90 hover:text-white font-bold text-[11px] uppercase tracking-wider px-3 transition-colors"
+            >
+              Cancel
             </Button>
           </div>
         </motion.div>
@@ -1598,25 +1878,29 @@ export default function AdmissionsView({
                         toggleSelectAdmission(admission.id);
                       }}
                       className={cn(
-                        "group transition-all border-slate-50 cursor-pointer relative",
+                        "group transition-all border-slate-100 cursor-pointer relative",
                         selectedAdmissions.includes(admission.id)
-                          ? "bg-superior-bg-teal"
-                          : "hover:bg-slate-50/50",
+                          ? "bg-emerald-50/80 hover:bg-emerald-100/70 border-l-4 border-l-[#085a4e] shadow-2xs"
+                          : "hover:bg-slate-50/70",
                         isNew && !admission.isAdmitted
                           ? "bg-red-50/20 border-l-[3px] border-l-red-500 hover:bg-red-50"
                           : "",
                       )}
                     >
-                      <TableCell className="pl-8 relative">
+                      <TableCell
+                        className="pl-8 relative"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         {isNew && !admission.isAdmitted && (
                           <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] animate-pulse" />
                         )}
                         <Checkbox
                           checked={selectedAdmissions.includes(admission.id)}
-                          onCheckedChange={() =>
-                            toggleSelectAdmission(admission.id)
-                          }
-                          className="rounded-md border-slate-300"
+                          onCheckedChange={() => {
+                            data.markActioned?.(admission.id);
+                            toggleSelectAdmission(admission.id);
+                          }}
+                          className="rounded-md border-slate-300 data-[state=checked]:bg-[#085a4e] data-[state=checked]:border-[#085a4e]"
                         />
                       </TableCell>
                       <TableCell>
