@@ -1214,14 +1214,14 @@ export default function AdmissionsView({
                 Export to PDF Report
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={handleExportExcel}
+                onClick={() => handleExportExcel()}
                 className="rounded-lg py-3 cursor-pointer"
               >
                 <Download size={16} className="mr-2 text-emerald-600" />
                 Export to Excel
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={handleExportCSV}
+                onClick={() => handleExportCSV()}
                 className="rounded-lg py-3 cursor-pointer"
               >
                 <Download size={16} className="mr-2 text-superior-gold" />
