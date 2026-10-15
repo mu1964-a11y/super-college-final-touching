@@ -482,56 +482,73 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div>
-          <div className="flex flex-col items-start gap-1.5">
-            <div className="flex items-center gap-3">
-              <h3 className="text-3xl font-display font-black text-slate-900 dark:text-slate-100 tracking-tight">
-                Accounts & Finance
-              </h3>
-              <span className="text-slate-300 dark:text-slate-700 text-2xl">/</span>
-              <span className="urdu-text text-2xl text-superior-gold font-medium">اکاؤنٹس اور فنانس</span>
+      {/* Sleek Ultra-Compact Executive Toolbar (< 65px) */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-2.5 shadow-sm flex flex-wrap items-center justify-between gap-2">
+        {/* Left: Title + Nastaleeq + Tabs */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-superior-teal/10 flex items-center justify-center text-superior-teal">
+              <Wallet size={15} />
             </div>
-            <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-              Session {data?.settings?.academicSession || "2026-28"} • Central Ledger & Cash Book
-            </p>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex gap-2.5">
-            <Button 
-              variant="outline" 
-              className="h-12 px-5 rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 font-black text-[10px] uppercase tracking-wider shadow-2xs"
-            >
-              <Calendar size={15} className="text-superior-gold" />
-              This Month
-            </Button>
-            <Button 
-              className="h-12 px-6 rounded-2xl bg-superior-teal text-white hover:bg-superior-teal/90 flex items-center gap-2 font-black text-[10px] uppercase tracking-wider shadow-md shadow-superior-teal/15 cursor-pointer"
-              onClick={() => setIsAddEntryOpen(true)}
-            >
-              <Plus size={17} />
-              Add Entry
-            </Button>
+            <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 tracking-tight">
+              Accounts & Finance
+            </h3>
+            <span className="font-nastaleeq text-xs text-superior-gold font-medium px-1.5 py-0.5 bg-superior-gold/10 rounded-md">
+              اکاؤنٹس اور فنانس
+            </span>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 px-6 py-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 flex items-center gap-4 shadow-sm">
-            <div className="text-right">
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-0.5">Net Campus Balance</p>
-              <p className={cn(
-                "text-2xl font-display font-black leading-none",
-                netBalance >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
-              )}>Rs. {netBalance.toLocaleString()}</p>
-            </div>
-            <div className={cn(
-              "w-11 h-11 rounded-xl flex items-center justify-center shadow-inner",
-              netBalance >= 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
-            )}>
-              <Wallet size={22} />
-            </div>
+          {/* Segmented Navigation Tabs */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60 overflow-x-auto">
+            {[
+              { id: "summary", label: "Summary", icon: BarChart3 },
+              { id: "income", label: "Income", icon: TrendingUp },
+              { id: "expenses", label: "Expenses", icon: TrendingDown },
+              { id: "fee-manager", label: "Fee Collections", icon: Receipt },
+              { id: "daily-closing", label: "Roznamcha", icon: Clock },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all flex items-center gap-1.5 whitespace-nowrap",
+                    active
+                      ? "bg-white dark:bg-slate-700 text-superior-teal dark:text-superior-gold shadow-xs"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                  )}
+                >
+                  <Icon size={12} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
+        </div>
+
+        {/* Right: Net Campus Balance + Add Entry */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className={cn(
+            "px-2.5 py-1 rounded-lg border flex items-center gap-2 text-xs font-bold",
+            netBalance >= 0 
+              ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-800/60"
+              : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200/60 dark:border-rose-800/60"
+          )}>
+            <span className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-black">Net Balance:</span>
+            <span className="font-mono font-black text-sm">Rs. {netBalance.toLocaleString()}</span>
+          </div>
+
+          <Button 
+            size="sm"
+            className="h-7.5 px-3 rounded-lg bg-superior-teal text-white hover:bg-superior-teal/90 flex items-center gap-1.5 font-bold text-[11px] shadow-xs cursor-pointer"
+            onClick={() => setIsAddEntryOpen(true)}
+          >
+            <Plus size={14} />
+            <span>Add Entry</span>
+          </Button>
         </div>
       </div>
 
@@ -578,98 +595,61 @@ export default function AccountsView({ data, initialTab }: { data: any, initialT
         </DialogContent>
       </Dialog>
 
-      {/* Primary Navigation Tabs */}
+      {/* Primary Navigation Content */}
       <Tabs value={activeTab} className="w-full" onValueChange={setActiveTab}>
-        <TabsList className="bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-2xl w-full flex items-center justify-start overflow-x-auto scrollbar-hide h-auto border border-slate-200/70 dark:border-slate-700/80 mb-6">
-          <TabsTrigger 
-            value="summary" 
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
-          >
-            <BarChart3 size={15} className="mr-2 inline-block" />
-            Financial Summary
-          </TabsTrigger>
-          <TabsTrigger 
-            value="income" 
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
-          >
-            <TrendingUp size={15} className="mr-2 inline-block" />
-            Income Records
-          </TabsTrigger>
-          <TabsTrigger 
-            value="expenses" 
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
-          >
-            <TrendingDown size={15} className="mr-2 inline-block" />
-            Expenses Manager
-          </TabsTrigger>
-          <TabsTrigger 
-            value="fee-manager" 
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
-          >
-            <Receipt size={15} className="mr-2 inline-block" />
-            Fee Collections
-          </TabsTrigger>
-          <TabsTrigger 
-            value="daily-closing" 
-            className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-sm transition-all whitespace-nowrap"
-          >
-            <Clock size={15} className="mr-2 inline-block text-emerald-600 dark:text-emerald-400" />
-            Daily Cash Closing (Roznamcha)
-          </TabsTrigger>
-        </TabsList>
 
         <TabsContent value="summary" className="space-y-6">
-          {/* Financial Summary Metric Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-            <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 shadow-sm">
-                  <TrendingUp size={24} />
+          {/* Financial Summary Metric Cards - Sleek Compact Strip */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <TrendingUp size={16} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-0.5">Total Income</p>
-                  <h4 className="text-2xl font-display font-black text-slate-900 dark:text-slate-100 leading-tight">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Total Income</p>
+                  <h4 className="text-base font-black text-slate-900 dark:text-slate-100 leading-tight">
                     Rs. {(totalIncome || 0).toLocaleString()}
                   </h4>
                 </div>
               </div>
-              <Badge className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold text-xs px-2.5 py-1 rounded-lg">Live</Badge>
+              <Badge className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold text-[10px] px-2 py-0.5 rounded-md">Live</Badge>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 shadow-sm">
-                  <TrendingDown size={24} />
+            <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                  <TrendingDown size={16} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-0.5">Total Expenses</p>
-                  <h4 className="text-2xl font-display font-black text-slate-900 dark:text-slate-100 leading-tight">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Total Expenses</p>
+                  <h4 className="text-base font-black text-slate-900 dark:text-slate-100 leading-tight">
                     Rs. {(totalExpenses || 0).toLocaleString()}
                   </h4>
                 </div>
               </div>
-              <Badge className="bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 font-bold text-xs px-2.5 py-1 rounded-lg">Live</Badge>
+              <Badge className="bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 font-bold text-[10px] px-2 py-0.5 rounded-md">Live</Badge>
             </div>
 
             <div className={cn(
-              "p-5 rounded-3xl border shadow-sm flex items-center justify-between text-white transition-all",
+              "p-3 rounded-xl border shadow-xs flex items-center justify-between text-white transition-all",
               netBalance >= 0 
-                ? "bg-gradient-to-r from-[#064e43] via-[#053d34] to-[#042822] border-emerald-500/20 shadow-xl" 
-                : "bg-gradient-to-r from-rose-800 to-rose-950 border-rose-700 shadow-xl"
+                ? "bg-gradient-to-r from-[#064e43] via-[#053d34] to-[#042822] border-emerald-500/20 shadow-sm" 
+                : "bg-gradient-to-r from-rose-800 to-rose-950 border-rose-700 shadow-sm"
             )}>
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-white/15 text-superior-gold flex items-center justify-center shrink-0">
-                  <Wallet size={24} />
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-white/15 text-superior-gold flex items-center justify-center shrink-0">
+                  <Wallet size={16} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/70 mb-0.5">Net Profit / Loss</p>
-                  <h4 className="text-2xl font-display font-black text-white leading-tight">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-white/70 mb-0.5">Net Profit / Loss</p>
+                  <h4 className="text-base font-black text-white leading-tight">
                     Rs. {(netBalance || 0).toLocaleString()}
                   </h4>
                 </div>
               </div>
               <Badge className={cn(
-                "border-none font-bold text-xs px-3 py-1 rounded-lg",
+                "border-none font-bold text-[10px] px-2 py-0.5 rounded-md",
                 netBalance >= 0 ? "bg-superior-gold text-superior-teal" : "bg-white/20 text-white"
               )}>
                 {netBalance >= 0 ? "Healthy" : "Deficit"}

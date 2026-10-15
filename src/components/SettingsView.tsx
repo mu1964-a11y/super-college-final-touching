@@ -330,34 +330,44 @@ export default function SettingsView({ data }: { data: any }) {
 
   return (
     <div className="space-y-8 pb-24">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-        <div>
-          <h3 className="text-3xl font-display font-black text-superior-teal flex items-center gap-3">
-            System Control Panel <span className="text-slate-300">/</span> <span className="urdu-text text-2xl">سسٹم کنٹرول</span>
+      {/* Sleek Ultra-Compact Ribbon (< 50px) */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-2.5 shadow-sm flex flex-wrap items-center justify-between gap-2">
+        {/* Left: Title + Nastaleeq */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-superior-teal/10 flex items-center justify-center text-superior-teal">
+            <AppWindow size={15} />
+          </div>
+          <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 tracking-tight">
+            System Control Panel
           </h3>
-          <p className="text-slate-400 text-sm font-medium mt-1">Configure your workspace, logic, and interface identity.</p>
+          <span className="font-nastaleeq text-xs text-superior-gold font-medium px-1.5 py-0.5 bg-superior-gold/10 rounded-md">
+            سسٹم کنٹرول
+          </span>
         </div>
-        <div className="flex items-center gap-3">
+
+        {/* Right: Actions */}
+        <div className="flex items-center gap-2 shrink-0">
           <Button 
             variant="outline"
+            size="sm"
             onClick={handleResetDefaults}
-            className="h-12 px-6 rounded-2xl font-bold border-slate-200"
+            className="h-7.5 px-3 rounded-lg font-bold border-slate-200 dark:border-slate-700 text-xs hover:bg-slate-50"
           >
             Reset Colors
           </Button>
           <Button 
+            size="sm"
             onClick={handleSave} 
             disabled={isSaving}
-            className="h-12 px-8 rounded-2xl bg-superior-teal text-white font-black uppercase tracking-widest text-[11px] hover:shadow-xl hover:shadow-superior-teal/20 transition-all active:scale-95 disabled:opacity-50"
+            className="h-7.5 px-3.5 rounded-lg bg-superior-teal text-white font-bold text-xs hover:bg-superior-teal/90 transition-all shadow-xs disabled:opacity-50"
           >
-            {isSaving ? "Syncing..." : <><Save size={18} className="mr-2" /> Commit Changes</>}
+            {isSaving ? "Syncing..." : <><Save size={13} className="mr-1.5" /> Commit Changes</>}
           </Button>
         </div>
       </div>
 
       <Tabs defaultValue="appearance" className="w-full">
-        <TabsList className="flex flex-wrap h-auto w-full gap-2 mb-10 bg-transparent p-0">
+        <TabsList className="flex flex-wrap h-auto w-full gap-1.5 mb-6 bg-slate-100/80 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
           {[
             { id: 'general', label: 'Identity', icon: Building2 },
             { id: 'appearance', label: 'Appearance', icon: Palette },
@@ -372,9 +382,9 @@ export default function SettingsView({ data }: { data: any }) {
             <TabsTrigger 
               key={tab.id}
               value={tab.id} 
-              className="flex-1 min-w-[120px] h-14 rounded-2xl font-black uppercase tracking-widest text-[10px] border border-slate-100 bg-slate-50/50 data-[state=active]:bg-superior-teal data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-superior-teal/20 transition-all hover:bg-slate-100"
+              className="flex-1 min-w-[95px] h-8 rounded-lg font-bold text-[11px] data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-superior-teal dark:data-[state=active]:text-superior-gold data-[state=active]:shadow-xs transition-all text-slate-600 dark:text-slate-400"
             >
-              <tab.icon size={16} className="mr-2" /> {tab.label}
+              <tab.icon size={13} className="mr-1.5" /> {tab.label}
             </TabsTrigger>
           ))}
         </TabsList>

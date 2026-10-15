@@ -390,6 +390,9 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
         <div className="flex items-center gap-3">
           <h2 className="text-xl font-display font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
             <span>{title || "Staff Directory"}</span>
+            <span className="font-nastaleeq text-xs text-superior-gold font-medium px-1.5 py-0.5 bg-superior-gold/10 rounded-md">
+              اسٹاف ڈائریکٹری
+            </span>
             <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
               {data.staff.length}
             </span>

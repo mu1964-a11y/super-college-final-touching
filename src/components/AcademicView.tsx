@@ -702,55 +702,82 @@ _Canal Road, Jahanian | Superior College Jahanian_`;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-emerald-900">Academic Records & Examination</h2>
-          <p className="text-emerald-700/80">Batch marks entry, class positions 1st/2nd/3rd, and consolidated student profiles</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" className="border-emerald-200 text-emerald-800"><Upload className="w-4 h-4 mr-2" /> Import Excel</Button>
-          <Button onClick={handleOpenRecordModal} className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"><Plus className="w-4 h-4 mr-2" /> Record marks</Button>
-        </div>
-      </div>
+      {/* Sleek Ultra-Compact Ribbon (< 55px) */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-2.5 shadow-sm flex flex-wrap items-center justify-between gap-2">
+        {/* Left: Title + Nastaleeq + Mode Switcher */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400">
+              <Trophy size={15} />
+            </div>
+            <h2 className="text-sm font-black text-slate-800 dark:text-slate-100 tracking-tight">
+              Academic & Exams
+            </h2>
+            <span className="font-nastaleeq text-xs text-superior-gold font-medium px-1.5 py-0.5 bg-superior-gold/10 rounded-md">
+              تعلیمی ریکارڈ و امتحانات
+            </span>
+          </div>
 
-      {/* Module Navigation Tabs */}
-      <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100/90 rounded-2xl border border-slate-200/80 max-w-fit shadow-inner">
-        <button
-          type="button"
-          onClick={() => setAcademicMode('profiles')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-            academicMode === 'profiles'
-              ? 'bg-white text-emerald-900 shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <User size={15} />
-          <span>Student Profiles & Result Cards</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setAcademicMode('batch_entry')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-            academicMode === 'batch_entry'
-              ? 'bg-superior-teal text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Zap size={15} />
-          <span>⚡ Batch Marks Entry (Excel Mode)</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setAcademicMode('merit_list')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-            academicMode === 'merit_list'
-              ? 'bg-amber-600 text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Trophy size={15} />
-          <span>🏆 Class Positions & Merit List</span>
-        </button>
+          {/* Mode Switcher Tabs */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setAcademicMode('profiles')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all whitespace-nowrap ${
+                academicMode === 'profiles'
+                  ? 'bg-white dark:bg-slate-700 text-emerald-900 dark:text-emerald-300 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              <User size={13} />
+              <span>Student Profiles & Cards</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAcademicMode('batch_entry')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all whitespace-nowrap ${
+                academicMode === 'batch_entry'
+                  ? 'bg-superior-teal text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              <Zap size={13} />
+              <span>⚡ Batch Entry (Excel)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAcademicMode('merit_list')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all whitespace-nowrap ${
+                academicMode === 'merit_list'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              <Trophy size={13} />
+              <span>🏆 Class Positions & Merit</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Right: Actions */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Button 
+            variant="outline" 
+            size="sm"
+            className="h-7.5 px-2.5 rounded-lg border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 font-bold text-[11px] flex items-center gap-1 hover:bg-emerald-50"
+          >
+            <Upload size={13} />
+            <span>Import Excel</span>
+          </Button>
+          <Button 
+            size="sm"
+            onClick={handleOpenRecordModal} 
+            className="h-7.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-xs"
+          >
+            <Plus size={14} />
+            <span>Record Marks</span>
+          </Button>
+        </div>
       </div>
 
       {/* Mode Views */}

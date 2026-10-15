@@ -702,134 +702,133 @@ export default function ReportsView({ data, initialFilter }: { data: any, initia
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-        <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-3xl font-display font-black text-superior-teal tracking-tight">
+      {/* Sleek Ultra-Compact Ribbon (< 55px) */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-2.5 shadow-sm flex flex-wrap items-center justify-between gap-2">
+        {/* Left: Title + Nastaleeq + Filter Link */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-superior-teal/10 flex items-center justify-center text-superior-teal">
+              <TrendingUp size={15} />
+            </div>
+            <h2 className="text-sm font-black text-slate-800 dark:text-slate-100 tracking-tight">
               Reports Center
             </h2>
-            <span className="text-slate-300 text-2xl">/</span>
-            <span className="urdu-text text-2xl text-superior-gold font-medium">رپورٹس سینٹر</span>
+            <span className="font-nastaleeq text-xs text-superior-gold font-medium px-1.5 py-0.5 bg-superior-gold/10 rounded-md">
+              رپورٹس سینٹر
+            </span>
           </div>
+
           {categoryFilter !== 'all' && (
-            <Button 
-              variant="link" 
-              className="p-0 h-auto text-superior-teal font-black text-xs uppercase tracking-widest mt-2" 
+            <button 
+              type="button"
+              className="text-superior-teal hover:underline text-[11px] font-bold px-2 py-0.5 rounded bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800"
               onClick={() => setCategoryFilter('all')}
             >
               ← Show all reports
-            </Button>
+            </button>
           )}
         </div>
-        <div className="relative w-full md:w-80">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-superior-teal/40" size={20} />
-          <Input 
-            placeholder="Search reports..." 
-            className="pl-12 h-14 rounded-2xl bg-white border-slate-100 shadow-sm focus:border-superior-teal/30 transition-all font-medium" 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+
+        {/* Right: Search Input + Live Badge */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="relative w-64">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
+            <Input 
+              placeholder="Search reports by title or keyword..." 
+              className="pl-8 h-7.5 text-xs rounded-lg border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50" 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <span className="text-[10px] font-bold text-superior-teal dark:text-teal-400 bg-teal-50 dark:bg-teal-950/40 px-2 py-1 rounded-lg border border-teal-200/60 dark:border-teal-800/60 shrink-0">
+            Live Intelligence
+          </span>
         </div>
       </div>
 
       {/* Executive KPI Analytics Section */}
-      <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h3 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-              <TrendingUp className="text-superior-teal" size={22} />
-              Executive KPI Overview & Financial Trends
-            </h3>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Real-time institutional health metrics, cash flows, and enrollment analytics.
-            </p>
-          </div>
-          <span className="text-xs font-bold text-superior-teal bg-teal-50 px-3 py-1.5 rounded-xl border border-teal-200 self-start sm:self-auto">
-            Live College Intelligence
-          </span>
-        </div>
-
-        {/* 4 Executive KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="space-y-4">
+        {/* 4 Executive KPI Cards - Sleek High-Density */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Active Students */}
-          <Card className="bg-white border-none shadow-lg shadow-slate-100/80 rounded-2xl p-5 relative overflow-hidden">
+          <Card className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs rounded-xl p-3.5 relative overflow-hidden">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Active Students</span>
-              <div className="w-10 h-10 rounded-xl bg-teal-50 text-superior-teal flex items-center justify-center">
-                <Users size={20} />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Students</span>
+              <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-superior-teal dark:text-teal-400 flex items-center justify-center">
+                <Users size={16} />
               </div>
             </div>
-            <div className="mt-3">
-              <p className="text-3xl font-black text-slate-900">{activeStudents.length}</p>
-              <div className="flex items-center gap-3 mt-1.5 text-xs font-semibold text-slate-500">
-                <span className="text-teal-700">{boysCount} Boys</span>
+            <div className="mt-2">
+              <p className="text-xl font-black text-slate-900 dark:text-slate-100">{activeStudents.length}</p>
+              <div className="flex items-center gap-2 mt-1 text-[11px] font-semibold text-slate-500">
+                <span className="text-teal-700 dark:text-teal-400">{boysCount} Boys</span>
                 <span>•</span>
-                <span className="text-rose-600">{girlsCount} Girls</span>
+                <span className="text-rose-600 dark:text-rose-400">{girlsCount} Girls</span>
               </div>
             </div>
           </Card>
 
           {/* Net Cash Flow */}
-          <Card className="bg-white border-none shadow-lg shadow-slate-100/80 rounded-2xl p-5 relative overflow-hidden">
+          <Card className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs rounded-xl p-3.5 relative overflow-hidden">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Net Cash Flow</span>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                netCashFlow >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Net Cash Flow</span>
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                netCashFlow >= 0 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400'
               }`}>
-                {netCashFlow >= 0 ? <ArrowUpRight size={20} /> : <ArrowDownRight size={20} />}
+                {netCashFlow >= 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
               </div>
             </div>
-            <div className="mt-3">
-              <p className={`text-2xl font-black ${netCashFlow >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+            <div className="mt-2">
+              <p className={`text-xl font-black ${netCashFlow >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                 RS {Math.abs(netCashFlow).toLocaleString()}
               </p>
-              <div className="flex items-center gap-2 mt-1.5 text-[11px] font-semibold text-slate-500 truncate">
-                <span>Inflow: {totalIncomes.toLocaleString()}</span>
+              <div className="flex items-center gap-2 mt-1 text-[10px] font-semibold text-slate-500 truncate">
+                <span>In: {totalIncomes.toLocaleString()}</span>
                 <span>|</span>
-                <span>Outflow: {totalExpenses.toLocaleString()}</span>
+                <span>Out: {totalExpenses.toLocaleString()}</span>
               </div>
             </div>
           </Card>
 
           {/* Fee Recovery */}
-          <Card className="bg-white border-none shadow-lg shadow-slate-100/80 rounded-2xl p-5 relative overflow-hidden">
+          <Card className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs rounded-xl p-3.5 relative overflow-hidden">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Fee Collection</span>
-              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                <CreditCard size={20} />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fee Collection</span>
+              <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                <CreditCard size={16} />
               </div>
             </div>
-            <div className="mt-3">
+            <div className="mt-2">
               <div className="flex items-baseline justify-between">
-                <p className="text-2xl font-black text-slate-900">{feeRecoveryRate}%</p>
-                <span className="text-xs font-bold text-amber-700">RS {totalFeeReceived.toLocaleString()}</span>
+                <p className="text-xl font-black text-slate-900 dark:text-slate-100">{feeRecoveryRate}%</p>
+                <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400">RS {totalFeeReceived.toLocaleString()}</span>
               </div>
-              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-2">
+              <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1.5">
                 <div 
                   className="bg-amber-500 h-full rounded-full transition-all duration-500" 
                   style={{ width: `${Math.min(100, Math.max(0, feeRecoveryRate))}%` }}
                 />
               </div>
-              <p className="text-[10px] text-slate-400 mt-1">Total Expected: RS {totalFeePackage.toLocaleString()}</p>
+              <p className="text-[9px] text-slate-400 mt-1">Expected: RS {totalFeePackage.toLocaleString()}</p>
             </div>
           </Card>
 
           {/* Monthly Staff Payroll */}
-          <Card className="bg-white border-none shadow-lg shadow-slate-100/80 rounded-2xl p-5 relative overflow-hidden">
+          <Card className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs rounded-xl p-3.5 relative overflow-hidden">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Staff Payroll</span>
-              <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center">
-                <Briefcase size={20} />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Staff Payroll</span>
+              <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center">
+                <Briefcase size={16} />
               </div>
             </div>
-            <div className="mt-3">
-              <p className="text-2xl font-black text-slate-900">
+            <div className="mt-2">
+              <p className="text-xl font-black text-slate-900 dark:text-slate-100">
                 RS {totalStaffPayroll.toLocaleString()}
               </p>
-              <div className="flex items-center gap-2 mt-1.5 text-xs font-semibold text-slate-500">
-                <span>{(data.staff || []).length} Faculty & Staff</span>
+              <div className="flex items-center gap-2 mt-1 text-[11px] font-semibold text-slate-500">
+                <span>{(data.staff || []).length} Staff</span>
                 <span>•</span>
-                <span className="text-superior-teal">Active</span>
+                <span className="text-superior-teal dark:text-teal-400 font-bold">Active</span>
               </div>
             </div>
           </Card>

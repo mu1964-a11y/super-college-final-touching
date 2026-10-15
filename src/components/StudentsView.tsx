@@ -489,45 +489,203 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
   };
 
   return (
-    <div className="space-y-8 pb-12">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-        <div>
-          <div className="flex flex-col items-start gap-1.5">
-            <div className="flex items-center gap-3">
-              <h3 className="text-3xl font-display font-black text-slate-900 dark:text-slate-100 tracking-tight">
-                {gender === 'Male' ? 'Boys Campus' : gender === 'Female' ? 'Girls Campus' : 'Student Records'}
-              </h3>
-              <span className="text-slate-300 dark:text-slate-700 text-2xl">/</span>
-              <span className="urdu-text text-2xl text-superior-gold font-medium">
-                {gender === 'Male' ? 'بوائز کیمپس' : gender === 'Female' ? 'گرلز کیمپس' : 'طلباء کا ریکارڈ'}
+    <div className="space-y-4 pb-12">
+      {/* Ultra-Compact High-Density Header & Filter Ribbon (< 85px total height) */}
+      <div className="space-y-2 mb-3">
+        {/* Row 1: Title + Urdu + Group Pills + Actions & Export */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 bg-white dark:bg-slate-900 px-3.5 py-2 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+          <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+            <h3 className="text-base font-black text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-1.5 shrink-0">
+              <span>{gender === 'Male' ? 'Boys Campus' : gender === 'Female' ? 'Girls Campus' : 'Student Records'}</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-superior-teal/10 text-superior-teal border border-superior-teal/20">
+                {filteredStudents.length}
               </span>
+            </h3>
+
+            <span className="urdu-text font-nastaleeq text-xs text-superior-gold hidden sm:inline shrink-0">
+              {gender === 'Male' ? 'بوائز کیمپس' : gender === 'Female' ? 'گرلز کیمپس' : 'طلباء کا ریکارڈ'}
+            </span>
+
+            {/* Inline Program Filter Pills */}
+            <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/60 dark:border-slate-700/60 gap-0.5">
+              {[
+                { id: 'all', label: 'All Groups' },
+                { id: 'fsc', label: 'Inter' },
+                { id: 'dit', label: 'DIT' },
+                { id: 'ukl3', label: 'UKL3' },
+                { id: 'bs', label: 'BS' },
+              ].map(prog => (
+                <button
+                  key={prog.id}
+                  type="button"
+                  onClick={() => setProgramFilter(prog.id)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all",
+                    programFilter === prog.id
+                      ? "bg-white dark:bg-slate-700 text-superior-teal dark:text-superior-gold shadow-2xs"
+                      : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                  )}
+                >
+                  {prog.label}
+                </button>
+              ))}
             </div>
-            <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-              Live Enrollment Directory & Academic Folders
-            </p>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button 
+              onClick={handleExportPDF} 
+              variant="outline" 
+              size="sm"
+              className="h-7.5 px-2.5 rounded-xl border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:text-rose-600 hover:bg-rose-50 font-bold text-[10px] uppercase gap-1"
+            >
+              <Download size={12} className="text-rose-500" /> PDF
+            </Button>
+            <Button 
+              onClick={handleExportExcel} 
+              variant="outline" 
+              size="sm"
+              className="h-7.5 px-2.5 rounded-xl border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:text-emerald-600 hover:bg-emerald-50 font-bold text-[10px] uppercase gap-1"
+            >
+              <Download size={12} className="text-emerald-500" /> Excel
+            </Button>
+            <Button 
+              onClick={() => handleOpenBulkWhatsAppModal()} 
+              size="sm"
+              className="h-7.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] uppercase gap-1 shadow-2xs"
+            >
+              <MessageSquare size={12} /> WhatsApp Broadcast
+            </Button>
+
+            {/* Grid / List View Toggle */}
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/60 dark:border-slate-700/60 ml-1">
+              <button
+                type="button"
+                className={cn(
+                  "px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all",
+                  viewMode === 'grid' ? "bg-white dark:bg-slate-700 text-superior-teal shadow-2xs" : "text-slate-400 hover:text-slate-600"
+                )}
+                onClick={() => setViewMode('grid')}
+              >
+                Grid
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  "px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all",
+                  viewMode === 'list' ? "bg-white dark:bg-slate-700 text-superior-teal shadow-2xs" : "text-slate-400 hover:text-slate-600"
+                )}
+                onClick={() => setViewMode('list')}
+              >
+                List
+              </button>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex gap-2.5">
-            <Button onClick={handleExportPDF} variant="outline" className="h-12 px-4 rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center gap-1.5 font-black text-[10px] uppercase tracking-wider shadow-2xs">
-              <Download size={15} className="text-rose-500" /> PDF
-            </Button>
-            <Button onClick={handleExportExcel} variant="outline" className="h-12 px-4 rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 flex items-center gap-1.5 font-black text-[10px] uppercase tracking-wider shadow-2xs">
-              <Download size={15} className="text-emerald-500" /> Excel
-            </Button>
-            <Button onClick={() => handleOpenBulkWhatsAppModal()} className="h-12 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2 font-black text-[10px] uppercase tracking-wider shadow-sm">
-              <MessageSquare size={15} /> Broadcast WhatsApp
-            </Button>
+
+        {/* Row 2: Search + Photo Status Filter Pills + Dropdown Filters */}
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50/80 dark:bg-slate-900/60 p-2 rounded-2xl border border-slate-200/70 dark:border-slate-800 shadow-2xs">
+          <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
+            {/* Compact Search Box */}
+            <div className="relative min-w-[200px] sm:min-w-[240px]">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <Input 
+                placeholder="Search name, roll no, father..." 
+                className="pl-8 h-7.5 text-xs rounded-xl bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-2xs"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            {/* Photo Filter Pills */}
+            <div className="flex items-center gap-1 bg-white dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
+              <button
+                type="button"
+                onClick={() => setPhotoFilter("all")}
+                className={cn(
+                  "px-2 py-1 rounded-lg text-[10px] font-bold uppercase transition-all flex items-center gap-1",
+                  photoFilter === "all" ? "bg-slate-900 text-white" : "text-slate-600 dark:text-slate-300 hover:bg-slate-100"
+                )}
+              >
+                <span>All</span>
+                <span className="text-[9px] px-1 py-0.1 rounded-full bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono">
+                  {photoStats.total}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPhotoFilter("with-photo")}
+                className={cn(
+                  "px-2 py-1 rounded-lg text-[10px] font-bold uppercase transition-all flex items-center gap-1",
+                  photoFilter === "with-photo" ? "bg-emerald-600 text-white" : "text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50"
+                )}
+              >
+                <Camera size={11} />
+                <span>Photos ({photoStats.withPhoto})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPhotoFilter("missing-photo")}
+                className={cn(
+                  "px-2 py-1 rounded-lg text-[10px] font-bold uppercase transition-all flex items-center gap-1",
+                  photoFilter === "missing-photo" ? "bg-amber-600 text-white" : "text-amber-700 dark:text-amber-300 hover:bg-amber-50"
+                )}
+              >
+                <AlertCircle size={11} />
+                <span>Missing ({photoStats.missingPhoto})</span>
+              </button>
+            </div>
           </div>
-          <div className="bg-white dark:bg-slate-900 px-6 py-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 flex items-center gap-4 shadow-sm">
-            <div className="text-right">
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Total Enrolled</p>
-              <p className="text-2xl font-display font-black text-slate-900 dark:text-slate-100 leading-tight">{filteredStudents.length}</p>
-            </div>
-            <div className="w-11 h-11 rounded-xl bg-superior-teal/10 dark:bg-superior-gold/10 flex items-center justify-center text-superior-teal dark:text-superior-gold shadow-inner">
-              <GraduationCap size={22} />
-            </div>
+
+          {/* Compact Dropdown Filters */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Select value={sectionFilter} onValueChange={setSectionFilter}>
+              <SelectTrigger className="h-7.5 text-[11px] rounded-xl bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 w-[110px]">
+                <SelectValue placeholder="Section" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl">
+                <SelectItem value="all" className="text-xs">All Sections</SelectItem>
+                {sectionOptions.map(sec => (
+                  <SelectItem key={sec} value={sec} className="text-xs">{sec}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={genderFilter} onValueChange={setGenderFilter}>
+              <SelectTrigger className="h-7.5 text-[11px] rounded-xl bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 w-[105px]">
+                <SelectValue placeholder="Gender" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl">
+                <SelectItem value="all" className="text-xs">All Genders</SelectItem>
+                <SelectItem value="Male" className="text-xs">Boys Only</SelectItem>
+                <SelectItem value="Female" className="text-xs">Girls Only</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={monthlyFeeFilter} onValueChange={setMonthlyFeeFilter}>
+              <SelectTrigger className="h-7.5 text-[11px] rounded-xl bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 w-[125px]">
+                <SelectValue placeholder="Monthly Fee" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl">
+                <SelectItem value="all" className="text-xs">All Fee Status</SelectItem>
+                <SelectItem value="Paid" className="text-xs text-emerald-600">Paid This Month</SelectItem>
+                <SelectItem value="Partial" className="text-xs text-orange-600">Partial Paid</SelectItem>
+                <SelectItem value="Unpaid" className="text-xs text-rose-600">Not Paid</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={defaulterFilter} onValueChange={setDefaulterFilter}>
+              <SelectTrigger className="h-7.5 text-[11px] rounded-xl bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 w-[125px]">
+                <SelectValue placeholder="Defaulter Filter" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl">
+                <SelectItem value="all" className="text-xs">All Students</SelectItem>
+                <SelectItem value="1" className="text-xs text-orange-500">Defaulter 1 Month</SelectItem>
+                <SelectItem value="2" className="text-xs text-orange-600">Defaulter 2 Months</SelectItem>
+                <SelectItem value="3" className="text-xs text-rose-600">Defaulter 3+ Months</SelectItem>
+                <SelectItem value="4" className="text-xs text-red-700 font-bold">Serious (4+)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>
@@ -537,234 +695,69 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="sticky top-4 z-30 flex items-center justify-between p-4 bg-superior-teal rounded-2xl shadow-2xl text-white mb-6 border border-white/10"
+          className="sticky top-2 z-30 flex items-center justify-between p-3 bg-superior-teal rounded-2xl shadow-xl text-white mb-3 border border-white/10"
         >
-          <div className="flex items-center gap-4 pl-2">
+          <div className="flex items-center gap-3 pl-1">
             <Checkbox 
               checked={selectedStudents.length === filteredStudents.length} 
               onCheckedChange={toggleSelectAll} 
               className="border-white data-[state=checked]:bg-white data-[state=checked]:text-superior-teal"
             />
             <div className="flex flex-col">
-              <p className="text-sm font-black uppercase tracking-widest">
+              <p className="text-xs font-black uppercase tracking-wider">
                 {selectedStudents.length} student{selectedStudents.length > 1 ? 's' : ''} selected
               </p>
               {selectedStudents.length < filteredStudents.length && (
                 <button 
                   onClick={() => setSelectedStudents(filteredStudents.map(s => s.id))}
-                  className="text-[10px] font-black underline uppercase tracking-tighter opacity-70 hover:opacity-100 text-left"
+                  className="text-[9px] font-black underline uppercase opacity-75 hover:opacity-100 text-left"
                 >
                   Select all {filteredStudents.length} matching students
                 </button>
               )}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <Button 
               onClick={() => handleOpenBulkWhatsAppModal(selectedStudents)}
-              className="h-10 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 border-none font-black text-[10px] uppercase tracking-widest px-4 shadow-md gap-1.5 flex items-center"
+              size="sm"
+              className="h-8 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 font-bold text-[9px] uppercase tracking-wider px-3 shadow-sm gap-1 flex items-center"
             >
-              <MessageSquare size={14} /> WhatsApp ({selectedStudents.length})
+              <MessageSquare size={12} /> WhatsApp ({selectedStudents.length})
             </Button>
             <Button 
               onClick={() => setDialogType('bulk_promote')}
-              className="h-10 rounded-xl bg-superior-gold text-slate-900 hover:bg-superior-gold/90 font-black text-[10px] uppercase tracking-widest px-4 shadow-md gap-1.5"
+              size="sm"
+              className="h-8 rounded-xl bg-superior-gold text-slate-900 hover:bg-superior-gold/90 font-bold text-[9px] uppercase tracking-wider px-3 shadow-sm gap-1"
             >
-              <GraduationCap size={14} /> Promote to Part-2
+              <GraduationCap size={12} /> Promote Part-2
             </Button>
             <Button 
               onClick={() => setDialogType('migrate_section')}
-              className="h-10 rounded-xl bg-white/20 text-white hover:bg-white/30 border border-white/20 font-black text-[10px] uppercase tracking-widest px-4 gap-1.5"
+              size="sm"
+              className="h-8 rounded-xl bg-white/20 text-white hover:bg-white/30 border border-white/20 font-bold text-[9px] uppercase tracking-wider px-3 gap-1"
             >
-              <School size={14} /> Migrate Section
+              <School size={12} /> Migrate Section
             </Button>
             <Button 
               variant="outline" 
+              size="sm"
               onClick={() => setSelectedStudents([])}
-              className="h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 font-black text-[10px] uppercase tracking-widest px-4"
+              className="h-8 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 font-bold text-[9px] uppercase tracking-wider px-3"
             >
               Cancel
             </Button>
             <Button 
               onClick={handleBulkDelete}
               variant="destructive" 
-              className="h-10 rounded-xl bg-white text-rose-600 hover:bg-rose-50 border-none font-black text-[10px] uppercase tracking-widest px-4 shadow-lg shadow-black/20"
+              size="sm"
+              className="h-8 rounded-xl bg-white text-rose-600 hover:bg-rose-50 font-bold text-[9px] uppercase tracking-wider px-3 shadow-sm"
             >
-              <Trash2 size={14} className="mr-1.5" /> Delete
+              <Trash2 size={12} className="mr-1" /> Delete
             </Button>
           </div>
         </motion.div>
       )}
-
-      {/* Group Navigation Tabs */}
-      <Tabs value={programFilter} onValueChange={(val) => setProgramFilter(val)} className="w-full mb-6">
-        <TabsList className="bg-slate-100 p-1.5 rounded-2xl w-full flex items-center justify-start overflow-x-auto scrollbar-hide h-auto border border-slate-200/50">
-          <TabsTrigger value="all" className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap">
-            All Groups
-          </TabsTrigger>
-          <TabsTrigger value="fsc" className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap">
-            <School size={15} className="mr-2 inline-block" />
-            Inter
-          </TabsTrigger>
-          <TabsTrigger value="dit" className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap">
-            <GraduationCap size={15} className="mr-2 inline-block" />
-            DIT
-          </TabsTrigger>
-          <TabsTrigger value="ukl3" className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap">
-            <Globe size={15} className="mr-2 inline-block" />
-            UKL3
-          </TabsTrigger>
-          <TabsTrigger value="bs" className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap">
-            <GraduationCap size={15} className="mr-2 inline-block" />
-            BS
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {/* 1-Click Photo Filter Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 bg-slate-50/90 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-2xs">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 mr-1 flex items-center gap-1.5">
-            <Camera size={14} className="text-superior-teal" />
-            Photo Filter:
-          </span>
-          <button
-            onClick={() => setPhotoFilter("all")}
-            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-              photoFilter === "all"
-                ? "bg-slate-900 text-white shadow-xs"
-                : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 border border-slate-200 dark:border-slate-700"
-            }`}
-          >
-            <span>All Records</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${photoFilter === "all" ? "bg-white/20 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"}`}>
-              {photoStats.total}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setPhotoFilter("with-photo")}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-              photoFilter === "with-photo"
-                ? "bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/20"
-                : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 border border-emerald-200/80 dark:border-emerald-800"
-            }`}
-          >
-            <Camera size={13} />
-            <span>With Photos (Lagi Hui Hain)</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${photoFilter === "with-photo" ? "bg-emerald-800 text-white" : "bg-emerald-200/80 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200"}`}>
-              {photoStats.withPhoto}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setPhotoFilter("missing-photo")}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-              photoFilter === "missing-photo"
-                ? "bg-amber-600 text-white shadow-xs ring-2 ring-amber-500/20"
-                : "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 border border-amber-200/80 dark:border-amber-800"
-            }`}
-          >
-            <AlertCircle size={13} />
-            <span>Missing Photos</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${photoFilter === "missing-photo" ? "bg-amber-800 text-white" : "bg-amber-200/80 dark:bg-amber-900 text-amber-800 dark:text-amber-200"}`}>
-              {photoStats.missingPhoto}
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* Filters Bar */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-wrap items-center gap-5 mb-10 hover:border-superior-teal/20 transition-all duration-500">
-        <div className="flex items-center gap-3 pr-5 border-r border-slate-100">
-          <Checkbox 
-            id="select-all-students"
-            checked={selectedStudents.length === filteredStudents.length && filteredStudents.length > 0} 
-            onCheckedChange={toggleSelectAll} 
-            className="rounded-md border-superior-teal/30 data-[state=checked]:bg-superior-teal data-[state=checked]:text-white"
-          />
-          <Label htmlFor="select-all-students" className="text-[10px] font-black text-superior-teal/60 cursor-pointer uppercase tracking-[0.2em]">Select All</Label>
-        </div>
-
-        <div className="relative flex-1 min-w-[280px]">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-superior-teal/40" size={18} />
-          <Input 
-            placeholder="Search by name or ID..." 
-            className="pl-12 h-12 rounded-2xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-medium"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-4">
-          <Select value={sectionFilter} onValueChange={setSectionFilter}>
-            <SelectTrigger className="w-[140px] h-12 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-slate-600">
-              <SelectValue placeholder="Section" />
-            </SelectTrigger>
-            <SelectContent className="rounded-2xl border-slate-100 shadow-xl">
-              <SelectItem value="all">All Sections</SelectItem>
-              {sectionOptions.map(sec => (
-                <SelectItem key={sec} value={sec}>{sec}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={genderFilter} onValueChange={setGenderFilter}>
-            <SelectTrigger className="w-[140px] h-12 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-slate-600 font-bold">
-              <SelectValue placeholder="Gender" />
-            </SelectTrigger>
-            <SelectContent className="rounded-2xl border-slate-100 shadow-xl">
-              <SelectItem value="all">All Genders</SelectItem>
-              <SelectItem value="Male">Boys Only</SelectItem>
-              <SelectItem value="Female">Girls Only</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={monthlyFeeFilter} onValueChange={setMonthlyFeeFilter}>
-            <SelectTrigger className="w-[180px] h-12 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-slate-600">
-              <SelectValue placeholder="Monthly Fee" />
-            </SelectTrigger>
-            <SelectContent className="rounded-2xl border-slate-100 shadow-xl">
-              <SelectItem value="all">All Fee Status</SelectItem>
-              <SelectItem value="Paid" className="text-emerald-600">Paid This Month</SelectItem>
-              <SelectItem value="Partial" className="text-orange-600">Partial Paid</SelectItem>
-              <SelectItem value="Unpaid" className="text-rose-600">Not Paid</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={defaulterFilter} onValueChange={setDefaulterFilter}>
-            <SelectTrigger className="w-[180px] h-12 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-superior-teal/30 transition-all font-bold text-slate-600">
-              <SelectValue placeholder="Defaulter Filter" />
-            </SelectTrigger>
-            <SelectContent className="rounded-2xl border-slate-100 shadow-xl">
-              <SelectItem value="all">All Students</SelectItem>
-              <SelectItem value="1" className="text-orange-500">Defaulter 1 Month</SelectItem>
-              <SelectItem value="2" className="text-orange-600">Defaulter 2 Months</SelectItem>
-              <SelectItem value="3" className="text-rose-600">Defaulter 3+ Months</SelectItem>
-              <SelectItem value="4" className="text-red-700 font-bold">Serious Defaulters (4+)</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Button variant="outline" className="h-12 w-12 rounded-xl border-slate-100 bg-slate-50 hover:bg-white transition-all p-0">
-            <Filter size={18} className="text-slate-400" />
-          </Button>
-
-          <div className="flex bg-slate-100 p-1 rounded-xl">
-            <button
-              className={cn("px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all", viewMode === 'grid' ? "bg-white text-superior-teal shadow-sm" : "text-slate-400 hover:text-slate-600")}
-              onClick={() => setViewMode('grid')}
-            >
-              Grid
-            </button>
-            <button
-              className={cn("px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all", viewMode === 'list' ? "bg-white text-superior-teal shadow-sm" : "text-slate-400 hover:text-slate-600")}
-              onClick={() => setViewMode('list')}
-            >
-              List
-            </button>
-          </div>
-        </div>
-      </div>
 
       {/* Students View */}
       {viewMode === 'grid' ? (

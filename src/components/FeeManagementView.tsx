@@ -1200,330 +1200,228 @@ export default function FeeManagementView({
 
   return (
     <div className="space-y-6 pb-10">
-      {isAdmin && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-          >
-            <Card className="rounded-2xl border-none shadow-xl shadow-slate-200/50 overflow-hidden relative group bg-gradient-to-br from-white to-slate-50 h-full">
-              <CardContent className="p-4 flex flex-col justify-between h-full">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="w-8 h-8 rounded-xl bg-superior-teal/10 flex items-center justify-center text-superior-teal">
-                    <Wallet size={16} />
-                  </div>
-                  <Badge className="bg-superior-teal/10 text-superior-teal border-none font-black text-[9px] uppercase">
-                    Target
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                    Expected Revenue
-                  </p>
-                  <h3 className="text-lg font-black text-slate-900 leading-none italic">
-                    Rs. {stats.totalExpected.toLocaleString()}
-                  </h3>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <Card className="rounded-2xl border-none shadow-xl shadow-slate-200/50 overflow-hidden relative group bg-gradient-to-br from-white to-emerald-50 h-full">
-              <CardContent className="p-4 flex flex-col justify-between h-full">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
-                    <ArrowUpRight size={16} />
-                  </div>
-                  <Badge className="bg-emerald-500 text-white border-none font-black text-[9px] uppercase">
-                    {stats.collectionRate.toFixed(0)}% Rate
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                    Total Received
-                  </p>
-                  <h3 className="text-lg font-black text-emerald-600 leading-none italic">
-                    Rs. {stats.totalReceived.toLocaleString()}
-                  </h3>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
-            <Card className="rounded-2xl border-none shadow-xl shadow-slate-200/50 overflow-hidden relative group bg-gradient-to-br from-white to-rose-50 h-full">
-              <CardContent className="p-4 flex flex-col justify-between h-full">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="w-8 h-8 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-600">
-                    <ArrowDownRight size={16} />
-                  </div>
-                  <Badge
-                    variant="destructive"
-                    className="bg-rose-500 text-white border-none font-black text-[9px] uppercase"
-                  >
-                    Arrears
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                    Outstanding
-                  </p>
-                  <h3 className="text-lg font-black text-rose-600 leading-none italic">
-                    Rs. {stats.outstanding.toLocaleString()}
-                  </h3>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-          >
-            <Card className="rounded-2xl border-none shadow-xl shadow-slate-200/50 overflow-hidden relative group bg-gradient-to-br from-white to-superior-gold/5 h-full">
-              <CardContent className="p-4 flex flex-col justify-between h-full">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="w-8 h-8 rounded-xl bg-superior-gold/10 flex items-center justify-center text-superior-gold">
-                    <Users size={16} />
-                  </div>
-                  <Badge className="bg-superior-gold text-white border-none font-black text-[9px] uppercase">
-                    {stats.defaulters} Defaulters
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                    Total Strength
-                  </p>
-                  <h3 className="text-lg font-black text-superior-teal leading-none italic">
-                    {stats.totalStudents} Students
-                  </h3>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
-      )}
-
-      {/* Header & Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h2 className="text-3xl font-display font-black text-superior-teal tracking-tight flex items-center gap-3 italic">
-            <CreditCard size={32} className="text-superior-gold" />
-            Fee Module
-          </h2>
-          <p className="text-slate-500 mt-1 font-bold tracking-tight">
-            Student Ledger Control & Transaction Verification
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          {activeRowStudent && (
-            <>
-              <Button
-                onClick={() => generateFeeStatement(activeRowStudent)}
-                variant="outline"
-                className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-700 font-black uppercase tracking-widest text-[10px] h-12 px-6 shadow-sm hover:bg-emerald-100 transition-all"
-              >
-                <Download size={16} className="mr-2" /> Fee Statement
-              </Button>
-              {getUnifiedTransactions(activeRowStudent) &&
-                getUnifiedTransactions(activeRowStudent).length > 0 && (
-                  <Button
-                    onClick={() => {
-                      generateReceipt(
-                        activeRowStudent,
-                        getUnifiedTransactions(activeRowStudent)[0],
-                      );
-                    }}
-                    variant="outline"
-                    className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-700 font-black uppercase tracking-widest text-[10px] h-12 px-6 shadow-sm hover:bg-emerald-100 transition-all"
-                  >
-                    <Download size={16} className="mr-2" /> Latest Receipt
-                  </Button>
-                )}
-            </>
-          )}
-          <Button
-            onClick={handleExportCSV}
-            variant="outline"
-            className="rounded-xl border-slate-200 font-black uppercase tracking-widest text-[10px] h-12 px-6 shadow-sm hover:bg-slate-50 transition-all"
-          >
-            <Download size={16} className="mr-2 text-superior-gold" /> Export
-            CSV
-          </Button>
-          <Button
-            onClick={handlePrintFeeVouchers}
-            variant="outline"
-            className="rounded-xl border-slate-200 font-black uppercase tracking-widest text-[10px] h-12 px-6 shadow-sm hover:bg-red-50 hover:text-red-600 transition-all"
-          >
-            <Download size={16} className="mr-2 text-red-500" /> Print Vouchers
-          </Button>
-          <Button
-            onClick={handleExportExcel}
-            variant="outline"
-            className="rounded-xl border-slate-200 font-black uppercase tracking-widest text-[10px] h-12 px-6 shadow-sm hover:bg-slate-50 transition-all"
-          >
-            <Download size={16} className="mr-2 text-emerald-600" /> Export
-            Excel
-          </Button>
-          <Button
-            onClick={() => {
-              setSelectedStudent(null);
-              setPaymentAmount("");
-              setIsPaymentOpen(true);
-            }}
-            className="h-12 px-8 rounded-xl bg-superior-teal text-white font-black uppercase tracking-widest text-[10px] hover:bg-superior-teal/90 transition-all shadow-xl shadow-superior-teal/10 flex items-center justify-center"
-          >
-            <Plus size={18} className="mr-2" /> Add New Fee
-          </Button>
-        </div>
-      </div>
-
-      {/* Tab Navigation Area */}
-      <div className="flex border-b border-slate-200 hide-scrollbar overflow-x-auto w-full mb-6">
-        {["collect", "defaulters"].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`pb-4 px-8 font-black text-[11px] uppercase tracking-widest whitespace-nowrap border-b-2 transition-all ${activeTab === tab ? "border-superior-teal text-superior-teal" : "border-transparent text-slate-400 hover:text-slate-600"}`}
-          >
-            {tab === "collect" && "Collect Fee"}
-            {tab === "defaulters" && "Defaulters"}
-          </button>
-        ))}
-      </div>
-
-      {/* Group Navigation Tabs */}
-      <Tabs value={groupFilter} onValueChange={(val) => setGroupFilter(val)} className="w-full mb-6">
-        <TabsList className="bg-slate-100 p-1.5 rounded-2xl w-full flex items-center justify-start overflow-x-auto scrollbar-hide h-auto border border-slate-200/50">
-          <TabsTrigger value="all" className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap">
-            All Groups
-          </TabsTrigger>
-          <TabsTrigger value="fsc" className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap">
-            <School size={15} className="mr-2 inline-block" />
-            Inter
-          </TabsTrigger>
-          <TabsTrigger value="dit" className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap">
-            <GraduationCap size={15} className="mr-2 inline-block" />
-            DIT
-          </TabsTrigger>
-          <TabsTrigger value="ukl3" className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap">
-            <Globe size={15} className="mr-2 inline-block" />
-            UKL3
-          </TabsTrigger>
-          <TabsTrigger value="bs" className="rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-superior-teal data-[state=active]:shadow-sm transition-all whitespace-nowrap">
-            <GraduationCap size={15} className="mr-2 inline-block" />
-            BS
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {/* Main Content Area */}
-      <div className="space-y-6">
-        <Card className="rounded-[2.5rem] border-slate-100 shadow-sm overflow-hidden">
-          <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-8">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div>
-                <CardTitle className="text-xl font-display font-black text-slate-800 uppercase tracking-tight italic">
-                  {activeTab === "collect" && "Collect Fee Hub"}
-                  {activeTab === "defaulters" && "Defaulters List"}
-                </CardTitle>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">
-                  Real-time Individual Transaction Access
-                </p>
+      {/* Sleek Ultra-Compact Ribbon (< 85px) */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-2.5 shadow-sm space-y-2">
+        {/* ROW 1: Title + Urdu + Tabs + Programs + Action Buttons */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Left: Title + Nastaleeq + Mode Switcher + Group Pills */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className="w-7 h-7 rounded-lg bg-superior-teal/10 flex items-center justify-center text-superior-teal">
+                <CreditCard size={15} />
               </div>
-              <div className="flex items-center gap-3 w-full md:w-auto">
-                <Select value={sectionFilter} onValueChange={setSectionFilter}>
-                  <SelectTrigger className="w-28 rounded-xl border-slate-100 h-10 font-bold text-xs uppercase tracking-tighter">
-                    <SelectValue placeholder="Section" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl border-slate-100 shadow-xl">
-                    <SelectItem value="all" className="font-bold text-xs">
-                      All Sections
-                    </SelectItem>
-                    {sectionOptions.map((sec) => (
-                      <SelectItem
-                        key={sec}
-                        value={sec}
-                        className="font-bold text-xs"
-                      >
-                        {sec}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <h2 className="text-sm font-black text-slate-800 dark:text-slate-100 tracking-tight">
+                Fee Management
+              </h2>
+              <span className="font-nastaleeq text-xs text-superior-gold font-medium px-1.5 py-0.5 bg-superior-gold/10 rounded-md">
+                فیس مینجمنٹ
+              </span>
+            </div>
 
-                <Select value={genderFilter} onValueChange={setGenderFilter}>
-                  <SelectTrigger className="w-28 rounded-xl border-slate-100 h-10 font-bold text-xs uppercase tracking-tighter">
-                    <SelectValue placeholder="Gender" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl border-slate-100 shadow-xl">
-                    <SelectItem value="all" className="font-bold text-xs">
-                      All Genders
-                    </SelectItem>
-                    <SelectItem value="Male" className="font-bold text-xs">
-                      Boys Only
-                    </SelectItem>
-                    <SelectItem value="Female" className="font-bold text-xs">
-                      Girls Only
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+            {/* Mode Switcher: Collect vs Defaulters */}
+            <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+              <button
+                type="button"
+                onClick={() => setActiveTab("collect")}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all",
+                  activeTab === "collect"
+                    ? "bg-white dark:bg-slate-700 text-superior-teal dark:text-superior-gold shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                )}
+              >
+                Collect Fee ({filteredStudents.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("defaulters")}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all flex items-center gap-1",
+                  activeTab === "defaulters"
+                    ? "bg-rose-500 text-white shadow-xs"
+                    : "text-rose-600 dark:text-rose-400 hover:text-rose-700"
+                )}
+              >
+                Defaulters ({stats.defaulters})
+              </button>
+            </div>
 
-                <div className="relative flex-1 md:w-48">
-                  <Search
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300"
-                    size={16}
-                  />
-                  <Input
-                    placeholder="Search name or ID..."
-                    className="pl-10 rounded-xl bg-white border-slate-100 italic focus:border-superior-teal/30 focus:shadow-md transition-all h-10 text-xs font-bold"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
+            {/* Group Navigation Pills */}
+            <div className="hidden lg:flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+              {[
+                { id: "all", label: "All Groups" },
+                { id: "fsc", label: "Inter", icon: School },
+                { id: "dit", label: "DIT", icon: GraduationCap },
+                { id: "ukl3", label: "UKL3", icon: Globe },
+                { id: "bs", label: "BS", icon: GraduationCap },
+              ].map((grp) => {
+                const Icon = grp.icon;
+                const active = groupFilter === grp.id;
+                return (
+                  <button
+                    key={grp.id}
+                    type="button"
+                    onClick={() => setGroupFilter(grp.id)}
+                    className={cn(
+                      "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all",
+                      active
+                        ? "bg-white dark:bg-slate-700 text-superior-teal dark:text-superior-gold shadow-xs"
+                        : "text-slate-500 hover:text-slate-900 dark:text-slate-400"
+                    )}
+                  >
+                    {Icon && <Icon size={11} />}
+                    <span>{grp.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-                <Button
-                  onClick={() => {
-                    const toPrint = filteredStudents.slice(0, 50);
-                    if (toPrint.length === 0) {
-                      toast.error("No students found to generate challans.");
-                      return;
-                    }
-                    setChallanStudents(toPrint);
-                    setIsChallanModalOpen(true);
-                  }}
-                  variant="outline"
-                  className="h-10 px-3.5 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0"
-                >
-                  <Building2 size={15} className="text-emerald-600" />
-                  <span>Batch Challans</span>
-                </Button>
+          {/* Right: Actions */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              onClick={() => {
+                const toPrint = filteredStudents.slice(0, 50);
+                if (toPrint.length === 0) {
+                  toast.error("No students found to generate challans.");
+                  return;
+                }
+                setChallanStudents(toPrint);
+                setIsChallanModalOpen(true);
+              }}
+              variant="outline"
+              size="sm"
+              className="h-7.5 px-2.5 rounded-lg border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-[11px] flex items-center gap-1 hover:bg-slate-50"
+            >
+              <Building2 size={13} className="text-emerald-600" />
+              <span>Challans</span>
+            </Button>
 
-                <Button
-                  onClick={handleOpenBulkFeeRemindersModal}
-                  className="h-10 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 shadow-sm"
-                  title="Broadcast Fee Due Reminders via WhatsApp"
-                >
-                  <MessageSquare size={15} />
-                  <span>Broadcast Reminders</span>
-                </Button>
+            <Button
+              onClick={handleOpenBulkFeeRemindersModal}
+              size="sm"
+              className="h-7.5 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-xs"
+              title="Broadcast Fee Due Reminders via WhatsApp"
+            >
+              <MessageSquare size={13} />
+              <span>Broadcast</span>
+            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className="h-7.5 px-2 rounded-lg border border-slate-200 dark:border-slate-700 font-bold text-[11px] flex items-center gap-1 hover:bg-slate-50 text-slate-700 dark:text-slate-300"
+              >
+                <Download size={13} className="text-superior-gold" />
+                <span>Export</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 rounded-xl shadow-lg">
+                <DropdownMenuItem onClick={handleExportCSV} className="text-xs font-bold gap-2">
+                  <Download size={14} className="text-superior-gold" /> Export CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportExcel} className="text-xs font-bold gap-2">
+                  <Download size={14} className="text-emerald-600" /> Export Excel
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handlePrintFeeVouchers} className="text-xs font-bold gap-2">
+                  <Download size={14} className="text-red-500" /> Print Fee Vouchers
+                </DropdownMenuItem>
+                {activeRowStudent && (
+                  <>
+                    <DropdownMenuItem onClick={() => generateFeeStatement(activeRowStudent)} className="text-xs font-bold gap-2">
+                      <FileText size={14} className="text-indigo-600" /> Selected Fee Statement
+                    </DropdownMenuItem>
+                    {getUnifiedTransactions(activeRowStudent)?.length > 0 && (
+                      <DropdownMenuItem onClick={() => generateReceipt(activeRowStudent, getUnifiedTransactions(activeRowStudent)[0])} className="text-xs font-bold gap-2">
+                        <Receipt size={14} className="text-teal-600" /> Selected Latest Receipt
+                      </DropdownMenuItem>
+                    )}
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Button
+              onClick={() => {
+                setSelectedStudent(null);
+                setPaymentAmount("");
+                setIsPaymentOpen(true);
+              }}
+              size="sm"
+              className="h-7.5 px-3 rounded-lg bg-superior-teal hover:bg-superior-teal/90 text-white font-bold text-[11px] flex items-center gap-1 shadow-xs"
+            >
+              <Plus size={14} />
+              <span>Add Payment</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* ROW 2: Search + Filters + Live Mini KPI Metric Strip */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+          {/* Left: Search + Filters */}
+          <div className="flex items-center gap-2 flex-1 min-w-[280px]">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
+              <Input
+                placeholder="Search student by name, roll, father..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-8 h-7.5 text-xs rounded-lg border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50"
+              />
+            </div>
+
+            <Select value={sectionFilter} onValueChange={setSectionFilter}>
+              <SelectTrigger className="w-28 h-7.5 rounded-lg border-slate-200 dark:border-slate-700 text-[11px] font-bold">
+                <SelectValue placeholder="Section" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl">
+                <SelectItem value="all" className="text-xs font-bold">All Sections</SelectItem>
+                {sectionOptions.map((sec) => (
+                  <SelectItem key={sec} value={sec} className="text-xs font-bold">{sec}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={genderFilter} onValueChange={setGenderFilter}>
+              <SelectTrigger className="w-24 h-7.5 rounded-lg border-slate-200 dark:border-slate-700 text-[11px] font-bold">
+                <SelectValue placeholder="Gender" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl">
+                <SelectItem value="all" className="text-xs font-bold">All</SelectItem>
+                <SelectItem value="Male" className="text-xs font-bold">Boys Only</SelectItem>
+                <SelectItem value="Female" className="text-xs font-bold">Girls Only</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Right: High-Density Live Metrics Strip */}
+          {isAdmin && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                <span className="text-slate-400 uppercase tracking-wider">Target:</span>
+                <span className="font-mono font-black">Rs. {(stats.totalExpected || 0).toLocaleString()}</span>
+              </div>
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50">
+                <span className="text-emerald-600 uppercase tracking-wider">Received:</span>
+                <span className="font-mono font-black">Rs. {(stats.totalReceived || 0).toLocaleString()}</span>
+                <span className="text-[9px] bg-emerald-600 text-white px-1 rounded font-black">{stats.collectionRate.toFixed(0)}%</span>
+              </div>
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 dark:bg-rose-950/40 text-[10px] font-bold text-rose-700 dark:text-rose-300 border border-rose-200/50 dark:border-rose-800/50">
+                <span className="text-rose-600 uppercase tracking-wider">Arrears:</span>
+                <span className="font-mono font-black">Rs. {(stats.outstanding || 0).toLocaleString()}</span>
+              </div>
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-[10px] font-bold text-amber-700 dark:text-amber-300 border border-amber-200/50 dark:border-amber-800/50">
+                <span className="text-amber-600 uppercase tracking-wider">Defaulters:</span>
+                <span className="font-mono font-black">{stats.defaulters}</span>
               </div>
             </div>
-          </CardHeader>
-          <CardContent className="p-0 border-b-0">
-            <div className="overflow-x-auto hide-scrollbar">
-              <Table>
+          )}
+        </div>
+      </div>
+
+      {/* Main Content Area: Table */}
+      <Card className="rounded-2xl border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+        <CardContent className="p-0 border-b-0">
+          <div className="overflow-x-auto hide-scrollbar">
+            <Table>
                 <TableHeader className="bg-slate-50/95 dark:bg-slate-900/95 sticky top-0 z-10 shadow-xs backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800">
                   <TableRow className="border-none">
                     <TableHead className="font-black text-[10px] uppercase tracking-widest pl-8 h-12 text-slate-600 dark:text-slate-400">
@@ -1835,7 +1733,6 @@ export default function FeeManagementView({
             </div>
           </CardContent>
         </Card>
-      </div>
 
       {/* Payment Dialog */}
       <Dialog open={isPaymentOpen} onOpenChange={setIsPaymentOpen}>

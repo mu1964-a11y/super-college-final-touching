@@ -1010,6 +1010,9 @@ export default function AttendanceView({ data }: { data: any }) {
           <h2 className="text-xl font-display font-black text-superior-teal tracking-tight flex items-center gap-2">
             <CheckCircle2 size={20} className="text-superior-gold" />
             <span>Students Attendance</span>
+            <span className="font-nastaleeq text-xs text-superior-gold font-medium px-1.5 py-0.5 bg-superior-gold/10 rounded-md">
+              طلباء حاضری
+            </span>
           </h2>
 
           {/* Daily / Monthly Switcher */}

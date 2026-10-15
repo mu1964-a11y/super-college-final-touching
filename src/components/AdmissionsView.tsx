@@ -1159,6 +1159,9 @@ export default function AdmissionsView({
         <div className="flex flex-wrap items-center gap-2.5">
           <h2 className="text-xl font-display font-black text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
             <span>Admission Pipeline</span>
+            <span className="font-nastaleeq text-xs text-superior-gold font-medium px-1.5 py-0.5 bg-superior-gold/10 rounded-md">
+              داخلہ پائپ لائن
+            </span>
             <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
               {summaryStats.total}
             </span>

@@ -437,6 +437,9 @@ export default function LeadsManagementView({ data, onNavigate }: { data: any, o
         <div className="flex flex-wrap items-center gap-2.5">
           <h2 className="text-xl font-display font-black text-superior-teal tracking-tight flex items-center gap-2 whitespace-nowrap">
             <span>Leads Pipeline</span>
+            <span className="font-nastaleeq text-xs text-superior-gold font-medium px-1.5 py-0.5 bg-superior-gold/10 rounded-md">
+              لیڈز پائپ لائن
+            </span>
             <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-800 border border-emerald-500/20">
               {filteredLeads.length}
             </span>
