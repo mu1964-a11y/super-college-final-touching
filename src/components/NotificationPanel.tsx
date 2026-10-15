@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Popover,
   PopoverContent,
@@ -37,6 +38,18 @@ export default function NotificationPanel({
 }: NotificationPanelProps) {
   const [activeFilter, setActiveFilter] = useState<'All' | 'Deletions' | 'Admissions' | 'Payments' | 'Staff'>('All');
   const [selectedNotif, setSelectedNotif] = useState<Notification | null>(null);
+  const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+
+  // Close modal on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedNotif) {
+        setSelectedNotif(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedNotif]);
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
@@ -156,7 +169,7 @@ export default function NotificationPanel({
 
   return (
     <>
-      <Popover>
+      <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
         <PopoverTrigger className="relative flex items-center justify-center p-2.5 rounded-2xl bg-slate-50 border border-slate-100 text-slate-400 hover:text-superior-teal hover:bg-white transition-all group cursor-pointer">
           <Bell size={24} className="group-hover:rotate-12 transition-transform" />
           {unreadCount > 0 && (
@@ -249,6 +262,7 @@ export default function NotificationPanel({
                       onClick={() => {
                         if (!n.isRead) onMarkRead(n.id);
                         setSelectedNotif(n);
+                        setIsPopoverOpen(false);
                       }}
                       className={cn(
                         "p-4 transition-all relative group flex gap-4 hover:bg-slate-50 cursor-pointer",
@@ -328,177 +342,183 @@ export default function NotificationPanel({
         </PopoverContent>
       </Popover>
 
-      {/* DETAILED CHANGE LOG DIALOG MODAL */}
-      {selectedNotif && activeRichDetail && activeRichDetail.isRich && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+      {/* DETAILED CHANGE LOG DIALOG MODAL (Portaled to document.body so header CSS transforms never distort or push it off-screen) */}
+      {typeof document !== 'undefined' && selectedNotif && activeRichDetail && activeRichDetail.isRich && createPortal(
+        <div
+          className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+          onClick={() => setSelectedNotif(null)}
+        >
           <div 
-            className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]"
+            className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[88vh] animate-in zoom-in-95 duration-200 relative"
             onClick={(e) => e.stopPropagation()}
             id="notification-details-modal"
           >
             {/* Modal Header */}
-            <div className="p-5 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
-              <div>
+            <div className="p-5 border-b border-slate-100 flex items-start justify-between bg-slate-50/70 shrink-0">
+              <div className="pr-4">
                 <span className={cn(
                   "px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest rounded-lg border inline-block mb-1.5",
-                  activeRichDetail.data?.action === 'add' && "bg-emerald-50 text-emerald-700 border-emerald-100",
-                  activeRichDetail.data?.action === 'update' && "bg-amber-50 text-amber-700 border-amber-100",
-                  activeRichDetail.data?.action === 'delete' && "bg-rose-50 text-rose-700 border-rose-100",
-                  !activeRichDetail.data?.action && "bg-slate-50 text-slate-700 border-slate-100"
+                  activeRichDetail.data?.action === 'add' && "bg-emerald-50 text-emerald-700 border-emerald-200",
+                  activeRichDetail.data?.action === 'update' && "bg-amber-50 text-amber-700 border-amber-200",
+                  activeRichDetail.data?.action === 'delete' && "bg-rose-50 text-rose-700 border-rose-200",
+                  !activeRichDetail.data?.action && "bg-slate-50 text-slate-700 border-slate-200"
                 )}>
                   {activeRichDetail.data?.action?.toUpperCase() || "SYSTEM EVENT"}
                 </span>
-                <h3 className="text-lg font-bold text-slate-900">{selectedNotif.title}</h3>
+                <h3 className="text-lg font-bold text-slate-900 leading-snug">{selectedNotif.title}</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Logged {format(new Date(selectedNotif.timestamp), 'PPpp')}
                 </p>
               </div>
               <button 
                 onClick={() => setSelectedNotif(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition-all cursor-pointer shrink-0"
                 id="close-notification-modal-btn"
+                title="Close (Esc)"
               >
                 <X size={18} />
               </button>
             </div>
 
             {/* Modal Scrollable Content */}
-            <ScrollArea className="flex-1 p-6">
-              <div className="space-y-5">
-                {/* Section Overview */}
-                <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                  <div className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Activity Overview</div>
-                  <p className="text-sm font-medium text-slate-800 leading-relaxed">
-                    {activeRichDetail.text}
-                  </p>
+            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-slate-50 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400">
+              {/* Section Overview */}
+              <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                <div className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Activity Overview</div>
+                <p className="text-sm font-medium text-slate-800 leading-relaxed">
+                  {activeRichDetail.text}
+                </p>
+                
+                {activeRichDetail.data?.targetName && (
+                  <div className="mt-3 pt-3 border-t border-slate-200/50 flex justify-between items-center text-xs">
+                    <span className="text-slate-400 font-medium">Linked Record Target:</span>
+                    <span className="font-bold text-slate-900 px-2 py-1 bg-white border border-slate-100 rounded-lg">{activeRichDetail.data.targetName}</span>
+                  </div>
+                )}
+                {activeRichDetail.data?.module && (
+                  <div className="mt-1.5 flex justify-between items-center text-xs">
+                    <span className="text-slate-400 font-medium">System Module:</span>
+                    <span className="font-bold text-[#085a4e]">{activeRichDetail.data.module}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Specific Changes list (UPDATED ACTION) */}
+              {activeRichDetail.data?.action === 'update' && activeRichDetail.data.changes && (
+                <div>
+                  <div className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-3">Field Changes Breakdown</div>
                   
-                  {activeRichDetail.data?.targetName && (
-                    <div className="mt-3 pt-3 border-t border-slate-200/50 flex justify-between items-center text-xs">
-                      <span className="text-slate-400 font-medium">Linked Record Target:</span>
-                      <span className="font-bold text-slate-900 px-2 py-1 bg-white border border-slate-100 rounded-lg">{activeRichDetail.data.targetName}</span>
-                    </div>
-                  )}
-                  {activeRichDetail.data?.module && (
-                    <div className="mt-1.5 flex justify-between items-center text-xs">
-                      <span className="text-slate-400 font-medium">System Module:</span>
-                      <span className="font-bold text-superior-teal">{activeRichDetail.data.module}</span>
-                    </div>
-                  )}
-                </div>
+                  <div className="border border-slate-100 rounded-xl overflow-hidden divide-y divide-slate-100">
+                    {activeRichDetail.data.changes.map((chg, idx) => (
+                      <div key={idx} className="p-3.5 bg-white space-y-2 hover:bg-slate-50/50 transition-all">
+                        <div className="text-xs font-bold text-slate-700">{chg.field}</div>
+                        
+                        <div className="grid grid-cols-11 gap-2 items-center text-xs">
+                          {/* Before value */}
+                          <div className="col-span-5 bg-rose-50/80 text-rose-700 px-2.5 py-1.5 rounded-lg border border-rose-100/50 truncate font-mono">
+                            <span className="block text-[8px] font-bold text-rose-400 uppercase tracking-widest mb-0.5">Before</span>
+                            {chg.old || 'None'}
+                          </div>
 
-                {/* Specific Changes list (UPDATED ACTION) */}
-                {activeRichDetail.data?.action === 'update' && activeRichDetail.data.changes && (
-                  <div>
-                    <div className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-3">Field Changes Breakdown</div>
-                    
-                    <div className="border border-slate-100 rounded-xl overflow-hidden divide-y divide-slate-100">
-                      {activeRichDetail.data.changes.map((chg, idx) => (
-                        <div key={idx} className="p-3.5 bg-white space-y-2 hover:bg-slate-50/50 transition-all">
-                          <div className="text-xs font-bold text-slate-700">{chg.field}</div>
-                          
-                          <div className="grid grid-cols-11 gap-2 items-center text-xs">
-                            {/* Before value */}
-                            <div className="col-span-5 bg-rose-50/80 text-rose-700 px-2.5 py-1.5 rounded-lg border border-rose-100/50 truncate font-mono">
-                              <span className="block text-[8px] font-bold text-rose-400 uppercase tracking-widest mb-0.5">Before</span>
-                              {chg.old || 'None'}
-                            </div>
+                          {/* Arrow Indicator */}
+                          <div className="col-span-1 flex justify-center text-slate-300">
+                            <ArrowRight size={14} className="animate-pulse" />
+                          </div>
 
-                            {/* Arrow Indicator */}
-                            <div className="col-span-1 flex justify-center text-slate-300">
-                              <ArrowRight size={14} className="animate-pulse" />
-                            </div>
-
-                            {/* After value */}
-                            <div className="col-span-5 bg-emerald-50/80 text-emerald-700 px-2.5 py-1.5 rounded-lg border border-emerald-100/50 truncate font-mono">
-                              <span className="block text-[8px] font-bold text-emerald-400 uppercase tracking-widest mb-0.5">After</span>
-                              {chg.new || 'None'}
-                            </div>
+                          {/* After value */}
+                          <div className="col-span-5 bg-emerald-50/80 text-emerald-700 px-2.5 py-1.5 rounded-lg border border-emerald-100/50 truncate font-mono">
+                            <span className="block text-[8px] font-bold text-emerald-400 uppercase tracking-widest mb-0.5">After</span>
+                            {chg.new || 'None'}
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Whole Added/Deleted record attributes (ADDED/DELETED ACTION) */}
-                {(activeRichDetail.data?.action === 'add' || activeRichDetail.data?.action === 'delete') && (
-                  <div>
-                    <div className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-3">
-                      Record Attributes ({activeRichDetail.data.action === 'add' ? 'Added' : 'Deleted'})
-                    </div>
-                    
-                    <div className="bg-slate-50/50 border border-slate-100 rounded-xl p-3.5 space-y-2.5 max-h-72 overflow-y-auto">
-                      {Object.entries(activeRichDetail.data.fullRecord || activeRichDetail.data.deletedRecord || {})
-                        .filter(([key, val]) => {
-                          // Filter out internal and binary properties
-                          return (
-                            key !== 'id' &&
-                            key !== 'photo' &&
-                            key !== 'photo_url' &&
-                            key !== 'feeHistory' &&
-                            key !== 'feeLedger' &&
-                            key !== 'performance' &&
-                            key !== 'attendance' &&
-                            !Array.isArray(val) &&
-                            typeof val !== 'object' &&
-                            val !== null &&
-                            val !== undefined &&
-                            String(val).trim() !== ''
-                          );
-                        })
-                        .map(([key, val]) => {
-                          const prettyKey = key
-                            .replace(/([A-Z])/g, ' $1')
-                            .replace(/^./, (str) => str.toUpperCase());
-                          return (
-                            <div key={key} className="flex justify-between items-start text-xs border-b border-dashed border-slate-200/60 pb-2 last:border-0 last:pb-0">
-                              <span className="text-slate-400 font-medium">{prettyKey}:</span>
-                              <span className="font-semibold text-slate-900 text-right max-w-[65%] truncate">
-                                {String(val)}
-                              </span>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Audit Signoff */}
-                <div className="flex items-center gap-3 pt-4 border-t border-slate-100 text-xs text-slate-400">
-                  <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px]">
-                    {getInitials(selectedNotif.actorName)}
-                  </div>
-                  <div>
-                    <span className="font-semibold text-slate-500">{selectedNotif.actorName}</span> triggered this system update via device terminal.
+                      </div>
+                    ))}
                   </div>
                 </div>
+              )}
+
+              {/* Whole Added/Deleted record attributes (ADDED/DELETED ACTION) */}
+              {(activeRichDetail.data?.action === 'add' || activeRichDetail.data?.action === 'delete') && (
+                <div>
+                  <div className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-3">
+                    Record Attributes ({activeRichDetail.data.action === 'add' ? 'Added' : 'Deleted'})
+                  </div>
+                  
+                  <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 space-y-2.5 max-h-72 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
+                    {Object.entries(activeRichDetail.data.fullRecord || activeRichDetail.data.deletedRecord || {})
+                      .filter(([key, val]) => {
+                        // Filter out internal and binary properties
+                        return (
+                          key !== 'id' &&
+                          key !== 'photo' &&
+                          key !== 'photo_url' &&
+                          key !== 'feeHistory' &&
+                          key !== 'feeLedger' &&
+                          key !== 'performance' &&
+                          key !== 'attendance' &&
+                          !Array.isArray(val) &&
+                          typeof val !== 'object' &&
+                          val !== null &&
+                          val !== undefined &&
+                          String(val).trim() !== ''
+                        );
+                      })
+                      .map(([key, val]) => {
+                        const prettyKey = key
+                          .replace(/([A-Z])/g, ' $1')
+                          .replace(/^./, (str) => str.toUpperCase());
+                        return (
+                          <div key={key} className="flex justify-between items-start text-xs border-b border-dashed border-slate-200/80 pb-2 last:border-0 last:pb-0">
+                            <span className="text-slate-500 font-semibold">{prettyKey}:</span>
+                            <span className="font-bold text-slate-900 text-right max-w-[65%] truncate">
+                              {String(val)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+              {/* Audit Signoff */}
+              <div className="flex items-center gap-3 pt-4 border-t border-slate-100 text-xs text-slate-500">
+                <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs shrink-0">
+                  {getInitials(selectedNotif.actorName)}
+                </div>
+                <div>
+                  <span className="font-bold text-slate-700">{selectedNotif.actorName}</span> triggered this system update via device terminal.
+                </div>
               </div>
-            </ScrollArea>
+            </div>
 
             {/* Modal Footer */}
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end shrink-0">
               <Button 
                 onClick={() => setSelectedNotif(null)}
-                className="bg-slate-900 text-white font-semibold text-xs px-5 py-2.5 rounded-lg hover:bg-slate-800 transition-all cursor-pointer shadow-sm"
+                className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
                 id="close-modal-bottom-btn"
               >
                 Close Log details
               </Button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* PLAINTEXT system message backup modal */}
-      {selectedNotif && activeRichDetail && !activeRichDetail.isRich && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+      {typeof document !== 'undefined' && selectedNotif && activeRichDetail && !activeRichDetail.isRich && createPortal(
+        <div
+          className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+          onClick={() => setSelectedNotif(null)}
+        >
           <div 
-            className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col"
+            className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 relative"
             onClick={(e) => e.stopPropagation()}
             id="notification-plain-modal"
           >
             {/* Plain Modal Header */}
-            <div className="p-5 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
+            <div className="p-5 border-b border-slate-100 flex items-start justify-between bg-slate-50/70">
               <div>
                 <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 rounded-md border border-slate-200 inline-block mb-1">
                   SYSTEM LOG
@@ -522,12 +542,12 @@ export default function NotificationPanel({
                 {selectedNotif.message}
               </div>
 
-              <div className="flex items-center gap-2.5 text-xs text-slate-400">
-                <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[9px]">
+              <div className="flex items-center gap-2.5 text-xs text-slate-500">
+                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px]">
                   {getInitials(selectedNotif.actorName)}
                 </div>
                 <div>
-                  Actor: <span className="font-semibold text-slate-500">{selectedNotif.actorName}</span>
+                  Actor: <span className="font-bold text-slate-700">{selectedNotif.actorName}</span>
                 </div>
               </div>
             </div>
@@ -536,13 +556,14 @@ export default function NotificationPanel({
             <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
               <Button 
                 onClick={() => setSelectedNotif(null)}
-                className="bg-slate-900 text-white font-semibold text-xs px-4 py-2 rounded-lg hover:bg-slate-800 transition-all cursor-pointer"
+                className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer"
               >
                 Dismiss
               </Button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
