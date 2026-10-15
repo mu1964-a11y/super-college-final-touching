@@ -892,25 +892,38 @@ export function useSupabaseData(user: any) {
   };
 
   const updateFingerprintRecord = useCallback((personId: string, personType: 'student' | 'staff', template: string, finger: string) => {
-    const enrolledAt = new Date().toISOString();
+    const isRemoving = !template || template.trim() === '';
+    const enrolledAt = isRemoving ? undefined : new Date().toISOString();
+    const finalTemplate = isRemoving ? undefined : template;
+    const finalFinger = isRemoving ? undefined : finger;
+
     if (personType === 'staff') {
       setStaff(prev => prev.map(s => s.id === personId ? {
         ...s,
-        fingerprintTemplate: template,
-        fingerprintFinger: finger,
+        fingerprintTemplate: finalTemplate,
+        fingerprintFinger: finalFinger,
         fingerprintEnrolledAt: enrolledAt
       } : s));
     } else {
-      setStudents(prev => prev.map(s => (s.id === personId || (s as any).studentId === personId || s.admissionId === personId) ? {
+      setStudents(prev => prev.map(s => (
+        s.id === personId || 
+        (s as any).studentId === personId || 
+        (s as any).collegeNo === personId ||
+        s.admissionId === personId
+      ) ? {
         ...s,
-        fingerprintTemplate: template,
-        fingerprintFinger: finger,
+        fingerprintTemplate: finalTemplate,
+        fingerprintFinger: finalFinger,
         fingerprintEnrolledAt: enrolledAt
       } : s));
-      setAdmissions(prev => prev.map(a => (a.id === personId || a.studentId === personId) ? {
+      setAdmissions(prev => prev.map(a => (
+        a.id === personId || 
+        a.studentId === personId || 
+        (a as any).collegeNo === personId
+      ) ? {
         ...a,
-        fingerprintTemplate: template,
-        fingerprintFinger: finger,
+        fingerprintTemplate: finalTemplate,
+        fingerprintFinger: finalFinger,
         fingerprintEnrolledAt: enrolledAt
       } : a));
     }

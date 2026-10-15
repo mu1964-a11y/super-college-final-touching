@@ -29,6 +29,7 @@ import {
   FingerprintCaptureResult
 } from "../lib/secugenService";
 import { Student, Staff } from "../types";
+import FingerprintThumbnail from "./FingerprintThumbnail";
 
 export interface BiometricPersonTarget {
   id: string;
@@ -267,10 +268,34 @@ export default function BiometricEnrollmentModal({
 
     setIsSaving(true);
     const templateToSave = sample2?.templateBase64 || sample1.templateBase64;
+    const bmpToSave = sample2?.bmpBase64 || sample1?.bmpBase64;
     const enrolledAt = new Date().toISOString();
     const fingerLabel = FINGER_OPTIONS.find((f) => f.id === selectedFinger)?.label || selectedFinger;
+    const personId = selectedPerson.id;
+    const rollNo = (selectedPerson as any).collegeNo || (selectedPerson as any).studentId;
+    const admId = (selectedPerson as any).admissionId;
 
     try {
+      // 1. Cache thumbnail in localStorage for zero-latency instant display
+      if (bmpToSave) {
+        try {
+          localStorage.setItem(`scj_fp_thumb_${personId}`, bmpToSave);
+          if (rollNo) localStorage.setItem(`scj_fp_thumb_${rollNo}`, bmpToSave);
+          if (admId) localStorage.setItem(`scj_fp_thumb_${admId}`, bmpToSave);
+        } catch (e) {
+          console.warn("Could not save thumbnail to localStorage:", e);
+        }
+
+        // Also persist thumbnail image on disk via backend API
+        try {
+          fetch("/api/save-fingerprint-thumb", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ personId, rollNo, admId, bmpBase64: bmpToSave }),
+          }).catch(() => {});
+        } catch (e) {}
+      }
+
       if (selectedPerson.personType === "staff") {
         const { error: staffErr } = await supabase
           .from("staff")
@@ -279,7 +304,7 @@ export default function BiometricEnrollmentModal({
             fingerprint_finger: fingerLabel,
             fingerprint_enrolled_at: enrolledAt,
           })
-          .eq("id", selectedPerson.id);
+          .eq("id", personId);
 
         if (staffErr) {
           console.error("Supabase staff fingerprint update error:", staffErr);
@@ -289,7 +314,7 @@ export default function BiometricEnrollmentModal({
         // Update local staff list immediately
         setLocalStaffList((prev) =>
           prev.map((st) =>
-            st.id === selectedPerson.id
+            st.id === personId
               ? {
                   ...st,
                   fingerprintTemplate: templateToSave,
@@ -300,18 +325,29 @@ export default function BiometricEnrollmentModal({
           )
         );
       } else {
-        // Update students table by direct primary key
-        let { error: studentErr } = await supabase
+        // Update students table by direct primary id
+        await supabase
           .from("students")
           .update({
             fingerprint_template: templateToSave,
             fingerprint_finger: fingerLabel,
             fingerprint_enrolled_at: enrolledAt,
           })
-          .eq("id", selectedPerson.id);
+          .eq("id", personId);
 
-        // Fallback update by admission_id if needed
-        const admId = (selectedPerson as any).admissionId || selectedPerson.id;
+        // Also update by student_id if rollNo differs
+        if (rollNo && rollNo !== personId) {
+          await supabase
+            .from("students")
+            .update({
+              fingerprint_template: templateToSave,
+              fingerprint_finger: fingerLabel,
+              fingerprint_enrolled_at: enrolledAt,
+            })
+            .eq("student_id", rollNo);
+        }
+
+        // Update by admission_id if present
         if (admId) {
           await supabase
             .from("students")
@@ -331,27 +367,37 @@ export default function BiometricEnrollmentModal({
             fingerprint_finger: fingerLabel,
             fingerprint_enrolled_at: enrolledAt,
           })
-          .eq("id", selectedPerson.id);
+          .eq("id", personId);
 
-        await supabase
-          .from("admissions")
-          .update({
-            fingerprint_template: templateToSave,
-            fingerprint_finger: fingerLabel,
-            fingerprint_enrolled_at: enrolledAt,
-          })
-          .eq("student_id", selectedPerson.id);
+        if (rollNo) {
+          await supabase
+            .from("admissions")
+            .update({
+              fingerprint_template: templateToSave,
+              fingerprint_finger: fingerLabel,
+              fingerprint_enrolled_at: enrolledAt,
+            })
+            .eq("student_id", rollNo);
+        }
 
-        if (studentErr) {
-          console.warn("Direct student id update warning (fallback applied):", studentErr);
+        if (admId && admId !== personId) {
+          await supabase
+            .from("admissions")
+            .update({
+              fingerprint_template: templateToSave,
+              fingerprint_finger: fingerLabel,
+              fingerprint_enrolled_at: enrolledAt,
+            })
+            .eq("id", admId);
         }
 
         // Update local students list immediately
         setLocalStudentsList((prev) =>
           prev.map((s) =>
-            s.id === selectedPerson.id ||
-            (s as any).admissionId === selectedPerson.id ||
-            (s as any).studentId === selectedPerson.id
+            s.id === personId ||
+            (s as any).admissionId === personId ||
+            (s as any).studentId === personId ||
+            (rollNo && ((s as any).collegeNo === rollNo || (s as any).studentId === rollNo))
               ? {
                   ...s,
                   fingerprintTemplate: templateToSave,
@@ -380,7 +426,7 @@ export default function BiometricEnrollmentModal({
 
       // Notify parent component
       onEnrollmentSaved?.(
-        selectedPerson.id,
+        personId,
         selectedPerson.personType,
         templateToSave,
         fingerLabel
@@ -439,6 +485,10 @@ export default function BiometricEnrollmentModal({
     }
 
     setIsSaving(true);
+    const personId = selectedPerson.id;
+    const rollNo = (selectedPerson as any).collegeNo || (selectedPerson as any).studentId;
+    const admId = (selectedPerson as any).admissionId;
+
     try {
       if (selectedPerson.personType === "staff") {
         await supabase
@@ -448,11 +498,11 @@ export default function BiometricEnrollmentModal({
             fingerprint_finger: null,
             fingerprint_enrolled_at: null,
           })
-          .eq("id", selectedPerson.id);
+          .eq("id", personId);
 
         setLocalStaffList((prev) =>
           prev.map((st) =>
-            st.id === selectedPerson.id
+            st.id === personId
               ? {
                   ...st,
                   fingerprintTemplate: undefined,
@@ -463,6 +513,7 @@ export default function BiometricEnrollmentModal({
           )
         );
       } else {
+        // Safe sequential updates without risky .or() expressions that fail in PostgreSQL
         await supabase
           .from("students")
           .update({
@@ -470,7 +521,29 @@ export default function BiometricEnrollmentModal({
             fingerprint_finger: null,
             fingerprint_enrolled_at: null,
           })
-          .or(`id.eq.${selectedPerson.id},admission_id.eq.${selectedPerson.id}`);
+          .eq("id", personId);
+
+        if (rollNo && rollNo !== personId) {
+          await supabase
+            .from("students")
+            .update({
+              fingerprint_template: null,
+              fingerprint_finger: null,
+              fingerprint_enrolled_at: null,
+            })
+            .eq("student_id", rollNo);
+        }
+
+        if (admId) {
+          await supabase
+            .from("students")
+            .update({
+              fingerprint_template: null,
+              fingerprint_finger: null,
+              fingerprint_enrolled_at: null,
+            })
+            .eq("admission_id", admId);
+        }
 
         await supabase
           .from("admissions")
@@ -479,13 +552,36 @@ export default function BiometricEnrollmentModal({
             fingerprint_finger: null,
             fingerprint_enrolled_at: null,
           })
-          .or(`id.eq.${selectedPerson.id},student_id.eq.${selectedPerson.id}`);
+          .eq("id", personId);
+
+        if (rollNo) {
+          await supabase
+            .from("admissions")
+            .update({
+              fingerprint_template: null,
+              fingerprint_finger: null,
+              fingerprint_enrolled_at: null,
+            })
+            .eq("student_id", rollNo);
+        }
+
+        if (admId && admId !== personId) {
+          await supabase
+            .from("admissions")
+            .update({
+              fingerprint_template: null,
+              fingerprint_finger: null,
+              fingerprint_enrolled_at: null,
+            })
+            .eq("id", admId);
+        }
 
         setLocalStudentsList((prev) =>
           prev.map((s) =>
-            s.id === selectedPerson.id ||
-            (s as any).admissionId === selectedPerson.id ||
-            (s as any).studentId === selectedPerson.id
+            s.id === personId ||
+            (s as any).admissionId === personId ||
+            (s as any).studentId === personId ||
+            (rollNo && ((s as any).collegeNo === rollNo || (s as any).studentId === rollNo))
               ? {
                   ...s,
                   fingerprintTemplate: undefined,
@@ -497,6 +593,23 @@ export default function BiometricEnrollmentModal({
         );
       }
 
+      // Clear local storage cache
+      try {
+        localStorage.removeItem(`scj_fp_thumb_${personId}`);
+        if (rollNo) localStorage.removeItem(`scj_fp_thumb_${rollNo}`);
+        if (admId) localStorage.removeItem(`scj_fp_thumb_${admId}`);
+      } catch (e) {}
+
+      // Delete from server storage endpoint if exists
+      try {
+        fetch("/api/remove-fingerprint-thumb", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ personId, rollNo, admId }),
+        }).catch(() => {});
+      } catch (e) {}
+
+      // Update selected person state immediately
       setSelectedPerson((prev) =>
         prev
           ? {
@@ -511,9 +624,14 @@ export default function BiometricEnrollmentModal({
       setSample1(null);
       setSample2(null);
       setMatchScore(null);
-      toast.success("Fingerprint removed.");
+
+      // CRITICAL: Notify parent component so state in StudentsView / AttendanceView is immediately cleared!
+      onEnrollmentSaved?.(personId, selectedPerson.personType, "", "");
+
+      toast.success("Fingerprint removed successfully.");
     } catch (err: any) {
-      toast.error("Failed to delete fingerprint.");
+      console.error("Remove error:", err);
+      toast.error(`Failed to delete fingerprint: ${err.message || String(err)}`);
     } finally {
       setIsSaving(false);
     }
@@ -738,11 +856,20 @@ export default function BiometricEnrollmentModal({
                         </div>
                       </div>
                       {hasFP ? (
-                        <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200">
-                          Enrolled ✅
-                        </Badge>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <FingerprintThumbnail
+                            personId={s.id}
+                            altId={s.collegeNo}
+                            template={s.fingerprintTemplate}
+                            size="xs"
+                            fingerLabel={s.fingerprintFinger || "Enrolled"}
+                          />
+                          <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200">
+                            Enrolled ✅
+                          </Badge>
+                        </div>
                       ) : (
-                        <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-200">
+                        <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-200 shrink-0">
                           Missing ⚠️
                         </Badge>
                       )}
@@ -799,11 +926,19 @@ export default function BiometricEnrollmentModal({
                         </div>
                       </div>
                       {hasFP ? (
-                        <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200">
-                          Enrolled ✅
-                        </Badge>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <FingerprintThumbnail
+                            personId={st.id}
+                            template={st.fingerprintTemplate}
+                            size="xs"
+                            fingerLabel={st.fingerprintFinger || "Enrolled"}
+                          />
+                          <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200">
+                            Enrolled ✅
+                          </Badge>
+                        </div>
                       ) : (
-                        <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-200">
+                        <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-200 shrink-0">
                           Missing ⚠️
                         </Badge>
                       )}
@@ -855,18 +990,49 @@ export default function BiometricEnrollmentModal({
                   </div>
 
                   {selectedPerson.fingerprintTemplate && (
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black tracking-wide flex items-center gap-1">
-                        <CheckCircle2 size={12} />
-                        Enrolled ({selectedPerson.fingerprintFinger || "Registered"})
-                      </span>
-                      <button
-                        onClick={handleRemoveFingerprint}
-                        disabled={isSaving}
-                        className="text-[10px] text-rose-500 hover:text-rose-700 font-bold flex items-center gap-1"
-                      >
-                        <Trash2 size={11} /> Remove
-                      </button>
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col items-center">
+                        <FingerprintThumbnail
+                          personId={selectedPerson.id}
+                          altId={(selectedPerson as any).collegeNo || (selectedPerson as any).studentId}
+                          template={selectedPerson.fingerprintTemplate}
+                          fingerLabel={selectedPerson.fingerprintFinger || "Enrolled Finger"}
+                          size="md"
+                          showBadge={true}
+                          allowInspect={true}
+                        />
+                        <span className="text-[8px] font-bold text-slate-400 mt-0.5">Click to view</span>
+                      </div>
+
+                      <div className="flex flex-col items-end gap-1.5">
+                        <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black tracking-wide flex items-center gap-1 shadow-2xs">
+                          <CheckCircle2 size={12} className="text-emerald-600" />
+                          Enrolled ({selectedPerson.fingerprintFinger || "Registered"})
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSample1(null);
+                              setSample2(null);
+                              setMatchScore(null);
+                              setEnrollStep("ready");
+                              toast.info("Place finger on SecuGen sensor to scan a new fingerprint.");
+                            }}
+                            className="text-[10px] text-emerald-700 hover:text-emerald-900 font-bold flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-lg border border-emerald-200 transition-colors"
+                          >
+                            <RefreshCw size={10} /> Change Finger
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleRemoveFingerprint}
+                            disabled={isSaving}
+                            className="text-[10px] text-rose-600 hover:text-rose-800 font-bold flex items-center gap-1 bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded-lg border border-rose-200 transition-colors"
+                          >
+                            <Trash2 size={10} /> Remove
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

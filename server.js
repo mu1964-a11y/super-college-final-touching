@@ -1185,7 +1185,47 @@ Return strictly the raw JSON without markdown code fences.`;
       console.warn("[Server] Could not create student-photos dir:", e);
     }
   }
+  const fingerprintsDir = path.join(uploadsDir, "fingerprints");
+  if (!fs.existsSync(fingerprintsDir)) {
+    try {
+      fs.mkdirSync(fingerprintsDir, { recursive: true });
+    } catch (e) {
+      console.warn("[Server] Could not create fingerprints dir:", e);
+    }
+  }
   app.use("/uploads", express.static(uploadsDir));
+  app.post("/api/save-fingerprint-thumb", express.json({ limit: "10mb" }), (req, res) => {
+    try {
+      const { personId, rollNo, admId, bmpBase64 } = req.body;
+      if (!bmpBase64) return res.status(400).json({ error: "Missing bmpBase64" });
+      const base64Data = bmpBase64.replace(/^data:image\/\w+;base64,/, "");
+      const buffer = Buffer.from(base64Data, "base64");
+      const ids = [personId, rollNo, admId].filter(Boolean);
+      for (const id of ids) {
+        const safeId = String(id).replace(/[^a-zA-Z0-9_-]/g, "_");
+        fs.writeFileSync(path.join(fingerprintsDir, `${safeId}.bmp`), buffer);
+      }
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/remove-fingerprint-thumb", express.json(), (req, res) => {
+    try {
+      const { personId, rollNo, admId } = req.body;
+      const ids = [personId, rollNo, admId].filter(Boolean);
+      for (const id of ids) {
+        const safeId = String(id).replace(/[^a-zA-Z0-9_-]/g, "_");
+        const filePath = path.join(fingerprintsDir, `${safeId}.bmp`);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
   app.get(["/downloads/:filename", "/api/download/:filename"], (req, res) => {
     const filename = req.params.filename;
     const candidatePaths = [

@@ -47,6 +47,7 @@ import autoTable from 'jspdf-autotable';
 import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
 import DailyAttendanceCloseoutModal from './DailyAttendanceCloseoutModal';
 import BiometricEnrollmentModal from './BiometricEnrollmentModal';
+import FingerprintThumbnail from './FingerprintThumbnail';
 import { 
   sendAutoDailyAttendanceNotice, 
   sendAutoDailyAttendanceNoticeDetailed,
@@ -1316,7 +1317,7 @@ export default function AttendanceView({ data }: { data: any }) {
                     <TableHead className="font-black uppercase text-[10px] tracking-wider text-slate-400">Student Info</TableHead>
                     <TableHead className="w-36 font-black uppercase text-[10px] tracking-wider text-slate-400">Gate Biometric</TableHead>
                     <TableHead className="w-44 font-black uppercase text-[10px] tracking-wider text-slate-400">Punch Timings</TableHead>
-                    <TableHead className="w-48 font-black uppercase text-[10px] tracking-wider text-slate-400">Status</TableHead>
+                    <TableHead className="w-72 min-w-[280px] font-black uppercase text-[10px] tracking-wider text-slate-400">Status</TableHead>
                     <TableHead className="w-40 font-black uppercase text-[10px] tracking-wider text-slate-400">Notes</TableHead>
                     <TableHead className="w-40 font-black uppercase text-[10px] tracking-wider text-slate-400 pr-6 text-right">WhatsApp Bot</TableHead>
                   </TableRow>
@@ -1377,28 +1378,37 @@ export default function AttendanceView({ data }: { data: any }) {
                                   {student.gender === 'Female' && <span className="w-1.5 h-1.5 rounded-full bg-pink-400"></span>}
                                   {student.gender === 'Male' && <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>}
                                   {student.fingerprintTemplate ? (
-                                    <button
-                                      type="button"
+                                    <div
                                       title={`Fingerprint Enrolled (${student.fingerprintFinger || 'Thumb'}) — Click to inspect or re-register`}
-                                      onClick={() => {
-                                        setBiometricEnrollTarget({
-                                          id: student.id,
-                                          fullName: student.fullName,
-                                          fatherName: student.fatherName,
-                                          collegeNo: student.studentId || student.collegeNo,
-                                          phone: student.contact || student.fatherContact,
-                                          personType: "student",
-                                          roleOrGroup: student.groupName || student.section,
-                                          photo: student.photo,
-                                          fingerprintTemplate: student.fingerprintTemplate,
-                                          fingerprintFinger: student.fingerprintFinger,
-                                        });
-                                        setIsBiometricEnrollModalOpen(true);
-                                      }}
-                                      className="text-emerald-600 hover:text-emerald-700 hover:scale-110 transition-transform cursor-pointer"
+                                      className="inline-flex items-center gap-1.5"
                                     >
-                                      <Fingerprint size={14} />
-                                    </button>
+                                      <FingerprintThumbnail
+                                        personId={student.id}
+                                        altId={student.studentId || student.collegeNo}
+                                        template={student.fingerprintTemplate}
+                                        fingerLabel={student.fingerprintFinger || 'Right Thumb'}
+                                        size="xs"
+                                        showBadge={false}
+                                        onClick={() => {
+                                          setBiometricEnrollTarget({
+                                            id: student.id,
+                                            fullName: student.fullName,
+                                            fatherName: student.fatherName,
+                                            collegeNo: student.studentId || student.collegeNo,
+                                            phone: student.contact || student.fatherContact,
+                                            personType: "student",
+                                            roleOrGroup: student.groupName || student.section,
+                                            photo: student.photo,
+                                            fingerprintTemplate: student.fingerprintTemplate,
+                                            fingerprintFinger: student.fingerprintFinger,
+                                          });
+                                          setIsBiometricEnrollModalOpen(true);
+                                        }}
+                                      />
+                                      <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                        Enrolled
+                                      </span>
+                                    </div>
                                   ) : (
                                     <button
                                       type="button"
@@ -1416,9 +1426,10 @@ export default function AttendanceView({ data }: { data: any }) {
                                         });
                                         setIsBiometricEnrollModalOpen(true);
                                       }}
-                                      className="text-slate-300 hover:text-amber-600 hover:scale-110 transition-transform cursor-pointer"
+                                      className="inline-flex items-center gap-1 text-slate-400 hover:text-amber-600 hover:scale-105 transition-all cursor-pointer bg-slate-50 hover:bg-amber-50 px-1.5 py-0.5 rounded border border-slate-200 hover:border-amber-200 text-[9px] font-bold"
                                     >
-                                      <Fingerprint size={14} />
+                                      <Fingerprint size={12} className="text-amber-500" />
+                                      <span>Scan</span>
                                     </button>
                                   )}
                                </div>
@@ -1491,9 +1502,15 @@ export default function AttendanceView({ data }: { data: any }) {
                             </div>
                           ) : (existing?.verification_method === 'secugen_fingerprint' || existing?.notes?.includes('SecuGen')) ? (
                             <div className="flex items-center gap-1.5">
+                              <FingerprintThumbnail
+                                personId={student.id}
+                                altId={student.studentId || student.collegeNo}
+                                template={student.fingerprintTemplate || "enrolled"}
+                                size="xs"
+                                fingerLabel={student.fingerprintFinger || "SecuGen Thumb"}
+                              />
                               <span className="inline-flex items-center gap-1 font-bold text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 shadow-2xs">
-                                <Fingerprint size={12} className="text-amber-600" />
-                                <span>SecuGen Thumb</span>
+                                SecuGen Thumb
                               </span>
                             </div>
                           ) : isBiometric ? (
@@ -1564,26 +1581,26 @@ export default function AttendanceView({ data }: { data: any }) {
                           </div>
                         </TableCell>
                          <TableCell>
-                           <div className="flex items-center bg-slate-50 inline-flex p-1 rounded-xl border border-slate-100">
-                             {['Present', 'Absent', 'Late', 'Leave'].map(status => {
+                           <div className="inline-flex items-center bg-slate-100/90 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs gap-1">
+                             {(['Present', 'Absent', 'Late', 'Leave'] as const).map(status => {
                                const isActive = (dailyEntries[student.id]?.status || currentStatus) === status;
                                return (
                                  <button
                                    key={status}
                                    onClick={() => handleStatusChange(student, status as StudentAttendanceStatus)}
                                    className={cn(
-                                     "px-2.5 py-1 text-xs font-bold rounded-lg transition-all",
+                                     "px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all tracking-tight",
                                      isActive 
-                                       ? status === 'Present' ? "bg-emerald-500 text-white shadow-sm"
-                                       : status === 'Absent' ? "bg-red-500 text-white shadow-sm"
-                                       : status === 'Late' ? "bg-amber-500 text-white shadow-sm"
-                                       : "bg-blue-500 text-white shadow-sm"
-                                       : "text-slate-500 hover:bg-slate-200/50"
+                                       ? status === 'Present' ? "bg-emerald-600 text-white shadow-xs font-black ring-1 ring-emerald-600/30"
+                                       : status === 'Absent' ? "bg-rose-600 text-white shadow-xs font-black ring-1 ring-rose-600/30"
+                                       : status === 'Late' ? "bg-amber-500 text-white shadow-xs font-black ring-1 ring-amber-500/30"
+                                       : "bg-blue-600 text-white shadow-xs font-black ring-1 ring-blue-600/30"
+                                       : "text-slate-600 dark:text-slate-300 hover:text-slate-900 hover:bg-white/80 dark:hover:bg-slate-700/80"
                                    )}
                                  >
-                                   {status.charAt(0)}
+                                   {status}
                                  </button>
-                               )
+                               );
                              })}
                            </div>
                          </TableCell>

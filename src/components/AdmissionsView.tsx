@@ -3993,6 +3993,15 @@ function AdmissionForm({
         fingerprintFinger: admission.fingerprintFinger || "Right Thumb (دایاں انگوٹھا)",
         fingerprintEnrolledAt: admission.fingerprintEnrolledAt || "",
       });
+
+      const cachedBmp = typeof window !== "undefined"
+        ? localStorage.getItem(`scj_fp_thumb_${admission.id}`) ||
+          (admission.studentId ? localStorage.getItem(`scj_fp_thumb_${admission.studentId}`) : null) ||
+          (admission.collegeNo ? localStorage.getItem(`scj_fp_thumb_${admission.collegeNo}`) : null)
+        : null;
+      if (cachedBmp) {
+        setFpBmp(cachedBmp);
+      }
     }
   }, [admission, admission?.id]);
 
@@ -4017,7 +4026,13 @@ function AdmissionForm({
           fingerprintEnrolledAt: new Date().toISOString(),
         }));
         setFpQuality(res.quality);
-        if (res.bmpBase64) setFpBmp(res.bmpBase64);
+        if (res.bmpBase64) {
+          setFpBmp(res.bmpBase64);
+          try {
+            const targetId = admission?.id || formData.studentId || formData.collegeNo;
+            if (targetId) localStorage.setItem(`scj_fp_thumb_${targetId}`, res.bmpBase64);
+          } catch (e) {}
+        }
         toast.success(`Thumb impression captured successfully! (Quality: ${res.quality}%)`, { id: "secugen-adm" });
       } else {
         toast.error(res.error || "Failed to capture fingerprint. Ensure device is plugged in.", { id: "secugen-adm" });
@@ -4038,6 +4053,10 @@ function AdmissionForm({
     }));
     setFpQuality(null);
     setFpBmp(null);
+    try {
+      const targetId = admission?.id || formData.studentId || formData.collegeNo;
+      if (targetId) localStorage.removeItem(`scj_fp_thumb_${targetId}`);
+    } catch (e) {}
     toast.info("Thumb impression removed from form.");
   };
 

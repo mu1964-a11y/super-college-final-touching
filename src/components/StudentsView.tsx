@@ -33,6 +33,7 @@ import {
 import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
 import { buildStudentNoticeMessage, sendAutoStudentNotice } from '../lib/whatsappAutomation';
 import BiometricEnrollmentModal from './BiometricEnrollmentModal';
+import FingerprintThumbnail from './FingerprintThumbnail';
 import { motion } from 'motion/react';
 import { 
   Table, 
@@ -967,8 +968,15 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
 
                 {/* Prominent Biometric Status Strip (Matches Staff Directory) */}
                 <div className="px-3 py-1.5 border-y border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/30 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <Fingerprint size={13} className={student.fingerprintTemplate ? "text-emerald-600" : "text-amber-500"} />
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FingerprintThumbnail
+                      personId={student.id}
+                      altId={student.studentId || student.collegeNo}
+                      template={student.fingerprintTemplate}
+                      size="xs"
+                      fingerLabel={student.fingerprintFinger || "Right Thumb"}
+                      allowInspect={true}
+                    />
                     <span className={cn(
                       "text-[10px] font-bold truncate",
                       student.fingerprintTemplate ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"
@@ -986,7 +994,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                       setIsBiometricModalOpen(true);
                     }}
                     className={cn(
-                      "h-6 px-2 rounded-md text-[9px] font-black uppercase tracking-wider transition-all shrink-0",
+                      "h-6 px-2.5 rounded-md text-[9px] font-black uppercase tracking-wider transition-all shrink-0",
                       student.fingerprintTemplate
                         ? "bg-emerald-100/80 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
                         : "bg-amber-500 hover:bg-amber-600 text-white shadow-2xs"
@@ -1248,27 +1256,26 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                             >
                               <Camera className="h-4 w-4" />
                             </Button>
-                            <Button
+                            <div
                               onClick={() => {
                                 setBiometricTargetStudent(student);
                                 setIsBiometricModalOpen(true);
                               }}
-                              variant="ghost"
-                              size="icon"
-                              className={cn(
-                                "h-8 w-8 rounded-lg transition-all",
-                                student.fingerprintTemplate
-                                  ? "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                                  : "text-slate-400 hover:text-amber-600 hover:bg-amber-50"
-                              )}
+                              className="cursor-pointer"
                               title={
                                 student.fingerprintTemplate
                                   ? `Fingerprint Enrolled (${student.fingerprintFinger || 'Thumb'}) — Click to inspect or re-register`
                                   : "Enroll Biometric Fingerprint (SecuGen)"
                               }
                             >
-                              <Fingerprint className="h-4 w-4" />
-                            </Button>
+                              <FingerprintThumbnail
+                                personId={student.id}
+                                altId={student.studentId || student.collegeNo}
+                                template={student.fingerprintTemplate}
+                                size="xs"
+                                fingerLabel={student.fingerprintFinger || "Right Thumb"}
+                              />
+                            </div>
                          </div>
                       </TableCell>
                   </TableRow>
@@ -1663,10 +1670,17 @@ function StudentProfile({ student, data, initialTab = 'overview', onEdit, onDown
                 <GraduationCap size={11} /> Student Profile
               </span>
               {(student as any).fingerprintTemplate ? (
-                <span className="inline-flex items-center gap-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
-                  <Fingerprint size={11} className="text-emerald-400" />
-                  Thumb Enrolled
-                </span>
+                <div className="inline-flex items-center gap-1.5 bg-emerald-950/60 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-xs">
+                  <FingerprintThumbnail
+                    personId={student.id}
+                    altId={(student as any).collegeNo || (student as any).studentId}
+                    template={(student as any).fingerprintTemplate}
+                    fingerLabel={(student as any).fingerprintFinger || "Right Thumb"}
+                    size="xs"
+                    allowInspect={true}
+                  />
+                  <span>Thumb Enrolled ({(student as any).fingerprintFinger || "Registered"})</span>
+                </div>
               ) : (
                 <span className="inline-flex items-center gap-1 bg-amber-500/20 text-amber-200 border border-amber-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
                   <Fingerprint size={11} className="text-amber-400" />
