@@ -24,7 +24,8 @@ import {
   Eye,
   Building2,
   LogOut,
-  X
+  X,
+  Fingerprint
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -37,6 +38,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
 import DailyAttendanceCloseoutModal from './DailyAttendanceCloseoutModal';
+import BiometricEnrollmentModal from './BiometricEnrollmentModal';
 import { 
   sendAutoDailyAttendanceNotice, 
   sendAutoDailyAttendanceNoticeDetailed,
@@ -119,6 +121,8 @@ export default function AttendanceView({ data }: { data: any }) {
   } | null>(null);
 
   const [selectedDossierStudent, setSelectedDossierStudent] = useState<any | null>(null);
+  const [isBiometricEnrollModalOpen, setIsBiometricEnrollModalOpen] = useState(false);
+  const [biometricEnrollTarget, setBiometricEnrollTarget] = useState<any | null>(null);
 
   function getStudentBiometrics(entry?: any, existing?: any): {
     entrySnapshot: string | null;
@@ -1070,6 +1074,29 @@ export default function AttendanceView({ data }: { data: any }) {
 
               <Button 
                 variant="outline"
+                onClick={() => window.open('/?biometric=true', '_blank')}
+                className="rounded-xl h-10 px-3 bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 font-bold flex items-center gap-1.5 shadow-sm"
+                title="Open SecuGen HU20-A Biometric Attendance Desk"
+              >
+                <Fingerprint size={16} className="text-amber-600" />
+                <span className="hidden sm:inline">Biometric Desk (SecuGen)</span>
+              </Button>
+
+              <Button 
+                variant="outline"
+                onClick={() => {
+                  setBiometricEnrollTarget(null);
+                  setIsBiometricEnrollModalOpen(true);
+                }}
+                className="rounded-xl h-10 px-3 bg-teal-50 text-teal-800 border-teal-200 hover:bg-teal-100 font-bold flex items-center gap-1.5 shadow-sm"
+                title="Enroll Student Fingerprints"
+              >
+                <Fingerprint size={16} className="text-teal-600" />
+                <span>Enroll Fingerprints</span>
+              </Button>
+
+              <Button 
+                variant="outline"
                 onClick={() => setShowPhotoModal(true)}
                 className="rounded-xl h-10 px-3 bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 font-semibold flex items-center gap-1.5 shadow-sm"
                 title="Send WhatsApp Request for Missing Photos"
@@ -1327,6 +1354,51 @@ export default function AttendanceView({ data }: { data: any }) {
                                   {student.fullName}
                                   {student.gender === 'Female' && <span className="w-1.5 h-1.5 rounded-full bg-pink-400"></span>}
                                   {student.gender === 'Male' && <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>}
+                                  {student.fingerprintTemplate ? (
+                                    <button
+                                      type="button"
+                                      title={`Fingerprint Enrolled (${student.fingerprintFinger || 'Thumb'}) — Click to inspect or re-register`}
+                                      onClick={() => {
+                                        setBiometricEnrollTarget({
+                                          id: student.id,
+                                          fullName: student.fullName,
+                                          fatherName: student.fatherName,
+                                          collegeNo: student.studentId || student.collegeNo,
+                                          phone: student.contact || student.fatherContact,
+                                          personType: "student",
+                                          roleOrGroup: student.groupName || student.section,
+                                          photo: student.photo,
+                                          fingerprintTemplate: student.fingerprintTemplate,
+                                          fingerprintFinger: student.fingerprintFinger,
+                                        });
+                                        setIsBiometricEnrollModalOpen(true);
+                                      }}
+                                      className="text-emerald-600 hover:text-emerald-700 hover:scale-110 transition-transform cursor-pointer"
+                                    >
+                                      <Fingerprint size={14} />
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      title="Fingerprint Missing — Click to enroll"
+                                      onClick={() => {
+                                        setBiometricEnrollTarget({
+                                          id: student.id,
+                                          fullName: student.fullName,
+                                          fatherName: student.fatherName,
+                                          collegeNo: student.studentId || student.collegeNo,
+                                          phone: student.contact || student.fatherContact,
+                                          personType: "student",
+                                          roleOrGroup: student.groupName || student.section,
+                                          photo: student.photo,
+                                        });
+                                        setIsBiometricEnrollModalOpen(true);
+                                      }}
+                                      className="text-slate-300 hover:text-amber-600 hover:scale-110 transition-transform cursor-pointer"
+                                    >
+                                      <Fingerprint size={14} />
+                                    </button>
+                                  )}
                                </div>
                                <div className="text-[11px] font-semibold tracking-wider uppercase text-slate-400">
                                  {student.section || 'Unassigned'} • {student.groupName || student.currentClass}
@@ -1394,6 +1466,13 @@ export default function AttendanceView({ data }: { data: any }) {
                                   <CheckCircle2 size={9} className="text-emerald-600" /> {exitSnapshot ? 'In+Out' : 'Gate Scan'}
                                 </span>
                               </div>
+                            </div>
+                          ) : (existing?.verification_method === 'secugen_fingerprint' || existing?.notes?.includes('SecuGen')) ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="inline-flex items-center gap-1 font-bold text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 shadow-2xs">
+                                <Fingerprint size={12} className="text-amber-600" />
+                                <span>SecuGen Thumb</span>
+                              </span>
                             </div>
                           ) : isBiometric ? (
                             <div className="flex items-center gap-2">
@@ -2185,6 +2264,23 @@ export default function AttendanceView({ data }: { data: any }) {
           staffAttendance={data?.staffAttendance || []}
           settings={data?.settings}
           onRefreshData={() => data?.fetchData?.()}
+        />
+      )}
+
+      {/* Biometric Fingerprint Enrollment Modal */}
+      {isBiometricEnrollModalOpen && (
+        <BiometricEnrollmentModal
+          isOpen={isBiometricEnrollModalOpen}
+          onClose={() => {
+            setIsBiometricEnrollModalOpen(false);
+            setBiometricEnrollTarget(null);
+          }}
+          targetPerson={biometricEnrollTarget}
+          studentsList={students}
+          staffList={data?.staff || []}
+          onEnrollmentSaved={() => {
+            data?.fetchData?.();
+          }}
         />
       )}
     </div>

@@ -97,6 +97,9 @@ export interface Admission {
   concessionReason?: string;
   gender: Gender;
   photo?: string;
+  fingerprintTemplate?: string;
+  fingerprintFinger?: string;
+  fingerprintEnrolledAt?: string;
   status: AdmissionStatus;
   isAdmitted: boolean;
   session?: string;
@@ -132,6 +135,9 @@ export interface Student {
   address: string;
   gender: Gender;
   photo?: string;
+  fingerprintTemplate?: string;
+  fingerprintFinger?: string;
+  fingerprintEnrolledAt?: string;
   subjects: string[];
   classTeacherId?: string;
   admissionFee: number;
@@ -273,6 +279,9 @@ export interface Staff {
   subjects?: string[];
   status: 'Active' | 'Inactive';
   photo?: string;
+  fingerprintTemplate?: string;
+  fingerprintFinger?: string;
+  fingerprintEnrolledAt?: string;
   assignedStudentIds?: string[];
   notes?: { date: string; content: string; type: 'Award' | 'Warning' | 'General' }[];
 }

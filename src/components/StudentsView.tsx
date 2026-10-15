@@ -27,10 +27,12 @@ import {
   Phone,
   Receipt,
   FileText,
-  MessageSquare
+  MessageSquare,
+  Fingerprint
 } from 'lucide-react';
 import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
 import { buildStudentNoticeMessage, sendAutoStudentNotice } from '../lib/whatsappAutomation';
+import BiometricEnrollmentModal from './BiometricEnrollmentModal';
 import { motion } from 'motion/react';
 import { 
   Table, 
@@ -101,6 +103,8 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
   const [dialogType, setDialogType] = useState<'profile' | 'profile_academic' | 'profile_fees' | 'edit' | 'pay' | 'receipt' | 'delete' | 'bulkDelete' | 'id_card' | 'bulk_promote' | 'migrate_section' | null>(null);
+  const [isBiometricModalOpen, setIsBiometricModalOpen] = useState(false);
+  const [biometricTargetStudent, setBiometricTargetStudent] = useState<Student | null>(null);
   const [targetMigrateSection, setTargetMigrateSection] = useState<string>('');
   const [targetPromoteSession, setTargetPromoteSession] = useState<string>(data?.settings?.academicSession || '2026-28');
   const [payConfig, setPayConfig] = useState<{ month?: string, year?: number }>({});
@@ -1212,6 +1216,27 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                             >
                               <Camera className="h-4 w-4" />
                             </Button>
+                            <Button
+                              onClick={() => {
+                                setBiometricTargetStudent(student);
+                                setIsBiometricModalOpen(true);
+                              }}
+                              variant="ghost"
+                              size="icon"
+                              className={cn(
+                                "h-8 w-8 rounded-lg transition-all",
+                                student.fingerprintTemplate
+                                  ? "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                  : "text-slate-400 hover:text-amber-600 hover:bg-amber-50"
+                              )}
+                              title={
+                                student.fingerprintTemplate
+                                  ? `Fingerprint Enrolled (${student.fingerprintFinger || 'Thumb'}) — Click to inspect or re-register`
+                                  : "Enroll Biometric Fingerprint (SecuGen)"
+                              }
+                            >
+                              <Fingerprint className="h-4 w-4" />
+                            </Button>
                          </div>
                       </TableCell>
                   </TableRow>
@@ -1474,6 +1499,37 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
             if (data?.updateStudent) {
               data.updateStudent(photoEditorStudent.id, { photo: newPhoto });
             }
+          }}
+        />
+      )}
+      {/* Biometric Fingerprint Enrollment Modal */}
+      {isBiometricModalOpen && (
+        <BiometricEnrollmentModal
+          isOpen={isBiometricModalOpen}
+          onClose={() => {
+            setIsBiometricModalOpen(false);
+            setBiometricTargetStudent(null);
+          }}
+          targetPerson={
+            biometricTargetStudent
+              ? {
+                  id: biometricTargetStudent.id,
+                  fullName: biometricTargetStudent.fullName,
+                  fatherName: biometricTargetStudent.fatherName,
+                  collegeNo: biometricTargetStudent.collegeNo,
+                  phone: biometricTargetStudent.contact,
+                  personType: "student",
+                  roleOrGroup: biometricTargetStudent.group,
+                  photo: biometricTargetStudent.photo,
+                  fingerprintTemplate: biometricTargetStudent.fingerprintTemplate,
+                  fingerprintFinger: biometricTargetStudent.fingerprintFinger,
+                }
+              : null
+          }
+          studentsList={data?.students || []}
+          staffList={data?.staff || []}
+          onEnrollmentSaved={() => {
+            data?.fetchData?.();
           }}
         />
       )}

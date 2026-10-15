@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Staff } from '../types';
-import { Download, Upload, Save, Calendar, FileSpreadsheet, Search, Filter, Camera, CheckCircle2, X, Clock, ShieldCheck, Eye, Building2, LogOut, AlertCircle } from 'lucide-react';
+import { Download, Upload, Save, Calendar, FileSpreadsheet, Search, Filter, Camera, CheckCircle2, X, Clock, ShieldCheck, Eye, Building2, LogOut, AlertCircle, Fingerprint } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,7 @@ import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameMo
 import { safeLocalStorage } from '../utils/safeStorage';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import BiometricEnrollmentModal from './BiometricEnrollmentModal';
 
 interface StaffAttendanceProps {
   staffList: Staff[];
@@ -127,6 +128,8 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
 
   // Daily Attendance State overrides
   const [dailyEntries, setDailyEntries] = useState<Record<string, Partial<AttendanceRecord>>>({});
+  const [isBiometricEnrollOpen, setIsBiometricEnrollOpen] = useState(false);
+  const [biometricTargetStaff, setBiometricTargetStaff] = useState<any | null>(null);
 
   // Initialize or update daily entries when selected date changes or staff list changes
   React.useEffect(() => {
@@ -427,6 +430,25 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
 
         {activeTab === 'daily' && (
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => window.open('/?biometric=true', '_blank')}
+              className="rounded-xl border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold"
+              title="Open SecuGen HU20-A Biometric Attendance Desk"
+            >
+              <Fingerprint size={16} className="mr-1.5 text-amber-600" /> Biometric Desk
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setBiometricTargetStaff(null);
+                setIsBiometricEnrollOpen(true);
+              }}
+              className="rounded-xl border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100 font-bold"
+              title="Enroll Staff Fingerprints"
+            >
+              <Fingerprint size={16} className="mr-1.5 text-teal-600" /> Enroll Fingerprints
+            </Button>
             <div className="relative">
               <input type="file" id="excel-import" className="hidden" accept=".xlsx, .xls" onChange={handleImportExcel} />
               <Button variant="outline" className="rounded-xl border-dashed" onClick={() => document.getElementById('excel-import')?.click()}>
@@ -535,7 +557,52 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                               )}
                             </div>
                             <div>
-                              <div className="font-bold text-slate-800 text-sm">{staff.fullName}</div>
+                              <div className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                                <span>{staff.fullName}</span>
+                                {staff.fingerprintTemplate ? (
+                                  <button
+                                    type="button"
+                                    title={`Fingerprint Enrolled (${staff.fingerprintFinger || 'Thumb'}) — Click to inspect or re-register`}
+                                    onClick={() => {
+                                      setBiometricTargetStaff({
+                                        id: staff.id,
+                                        fullName: staff.fullName,
+                                        fatherName: staff.fatherName,
+                                        phone: staff.contact,
+                                        personType: "staff",
+                                        roleOrGroup: staff.role,
+                                        photo: staff.photo,
+                                        fingerprintTemplate: staff.fingerprintTemplate,
+                                        fingerprintFinger: staff.fingerprintFinger,
+                                      });
+                                      setIsBiometricEnrollOpen(true);
+                                    }}
+                                    className="text-emerald-600 hover:text-emerald-700 hover:scale-110 transition-transform cursor-pointer"
+                                  >
+                                    <Fingerprint size={13} />
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    title="Fingerprint Missing — Click to enroll"
+                                    onClick={() => {
+                                      setBiometricTargetStaff({
+                                        id: staff.id,
+                                        fullName: staff.fullName,
+                                        fatherName: staff.fatherName,
+                                        phone: staff.contact,
+                                        personType: "staff",
+                                        roleOrGroup: staff.role,
+                                        photo: staff.photo,
+                                      });
+                                      setIsBiometricEnrollOpen(true);
+                                    }}
+                                    className="text-slate-300 hover:text-amber-600 hover:scale-110 transition-transform cursor-pointer"
+                                  >
+                                    <Fingerprint size={13} />
+                                  </button>
+                                )}
+                              </div>
                               <div className="text-[10px] text-slate-500">{staff.role || 'Staff'}</div>
                             </div>
                           </div>
@@ -601,6 +668,13 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                                 </div>
                                 <span className="inline-flex items-center gap-1 font-bold text-[9px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
                                   <CheckCircle2 size={9} className="text-emerald-600" /> {exitSnap ? 'In+Out' : 'Match'}
+                                </span>
+                              </div>
+                            ) : (entry?.verificationMethod === 'secugen_fingerprint' || entry?.verification_method === 'secugen_fingerprint' || entry?.notes?.includes('SecuGen')) ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="inline-flex items-center gap-1 font-bold text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 shadow-2xs">
+                                  <Fingerprint size={12} className="text-amber-600" />
+                                  <span>SecuGen Thumb</span>
                                 </span>
                               </div>
                             ) : isBiometric ? (
@@ -1104,6 +1178,22 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
             </div>
           </div>
         </div>
+      )}
+
+      {/* Biometric Fingerprint Enrollment Modal for Staff */}
+      {isBiometricEnrollOpen && (
+        <BiometricEnrollmentModal
+          isOpen={isBiometricEnrollOpen}
+          onClose={() => {
+            setIsBiometricEnrollOpen(false);
+            setBiometricTargetStaff(null);
+          }}
+          targetPerson={biometricTargetStaff}
+          staffList={staffList}
+          onEnrollmentSaved={() => {
+            // Updated in Supabase
+          }}
+        />
       )}
     </div>
   );

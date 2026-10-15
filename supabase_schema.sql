@@ -196,6 +196,9 @@ ALTER TABLE "admissions" ADD COLUMN IF NOT EXISTS "photo_url" TEXT;
 ALTER TABLE "admissions" ADD COLUMN IF NOT EXISTS "concession_reason" TEXT;
 ALTER TABLE "admissions" ADD COLUMN IF NOT EXISTS "fee_history" JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE "admissions" ADD COLUMN IF NOT EXISTS "fee_ledger" JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE "admissions" ADD COLUMN IF NOT EXISTS "fingerprint_template" TEXT;
+ALTER TABLE "admissions" ADD COLUMN IF NOT EXISTS "fingerprint_finger" TEXT;
+ALTER TABLE "admissions" ADD COLUMN IF NOT EXISTS "fingerprint_enrolled_at" TIMESTAMP WITH TIME ZONE;
 
 -- ==============================================================================
 -- 5. STUDENTS (ACTIVE ROSTER)
@@ -261,6 +264,9 @@ ALTER TABLE "students" ADD COLUMN IF NOT EXISTS "concession_reason" TEXT;
 ALTER TABLE "students" ADD COLUMN IF NOT EXISTS "attendance" JSONB DEFAULT '{"present": 0, "absent": 0}'::jsonb;
 ALTER TABLE "students" ADD COLUMN IF NOT EXISTS "fee_ledger" JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE "students" ADD COLUMN IF NOT EXISTS "fee_history" JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE "students" ADD COLUMN IF NOT EXISTS "fingerprint_template" TEXT;
+ALTER TABLE "students" ADD COLUMN IF NOT EXISTS "fingerprint_finger" TEXT;
+ALTER TABLE "students" ADD COLUMN IF NOT EXISTS "fingerprint_enrolled_at" TIMESTAMP WITH TIME ZONE;
 
 -- ==============================================================================
 -- 6. STAFF & FACULTY DIRECTORY
@@ -294,6 +300,9 @@ ALTER TABLE "staff" ADD COLUMN IF NOT EXISTS "phone" TEXT;
 ALTER TABLE "staff" ADD COLUMN IF NOT EXISTS "photo_url" TEXT;
 ALTER TABLE "staff" ADD COLUMN IF NOT EXISTS "designation" TEXT;
 ALTER TABLE "staff" ADD COLUMN IF NOT EXISTS "base_salary" NUMERIC DEFAULT 0;
+ALTER TABLE "staff" ADD COLUMN IF NOT EXISTS "fingerprint_template" TEXT;
+ALTER TABLE "staff" ADD COLUMN IF NOT EXISTS "fingerprint_finger" TEXT;
+ALTER TABLE "staff" ADD COLUMN IF NOT EXISTS "fingerprint_enrolled_at" TIMESTAMP WITH TIME ZONE;
 
 -- ==============================================================================
 -- 7. STAFF ATTENDANCE

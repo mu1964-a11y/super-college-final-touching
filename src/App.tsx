@@ -76,6 +76,7 @@ import GlobalCommandPalette from "./components/GlobalCommandPalette";
 import StudentDossier360 from "./components/StudentDossier360";
 import PublicVerificationView from "./components/PublicVerificationView";
 import FaceAttendanceKiosk from "./components/FaceAttendanceKiosk";
+import BiometricAttendanceDesk from "./components/BiometricAttendanceDesk";
 import StudentPortal from "./components/StudentPortal";
 import StaffPortal from "./components/StaffPortal";
 import PortalGatewayView from "./components/PortalGatewayView";
@@ -1190,6 +1191,27 @@ export default function App() {
         onBackToApp={() => {
           window.location.href = window.location.origin + window.location.pathname;
         }} 
+      />
+    );
+  }
+
+  const isBiometricDeskMode = typeof window !== 'undefined' && (
+    new URLSearchParams(window.location.search).has('biometric') ||
+    new URLSearchParams(window.location.search).has('fingerprint') ||
+    new URLSearchParams(window.location.search).has('secugen') ||
+    window.location.pathname.startsWith('/biometric') ||
+    window.location.pathname.startsWith('/fingerprint')
+  );
+
+  if (isBiometricDeskMode) {
+    return (
+      <BiometricAttendanceDesk
+        standalone={true}
+        collegeLogo={brandingSettings.logo || "/superior-logo.png"}
+        collegeName={brandingSettings.name || "Superior College Jahanian"}
+        onBackToApp={() => {
+          window.location.href = window.location.origin + window.location.pathname;
+        }}
       />
     );
   }
