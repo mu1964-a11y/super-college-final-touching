@@ -265,6 +265,96 @@ class WhatsAppBridgeService {
     }
   }
 
+  // --- Supabase Storage Bucket WhatsApp Baileys Auth Synchronization ---
+  public async restoreAuthFromSupabaseBucket(): Promise<boolean> {
+    try {
+      const sb = await this.getSupabase();
+      if (!sb) return false;
+
+      const { data, error } = await sb.storage.from("whatsapp-auth").download("auth_state.json");
+      if (error || !data) {
+        console.log("[WhatsApp Bridge] No existing Baileys auth session found in Supabase bucket.");
+        return false;
+      }
+
+      const text = await data.text();
+      const filesMap = JSON.parse(text || "{}");
+      if (!fs.existsSync(this.authDir)) {
+        fs.mkdirSync(this.authDir, { recursive: true });
+      }
+
+      let restoredCount = 0;
+      for (const [filename, base64Content] of Object.entries(filesMap)) {
+        const filePath = path.join(this.authDir, filename);
+        fs.writeFileSync(filePath, Buffer.from(base64Content as string, "base64"));
+        restoredCount++;
+      }
+
+      console.log(`[WhatsApp Bridge] Restored ${restoredCount} Baileys auth files from Supabase bucket.`);
+      this.loadLidMappings();
+      return restoredCount > 0;
+    } catch (err) {
+      console.warn("[WhatsApp Bridge] Error restoring auth from Supabase bucket:", err);
+      return false;
+    }
+  }
+
+  private backupAuthTimeout: NodeJS.Timeout | null = null;
+  public async backupAuthToSupabaseBucket(): Promise<boolean> {
+    if (this.backupAuthTimeout) {
+      clearTimeout(this.backupAuthTimeout);
+    }
+
+    return new Promise((resolve) => {
+      this.backupAuthTimeout = setTimeout(async () => {
+        try {
+          if (!fs.existsSync(this.authDir)) {
+            resolve(false);
+            return;
+          }
+
+          const files = fs.readdirSync(this.authDir);
+          if (files.length === 0) {
+            resolve(false);
+            return;
+          }
+
+          const filesMap: Record<string, string> = {};
+          for (const file of files) {
+            const fullPath = path.join(this.authDir, file);
+            if (fs.statSync(fullPath).isFile()) {
+              const content = fs.readFileSync(fullPath);
+              filesMap[file] = content.toString("base64");
+            }
+          }
+
+          const sb = await this.getSupabase();
+          if (!sb) {
+            resolve(false);
+            return;
+          }
+
+          const jsonPayload = Buffer.from(JSON.stringify(filesMap), "utf-8");
+          const { error } = await sb.storage.from("whatsapp-auth").upload("auth_state.json", jsonPayload, {
+            contentType: "application/json",
+            upsert: true,
+          });
+
+          if (error) {
+            console.warn("[WhatsApp Bridge] Error uploading auth state to Supabase bucket:", error);
+            resolve(false);
+          } else {
+            console.log(`[WhatsApp Bridge] Synchronized ${Object.keys(filesMap).length} Baileys session files to Supabase bucket.`);
+            resolve(true);
+          }
+        } catch (err) {
+          console.warn("[WhatsApp Bridge] Failed to backup auth to Supabase bucket:", err);
+          resolve(false);
+        }
+      }, 2500);
+    });
+  }
+
   // Resolve true Pakistani or international phone number from JID or LID
   public async resolvePhoneNumber(rawJid: string, msgKey?: any): Promise<string> {
     if (!rawJid) return "";
@@ -3019,6 +3109,13 @@ _Reply aate hi tasveer foran profile par update kar di jayegi._`;
         fs.mkdirSync(this.authDir, { recursive: true });
       }
 
+      // Check and restore credentials from Supabase storage bucket if not present locally
+      const credsFile = path.join(this.authDir, "creds.json");
+      if (!fs.existsSync(credsFile)) {
+        console.log("[WhatsApp Bridge] Checking Supabase storage bucket for existing WhatsApp session...");
+        await this.restoreAuthFromSupabaseBucket();
+      }
+
       const { state, saveCreds } = await useMultiFileAuthState(this.authDir);
 
       this.sock = makeWASocket({
@@ -3031,7 +3128,10 @@ _Reply aate hi tasveer foran profile par update kar di jayegi._`;
         keepAliveIntervalMs: 25000,
       });
 
-      this.sock.ev.on("creds.update", saveCreds);
+      this.sock.ev.on("creds.update", async () => {
+        await saveCreds();
+        this.backupAuthToSupabaseBucket();
+      });
 
       this.sock.ev.on("connection.update", async (update: any) => {
         const { connection, lastDisconnect, qr } = update;
@@ -3067,6 +3167,7 @@ _Reply aate hi tasveer foran profile par update kar di jayegi._`;
           this.connectedName = this.sock?.user?.name || "Superior College Host Gateway";
 
           console.log(`[WhatsApp Bridge] Successfully connected to WhatsApp as ${this.connectedPhone} (${this.connectedName})`);
+          this.backupAuthToSupabaseBucket();
         }
 
         if (connection === "close") {
@@ -6763,6 +6864,12 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
     } catch (e) {
       console.warn("[WhatsApp Bridge] Error cleaning auth directory:", e);
     }
+
+    try {
+      this.getSupabase().then((sb: any) => {
+        if (sb) sb.storage.from("whatsapp-auth").remove(["auth_state.json"]).catch(() => {});
+      });
+    } catch (e) {}
   }
 
   public normalizePhoneNumber(phone: string): string {

@@ -96,6 +96,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
   const [defaulterFilter, setDefaulterFilter] = useState('all');
   const [genderFilter, setGenderFilter] = useState<string>(gender || 'all');
   const [programFilter, setProgramFilter] = useState<string>(program || 'all');
+  const [academicStageFilter, setAcademicStageFilter] = useState<string>('all');
   const [sectionFilter, setSectionFilter] = useState<string>('all');
   const [photoFilter, setPhotoFilter] = useState<'all' | 'with-photo' | 'missing-photo'>('all');
   const [photoEditorStudent, setPhotoEditorStudent] = useState<Student | null>(null);
@@ -261,9 +262,29 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
            matchesProgram = identifier.includes(pFilter);
         }
       }
-      return matchesGender && matchesProgram;
+      // Academic Stage / Part / Semester filter
+      let matchesStage = true;
+      if (academicStageFilter !== 'all') {
+        const studentPart = (s.academicPart || s.academic_part || '').toLowerCase();
+        const studentSem = Number(s.currentSemester || s.current_semester || 0);
+        if (academicStageFilter === 'part1') {
+          matchesStage = studentPart.includes('part-1') || studentPart.includes('1st') || (!studentPart && studentSem === 0);
+        } else if (academicStageFilter === 'part2') {
+          matchesStage = studentPart.includes('part-2') || studentPart.includes('2nd');
+        } else if (academicStageFilter.startsWith('sem')) {
+          matchesStage = studentSem === Number(academicStageFilter.replace('sem', ''));
+        } else if (academicStageFilter === 'yr1') {
+          matchesStage = studentSem <= 2 || studentPart.includes('1st') || studentPart.includes('part-1');
+        } else if (academicStageFilter === 'yr2') {
+          matchesStage = (studentSem >= 3 && studentSem <= 4) || studentPart.includes('2nd') || studentPart.includes('part-2');
+        } else if (academicStageFilter === 'yr3') {
+          matchesStage = studentSem >= 5 || studentPart.includes('3rd') || studentPart.includes('part-3');
+        }
+      }
+
+      return matchesGender && matchesProgram && matchesStage;
     });
-  }, [data.students, data.admissions, genderFilter, programFilter, debouncedSearch]);
+  }, [data.students, data.admissions, genderFilter, programFilter, debouncedSearch, academicStageFilter]);
 
   const sectionOptions = React.useMemo(() => {
     let sections = data?.settings?.predefinedSections || [];
@@ -522,21 +543,24 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
               {gender === 'Male' ? 'بوائز کیمپس' : gender === 'Female' ? 'گرلز کیمپس' : 'طلباء کا ریکارڈ'}
             </span>
 
-            {/* Inline Program Filter Pills */}
+            {/* Inline Educational Stream Filter Pills */}
             <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/60 dark:border-slate-700/60 gap-0.5">
               {[
-                { id: 'all', label: 'All Groups' },
-                { id: 'fsc', label: 'Inter' },
-                { id: 'dit', label: 'DIT' },
-                { id: 'ukl3', label: 'UKL3' },
-                { id: 'bs', label: 'BS' },
+                { id: 'all', label: 'All Streams' },
+                { id: 'fsc', label: 'FSc (2-Yr)' },
+                { id: 'dit', label: 'DIT (3-Yr)' },
+                { id: 'bs', label: 'BS (4-Yr SS4)' },
+                { id: 'ukl3', label: 'UK Level 3' },
               ].map(prog => (
                 <button
                   key={prog.id}
                   type="button"
-                  onClick={() => setProgramFilter(prog.id)}
+                  onClick={() => {
+                    setProgramFilter(prog.id);
+                    setAcademicStageFilter('all');
+                  }}
                   className={cn(
-                    "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all",
+                    "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
                     programFilter === prog.id
                       ? "bg-white dark:bg-slate-700 text-superior-teal dark:text-superior-gold shadow-2xs"
                       : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
@@ -546,6 +570,84 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                 </button>
               ))}
             </div>
+
+            {/* Dynamic Academic Stage Sub-Pills */}
+            {programFilter === 'fsc' && (
+              <div className="hidden sm:flex items-center bg-emerald-50/80 dark:bg-emerald-950/40 p-0.5 rounded-xl border border-emerald-200/80 dark:border-emerald-800/60 gap-0.5">
+                {[
+                  { id: 'all', label: 'All FSc' },
+                  { id: 'part1', label: 'Part-1 Fresh (1st Year)' },
+                  { id: 'part2', label: 'Part-2 Senior (2nd Year)' },
+                ].map(stg => (
+                  <button
+                    key={stg.id}
+                    type="button"
+                    onClick={() => setAcademicStageFilter(stg.id)}
+                    className={cn(
+                      "px-2 py-0.5 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                      academicStageFilter === stg.id
+                        ? "bg-emerald-600 text-white shadow-2xs"
+                        : "text-emerald-800 dark:text-emerald-300 hover:text-emerald-950"
+                    )}
+                  >
+                    {stg.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {programFilter === 'bs' && (
+              <div className="hidden sm:flex items-center bg-indigo-50/80 dark:bg-indigo-950/40 p-0.5 rounded-xl border border-indigo-200/80 dark:border-indigo-800/60 gap-0.5 overflow-x-auto max-w-[340px]">
+                <button
+                  type="button"
+                  onClick={() => setAcademicStageFilter('all')}
+                  className={cn(
+                    "px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer shrink-0",
+                    academicStageFilter === 'all' ? "bg-indigo-600 text-white shadow-2xs" : "text-indigo-800 dark:text-indigo-300"
+                  )}
+                >
+                  All (8)
+                </button>
+                {[1, 2, 3, 4, 5, 6, 7, 8].map(sem => (
+                  <button
+                    key={`sem${sem}`}
+                    type="button"
+                    onClick={() => setAcademicStageFilter(`sem${sem}`)}
+                    className={cn(
+                      "px-1.5 py-0.5 rounded-lg text-[9px] font-black uppercase transition-all cursor-pointer shrink-0",
+                      academicStageFilter === `sem${sem}` ? "bg-indigo-600 text-white shadow-2xs" : "text-indigo-700 dark:text-indigo-300 hover:text-indigo-950"
+                    )}
+                  >
+                    S{sem}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {programFilter === 'dit' && (
+              <div className="hidden sm:flex items-center bg-teal-50/80 dark:bg-teal-950/40 p-0.5 rounded-xl border border-teal-200/80 dark:border-teal-800/60 gap-0.5">
+                {[
+                  { id: 'all', label: 'All DIT' },
+                  { id: 'yr1', label: '1st Year' },
+                  { id: 'yr2', label: '2nd Year' },
+                  { id: 'yr3', label: '3rd Year' },
+                ].map(stg => (
+                  <button
+                    key={stg.id}
+                    type="button"
+                    onClick={() => setAcademicStageFilter(stg.id)}
+                    className={cn(
+                      "px-2 py-0.5 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                      academicStageFilter === stg.id
+                        ? "bg-teal-600 text-white shadow-2xs"
+                        : "text-teal-800 dark:text-teal-300 hover:text-teal-950"
+                    )}
+                  >
+                    {stg.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">

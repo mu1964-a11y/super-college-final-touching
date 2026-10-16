@@ -52,6 +52,7 @@ import { motion, AnimatePresence } from "motion/react";
 import InstantBiometricVerifyModal from "./components/InstantBiometricVerifyModal";
 import { useSupabaseData } from "./hooks/useSupabaseData";
 import { supabase, isSupabaseConfigured } from "./lib/supabase";
+import { secugenService } from "./lib/secugenService";
 import { safeLocalStorage } from "./utils/safeStorage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -320,6 +321,73 @@ export default function App() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Local USB biometric scanner status (SecuGen Hamster Pro 20 on localhost:8443)
+  const [localBiometricStatus, setLocalBiometricStatus] = useState<{
+    connected: boolean;
+    deviceFound: boolean;
+  }>({ connected: false, deviceFound: false });
+
+  // Global WhatsApp Bot connectivity status (/api/whatsapp/status)
+  const [whatsAppStatus, setWhatsAppStatus] = useState<{
+    connected: boolean;
+    phone?: string;
+  }>({ connected: false });
+
+  // Poll Local Biometric Scanner (machine-isolated localhost check)
+  React.useEffect(() => {
+    let isMounted = true;
+    const checkBio = async () => {
+      try {
+        const res = await secugenService.getStatus();
+        if (isMounted) {
+          setLocalBiometricStatus({
+            connected: !!res.connected,
+            deviceFound: !!res.deviceFound,
+          });
+        }
+      } catch {
+        if (isMounted) {
+          setLocalBiometricStatus({ connected: false, deviceFound: false });
+        }
+      }
+    };
+    checkBio();
+    const bioInterval = setInterval(checkBio, 8000);
+    return () => {
+      isMounted = false;
+      clearInterval(bioInterval);
+    };
+  }, []);
+
+  // Poll Global WhatsApp Bot Status
+  React.useEffect(() => {
+    let isMounted = true;
+    const checkWA = async () => {
+      try {
+        const res = await fetch("/api/whatsapp/status");
+        if (res.ok) {
+          const json = await res.json();
+          if (isMounted) {
+            setWhatsAppStatus({
+              connected: !!json.connected,
+              phone: json.phone,
+            });
+          }
+        } else {
+          if (isMounted) setWhatsAppStatus({ connected: false });
+        }
+      } catch {
+        if (isMounted) setWhatsAppStatus({ connected: false });
+      }
+    };
+    checkWA();
+    const waInterval = setInterval(checkWA, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(waInterval);
+    };
   }, []);
 
 
@@ -1980,62 +2048,70 @@ export default function App() {
             </div>
           </div>
 
-          {/* Shortcut Modules Floating Bar */}
-          <div className="hidden lg:flex flex-1 justify-center px-2 min-w-0 max-w-full overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] py-1.5">
-            <div className="flex items-center gap-1.5 p-1.5 bg-slate-50/80 dark:bg-slate-800/70 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 backdrop-blur-sm shrink-0">
-              {[
-                { id: "dashboard", label: "Dashboard", Icon: Home, color: "text-blue-500", shadow: "drop-shadow-[0_4px_6px_rgba(59,130,246,0.4)]" },
-                { id: "leads", label: "Marketing", Icon: Sparkles, color: "text-pink-500", shadow: "drop-shadow-[0_4px_6px_rgba(236,72,153,0.4)]" },
-                { id: "admissions", label: "Admissions", Icon: Layers, color: "text-purple-500", shadow: "drop-shadow-[0_4px_6px_rgba(168,85,247,0.4)]" },
-                { id: "students", label: "Students", Icon: Users, color: "text-emerald-500", shadow: "drop-shadow-[0_4px_6px_rgba(16,185,129,0.4)]" },
-                { id: "attendance", label: "Attendance", Icon: CheckCircle2, color: "text-green-500", shadow: "drop-shadow-[0_4px_6px_rgba(34,197,94,0.4)]" },
-                { id: "academic", label: "Academic", Icon: GraduationCap, color: "text-indigo-500", shadow: "drop-shadow-[0_4px_6px_rgba(99,102,241,0.4)]" },
-                { id: "classes", label: "Classes", Icon: BookOpen, color: "text-violet-500", shadow: "drop-shadow-[0_4px_6px_rgba(139,92,246,0.4)]" },
-                { id: "timetable", label: "Timetable", Icon: Calendar, color: "text-orange-500", shadow: "drop-shadow-[0_4px_6px_rgba(249,115,22,0.4)]" },
-                { id: "fee", label: "Fees", Icon: CreditCard, color: "text-teal-500", shadow: "drop-shadow-[0_4px_6px_rgba(20,184,166,0.4)]" },
-                { id: "accounts", label: "Accounts", Icon: Wallet, color: "text-cyan-500", shadow: "drop-shadow-[0_4px_6px_rgba(6,182,212,0.4)]" },
-                { id: "staff", label: "Staff", Icon: Briefcase, color: "text-amber-500", shadow: "drop-shadow-[0_4px_6px_rgba(245,158,11,0.4)]" },
-                { id: "whatsapp-center", label: "WhatsApp", Icon: MessageCircle, color: "text-emerald-500", shadow: "drop-shadow-[0_4px_6px_rgba(16,185,129,0.4)]" },
-                { id: "reports", label: "Reports", Icon: BarChart3, color: "text-rose-500", shadow: "drop-shadow-[0_4px_6px_rgba(244,63,94,0.4)]" },
-                { id: "archive", label: "Archive", Icon: Archive, color: "text-slate-400", shadow: "drop-shadow-[0_4px_6px_rgba(148,163,184,0.4)]" },
-                { id: "settings", label: "Settings", Icon: SettingsIcon, color: "text-slate-600 dark:text-slate-300", shadow: "drop-shadow-[0_4px_6px_rgba(100,116,139,0.4)]" },
-              ]
-                .filter((mod) => allowedSections.includes(mod.id))
-                .map((mod) => {
-                  const isActive = activePage === mod.id || activePage.startsWith(`${mod.id}-`);
-                  return (
-                    <div key={mod.id} className="relative group flex items-center justify-center">
-                      <motion.button
-                        whileHover={{ scale: 1.1, y: -2 }}
-                        transition={{ duration: 0.2, type: "spring", stiffness: 350 }}
-                        onClick={() => handleNavClick(mod.id as Page)}
-                        className={cn(
-                          "flex items-center justify-center w-10 h-10 xl:w-11 xl:h-11 rounded-xl transition-all duration-200 relative",
-                          isActive
-                            ? "bg-white dark:bg-slate-700 shadow-sm border border-superior-teal/30 dark:border-superior-gold/30 ring-2 ring-superior-teal/20"
-                            : "hover:bg-white/80 dark:hover:bg-slate-700/60 text-slate-500"
-                        )}
-                      >
-                        <mod.Icon 
-                          size={20} 
-                          strokeWidth={isActive ? 2.5 : 2} 
-                          className={cn(
-                            "transition-all duration-200",
-                            isActive 
-                              ? `${mod.color} ${mod.shadow} scale-105` 
-                              : `text-slate-500 dark:text-slate-400 group-hover:${mod.color} group-hover:${mod.shadow} group-hover:scale-105`
-                          )}
-                        />
-                      </motion.button>
-                      
-                      {/* Tooltip */}
-                      <div className="absolute top-[52px] left-1/2 -translate-x-1/2 px-2.5 py-1 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[10px] font-black uppercase tracking-wider rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 z-[60] whitespace-nowrap shadow-lg">
-                        {mod.label}
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
+          {/* Middle Navigation & Search Stack - VisionOS Spatial Dock */}
+          <div className="flex-1 flex items-center justify-center gap-3 px-3 min-w-0 max-w-3xl mx-auto">
+            {/* Global Spotlight Search Bar (Full Prominence) */}
+            <button
+              onClick={() => setIsCommandPaletteOpen(true)}
+              className="flex-1 flex items-center justify-between px-4 py-2 rounded-2xl border border-slate-200/90 dark:border-slate-700/80 bg-slate-50/90 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-800 hover:border-superior-teal/50 hover:shadow-md text-slate-500 dark:text-slate-400 transition-all duration-200 group cursor-pointer"
+              title="Global Spotlight Search (Ctrl + K)"
+            >
+              <div className="flex items-center gap-2.5 truncate">
+                <Search size={15} className="text-slate-400 group-hover:text-superior-teal transition-colors shrink-0" />
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-300 truncate">
+                  Search scholars, ledger, faculty, actions...
+                </span>
+              </div>
+              <kbd className="hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 text-[9px] font-mono font-bold bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs shrink-0">
+                Ctrl K
+              </kbd>
+            </button>
+
+            {/* Global WhatsApp Bot Connectivity Pill */}
+            <button
+              onClick={() => handleNavClick("whatsapp-center")}
+              className={cn(
+                "hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-2xl border transition-all duration-200 shadow-2xs shrink-0 cursor-pointer active:scale-95",
+                whatsAppStatus.connected
+                  ? "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800"
+                  : "bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-400 border-rose-300 dark:border-rose-800"
+              )}
+              title="WhatsApp Bot Service (Click to open WhatsApp Center)"
+            >
+              <span className={cn(
+                "w-2 h-2 rounded-full shrink-0",
+                whatsAppStatus.connected ? "bg-emerald-500 animate-pulse shadow-[0_0_8px_#10b981]" : "bg-rose-500"
+              )} />
+              <MessageCircle size={14} className={whatsAppStatus.connected ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"} />
+              <span className="text-[10px] font-black uppercase tracking-wider">
+                {whatsAppStatus.connected ? "WhatsApp Live" : "WhatsApp Offline"}
+              </span>
+            </button>
+
+            {/* Machine-Isolated Local Biometric Scanner Pill (USB Hamster Pro on this PC) */}
+            <button
+              onClick={() => setIsGlobalSpotCheckOpen(true)}
+              className={cn(
+                "hidden md:flex items-center gap-2 px-3 py-1.5 rounded-2xl border transition-all duration-200 shadow-2xs shrink-0 cursor-pointer active:scale-95",
+                localBiometricStatus.connected && localBiometricStatus.deviceFound
+                  ? "bg-teal-500/10 hover:bg-teal-500/20 text-teal-700 dark:text-teal-300 border-teal-300 dark:border-teal-800"
+                  : "bg-slate-100 hover:bg-slate-200/70 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700"
+              )}
+              title={
+                localBiometricStatus.connected && localBiometricStatus.deviceFound
+                  ? "Local SecuGen Hamster Pro 20 Scanner Connected to this PC (Ctrl+B)"
+                  : "Local USB Scanner not detected on localhost:8443 (Ctrl+B to verify)"
+              }
+            >
+              <span className={cn(
+                "w-2 h-2 rounded-full shrink-0",
+                localBiometricStatus.connected && localBiometricStatus.deviceFound ? "bg-teal-500 animate-pulse shadow-[0_0_8px_#14b8a6]" : "bg-slate-400"
+              )} />
+              <Fingerprint size={14} className={localBiometricStatus.connected && localBiometricStatus.deviceFound ? "text-teal-600 dark:text-teal-400" : "text-slate-400"} />
+              <span className="text-[10px] font-black uppercase tracking-wider">
+                {localBiometricStatus.connected && localBiometricStatus.deviceFound ? "Scanner Ready (Local)" : "Scanner Offline"}
+              </span>
+            </button>
           </div>
 
           {/* Right Action Stack */}
@@ -2051,7 +2127,7 @@ export default function App() {
                 onChange={(e) => setSelectedSession(e.target.value)}
                 className="bg-transparent text-[11px] font-black text-emerald-950 dark:text-emerald-200 uppercase tracking-wider border-none focus:outline-none cursor-pointer pr-1 font-mono"
               >
-                <option value="all" className="text-slate-900 bg-white dark:bg-slate-900">All</option>
+                <option value="all" className="text-slate-900 bg-white dark:bg-slate-900">All Batches</option>
                 {(availableSessions || ["2024-26", "2025-27", "2026-28", "2027-29"]).map((sess: string) => (
                   <option key={sess} value={sess} className="text-slate-900 bg-white dark:bg-slate-900">{sess}</option>
                 ))}
@@ -2068,19 +2144,6 @@ export default function App() {
               <span className="text-xs font-bold tracking-tight">Spot-Check</span>
               <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-mono font-bold bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 rounded border border-emerald-200 dark:border-emerald-800 shadow-2xs">
                 Ctrl B
-              </kbd>
-            </button>
-
-            {/* Spotlight Command Palette Trigger */}
-            <button
-              onClick={() => setIsCommandPaletteOpen(true)}
-              className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-superior-teal/40 text-slate-500 dark:text-slate-400 transition-all duration-200 shadow-2xs group"
-              title="Global Spotlight Search (Ctrl + K)"
-            >
-              <Search size={14} className="text-slate-400 group-hover:text-superior-teal transition-colors" />
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Search...</span>
-              <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-mono font-bold bg-white dark:bg-slate-900 text-slate-500 rounded border border-slate-200 dark:border-slate-700 shadow-2xs">
-                Ctrl K
               </kbd>
             </button>
 
@@ -2232,6 +2295,7 @@ export default function App() {
                       setActivePage={handleNavClick}
                       selectedSession={selectedSession}
                       setSelectedSession={setSelectedSession}
+                      allowedSections={allowedSections}
                     />
                   )}
                 {activePage === "leads" && (

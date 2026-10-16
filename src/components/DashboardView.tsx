@@ -26,6 +26,9 @@ import {
   CheckCircle2,
   AlertCircle,
   MessageSquare,
+  MessageCircle,
+  Archive,
+  Home,
   Calendar,
   Users,
   Eye,
@@ -100,11 +103,13 @@ export default function DashboardView({
   setActivePage,
   selectedSession,
   setSelectedSession,
+  allowedSections,
 }: {
   data: any;
   setActivePage: any;
   selectedSession: string;
   setSelectedSession: (s: string) => void;
+  allowedSections?: string[];
 }) {
   const [time, setTime] = React.useState(new Date());
   const [activeDashboardTab, setActiveDashboardTab] = React.useState<"overview" | "directors" | "staff" | "ai_copilot">("overview");
@@ -1290,6 +1295,78 @@ export default function DashboardView({
           transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
           className="absolute bottom-[10%] right-[10%] w-[400px] h-[400px] bg-rose-500/10 dark:bg-purple-600/10 rounded-full blur-[130px]"
         />
+      </div>
+
+      {/* Apple / iOS Springboard Modular App Dock */}
+      <div className="relative z-20 mb-4 overflow-hidden rounded-[2.2rem] bg-white/75 dark:bg-slate-900/75 backdrop-blur-2xl border border-slate-200/80 dark:border-white/10 p-4 shadow-[0_12px_36px_rgba(0,0,0,0.06)]">
+        <div className="flex items-center justify-between px-2 mb-3">
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#FF5F56] shadow-2xs" />
+              <span className="w-2.5 h-2.5 rounded-full bg-[#FFBD2E] shadow-2xs" />
+              <span className="w-2.5 h-2.5 rounded-full bg-[#27C93F] shadow-2xs" />
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 ml-1.5">
+              SCJ Spatial App Dock
+            </span>
+          </div>
+          <span className="text-[9px] font-mono font-bold text-slate-400 dark:text-slate-500 tracking-wider">
+            1-TOUCH LAUNCHPAD
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2.5 sm:gap-3.5 overflow-x-auto pb-2 pt-1 px-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          {[
+            { id: "dashboard", label: "Dashboard", Icon: Home, bg: "from-blue-500 to-indigo-600", shadow: "shadow-blue-500/30" },
+            { id: "leads", label: "Marketing", Icon: Sparkles, bg: "from-pink-500 to-rose-600", shadow: "shadow-pink-500/30" },
+            { id: "admissions", label: "Admissions", Icon: Layers, bg: "from-purple-500 to-violet-700", shadow: "shadow-purple-500/30" },
+            { id: "students", label: "Students", Icon: Users, bg: "from-emerald-500 to-teal-700", shadow: "shadow-emerald-500/30" },
+            { id: "attendance", label: "Attendance", Icon: CheckCircle2, bg: "from-green-500 to-emerald-600", shadow: "shadow-green-500/30" },
+            { id: "academic", label: "Academic", Icon: GraduationCap, bg: "from-indigo-500 to-cyan-600", shadow: "shadow-indigo-500/30" },
+            { id: "classes", label: "Classes", Icon: BookOpen, bg: "from-violet-500 to-purple-700", shadow: "shadow-violet-500/30" },
+            { id: "timetable", label: "Timetable", Icon: Calendar, bg: "from-amber-500 to-orange-600", shadow: "shadow-orange-500/30" },
+            { id: "fee", label: "Fees", Icon: CreditCard, bg: "from-teal-500 to-emerald-700", shadow: "shadow-teal-500/30" },
+            { id: "accounts", label: "Accounts", Icon: Wallet, bg: "from-cyan-500 to-blue-600", shadow: "shadow-cyan-500/30" },
+            { id: "staff", label: "Staff", Icon: Briefcase, bg: "from-amber-600 to-yellow-700", shadow: "shadow-amber-500/30" },
+            { id: "whatsapp-center", label: "WhatsApp", Icon: MessageCircle, bg: "from-[#25D366] to-[#128C7E]", shadow: "shadow-emerald-500/30" },
+            { id: "reports", label: "Reports", Icon: BarChart3, bg: "from-rose-500 to-red-600", shadow: "shadow-rose-500/30" },
+            { id: "archive", label: "Archive", Icon: Archive, bg: "from-slate-500 to-gray-700", shadow: "shadow-slate-500/30" },
+            { id: "settings", label: "Settings", Icon: Settings, bg: "from-slate-600 to-slate-800", shadow: "shadow-slate-600/30" },
+          ]
+            .filter((mod) => !allowedSections || allowedSections.includes(mod.id))
+            .map((mod) => {
+              return (
+                <motion.button
+                  key={mod.id}
+                  whileHover={{ y: -6, scale: 1.08 }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                  onClick={() => setActivePage(mod.id)}
+                  className="flex flex-col items-center gap-1.5 shrink-0 group focus:outline-none cursor-pointer"
+                >
+                  {/* Apple iOS Continuous Squircle */}
+                  <div className={cn(
+                    "relative w-12 h-12 sm:w-13 sm:h-13 rounded-[1.25rem] bg-gradient-to-br flex items-center justify-center text-white shadow-lg transition-all duration-200 overflow-hidden",
+                    mod.bg,
+                    mod.shadow,
+                    "group-hover:shadow-xl group-hover:brightness-105"
+                  )}>
+                    {/* Glossy Specular Sheen (Apple Glass Reflection) */}
+                    <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent pointer-events-none rounded-t-[1.15rem]" />
+                    {/* Inner Rim Light */}
+                    <div className="absolute inset-0 rounded-[1.25rem] border border-white/30 pointer-events-none" />
+                    
+                    <mod.Icon size={22} className="relative z-10 drop-shadow-sm group-hover:scale-110 transition-transform duration-200" />
+                  </div>
+
+                  {/* App Label */}
+                  <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 tracking-tight group-hover:text-superior-teal dark:group-hover:text-superior-gold transition-colors truncate max-w-[64px] text-center">
+                    {mod.label}
+                  </span>
+                </motion.button>
+              );
+            })}
+        </div>
       </div>
 
       {/* Hero Banner - VisionOS Spatial Glass Cockpit */}

@@ -77,6 +77,7 @@ import { safeLocalStorage } from "../utils/safeStorage";
 import { getUnifiedTransactions } from "../utils/fee";
 import { useDebounce } from "../hooks/useDebounce";
 import { calculateStudentFeeBreakdown } from "../lib/feeCalculations";
+import { supabase } from "../lib/supabase";
 
 
 export default function FeeManagementView({
@@ -122,6 +123,19 @@ export default function FeeManagementView({
     subtitle?: string;
     items: ReportRecipientItem[];
   }>({ title: "", subtitle: "", items: [] });
+
+  const [stageFilter, setStageFilter] = React.useState<string>("all");
+  const [isAncillaryModalOpen, setIsAncillaryModalOpen] = React.useState(false);
+  const [ancillaryForm, setAncillaryForm] = React.useState({
+    title: "BISE Multan Board Examination Fee",
+    amount: "4200",
+    dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    targetProgram: "all",
+    targetStage: "all",
+    targetSection: "all",
+  });
+  const [includeAncillaryInPayment, setIncludeAncillaryInPayment] = React.useState(false);
+  const [isApplyingAncillary, setIsApplyingAncillary] = React.useState(false);
 
   const isNewStudent = React.useCallback((student: any): boolean => {
     const ts = student?.createdAt || student?.created_at;
@@ -406,6 +420,91 @@ export default function FeeManagementView({
     await data.updateFeePackage(selectedStudent.id, amount);
     setIsUpdateOpen(false);
     setNewFeePackage("");
+  };
+
+  const handleApplyAncillaryFee = async () => {
+    const feeAmount = parseFloat(ancillaryForm.amount);
+    if (!ancillaryForm.title.trim()) {
+      toast.error("Please enter fee title (e.g. BISE Board Exam Fee)");
+      return;
+    }
+    if (isNaN(feeAmount) || feeAmount <= 0) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
+
+    try {
+      setIsApplyingAncillary(true);
+      toast.loading(`Applying "${ancillaryForm.title.trim()}" to matching scholars...`, { id: "anc-apply" });
+
+      const targetList = allEnrolled.filter((s: any) => {
+        // Program match
+        if (ancillaryForm.targetProgram !== "all") {
+          const sGroup = (s.group || "").toLowerCase();
+          const sCat = (s.category || "").toLowerCase();
+          const isDIT = sGroup.includes("dit") || sCat.includes("dit");
+          const isBS = sGroup.includes("bs") || sCat.includes("bs");
+          const isUK = sGroup.includes("uk") || sCat.includes("uk");
+          if (ancillaryForm.targetProgram === "fsc" && (isDIT || isBS || isUK)) return false;
+          if (ancillaryForm.targetProgram === "dit" && !isDIT) return false;
+          if (ancillaryForm.targetProgram === "bs" && !isBS) return false;
+          if (ancillaryForm.targetProgram === "ukl3" && !isUK) return false;
+        }
+        // Stage match
+        if (ancillaryForm.targetStage !== "all") {
+          const part = s.academicPart || s.academic_part || "";
+          const sem = Number(s.currentSemester || s.current_semester || 0);
+          if (ancillaryForm.targetStage === "part1" && part !== "Part-1" && sem > 0) return false;
+          if (ancillaryForm.targetStage === "part2" && part !== "Part-2") return false;
+          if (ancillaryForm.targetStage.startsWith("sem") && sem !== Number(ancillaryForm.targetStage.replace("sem", ""))) return false;
+        }
+        // Section match
+        if (ancillaryForm.targetSection !== "all") {
+          if ((s.section || "").trim().toLowerCase() !== ancillaryForm.targetSection.trim().toLowerCase()) return false;
+        }
+        return true;
+      });
+
+      if (targetList.length === 0) {
+        toast.error("No students matched the selected criteria.", { id: "anc-apply" });
+        setIsApplyingAncillary(false);
+        return;
+      }
+
+      const newEntry = {
+        id: `anc-${Date.now()}`,
+        title: ancillaryForm.title.trim(),
+        amount: feeAmount,
+        dueDate: ancillaryForm.dueDate,
+        status: "Unpaid",
+        appliedAt: new Date().toISOString(),
+      };
+
+      for (const student of targetList) {
+        const existingLedger = student.feeLedger || {};
+        const existingAncillary = existingLedger.ancillaryFees || [];
+        const updatedAncillary = [...existingAncillary, { ...newEntry, id: `anc-${Date.now()}-${student.id}` }];
+
+        await supabase
+          .from("students")
+          .update({
+            fee_ledger: {
+              ...existingLedger,
+              ancillaryFees: updatedAncillary,
+            },
+          })
+          .eq("id", student.id);
+      }
+
+      toast.success(`Applied "${ancillaryForm.title}" (Rs. ${feeAmount.toLocaleString()}) to ${targetList.length} scholars!`, { id: "anc-apply" });
+      setIsAncillaryModalOpen(false);
+      if (data.fetchData) data.fetchData(true);
+    } catch (err: any) {
+      console.error("Ancillary apply error:", err);
+      toast.error(`Failed to apply fee: ${err?.message || "Database error"}`, { id: "anc-apply" });
+    } finally {
+      setIsApplyingAncillary(false);
+    }
   };
 
   const handleExportCSV = () => {
@@ -1190,7 +1289,28 @@ export default function FeeManagementView({
         (s.section || "").trim().toLowerCase() ===
           sectionFilter.trim().toLowerCase();
 
-      return matchesSearch && matchesStatus && matchesGroup && matchesSection;
+      // Academic Stage / Part / Semester filter
+      let matchesStage = true;
+      if (stageFilter !== "all") {
+        const studentPart = (s.academicPart || s.academic_part || "").toLowerCase();
+        const studentSem = Number(s.currentSemester || s.current_semester || 0);
+        if (stageFilter === "part1") {
+          matchesStage = studentPart.includes("part-1") || studentPart.includes("1st") || (!studentPart && studentSem === 0);
+        } else if (stageFilter === "part2") {
+          matchesStage = studentPart.includes("part-2") || studentPart.includes("2nd");
+        } else if (stageFilter.startsWith("sem")) {
+          const targetSem = Number(stageFilter.replace("sem", ""));
+          matchesStage = studentSem === targetSem;
+        } else if (stageFilter === "yr1") {
+          matchesStage = studentSem <= 2 || studentPart.includes("1st") || studentPart.includes("part-1");
+        } else if (stageFilter === "yr2") {
+          matchesStage = (studentSem >= 3 && studentSem <= 4) || studentPart.includes("2nd") || studentPart.includes("part-2");
+        } else if (stageFilter === "yr3") {
+          matchesStage = studentSem >= 5 || studentPart.includes("3rd") || studentPart.includes("part-3");
+        }
+      }
+
+      return matchesSearch && matchesStatus && matchesGroup && matchesSection && matchesStage;
     });
   }, [
     students,
@@ -1199,6 +1319,7 @@ export default function FeeManagementView({
     activeTab,
     groupFilter,
     sectionFilter,
+    stageFilter,
   ]);
 
 
@@ -1255,14 +1376,14 @@ export default function FeeManagementView({
               </button>
             </div>
 
-            {/* Group Navigation Pills */}
+            {/* Educational Stream Program Navigation Pills */}
             <div className="hidden lg:flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
               {[
-                { id: "all", label: "All Groups" },
-                { id: "fsc", label: "Inter", icon: School },
-                { id: "dit", label: "DIT", icon: GraduationCap },
-                { id: "ukl3", label: "UKL3", icon: Globe },
-                { id: "bs", label: "BS", icon: GraduationCap },
+                { id: "all", label: "All Streams" },
+                { id: "fsc", label: "FSc (2-Yr)", icon: School },
+                { id: "dit", label: "DIT (3-Yr)", icon: GraduationCap },
+                { id: "bs", label: "BS (4-Yr SS4)", icon: GraduationCap },
+                { id: "ukl3", label: "UK Level 3", icon: Globe },
               ].map((grp) => {
                 const Icon = grp.icon;
                 const active = groupFilter === grp.id;
@@ -1270,9 +1391,12 @@ export default function FeeManagementView({
                   <button
                     key={grp.id}
                     type="button"
-                    onClick={() => setGroupFilter(grp.id)}
+                    onClick={() => {
+                      setGroupFilter(grp.id);
+                      setStageFilter("all");
+                    }}
                     className={cn(
-                      "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all",
+                      "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer",
                       active
                         ? "bg-white dark:bg-slate-700 text-superior-teal dark:text-superior-gold shadow-xs"
                         : "text-slate-500 hover:text-slate-900 dark:text-slate-400"
@@ -1284,10 +1408,99 @@ export default function FeeManagementView({
                 );
               })}
             </div>
+
+            {/* Dynamic Academic Stage Sub-Pills (FSc Part-1/2, BS Semesters 1-8, DIT Years) */}
+            {groupFilter === "fsc" && (
+              <div className="hidden xl:flex items-center bg-emerald-50/80 dark:bg-emerald-950/40 p-0.5 rounded-lg border border-emerald-200/80 dark:border-emerald-800/60">
+                {[
+                  { id: "all", label: "All FSc" },
+                  { id: "part1", label: "Part-1 (1st Year Fresh)" },
+                  { id: "part2", label: "Part-2 (2nd Year Senior)" },
+                ].map((stg) => (
+                  <button
+                    key={stg.id}
+                    type="button"
+                    onClick={() => setStageFilter(stg.id)}
+                    className={cn(
+                      "px-2 py-0.5 rounded-md text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                      stageFilter === stg.id
+                        ? "bg-emerald-600 text-white shadow-2xs"
+                        : "text-emerald-800 dark:text-emerald-300 hover:text-emerald-950"
+                    )}
+                  >
+                    {stg.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {groupFilter === "bs" && (
+              <div className="hidden xl:flex items-center bg-indigo-50/80 dark:bg-indigo-950/40 p-0.5 rounded-lg border border-indigo-200/80 dark:border-indigo-800/60 overflow-x-auto max-w-[340px]">
+                <button
+                  type="button"
+                  onClick={() => setStageFilter("all")}
+                  className={cn(
+                    "px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer shrink-0",
+                    stageFilter === "all" ? "bg-indigo-600 text-white shadow-2xs" : "text-indigo-800 dark:text-indigo-300"
+                  )}
+                >
+                  All Semesters (8)
+                </button>
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
+                  <button
+                    key={`sem${sem}`}
+                    type="button"
+                    onClick={() => setStageFilter(`sem${sem}`)}
+                    className={cn(
+                      "px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase transition-all cursor-pointer shrink-0",
+                      stageFilter === `sem${sem}` ? "bg-indigo-600 text-white shadow-2xs" : "text-indigo-700 dark:text-indigo-300 hover:text-indigo-950"
+                    )}
+                  >
+                    S{sem}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {groupFilter === "dit" && (
+              <div className="hidden xl:flex items-center bg-teal-50/80 dark:bg-teal-950/40 p-0.5 rounded-lg border border-teal-200/80 dark:border-teal-800/60">
+                {[
+                  { id: "all", label: "All DIT" },
+                  { id: "yr1", label: "1st Year" },
+                  { id: "yr2", label: "2nd Year" },
+                  { id: "yr3", label: "3rd Year" },
+                ].map((stg) => (
+                  <button
+                    key={stg.id}
+                    type="button"
+                    onClick={() => setStageFilter(stg.id)}
+                    className={cn(
+                      "px-2 py-0.5 rounded-md text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                      stageFilter === stg.id
+                        ? "bg-teal-600 text-white shadow-2xs"
+                        : "text-teal-800 dark:text-teal-300 hover:text-teal-950"
+                    )}
+                  >
+                    {stg.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Right: Actions */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {/* Ancillary Fees Manager Button */}
+            <Button
+              onClick={() => setIsAncillaryModalOpen(true)}
+              size="sm"
+              className="h-7.5 px-2.5 rounded-lg bg-slate-900 hover:bg-black dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-xs cursor-pointer"
+              title="Add / Apply Decoupled Institutional Fees (Board Exam, Registration, Funds)"
+            >
+              <Plus size={13} className="text-superior-gold" />
+              <span>Ancillary Fees</span>
+            </Button>
+
             <Button
               onClick={() => {
                 const toPrint = filteredStudents.slice(0, 50);
@@ -2189,6 +2402,168 @@ _Accounts & Finance Department, SGC Jahanian_`;
         items={bulkFeeModalProps.items}
         settings={data?.settings}
       />
+      {/* Institutional Ancillary Fees Manager Dialog */}
+      <Dialog open={isAncillaryModalOpen} onOpenChange={setIsAncillaryModalOpen}>
+        <DialogContent className="rounded-[2.5rem] border-slate-100 dark:border-slate-800 shadow-2xl max-w-lg p-7">
+          <DialogHeader>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-superior-gold shadow-xs" />
+              <DialogTitle className="text-xl font-serif font-black text-slate-900 dark:text-white">
+                Ancillary Fees Manager
+              </DialogTitle>
+              <span className="font-nastaleeq text-xs text-superior-gold font-medium px-2 py-0.5 bg-superior-gold/10 rounded-md ml-auto">
+                بورڈ و رجسٹریشن فیس
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Decoupled from the main tuition package. Apply board exam fees (Rs. 4,200), registration, or miscellaneous funds to all scholars or specific streams/classes.
+            </p>
+          </DialogHeader>
+
+          <div className="space-y-4 py-3">
+            {/* Quick Presets */}
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                Quick Fee Presets
+              </Label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { title: "BISE Multan Board Examination Fee", amount: "4200" },
+                  { title: "Board Registration Fee", amount: "3500" },
+                  { title: "Computer Lab Charges", amount: "2500" },
+                  { title: "Sports & Misc Fund", amount: "1500" },
+                ].map((preset) => (
+                  <button
+                    key={preset.title}
+                    type="button"
+                    onClick={() => setAncillaryForm(prev => ({ ...prev, title: preset.title, amount: preset.amount }))}
+                    className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-superior-teal/10 hover:border-superior-teal/30 hover:text-superior-teal text-slate-700 dark:text-slate-300 transition-all cursor-pointer"
+                  >
+                    {preset.title.split(" ")[0]} (Rs. {preset.amount})
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Fee Title */}
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                Fee Title / Institutional Category
+              </Label>
+              <Input
+                value={ancillaryForm.title}
+                onChange={(e) => setAncillaryForm(prev => ({ ...prev, title: e.target.value }))}
+                placeholder="e.g. BISE Board Examination Fee"
+                className="h-11 rounded-xl font-bold border-slate-200 dark:border-slate-700"
+              />
+            </div>
+
+            {/* Amount & Due Date */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  Amount Due (Rs.)
+                </Label>
+                <Input
+                  type="number"
+                  value={ancillaryForm.amount}
+                  onChange={(e) => setAncillaryForm(prev => ({ ...prev, amount: e.target.value }))}
+                  placeholder="4200"
+                  className="h-11 rounded-xl font-black font-mono text-emerald-700 dark:text-emerald-400 border-slate-200 dark:border-slate-700"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  Due Date
+                </Label>
+                <Input
+                  type="date"
+                  value={ancillaryForm.dueDate}
+                  onChange={(e) => setAncillaryForm(prev => ({ ...prev, dueDate: e.target.value }))}
+                  className="h-11 rounded-xl font-bold border-slate-200 dark:border-slate-700"
+                />
+              </div>
+            </div>
+
+            {/* Target Scope Selection */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  Target Program Stream
+                </Label>
+                <Select
+                  value={ancillaryForm.targetProgram}
+                  onValueChange={(val) => setAncillaryForm(prev => ({ ...prev, targetProgram: val }))}
+                >
+                  <SelectTrigger className="h-11 rounded-xl font-bold">
+                    <SelectValue placeholder="All Streams" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Programs & Streams</SelectItem>
+                    <SelectItem value="fsc">FSc (2-Yr Intermediate)</SelectItem>
+                    <SelectItem value="dit">DIT (3-Yr Diploma)</SelectItem>
+                    <SelectItem value="bs">BS (4-Yr SS4)</SelectItem>
+                    <SelectItem value="ukl3">UK Level 3</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  Target Academic Stage
+                </Label>
+                <Select
+                  value={ancillaryForm.targetStage}
+                  onValueChange={(val) => setAncillaryForm(prev => ({ ...prev, targetStage: val }))}
+                >
+                  <SelectTrigger className="h-11 rounded-xl font-bold">
+                    <SelectValue placeholder="All Stages" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Academic Stages</SelectItem>
+                    <SelectItem value="part1">Part-1 Fresh (1st Year)</SelectItem>
+                    <SelectItem value="part2">Part-2 Senior (2nd Year)</SelectItem>
+                    <SelectItem value="sem1">BS Semester 1</SelectItem>
+                    <SelectItem value="sem2">BS Semester 2</SelectItem>
+                    <SelectItem value="sem3">BS Semester 3</SelectItem>
+                    <SelectItem value="sem4">BS Semester 4</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Calculation Preview */}
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                <span className="font-semibold">
+                  Independent Ledger Entry (Leaves Tuition Package intact)
+                </span>
+              </div>
+              <span className="font-mono font-black text-emerald-700 dark:text-emerald-400">
+                Rs. {Number(ancillaryForm.amount || 0).toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsAncillaryModalOpen(false)}
+              className="rounded-xl font-bold"
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={isApplyingAncillary}
+              onClick={handleApplyAncillaryFee}
+              className="bg-superior-teal hover:bg-superior-teal/90 text-white rounded-xl font-bold px-6 shadow-md cursor-pointer"
+            >
+              {isApplyingAncillary ? "Applying Fee..." : "Apply to Matching Scholars"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
