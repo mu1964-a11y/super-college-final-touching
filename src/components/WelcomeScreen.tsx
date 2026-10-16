@@ -15,6 +15,7 @@ import {
   Laptop,
 } from "lucide-react";
 import AcademicCanvasBackground from "./AcademicCanvasBackground";
+import { SpatialCard } from "./SpatialCanvasCard";
 
 interface WelcomeScreenProps {
   brandingSettings: {
@@ -83,15 +84,13 @@ export default function WelcomeScreen({
       {/* Real Campus Photo Background + Reduced Wave & Top Slogan */}
       <AcademicCanvasBackground logo={brandingSettings.logo} />
 
-      {/* Main Unified Portal Card (Expanded to approx. 1140-1180px for desktop authority) */}
-      <motion.div
-        initial={{ opacity: 0, y: 16, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.45, ease: "easeOut" }}
-        className="w-full max-w-[1140px] xl:max-w-[1180px] rounded-3xl sm:rounded-[2.25rem] bg-white border border-slate-200/90 shadow-[0_25px_80px_rgba(0,0,0,0.22)] overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[580px] lg:min-h-[600px] relative z-10"
-      >
+      {/* VISIONOS SPATIAL 3D MASTER PORTAL CARD */}
+      <SpatialCard>
         {/* LEFT COLUMN (approx 38-40%): Deep Superior Emerald Brand Panel */}
-        <div className="lg:col-span-5 bg-gradient-to-br from-[#064e43] via-[#053e35] to-[#022822] p-7 sm:p-9 lg:p-10 flex flex-col justify-between text-white relative overflow-hidden">
+        <div 
+          style={{ transform: "translateZ(12px)" }}
+          className="lg:col-span-5 bg-gradient-to-br from-[#064e43] via-[#053e35] to-[#022822] p-7 sm:p-9 lg:p-10 flex flex-col justify-between text-white relative overflow-hidden"
+        >
           {/* Subtle Background Watermark & Cap Silhouette */}
           <div className="absolute inset-0 [background-image:radial-gradient(rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none" />
           <div className="absolute top-1/4 right-0 w-80 h-80 opacity-[0.08] pointer-events-none text-white flex items-center justify-center">
@@ -190,8 +189,11 @@ export default function WelcomeScreen({
           </div>
         </div>
 
-        {/* RIGHT COLUMN (approx 60-62%): Crisp White Functional Workspace Selection */}
-        <div className="lg:col-span-7 bg-white p-7 sm:p-9 lg:p-11 flex flex-col justify-between relative">
+        {/* RIGHT COLUMN (approx 60-62%): VisionOS Frosted Glass Workspace Selection */}
+        <div 
+          style={{ transform: "translateZ(18px)" }}
+          className="lg:col-span-7 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl p-7 sm:p-9 lg:p-11 flex flex-col justify-between relative"
+        >
           {/* Top Status Indicators Row */}
           <div className="w-full flex items-center justify-between pb-4 border-b border-slate-100">
             {/* Operational Pill */}
@@ -353,7 +355,7 @@ export default function WelcomeScreen({
             </div>
           </div>
         </div>
-      </motion.div>
+      </SpatialCard>
     </div>
   );
 }
