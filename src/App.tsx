@@ -902,12 +902,15 @@ export default function App() {
   };
 
   // All Unique Sessions from Data
+  // All Unique Sessions from Data (Including 2-Year Intermediate, 3-Year DIT, 4-Year BS)
   const availableSessions = useMemo(() => {
     const sessionSet = new Set<string>();
 
-    ["2024-26", "2025-27", "2026-28", "2027-29"].forEach((s) =>
-      sessionSet.add(s),
-    );
+    [
+      "2023-27", "2024-26", "2024-28", 
+      "2025-27", "2025-29", "2026-28", 
+      "2026-30", "2027-29", "2027-31"
+    ].forEach((s) => sessionSet.add(s));
 
     if (data.settings?.academicSession) {
       sessionSet.add(normalizeSession(data.settings.academicSession));
@@ -929,14 +932,8 @@ export default function App() {
     data.settings?.academicSession,
   ]);
 
-  // Sync selected session with settings
-  const hasLoadedSettingsInitial = React.useRef(false);
-  React.useEffect(() => {
-    if (data.settings?.academicSession && !hasLoadedSettingsInitial.current) {
-      setSelectedSession(normalizeSession(data.settings.academicSession));
-      hasLoadedSettingsInitial.current = true;
-    }
-  }, [data.settings?.academicSession]);
+  // Keep "all" (All Batches) as default view so all ongoing college cohorts remain visible simultaneously.
+  // Only override if the user explicitly switches the dropdown.
 
   // Filtered Data based on session
   const filteredData = useMemo(() => {
@@ -956,17 +953,17 @@ export default function App() {
       incomes: filterBySession(data.incomes),
       expenses: filterBySession(data.expenses),
       academicRecords: filterBySession(data.academicRecords),
-      // Action wrappers to inject session. Always save as normalized version.
+      // Action wrappers to inject session. When "all" is active, preserve item's own session or fallback to settings session
       addLead: (lead: any) =>
-        data.addLead({ ...lead, session: normalizeSession(selectedSession) }),
+        data.addLead({ ...lead, session: lead.session ? normalizeSession(lead.session) : (selectedSession !== "all" ? normalizeSession(selectedSession) : normalizeSession(data.settings?.academicSession) || "2026-28") }),
       addAdmission: (admission: any) =>
-        data.addAdmission({ ...admission, session: normalizeSession(selectedSession) }),
+        data.addAdmission({ ...admission, session: admission.session ? normalizeSession(admission.session) : (selectedSession !== "all" ? normalizeSession(selectedSession) : normalizeSession(data.settings?.academicSession) || "2026-28") }),
       addStudent: (student: any) =>
-        data.addStudent({ ...student, session: normalizeSession(selectedSession) }),
+        data.addStudent({ ...student, session: student.session ? normalizeSession(student.session) : (selectedSession !== "all" ? normalizeSession(selectedSession) : normalizeSession(data.settings?.academicSession) || "2026-28") }),
       addExpense: (expense: any) =>
-        data.addExpense({ ...expense, session: normalizeSession(selectedSession) }),
+        data.addExpense({ ...expense, session: expense.session ? normalizeSession(expense.session) : (selectedSession !== "all" ? normalizeSession(selectedSession) : normalizeSession(data.settings?.academicSession) || "2026-28") }),
       addIncome: (income: any) =>
-        data.addIncome({ ...income, session: normalizeSession(selectedSession) }),
+        data.addIncome({ ...income, session: income.session ? normalizeSession(income.session) : (selectedSession !== "all" ? normalizeSession(selectedSession) : normalizeSession(data.settings?.academicSession) || "2026-28") }),
     };
   }, [data, selectedSession, availableSessions]);
 
@@ -2019,50 +2016,50 @@ export default function App() {
         </div>
 
         {/* Header - VisionOS Floating Spatial Navigation Dock */}
-        <header className="mx-3 sm:mx-6 my-2.5 h-18 min-h-[72px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl flex items-center justify-between px-4 sm:px-6 rounded-3xl border border-slate-200/80 dark:border-white/10 sticky top-2.5 z-30 shadow-[0_12px_40px_rgba(0,0,0,0.06)] before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-white/60 before:to-transparent overflow-hidden">
-          <div className="flex items-center gap-3 md:gap-4">
+        <header className="mx-3 sm:mx-6 mt-2 mb-1.5 h-14 sm:h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl flex items-center justify-between px-3 sm:px-5 rounded-2xl sm:rounded-3xl border border-slate-200/80 dark:border-white/10 sticky top-2 z-30 shadow-[0_8px_30px_rgba(0,0,0,0.05)] before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-white/60 before:to-transparent overflow-hidden">
+          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setIsSidebarOpen(true)}
-              className="text-slate-600 dark:text-slate-300 hover:text-superior-teal hover:bg-emerald-50/50 dark:hover:bg-slate-800 rounded-xl h-10 w-10 transition-all active:scale-95"
+              className="text-slate-600 dark:text-slate-300 hover:text-superior-teal hover:bg-emerald-50/50 dark:hover:bg-slate-800 rounded-xl h-9 w-9 transition-all active:scale-95"
               title="Open Navigation Menu"
             >
-              <Menu size={22} />
+              <Menu size={20} />
             </Button>
 
             {/* Dynamic Campus Badge */}
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700">
-              <School size={13} className="text-superior-teal dark:text-superior-gold" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+            <div className="hidden sm:flex items-center gap-1.5 h-9 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700">
+              <School size={13} className="text-superior-teal dark:text-superior-gold shrink-0" />
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 whitespace-nowrap">
                 {activePage.includes("boys") ? "Boys Campus" : activePage.includes("girls") ? "Girls Campus" : (settings?.campusName || "Jahanian Campus")}
               </span>
             </div>
 
             {/* Active View Indicator */}
-            <div className="flex items-center gap-2.5 bg-superior-teal/5 dark:bg-slate-800 px-3.5 py-1.5 rounded-full border border-superior-teal/15 dark:border-slate-700">
-              <div className="w-2 h-2 rounded-full bg-superior-gold shadow-[0_0_8px_rgba(201,168,76,0.6)]" />
-              <h2 className="text-[11px] font-black text-superior-teal dark:text-emerald-400 uppercase tracking-[0.2em]">
+            <div className="flex items-center gap-2 h-9 bg-superior-teal/5 dark:bg-slate-800 px-3 rounded-xl border border-superior-teal/15 dark:border-slate-700">
+              <div className="w-2 h-2 rounded-full bg-superior-gold shadow-[0_0_8px_rgba(201,168,76,0.6)] shrink-0" />
+              <h2 className="text-[10px] font-black text-superior-teal dark:text-emerald-400 uppercase tracking-[0.18em] whitespace-nowrap">
                 {activePage.replace("-", " ")}
               </h2>
             </div>
           </div>
 
-          {/* Middle Navigation & Search Stack - VisionOS Spatial Dock */}
-          <div className="flex-1 flex items-center justify-center gap-3 px-3 min-w-0 max-w-3xl mx-auto">
+          {/* Middle Navigation & Search Stack - Integrated & Balanced */}
+          <div className="flex-1 flex items-center justify-end md:justify-center gap-2 sm:gap-2.5 px-2 min-w-0">
             {/* Global Spotlight Search Bar (Full Prominence) */}
             <button
               onClick={() => setIsCommandPaletteOpen(true)}
-              className="flex-1 flex items-center justify-between px-4 py-2 rounded-2xl border border-slate-200/90 dark:border-slate-700/80 bg-slate-50/90 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-800 hover:border-superior-teal/50 hover:shadow-md text-slate-500 dark:text-slate-400 transition-all duration-200 group cursor-pointer"
+              className="flex-1 flex items-center justify-between h-9 px-3.5 rounded-xl border border-slate-200/90 dark:border-slate-700/80 bg-slate-50/90 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-800 hover:border-superior-teal/50 hover:shadow-md text-slate-500 dark:text-slate-400 transition-all duration-200 group cursor-pointer max-w-sm"
               title="Global Spotlight Search (Ctrl + K)"
             >
-              <div className="flex items-center gap-2.5 truncate">
-                <Search size={15} className="text-slate-400 group-hover:text-superior-teal transition-colors shrink-0" />
+              <div className="flex items-center gap-2 truncate">
+                <Search size={14} className="text-slate-400 group-hover:text-superior-teal transition-colors shrink-0" />
                 <span className="text-xs font-medium text-slate-500 dark:text-slate-300 truncate">
-                  Search scholars, ledger, faculty, actions...
+                  Search scholars, ledger, faculty...
                 </span>
               </div>
-              <kbd className="hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 text-[9px] font-mono font-bold bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs shrink-0">
+              <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-mono font-bold bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 rounded-md border border-slate-200 dark:border-slate-700 shadow-2xs shrink-0">
                 Ctrl K
               </kbd>
             </button>
@@ -2071,7 +2068,7 @@ export default function App() {
             <button
               onClick={() => handleNavClick("whatsapp-center")}
               className={cn(
-                "hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-2xl border transition-all duration-200 shadow-2xs shrink-0 cursor-pointer active:scale-95",
+                "hidden sm:flex items-center gap-2 h-9 px-3 rounded-xl border transition-all duration-200 shadow-2xs shrink-0 cursor-pointer active:scale-95",
                 whatsAppStatus.connected
                   ? "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800"
                   : "bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-400 border-rose-300 dark:border-rose-800"
@@ -2082,8 +2079,8 @@ export default function App() {
                 "w-2 h-2 rounded-full shrink-0",
                 whatsAppStatus.connected ? "bg-emerald-500 animate-pulse shadow-[0_0_8px_#10b981]" : "bg-rose-500"
               )} />
-              <MessageCircle size={14} className={whatsAppStatus.connected ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"} />
-              <span className="text-[10px] font-black uppercase tracking-wider">
+              <MessageCircle size={14} className={whatsAppStatus.connected ? "text-emerald-600 dark:text-emerald-400 shrink-0" : "text-rose-600 dark:text-rose-400 shrink-0"} />
+              <span className="text-[10px] font-black uppercase tracking-wider whitespace-nowrap">
                 {whatsAppStatus.connected ? "WhatsApp Live" : "WhatsApp Offline"}
               </span>
             </button>
@@ -2092,7 +2089,7 @@ export default function App() {
             <button
               onClick={() => setIsGlobalSpotCheckOpen(true)}
               className={cn(
-                "hidden md:flex items-center gap-2 px-3 py-1.5 rounded-2xl border transition-all duration-200 shadow-2xs shrink-0 cursor-pointer active:scale-95",
+                "hidden md:flex items-center gap-2 h-9 px-3 rounded-xl border transition-all duration-200 shadow-2xs shrink-0 cursor-pointer active:scale-95",
                 localBiometricStatus.connected && localBiometricStatus.deviceFound
                   ? "bg-teal-500/10 hover:bg-teal-500/20 text-teal-700 dark:text-teal-300 border-teal-300 dark:border-teal-800"
                   : "bg-slate-100 hover:bg-slate-200/70 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700"
@@ -2107,18 +2104,18 @@ export default function App() {
                 "w-2 h-2 rounded-full shrink-0",
                 localBiometricStatus.connected && localBiometricStatus.deviceFound ? "bg-teal-500 animate-pulse shadow-[0_0_8px_#14b8a6]" : "bg-slate-400"
               )} />
-              <Fingerprint size={14} className={localBiometricStatus.connected && localBiometricStatus.deviceFound ? "text-teal-600 dark:text-teal-400" : "text-slate-400"} />
-              <span className="text-[10px] font-black uppercase tracking-wider">
-                {localBiometricStatus.connected && localBiometricStatus.deviceFound ? "Scanner Ready (Local)" : "Scanner Offline"}
+              <Fingerprint size={14} className={localBiometricStatus.connected && localBiometricStatus.deviceFound ? "text-teal-600 dark:text-teal-400 shrink-0" : "text-slate-400 shrink-0"} />
+              <span className="text-[10px] font-black uppercase tracking-wider whitespace-nowrap">
+                {localBiometricStatus.connected && localBiometricStatus.deviceFound ? "Scanner Ready" : "Scanner Offline"}
               </span>
             </button>
           </div>
 
           {/* Right Action Stack */}
-          <div className="flex items-center gap-2.5 md:gap-3">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Academic Session Selector Dropdown Pill */}
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 shadow-2xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)] animate-pulse" />
+            <div className="hidden md:flex items-center gap-1.5 h-9 px-2.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 shadow-2xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)] animate-pulse shrink-0" />
               <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300 whitespace-nowrap">
                 Session:
               </span>
@@ -2128,7 +2125,7 @@ export default function App() {
                 className="bg-transparent text-[11px] font-black text-emerald-950 dark:text-emerald-200 uppercase tracking-wider border-none focus:outline-none cursor-pointer pr-1 font-mono"
               >
                 <option value="all" className="text-slate-900 bg-white dark:bg-slate-900">All Batches</option>
-                {(availableSessions || ["2024-26", "2025-27", "2026-28", "2027-29"]).map((sess: string) => (
+                {(availableSessions || ["2023-27", "2024-26", "2024-28", "2025-27", "2025-29", "2026-28", "2026-30", "2027-29", "2027-31"]).map((sess: string) => (
                   <option key={sess} value={sess} className="text-slate-900 bg-white dark:bg-slate-900">{sess}</option>
                 ))}
               </select>
@@ -2137,12 +2134,12 @@ export default function App() {
             {/* Global Biometric Spot-Check Scanner Trigger */}
             <button
               onClick={() => setIsGlobalSpotCheckOpen(true)}
-              className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-300/80 dark:border-emerald-800/80 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 hover:from-emerald-500/20 hover:to-teal-500/20 text-emerald-800 dark:text-emerald-300 transition-all duration-200 shadow-2xs group cursor-pointer"
+              className="hidden md:flex items-center gap-1.5 h-9 px-3 rounded-xl border border-emerald-300/80 dark:border-emerald-800/80 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 hover:from-emerald-500/20 hover:to-teal-500/20 text-emerald-800 dark:text-emerald-300 transition-all duration-200 shadow-2xs group cursor-pointer"
               title="Instant 1-Touch Spot-Check Scanner (Ctrl + B)"
             >
-              <Fingerprint size={15} className="text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform animate-pulse" />
-              <span className="text-xs font-bold tracking-tight">Spot-Check</span>
-              <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-mono font-bold bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 rounded border border-emerald-200 dark:border-emerald-800 shadow-2xs">
+              <Fingerprint size={15} className="text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform animate-pulse shrink-0" />
+              <span className="text-xs font-bold tracking-tight whitespace-nowrap">Spot-Check</span>
+              <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-mono font-bold bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 rounded border border-emerald-200 dark:border-emerald-800 shadow-2xs shrink-0">
                 Ctrl B
               </kbd>
             </button>
@@ -2248,25 +2245,25 @@ export default function App() {
         </header>
 
         {/* Apple iOS Continuous Modular App Dock - Persistent Across All Modules */}
-        <div className="mx-3 sm:mx-6 mb-2.5 z-20 shrink-0">
-          <div className="rounded-2xl sm:rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border border-slate-200/80 dark:border-white/10 px-3 py-2 shadow-[0_8px_30px_rgba(0,0,0,0.05)] relative overflow-visible">
-            <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 md:gap-3.5 overflow-x-auto overflow-y-visible py-1.5 px-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <div className="mx-3 sm:mx-6 mb-1.5 z-20 shrink-0">
+          <div className="rounded-2xl sm:rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border border-slate-200/80 dark:border-white/10 px-3 py-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.05)] relative overflow-visible">
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 md:gap-3.5 overflow-x-auto overflow-y-visible pt-2.5 pb-1 px-1 min-h-[64px] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               {[
-                { id: "dashboard", label: "Dashboard", Icon: Home, bg: "from-blue-500 to-indigo-600", shadow: "shadow-blue-500/25" },
-                { id: "leads", label: "Marketing", Icon: Sparkles, bg: "from-pink-500 to-rose-600", shadow: "shadow-pink-500/25" },
-                { id: "admissions", label: "Admissions", Icon: Layers, bg: "from-purple-500 to-violet-700", shadow: "shadow-purple-500/25" },
-                { id: "students", label: "Students", Icon: Users, bg: "from-emerald-500 to-teal-700", shadow: "shadow-emerald-500/25" },
-                { id: "attendance", label: "Attendance", Icon: CheckCircle2, bg: "from-green-500 to-emerald-600", shadow: "shadow-green-500/25" },
-                { id: "academic", label: "Academic", Icon: GraduationCap, bg: "from-indigo-500 to-cyan-600", shadow: "shadow-indigo-500/25" },
-                { id: "classes", label: "Classes", Icon: BookOpen, bg: "from-violet-500 to-purple-700", shadow: "shadow-violet-500/25" },
-                { id: "timetable", label: "Timetable", Icon: Calendar, bg: "from-amber-500 to-orange-600", shadow: "shadow-orange-500/25" },
-                { id: "fee", label: "Fees", Icon: CreditCard, bg: "from-teal-500 to-emerald-700", shadow: "shadow-teal-500/25" },
-                { id: "accounts", label: "Accounts", Icon: Wallet, bg: "from-cyan-500 to-blue-600", shadow: "shadow-cyan-500/25" },
-                { id: "staff", label: "Staff", Icon: Briefcase, bg: "from-amber-600 to-yellow-600", shadow: "shadow-amber-500/25" },
-                { id: "whatsapp-center", label: "WhatsApp", Icon: MessageCircle, bg: "from-[#25D366] to-[#128C7E]", shadow: "shadow-emerald-500/25" },
-                { id: "reports", label: "Reports", Icon: BarChart3, bg: "from-rose-500 to-red-600", shadow: "shadow-rose-500/25" },
-                { id: "archive", label: "Archive", Icon: Archive, bg: "from-amber-600 via-orange-600 to-yellow-600", shadow: "shadow-amber-500/25" },
-                { id: "settings", label: "Settings", Icon: SettingsIcon, bg: "from-indigo-500 via-blue-600 to-sky-500", shadow: "shadow-blue-500/25" },
+                { id: "dashboard", label: "Dashboard", Icon: Home, bg: "from-blue-500 to-indigo-600", shadow: "shadow-blue-500/25", indicator: "bg-sky-400 shadow-[0_0_8px_#38bdf8]", ring: "ring-sky-400" },
+                { id: "leads", label: "Marketing", Icon: Sparkles, bg: "from-pink-500 to-rose-600", shadow: "shadow-pink-500/25", indicator: "bg-pink-400 shadow-[0_0_8px_#f472b6]", ring: "ring-pink-400" },
+                { id: "admissions", label: "Admissions", Icon: Layers, bg: "from-purple-500 to-violet-700", shadow: "shadow-purple-500/25", indicator: "bg-purple-400 shadow-[0_0_8px_#c084fc]", ring: "ring-purple-400" },
+                { id: "students", label: "Students", Icon: Users, bg: "from-emerald-500 to-teal-700", shadow: "shadow-emerald-500/25", indicator: "bg-emerald-400 shadow-[0_0_8px_#34d399]", ring: "ring-emerald-400" },
+                { id: "attendance", label: "Attendance", Icon: CheckCircle2, bg: "from-green-500 to-emerald-600", shadow: "shadow-green-500/25", indicator: "bg-green-400 shadow-[0_0_8px_#4ade80]", ring: "ring-green-400" },
+                { id: "academic", label: "Academic", Icon: GraduationCap, bg: "from-indigo-500 to-cyan-600", shadow: "shadow-indigo-500/25", indicator: "bg-indigo-400 shadow-[0_0_8px_#818cf8]", ring: "ring-indigo-400" },
+                { id: "classes", label: "Classes", Icon: BookOpen, bg: "from-violet-500 to-purple-700", shadow: "shadow-violet-500/25", indicator: "bg-violet-400 shadow-[0_0_8px_#a78bfa]", ring: "ring-violet-400" },
+                { id: "timetable", label: "Timetable", Icon: Calendar, bg: "from-amber-500 to-orange-600", shadow: "shadow-orange-500/25", indicator: "bg-orange-400 shadow-[0_0_8px_#fb923c]", ring: "ring-orange-400" },
+                { id: "fee", label: "Fees", Icon: CreditCard, bg: "from-teal-500 to-emerald-700", shadow: "shadow-teal-500/25", indicator: "bg-teal-400 shadow-[0_0_8px_#2dd4bf]", ring: "ring-teal-400" },
+                { id: "accounts", label: "Accounts", Icon: Wallet, bg: "from-cyan-500 to-blue-600", shadow: "shadow-cyan-500/25", indicator: "bg-cyan-400 shadow-[0_0_8px_#22d3ee]", ring: "ring-cyan-400" },
+                { id: "staff", label: "Staff", Icon: Briefcase, bg: "from-amber-600 to-yellow-600", shadow: "shadow-amber-500/25", indicator: "bg-amber-400 shadow-[0_0_8px_#facc15]", ring: "ring-amber-400" },
+                { id: "whatsapp-center", label: "WhatsApp", Icon: MessageCircle, bg: "from-[#25D366] to-[#128C7E]", shadow: "shadow-emerald-500/25", indicator: "bg-[#25D366] shadow-[0_0_8px_#25D366]", ring: "ring-[#25D366]" },
+                { id: "reports", label: "Reports", Icon: BarChart3, bg: "from-rose-500 to-red-600", shadow: "shadow-rose-500/25", indicator: "bg-rose-400 shadow-[0_0_8px_#fb7185]", ring: "ring-rose-400" },
+                { id: "archive", label: "Archive", Icon: Archive, bg: "from-amber-600 via-orange-600 to-yellow-600", shadow: "shadow-amber-500/25", indicator: "bg-amber-500 shadow-[0_0_8px_#f59e0b]", ring: "ring-amber-500" },
+                { id: "settings", label: "Settings", Icon: SettingsIcon, bg: "from-indigo-500 via-blue-600 to-sky-500", shadow: "shadow-blue-500/25", indicator: "bg-blue-400 shadow-[0_0_8px_#60a5fa]", ring: "ring-blue-400" },
               ]
                 .filter((mod) => allowedSections.includes(mod.id))
                 .map((mod) => {
@@ -2274,8 +2271,8 @@ export default function App() {
                   return (
                     <motion.button
                       key={mod.id}
-                      whileHover={{ y: -3, scale: 1.06 }}
-                      whileTap={{ scale: 0.92 }}
+                      whileHover={{ y: -3, scale: 1.05 }}
+                      whileTap={{ scale: 0.94 }}
                       transition={{ type: "spring", stiffness: 450, damping: 28 }}
                       onClick={() => handleNavClick(mod.id as Page)}
                       className="flex flex-col items-center gap-1 shrink-0 group focus:outline-none cursor-pointer relative pt-1"
@@ -2286,7 +2283,7 @@ export default function App() {
                         mod.bg,
                         mod.shadow,
                         isActive
-                          ? "ring-2 ring-superior-gold ring-offset-2 ring-offset-white dark:ring-offset-slate-900 shadow-lg scale-105"
+                          ? cn("ring-2 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 shadow-lg scale-105", mod.ring)
                           : "opacity-85 group-hover:opacity-100 group-hover:shadow-lg"
                       )}>
                         {/* Glossy Specular Sheen (Apple Glass Reflection) */}
@@ -2296,9 +2293,12 @@ export default function App() {
                         
                         <mod.Icon size={18} className="relative z-10 drop-shadow-sm group-hover:scale-110 transition-transform duration-200" />
 
-                        {/* Active Side Indicator Pip */}
+                        {/* Active Side Indicator Pip (Unique Color Per Module) */}
                         {isActive && (
-                          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-superior-gold border-2 border-white dark:border-slate-900 shadow-[0_0_8px_#c9a84c] animate-pulse z-20" />
+                          <span className={cn(
+                            "absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-900 animate-pulse z-20",
+                            mod.indicator
+                          )} />
                         )}
                       </div>
 
@@ -2306,7 +2306,7 @@ export default function App() {
                       <span className={cn(
                         "text-[9px] tracking-tight transition-colors truncate max-w-[56px] text-center",
                         isActive
-                          ? "font-black text-superior-teal dark:text-superior-gold scale-105"
+                          ? "font-black text-slate-900 dark:text-white scale-105"
                           : "font-semibold text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white"
                       )}>
                         {mod.label}
@@ -2348,17 +2348,23 @@ export default function App() {
           </div>
         )}
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-auto relative z-10">
-          <div className="w-full max-w-full p-4 sm:p-6 lg:p-8">
+        {/* Content Area with Spatial 3D Perspective Transition */}
+        <div className="flex-1 overflow-auto relative z-10" style={{ perspective: 1200 }}>
+          <div className="w-full max-w-full px-3 sm:px-6 pt-1 pb-6">
             <AnimatePresence mode="wait">
               
                 <motion.div
                   key={`${activePage}-${activeFilter}`}
-                  initial={{ opacity: 0, y: 5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -5 }}
-                  transition={{ duration: 0.2 }}
+                  initial={{ opacity: 0, rotateX: 6, scale: 0.985, y: 10 }}
+                  animate={{ opacity: 1, rotateX: 0, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, rotateX: -6, scale: 0.985, y: -10 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 380,
+                    damping: 30,
+                    mass: 0.8
+                  }}
+                  style={{ transformStyle: "preserve-3d", transformOrigin: "top center" }}
                 >
                   {activePage === "dashboard" && (
                     <DashboardView

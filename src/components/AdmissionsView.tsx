@@ -4188,19 +4188,16 @@ function AdmissionForm({
   const filteredGroups = React.useMemo(
     () =>
       ACADEMIC_GROUPS.filter((g) => {
-        if (!program) return true;
+        if (!program || program === "all") return true;
         const name = g.name.toLowerCase();
-        if (program === "fsc")
-          return (
-            !name.includes("dit") &&
-            !name.includes("uk") &&
-            !name.includes("level 3") &&
-            !name.includes("bs ")
-          );
-        if (program === "dit") return name.includes("dit");
-        if (program === "ukl3")
-          return name.includes("uk") || name.includes("level 3");
-        if (program === "bs") return name.includes("bs ");
+        const isDIT = name.includes("dit") || name.includes("diploma");
+        const isUK = name.includes("uk") || name.includes("level 3");
+        const isBS = name.includes("bs") || name.includes("b.s") || name.includes("bba");
+
+        if (program === "fsc") return !isDIT && !isUK && !isBS;
+        if (program === "dit") return isDIT;
+        if (program === "ukl3") return isUK;
+        if (program === "bs") return isBS;
         return true;
       }),
     [program],
@@ -4210,19 +4207,16 @@ function AdmissionForm({
     () =>
       SUBJECTS.filter((s: string) => {
         if (COMPULSORY_SUBJECTS.includes(s)) return false; // Handled separately
-        if (!program) return true;
+        if (!program || program === "all") return true;
         const name = s.toLowerCase();
-        if (program === "fsc")
-          return (
-            !name.includes("dit") &&
-            !name.includes("uk") &&
-            !name.includes("level 3") &&
-            !name.includes("bs ")
-          );
-        if (program === "dit") return name.includes("dit");
-        if (program === "ukl3")
-          return name.includes("uk") || name.includes("level 3");
-        if (program === "bs") return name.includes("bs ");
+        const isDIT = name.includes("dit") || name.includes("diploma") || name.includes("office automation") || name.includes("networking & hardware");
+        const isUK = name.includes("uk") || name.includes("applied science") || name.includes("business analysis") || name.includes("cyber security");
+        const isBS = name.includes("bs") || name.includes("programming fundamentals") || name.includes("data structures") || name.includes("database systems") || name.includes("software engineering") || name.includes("calculus") || name.includes("linear algebra") || name.includes("mechanics") || name.includes("electromagnetism") || name.includes("quantum") || name.includes("organic") || name.includes("inorganic") || name.includes("linguistics") || name.includes("management") || name.includes("plant") || name.includes("animal");
+
+        if (program === "fsc") return !isDIT && !isUK && !isBS;
+        if (program === "dit") return isDIT;
+        if (program === "ukl3") return isUK;
+        if (program === "bs") return isBS;
         return true;
       }),
     [program],
@@ -4235,7 +4229,7 @@ function AdmissionForm({
         new Set([...COMPULSORY_SUBJECTS, ...group.subjects]),
       );
 
-      // Auto-logic for Semester Programs
+      // Auto-logic for Semester Programs (DIT = 4 Semesters, UK L3 = 3 Semesters, BS = 8 Semesters)
       let paymentPlan = formData.paymentPlan;
       let totalSemesters = formData.totalSemesters;
       let programType = "Yearly" as "Yearly" | "Semester";
@@ -4245,14 +4239,17 @@ function AdmissionForm({
       if (
         lowerGroupName.includes("dit") ||
         lowerGroupName.includes("uk") ||
-        lowerGroupName.includes("level 3")
+        lowerGroupName.includes("level 3") ||
+        lowerGroupName.includes("bs") ||
+        lowerGroupName.includes("b.s") ||
+        lowerGroupName.includes("bba")
       ) {
         paymentPlan = "Semester";
-        totalSemesters = lowerGroupName.includes("dit") ? 4 : 3;
+        totalSemesters = lowerGroupName.includes("dit") ? 4 : (lowerGroupName.includes("uk") || lowerGroupName.includes("level 3") ? 3 : 8);
         programType = "Semester";
         currentSemester = currentSemester || 1;
         toast.info(
-          `${groupName} follows a Semester System. Plan adjusted automatically.`,
+          `${groupName} follows an ${totalSemesters}-Semester System. Plan adjusted automatically.`,
         );
       }
 
@@ -5207,20 +5204,23 @@ function AdmissionForm({
                       <FormFieldWrapper label="Academic Session" required>
                         <Select
                           value={formData.session || ""}
-                          disabled
                           onValueChange={(v: any) =>
                             setFormData(prev => ({ ...prev, session: v }))
                           }
                         >
-                          <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-slate-50 cursor-not-allowed shadow-sm">
+                          <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white shadow-sm font-semibold">
                             <SelectValue placeholder="Choose Session" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="2023-2025">2023-2025</SelectItem>
-                            <SelectItem value="2024-2026">2024-2026</SelectItem>
-                            <SelectItem value="2025-2027">2025-2027</SelectItem>
-                            <SelectItem value="2026-28">2026-28</SelectItem>
-                            <SelectItem value="2027-2029">2027-2029</SelectItem>
+                            {(data.availableSessions || [
+                              "2023-27", "2024-26", "2024-28", 
+                              "2025-27", "2025-29", "2026-28", 
+                              "2026-30", "2027-29", "2027-31"
+                            ]).map((sess: string) => (
+                              <SelectItem key={sess} value={sess} className="font-semibold">
+                                {sess}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </FormFieldWrapper>
@@ -5538,26 +5538,45 @@ function AdmissionForm({
                 </div>
 
                 {formData.paymentPlan === "Semester" && (
-                  <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="p-6 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
                       <div className="space-y-2">
-                        <Label>Total Semesters</Label>
+                        <Label>Total Semesters (کل سمسٹر)</Label>
                         <Input
                           type="number"
-                          value={formData.totalSemesters || ""}
+                          value={formData.totalSemesters || 8}
                           onChange={(e) =>
                             setFormData(prev => ({ ...prev, totalSemesters: Number(e.target.value), }))
                           }
+                          className="h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Fee Per Semester</Label>
+                        <Label>Current Semester (موجودہ سمسٹر)</Label>
+                        <select
+                          value={formData.currentSemester || 1}
+                          onChange={(e) =>
+                            setFormData(prev => ({ ...prev, currentSemester: Number(e.target.value) }))
+                          }
+                          className="w-full h-11 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-superior-teal/30 cursor-pointer"
+                        >
+                          {Array.from({ length: formData.totalSemesters || 8 }, (_, i) => i + 1).map((sem) => (
+                            <option key={sem} value={sem} className="bg-white dark:bg-slate-900">
+                              Semester {sem} (S{sem})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Fee Per Semester (فی سمسٹر فیس)</Label>
                         <Input
                           type="number"
+                          placeholder="e.g. 45000"
                           value={formData.feePerSemester || ""}
                           onChange={(e) =>
                             setFormData(prev => ({ ...prev, feePerSemester: Number(e.target.value), }))
                           }
+                          className="h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
                         />
                       </div>
                       <div className="space-y-2">
@@ -5568,6 +5587,7 @@ function AdmissionForm({
                           onChange={(e) =>
                             setFormData(prev => ({ ...prev, nextSemesterDueDate: e.target.value, }))
                           }
+                          className="h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
                         />
                       </div>
                     </div>

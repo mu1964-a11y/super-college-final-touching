@@ -17,9 +17,18 @@ export const ACADEMIC_GROUPS = [
   { name: 'Humanities (Eco, Isl, Education)', subjects: ['Economics', 'Islamic Studies', 'Education'], type: 'Intermediate' },
   { name: 'Humanities (Eco, Isl, H&P Edu)', subjects: ['Economics', 'Islamic Studies', 'Health & Physical Education'], type: 'Intermediate' },
   { name: 'I. Com', subjects: ['Accounting', 'Commerce', 'Economics'], type: 'Intermediate' },
-  { name: 'UK Level 3', subjects: ['UK Level 3 Subjects'], type: 'Vocational' },
-  { name: 'DIT', subjects: ['Diploma in IT Subjects'], type: 'Diploma' },
-  { name: 'BS Program', subjects: ['BS Subjects'], type: 'Degree' }
+  { name: 'UK Level 3', subjects: ['Applied Science', 'Business Analysis', 'IT Fundamentals', 'Cyber Security'], type: 'Vocational' },
+  { name: 'DIT', subjects: ['Office Automation', 'Web Development', 'Computer Graphics', 'Networking & Hardware'], type: 'Diploma' },
+  { name: 'BS Computer Science (BSCS)', subjects: ['Programming Fundamentals', 'Data Structures', 'Database Systems', 'Software Engineering', 'Calculus', 'Linear Algebra'], type: 'Degree' },
+  { name: 'BS Information Technology (BSIT)', subjects: ['Web Systems', 'Network Administration', 'Database Management', 'IT Infrastructure', 'Cloud Computing'], type: 'Degree' },
+  { name: 'BS Physics', subjects: ['Mechanics & Waves', 'Electromagnetism', 'Quantum Mechanics', 'Thermal Physics', 'Modern Physics', 'Differential Equations'], type: 'Degree' },
+  { name: 'BS Chemistry', subjects: ['Organic Chemistry', 'Inorganic Chemistry', 'Physical Chemistry', 'Analytical Chemistry', 'Biochemistry'], type: 'Degree' },
+  { name: 'BS Mathematics', subjects: ['Calculus & Analytic Geometry', 'Linear Algebra', 'Real Analysis', 'Differential Equations', 'Numerical Methods'], type: 'Degree' },
+  { name: 'BS English', subjects: ['Introduction to Linguistics', 'Classical Literature', 'Academic Writing', 'History of English Literature', 'Phonetics & Phonology'], type: 'Degree' },
+  { name: 'BS Botany', subjects: ['Plant Diversity', 'Cell Biology & Genetics', 'Plant Physiology', 'Ecology', 'Plant Anatomy'], type: 'Degree' },
+  { name: 'BS Zoology', subjects: ['Animal Diversity', 'Cell & Molecular Biology', 'Genetics', 'Animal Physiology', 'Evolution & Ecology'], type: 'Degree' },
+  { name: 'BBA (Bachelor of Business Admin)', subjects: ['Principles of Management', 'Financial Accounting', 'Marketing Management', 'Business Economics', 'Organizational Behavior'], type: 'Degree' },
+  { name: 'BS Program', subjects: ['Core BS Electives', 'Research Methodology'], type: 'Degree' }
 ];
 
 export const COMPULSORY_SUBJECTS = ['English', 'Urdu', 'Islamic Studies', 'Pakistan Studies'];
@@ -27,7 +36,19 @@ export const COMPULSORY_SUBJECTS = ['English', 'Urdu', 'Islamic Studies', 'Pakis
 export const SUBJECTS = [
   'Biology', 'Physics', 'Chemistry', 'Math', 'Computer Science', 
   'Statistics', 'Economics', 'Accounting', 'Commerce', 'Civics', 'Education',
-  'Islamic Studies', 'Punjabi', 'Health & Physical Education', 'UK Level 3 Subjects', 'Diploma in IT Subjects', 'BS Subjects'
+  'Islamic Studies', 'Punjabi', 'Health & Physical Education', 'UK Level 3 Subjects', 'Diploma in IT Subjects', 'BS Subjects',
+  'Programming Fundamentals', 'Data Structures', 'Database Systems', 'Software Engineering', 'Calculus', 'Linear Algebra',
+  'Web Systems', 'Network Administration', 'Database Management', 'IT Infrastructure', 'Cloud Computing',
+  'Mechanics & Waves', 'Electromagnetism', 'Quantum Mechanics', 'Thermal Physics', 'Modern Physics', 'Differential Equations',
+  'Organic Chemistry', 'Inorganic Chemistry', 'Physical Chemistry', 'Analytical Chemistry', 'Biochemistry',
+  'Calculus & Analytic Geometry', 'Real Analysis', 'Numerical Methods',
+  'Introduction to Linguistics', 'Classical Literature', 'Academic Writing', 'History of English Literature', 'Phonetics & Phonology',
+  'Plant Diversity', 'Cell Biology & Genetics', 'Plant Physiology', 'Ecology', 'Plant Anatomy',
+  'Animal Diversity', 'Cell & Molecular Biology', 'Genetics', 'Animal Physiology', 'Evolution & Ecology',
+  'Principles of Management', 'Financial Accounting', 'Marketing Management', 'Business Economics', 'Organizational Behavior',
+  'Applied Science', 'Business Analysis', 'IT Fundamentals', 'Cyber Security',
+  'Office Automation', 'Web Development', 'Computer Graphics', 'Networking & Hardware',
+  'Core BS Electives', 'Research Methodology'
 ];
 
 export const STAFF_ROLES = [
