@@ -278,6 +278,8 @@ export function useSupabaseData(user: any) {
           academicPart: s.academic_part || linkedAdmission?.academic_part || 'Part-1',
           programType: s.program_type || linkedAdmission?.program_type || 'Yearly',
           currentSemester: s.current_semester || linkedAdmission?.current_semester,
+          createdAt: s.created_at || linkedAdmission?.created_at,
+          created_at: s.created_at || linkedAdmission?.created_at,
           feeLedger: {
             ...(s.fee_ledger || {}),
             totalPackage: Number(s.total_package ?? linkedAdmission?.total_package ?? 0),

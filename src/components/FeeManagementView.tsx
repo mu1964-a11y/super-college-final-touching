@@ -123,6 +123,15 @@ export default function FeeManagementView({
     items: ReportRecipientItem[];
   }>({ title: "", subtitle: "", items: [] });
 
+  const isNewStudent = React.useCallback((student: any): boolean => {
+    const ts = student?.createdAt || student?.created_at;
+    if (!ts) return false;
+    const createdTime = new Date(ts).getTime();
+    if (isNaN(createdTime)) return false;
+    const diffHours = (Date.now() - createdTime) / (1000 * 60 * 60);
+    return diffHours >= 0 && diffHours < 12;
+  }, []);
+
   const handleOpenBulkFeeRemindersModal = () => {
     const defaulters = filteredStudents.filter((s: any) => {
       const bal = (s.totalPackage || 0) - (s.feeReceived || 0);
@@ -567,7 +576,7 @@ export default function FeeManagementView({
         leftY += Math.max(11, valText.length * 10);
       };
 
-      renderLeftField("Name: ", student.fullName);
+      renderLeftField("Name: ", isNewStudent(student) ? `${student.fullName} [NEW]` : student.fullName);
       renderLeftField("Father: ", student.fatherName);
       renderLeftField("Session: ", student.session);
       renderLeftField("Program: ", student.group || student.category);
@@ -746,7 +755,7 @@ export default function FeeManagementView({
     doc.setFont("helvetica", "bold");
     doc.text("STUDENT DETAILS", 20, 60);
     doc.setFont("helvetica", "normal");
-    doc.text(`Student Name: ${student.fullName}`, 20, 68);
+    doc.text(`Student Name: ${student.fullName}${isNewStudent(student) ? " [NEW]" : ""}`, 20, 68);
     doc.text(`Father's Name: ${student.fatherName}`, 20, 76);
     doc.text(`Student ID: ${student.id}`, 20, 84);
 
@@ -883,7 +892,7 @@ export default function FeeManagementView({
       doc.setTextColor(50, 50, 50);
     };
 
-    renderField("Student Name: ", student.fullName, 55, 175);
+    renderField("Student Name: ", isNewStudent(student) ? `${student.fullName} [NEW]` : student.fullName, 55, 175);
     renderField("Father's Name: ", student.fatherName, 55, 195);
     renderField("Student ID / Reg No: ", student.id, 55, 215);
     renderField(
@@ -1498,9 +1507,16 @@ export default function FeeManagementView({
                                   )}
                                 </div>
                                 <div>
-                                  <p className="font-black text-slate-700 leading-none mb-1 group-hover:text-superior-teal transition-colors italic">
-                                    {student.fullName}
-                                  </p>
+                                  <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                                    <p className="font-black text-slate-700 leading-none group-hover:text-superior-teal transition-colors italic">
+                                      {student.fullName}
+                                    </p>
+                                    {isNewStudent(student) && (
+                                      <span className="text-[8px] font-black uppercase tracking-wider bg-emerald-500 text-white px-1.5 py-0.5 rounded-full shadow-2xs">
+                                        NEW
+                                      </span>
+                                    )}
+                                  </div>
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter bg-slate-100 px-1.5 py-0.5 rounded-md">
                                       {student.id}

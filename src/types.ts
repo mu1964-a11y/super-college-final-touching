@@ -160,6 +160,8 @@ export interface Student {
   programType?: 'Yearly' | 'Semester';
   currentSemester?: number;
   totalSemesters?: number;
+  createdAt?: string;
+  created_at?: string;
 }
 
 export interface FeePayment {

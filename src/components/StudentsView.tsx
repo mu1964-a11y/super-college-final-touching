@@ -119,6 +119,15 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
     setProgramFilter(program || 'all');
   }, [program]);
 
+  const isNewStudent = React.useCallback((student: any): boolean => {
+    const ts = student?.createdAt || student?.created_at;
+    if (!ts) return false;
+    const createdTime = new Date(ts).getTime();
+    if (isNaN(createdTime)) return false;
+    const diffHours = (Date.now() - createdTime) / (1000 * 60 * 60);
+    return diffHours >= 0 && diffHours < 12;
+  }, []);
+
   const mergedStudents = React.useMemo(() => {
     console.log("Students data preview:", data.students.slice(0, 3).map((s: any) => ({ name: s.fullName, subjects: s.subjects })));
     const rawStudents = [...data.students].map(s => {
@@ -133,7 +142,13 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
       }
       const linkedAdm = data.admissions?.find((a: any) => a.id === s.admissionId || a.studentId === s.id || (s.collegeNo && a.collegeNo === s.collegeNo));
       const resolvedPhoto = s.photo || s.photo_url || linkedAdm?.photo_url || linkedAdm?.photo || '';
-      return { ...s, gender: derivedGender, photo: resolvedPhoto };
+      return { 
+        ...s, 
+        gender: derivedGender, 
+        photo: resolvedPhoto,
+        createdAt: s.createdAt || s.created_at || linkedAdm?.createdAt || linkedAdm?.created_at,
+        created_at: s.created_at || s.createdAt || linkedAdm?.created_at || linkedAdm?.createdAt,
+      };
     });
     
     // Add all admissions that don't have a matching student record yet but are confirmed
@@ -385,7 +400,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
       head: [['ID', 'Name', 'Father Name', 'Gender', 'Group', 'Class', 'Section', 'Contact']],
       body: filteredStudents.map((s: any) => [
         s.id,
-        s.fullName,
+        isNewStudent(s) ? `${s.fullName} [NEW]` : s.fullName,
         s.fatherName,
         s.gender,
         s.group,
@@ -404,7 +419,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
   const handleExportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(filteredStudents.map((s: any) => ({
       'ID': s.id,
-      'Name': s.fullName,
+      'Name': isNewStudent(s) ? `${s.fullName} [NEW]` : s.fullName,
       'Father Name': s.fatherName,
       'DOB': s.dob || 'N/A',
       'Gender': s.gender,
@@ -940,10 +955,15 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                   <div className="flex-1 min-w-0">
                     <h3 
                       onClick={() => { setSelectedStudent(student); setDialogType('profile'); }}
-                      className="font-black text-slate-900 dark:text-white text-sm tracking-tight truncate hover:text-superior-teal cursor-pointer transition-colors" 
+                      className="font-black text-slate-900 dark:text-white text-sm tracking-tight truncate hover:text-superior-teal cursor-pointer transition-colors flex items-center gap-1.5" 
                       title={student.fullName}
                     >
                       <HighlightText text={student.fullName} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
+                      {isNewStudent(student) && (
+                        <span className="shrink-0 text-[8px] font-black uppercase tracking-wider bg-emerald-500 text-white px-1.5 py-0.5 rounded-full shadow-2xs">
+                          NEW
+                        </span>
+                      )}
                     </h3>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
                       S/D: <HighlightText text={student.fatherName} search={data.settings?.enableHighlighting !== false ? searchTerm : ''} />
@@ -1113,7 +1133,14 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                               </div>
                             </div>
                            <div className="flex flex-col">
-                              <span className="text-sm font-black text-slate-900 group-hover:text-superior-teal transition-colors tracking-tight">{student.fullName}</span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-sm font-black text-slate-900 group-hover:text-superior-teal transition-colors tracking-tight">{student.fullName}</span>
+                                {isNewStudent(student) && (
+                                  <span className="text-[8px] font-black uppercase tracking-wider bg-emerald-500 text-white px-1.5 py-0.5 rounded-full shadow-2xs">
+                                    NEW
+                                  </span>
+                                )}
+                              </div>
                               <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                                 <span className="text-[10px] font-black text-superior-gold uppercase tracking-widest">{student.id}</span>
                                 {((student.reference || '').toLowerCase().includes('whatsapp') || 
