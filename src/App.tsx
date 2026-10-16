@@ -2247,6 +2247,77 @@ export default function App() {
           </div>
         </header>
 
+        {/* Apple iOS Continuous Modular App Dock - Persistent Across All Modules */}
+        <div className="mx-3 sm:mx-6 mb-2.5 z-20 shrink-0">
+          <div className="rounded-2xl sm:rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border border-slate-200/80 dark:border-white/10 px-3 py-2 shadow-[0_8px_30px_rgba(0,0,0,0.05)] relative overflow-visible">
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 md:gap-3.5 overflow-x-auto overflow-y-visible py-1.5 px-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {[
+                { id: "dashboard", label: "Dashboard", Icon: Home, bg: "from-blue-500 to-indigo-600", shadow: "shadow-blue-500/25" },
+                { id: "leads", label: "Marketing", Icon: Sparkles, bg: "from-pink-500 to-rose-600", shadow: "shadow-pink-500/25" },
+                { id: "admissions", label: "Admissions", Icon: Layers, bg: "from-purple-500 to-violet-700", shadow: "shadow-purple-500/25" },
+                { id: "students", label: "Students", Icon: Users, bg: "from-emerald-500 to-teal-700", shadow: "shadow-emerald-500/25" },
+                { id: "attendance", label: "Attendance", Icon: CheckCircle2, bg: "from-green-500 to-emerald-600", shadow: "shadow-green-500/25" },
+                { id: "academic", label: "Academic", Icon: GraduationCap, bg: "from-indigo-500 to-cyan-600", shadow: "shadow-indigo-500/25" },
+                { id: "classes", label: "Classes", Icon: BookOpen, bg: "from-violet-500 to-purple-700", shadow: "shadow-violet-500/25" },
+                { id: "timetable", label: "Timetable", Icon: Calendar, bg: "from-amber-500 to-orange-600", shadow: "shadow-orange-500/25" },
+                { id: "fee", label: "Fees", Icon: CreditCard, bg: "from-teal-500 to-emerald-700", shadow: "shadow-teal-500/25" },
+                { id: "accounts", label: "Accounts", Icon: Wallet, bg: "from-cyan-500 to-blue-600", shadow: "shadow-cyan-500/25" },
+                { id: "staff", label: "Staff", Icon: Briefcase, bg: "from-amber-600 to-yellow-600", shadow: "shadow-amber-500/25" },
+                { id: "whatsapp-center", label: "WhatsApp", Icon: MessageCircle, bg: "from-[#25D366] to-[#128C7E]", shadow: "shadow-emerald-500/25" },
+                { id: "reports", label: "Reports", Icon: BarChart3, bg: "from-rose-500 to-red-600", shadow: "shadow-rose-500/25" },
+                { id: "archive", label: "Archive", Icon: Archive, bg: "from-amber-600 via-orange-600 to-yellow-600", shadow: "shadow-amber-500/25" },
+                { id: "settings", label: "Settings", Icon: SettingsIcon, bg: "from-indigo-500 via-blue-600 to-sky-500", shadow: "shadow-blue-500/25" },
+              ]
+                .filter((mod) => allowedSections.includes(mod.id))
+                .map((mod) => {
+                  const isActive = activePage === mod.id || activePage.startsWith(`${mod.id}-`);
+                  return (
+                    <motion.button
+                      key={mod.id}
+                      whileHover={{ y: -3, scale: 1.06 }}
+                      whileTap={{ scale: 0.92 }}
+                      transition={{ type: "spring", stiffness: 450, damping: 28 }}
+                      onClick={() => handleNavClick(mod.id as Page)}
+                      className="flex flex-col items-center gap-1 shrink-0 group focus:outline-none cursor-pointer relative pt-1"
+                    >
+                      {/* Apple iOS Continuous Squircle */}
+                      <div className={cn(
+                        "relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-[14px] bg-gradient-to-br flex items-center justify-center text-white shadow-md transition-all duration-200",
+                        mod.bg,
+                        mod.shadow,
+                        isActive
+                          ? "ring-2 ring-superior-gold ring-offset-2 ring-offset-white dark:ring-offset-slate-900 shadow-lg scale-105"
+                          : "opacity-85 group-hover:opacity-100 group-hover:shadow-lg"
+                      )}>
+                        {/* Glossy Specular Sheen (Apple Glass Reflection) */}
+                        <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent pointer-events-none rounded-t-xl" />
+                        {/* Inner Rim Light */}
+                        <div className="absolute inset-0 rounded-xl sm:rounded-[14px] border border-white/30 pointer-events-none" />
+                        
+                        <mod.Icon size={18} className="relative z-10 drop-shadow-sm group-hover:scale-110 transition-transform duration-200" />
+
+                        {/* Active Side Indicator Pip */}
+                        {isActive && (
+                          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-superior-gold border-2 border-white dark:border-slate-900 shadow-[0_0_8px_#c9a84c] animate-pulse z-20" />
+                        )}
+                      </div>
+
+                      {/* App Label */}
+                      <span className={cn(
+                        "text-[9px] tracking-tight transition-colors truncate max-w-[56px] text-center",
+                        isActive
+                          ? "font-black text-superior-teal dark:text-superior-gold scale-105"
+                          : "font-semibold text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white"
+                      )}>
+                        {mod.label}
+                      </span>
+                    </motion.button>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+
         {/* Alert Strip - VisionOS Spatial Pill */}
         {defaultersCount > 0 && !hideLedgerAlert && (
           <div className="mx-3 sm:mx-6 mb-2 rounded-2xl bg-superior-teal/95 dark:bg-emerald-950/80 backdrop-blur-xl text-white px-5 sm:px-6 py-2.5 flex items-center justify-between gap-4 overflow-hidden relative shadow-[0_8px_30px_rgba(8,90,78,0.22)] border border-emerald-400/20 z-20">
