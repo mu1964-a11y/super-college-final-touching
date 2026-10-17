@@ -750,9 +750,13 @@ ${statsText}`,
   app.get("/api/whatsapp/status", (req, res) => {
     try {
       const status = whatsappBridge.getStatus();
-      res.json(status);
+      res.json({
+        ...status,
+        connected: status.status === "connected",
+        phone: status.connectedPhone || null
+      });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err.message, connected: false });
     }
   });
   app.post("/api/whatsapp/connect", async (req, res) => {

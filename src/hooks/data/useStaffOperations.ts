@@ -16,6 +16,7 @@ export function useStaffOperations(ctx: any) {
           cnic: member.cnic,
           dob: member.dob && String(member.dob).trim() ? member.dob : null,
           role: member.role,
+          designation: member.designation || (member.secondaryRole ? `${member.role} & ${member.secondaryRole}` : member.role),
           contact: member.contact,
           address: member.address,
           base_salary: member.baseSalary,
@@ -77,6 +78,13 @@ export function useStaffOperations(ctx: any) {
           qualification: updates.qualification,
           specialization: updates.specialization
         };
+        if (updates.designation !== undefined) {
+          updatePayload.designation = updates.designation;
+        } else if (updates.role !== undefined || updates.secondaryRole !== undefined) {
+          const r = updates.role || oldMember?.role;
+          const sr = updates.secondaryRole !== undefined ? updates.secondaryRole : oldMember?.secondaryRole;
+          updatePayload.designation = sr ? `${r} & ${sr}` : r;
+        }
         if (updates.dob !== undefined) {
           updatePayload.dob = updates.dob && String(updates.dob).trim() ? updates.dob : null;
         }

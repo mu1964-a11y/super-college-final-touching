@@ -371,9 +371,10 @@ export default function App() {
         if (res.ok) {
           const json = await res.json();
           if (isMounted) {
+            const isConn = Boolean(json.connected || json.status === "connected");
             setWhatsAppStatus({
-              connected: !!json.connected,
-              phone: json.phone,
+              connected: isConn,
+              phone: json.connectedPhone || json.phone,
             });
           }
         } else {

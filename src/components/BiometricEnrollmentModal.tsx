@@ -114,20 +114,33 @@ export default function BiometricEnrollmentModal({
     }
   }, [isOpen, refreshDeviceStatus]);
 
+  const prevTargetPersonIdRef = useRef<string | null>(null);
+  const prevIsOpenRef = useRef<boolean>(false);
+
   // Set initial selected person
   useEffect(() => {
+    const currentId = targetPerson?.id || null;
+    const justOpened = isOpen && !prevIsOpenRef.current;
+    const personChanged = prevTargetPersonIdRef.current !== currentId;
+    
+    prevTargetPersonIdRef.current = currentId;
+    prevIsOpenRef.current = isOpen;
+
     if (targetPerson) {
       setSelectedPerson(targetPerson);
       setActiveTab(targetPerson.personType === "staff" ? "staff" : "students");
-    } else {
+    } else if (!isOpen) {
       setSelectedPerson(null);
     }
-    // Reset enrollment samples
-    setEnrollStep("ready");
-    setSample1(null);
-    setSample2(null);
-    setMatchScore(null);
-  }, [targetPerson, isOpen]);
+
+    // ONLY reset enrollment samples if the dialog was just opened or target person actually changed!
+    if (justOpened || personChanged) {
+      setEnrollStep("ready");
+      setSample1(null);
+      setSample2(null);
+      setMatchScore(null);
+    }
+  }, [targetPerson?.id, isOpen]);
 
   const [localStudentsList, setLocalStudentsList] = useState<Student[]>(studentsList);
   const [localStaffList, setLocalStaffList] = useState<Staff[]>(staffList);

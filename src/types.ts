@@ -280,6 +280,8 @@ export interface Staff {
   qualification?: string;
   specialization?: string[];
   role: StaffRole;
+  designation?: string;
+  secondaryRole?: string;
   salary: number;
   baseSalary?: number;
   subjects?: string[];

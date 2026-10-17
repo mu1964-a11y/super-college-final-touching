@@ -81,6 +81,8 @@ import { sendStaffPhotoRequestNotice, dispatchBulkStaffPhotoRequests, buildStaff
 import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
 
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import StaffAttendance from './StaffAttendance';
 import StaffPayroll from './StaffPayroll';
 import StaffSubjects from './StaffSubjects';
@@ -89,6 +91,7 @@ import ExecutiveIDCardModal from './ExecutiveIDCardModal';
 import BiometricEnrollmentModal from './BiometricEnrollmentModal';
 import InstantBiometricVerifyModal from './InstantBiometricVerifyModal';
 import StaffSalarySlipModal from './StaffSalarySlipModal';
+import StaffJoiningDossierModal from './StaffJoiningDossierModal';
 
 export default function StaffView({ data, initialFilter, title, hideNavigation }: { data: any, initialFilter?: string | null, title?: string, hideNavigation?: boolean }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -106,6 +109,9 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
   const [isSpotCheckOpen, setIsSpotCheckOpen] = useState(false);
   const [dialogType, setDialogType] = useState<'profile' | 'edit' | 'delete' | 'bulkDelete' | null>(null);
   const [cardStaffMember, setCardStaffMember] = useState<Staff | null>(null);
+  const [isAddStaffOpen, setIsAddStaffOpen] = useState(false);
+  const [selectedDossierStaff, setSelectedDossierStaff] = useState<Staff | null>(null);
+  const [isDossierOpen, setIsDossierOpen] = useState(false);
 
   const [activeModule, setActiveModule] = useState<'directory' | 'attendance' | 'payroll' | 'timetable' | 'subjects'>(
     ['directory', 'attendance', 'payroll', 'timetable', 'subjects'].includes(initialFilter as string) 
@@ -179,44 +185,164 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
     setIsBulkStaffModalOpen(true);
   };
 
-  const handleExportExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(filteredStaff.map((staff: Staff) => ({
-      "Staff ID": staff.id,
-      "Full Name": staff.fullName,
-      "Father Name": staff.fatherName,
-      "CNIC": staff.cnic,
-      "Contact": staff.contact,
-      "Role": staff.role || "",
-      "Status": staff.status,
-      "Join Date": staff.joinDate,
-      "Salary": staff.baseSalary || staff.salary || 0,
-    })));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Staff");
-    XLSX.writeFile(wb, `Staff_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+  const handleExportPDF = (exportAll: boolean = false) => {
+    const listToExport: Staff[] = exportAll ? (data.staff || []) : filteredStaff;
+    if (!listToExport || listToExport.length === 0) {
+      toast.error("No staff records found to export!");
+      return;
+    }
+
+    try {
+      const doc = new jsPDF('landscape', 'pt', 'a4');
+      const pageWidth = doc.internal.pageSize.getWidth();
+
+      // Official Header Band
+      doc.setFillColor(8, 90, 78); // Superior Teal
+      doc.rect(0, 0, pageWidth, 54, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.setTextColor(255, 255, 255);
+      doc.text((data?.settings?.collegeName || "SUPERIOR GROUP OF COLLEGES JAHANIAN").toUpperCase(), pageWidth / 2, 22, { align: 'center' });
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text("Official Faculty & Staff Directory - Session 2026-28", pageWidth / 2, 36, { align: 'center' });
+
+      // Sub-note
+      doc.setFontSize(8.5);
+      doc.setTextColor(201, 168, 76); // Gold
+      doc.text(
+        `Directory Scope: ${exportAll ? 'Full College Roster' : 'Filtered Faculty/Staff'} | Total Records: ${listToExport.length} | Date: ${new Date().toLocaleDateString('en-GB')}`,
+        pageWidth / 2,
+        48,
+        { align: 'center' }
+      );
+
+      autoTable(doc, {
+        startY: 62,
+        head: [[
+          'ID',
+          'Full Name',
+          'Father Name',
+          'Designations & Roles',
+          'Assigned Subjects',
+          'Qualification',
+          'CNIC',
+          'Contact',
+          'Joining Date',
+          'Base Salary',
+          'Biometric'
+        ]],
+        body: listToExport.map((staff: Staff) => {
+          const secondary = staff.secondaryRole || (staff.designation && staff.designation.includes('&') ? staff.designation.split('&')[1].trim() : '');
+          const fullDesig = staff.designation || (secondary ? `${staff.role} & ${secondary}` : staff.role);
+          const subjectsStr = staff.subjects && staff.subjects.length > 0 ? staff.subjects.join(', ') : 'N/A';
+          return [
+            staff.id,
+            staff.fullName,
+            staff.fatherName || 'N/A',
+            fullDesig,
+            subjectsStr,
+            staff.qualification || 'N/A',
+            staff.cnic || 'N/A',
+            staff.contact || 'N/A',
+            staff.joinDate || 'N/A',
+            `Rs. ${(staff.baseSalary || staff.salary || 0).toLocaleString()}`,
+            staff.fingerprintTemplate ? 'Enrolled' : 'Missing'
+          ];
+        }),
+        theme: 'grid',
+        styles: { fontSize: 7.5, cellPadding: 3.5 },
+        headStyles: { fillColor: [8, 90, 78], textColor: [255, 255, 255], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        margin: { left: 20, right: 20, bottom: 25 }
+      });
+
+      doc.save(`Staff_Directory_${exportAll ? 'All' : 'Filtered'}_${new Date().toISOString().split('T')[0]}.pdf`);
+      toast.success(`Exported ${listToExport.length} staff records to official PDF!`);
+    } catch (err: any) {
+      console.error("Staff PDF export error:", err);
+      toast.error("Failed to generate PDF directory.");
+    }
   };
 
-  const handleExportCSV = () => {
-    const ws = XLSX.utils.json_to_sheet(filteredStaff.map((staff: Staff) => ({
-      "Staff ID": staff.id,
-      "Full Name": staff.fullName,
-      "Father Name": staff.fatherName,
-      "CNIC": staff.cnic,
-      "Contact": staff.contact,
-      "Role": staff.role || "",
-      "Status": staff.status,
-      "Join Date": staff.joinDate,
-      "Salary": staff.baseSalary || staff.salary || 0,
-    })));
+  const handleExportExcel = (exportAll: boolean = false) => {
+    const listToExport: Staff[] = exportAll ? (data.staff || []) : filteredStaff;
+    if (!listToExport || listToExport.length === 0) {
+      toast.error("No staff records found to export!");
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(listToExport.map((staff: Staff) => {
+      const secondary = staff.secondaryRole || (staff.designation && staff.designation.includes('&') ? staff.designation.split('&')[1].trim() : '');
+      const fullDesig = staff.designation || (secondary ? `${staff.role} & ${secondary}` : staff.role);
+      return {
+        "Staff ID": staff.id,
+        "Full Name": staff.fullName,
+        "Father Name": staff.fatherName || "",
+        "Primary Role": staff.role || "",
+        "Secondary Role": secondary || "",
+        "Full Designation": fullDesig,
+        "Assigned Subjects": (staff.subjects || []).join(", "),
+        "Qualification": staff.qualification || "",
+        "CNIC Number": staff.cnic || "",
+        "Contact Number": staff.contact || "",
+        "Date of Joining": staff.joinDate || "",
+        "Date of Birth": staff.dob || "",
+        "Residential Address": staff.address || "",
+        "Monthly Base Salary (Rs)": staff.baseSalary || staff.salary || 0,
+        "Biometric Enrolled": staff.fingerprintTemplate ? "Yes" : "No",
+        "Registered Finger": staff.fingerprintFinger || "",
+        "Account Status": staff.status
+      };
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Staff");
+    XLSX.writeFile(wb, `Staff_Export_${exportAll ? 'All' : 'Filtered'}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success(`Exported ${listToExport.length} staff records to Excel!`);
+  };
+
+  const handleExportCSV = (exportAll: boolean = false) => {
+    const listToExport: Staff[] = exportAll ? (data.staff || []) : filteredStaff;
+    if (!listToExport || listToExport.length === 0) {
+      toast.error("No staff records found to export!");
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(listToExport.map((staff: Staff) => {
+      const secondary = staff.secondaryRole || (staff.designation && staff.designation.includes('&') ? staff.designation.split('&')[1].trim() : '');
+      const fullDesig = staff.designation || (secondary ? `${staff.role} & ${secondary}` : staff.role);
+      return {
+        "Staff ID": staff.id,
+        "Full Name": staff.fullName,
+        "Father Name": staff.fatherName || "",
+        "Primary Role": staff.role || "",
+        "Secondary Role": secondary || "",
+        "Full Designation": fullDesig,
+        "Assigned Subjects": (staff.subjects || []).join(", "),
+        "Qualification": staff.qualification || "",
+        "CNIC Number": staff.cnic || "",
+        "Contact Number": staff.contact || "",
+        "Date of Joining": staff.joinDate || "",
+        "Date of Birth": staff.dob || "",
+        "Residential Address": staff.address || "",
+        "Monthly Base Salary (Rs)": staff.baseSalary || staff.salary || 0,
+        "Biometric Enrolled": staff.fingerprintTemplate ? "Yes" : "No",
+        "Registered Finger": staff.fingerprintFinger || "",
+        "Account Status": staff.status
+      };
+    }));
     const csv = XLSX.utils.sheet_to_csv(ws);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `Staff_Export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `Staff_Export_${exportAll ? 'All' : 'Filtered'}_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    toast.success(`Exported ${listToExport.length} staff records to CSV!`);
   };
 
   const handleDownloadTemplate = () => {
@@ -492,25 +618,49 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                 </DropdownMenuItem>
               </div>
               <Separator className="my-1.5" />
-              <DropdownMenuItem onClick={handleExportExcel} className="rounded-lg py-2 cursor-pointer text-xs">
-                <Download size={15} className="mr-2 text-emerald-600" />
-                Export to Excel
+              <div className="px-2 py-1 text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                Download & Print Reports
+              </div>
+              <DropdownMenuItem onClick={() => handleExportPDF(false)} className="rounded-lg py-2 cursor-pointer text-xs font-bold text-[#085a4e]">
+                <FileText size={15} className="mr-2 text-[#085a4e]" />
+                Export Filtered to PDF (Official)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportCSV} className="rounded-lg py-2 cursor-pointer text-xs">
-                <Download size={15} className="mr-2 text-superior-gold" />
+              <DropdownMenuItem onClick={() => handleExportPDF(true)} className="rounded-lg py-2 cursor-pointer text-xs font-bold text-teal-800">
+                <FileText size={15} className="mr-2 text-teal-700" />
+                Export All Staff to PDF (Roster)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportExcel(false)} className="rounded-lg py-2 cursor-pointer text-xs">
+                <Download size={15} className="mr-2 text-emerald-600" />
+                Export Filtered to Excel
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportExcel(true)} className="rounded-lg py-2 cursor-pointer text-xs">
+                <Download size={15} className="mr-2 text-emerald-700" />
+                Export All Staff to Excel
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportCSV(false)} className="rounded-lg py-2 cursor-pointer text-xs">
+                <Download size={15} className="mr-2 text-[#c9a84c]" />
                 Export to CSV
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Dialog>
+          <Dialog open={isAddStaffOpen} onOpenChange={setIsAddStaffOpen}>
             <DialogTrigger nativeButton={true} render={
-              <button className="h-8.5 px-4 rounded-xl bg-superior-teal text-white font-bold text-xs hover:bg-superior-teal/90 shadow-sm transition-all flex items-center justify-center gap-1.5">
+              <button 
+                onClick={() => setIsAddStaffOpen(true)}
+                className="h-8.5 px-4 rounded-xl bg-superior-teal text-white font-bold text-xs hover:bg-superior-teal/90 shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
                 <Plus size={15} /> Add Staff
               </button>
             }>
             </DialogTrigger>
-            <AddStaffDialog data={data} />
+            {isAddStaffOpen && (
+              <AddStaffDialog 
+                data={data} 
+                isOpen={isAddStaffOpen}
+                onClose={() => setIsAddStaffOpen(false)} 
+              />
+            )}
           </Dialog>
         </div>
       </div>
@@ -758,13 +908,18 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                     <span className="text-[10px] font-mono font-black text-superior-gold uppercase tracking-wider">
                       {member.id}
                     </span>
-                    {getRoleBadge(member.role)}
+                    <div className="flex flex-wrap items-center gap-1 justify-end">
+                      {getRoleBadge(member.role)}
+                      {member.secondaryRole && member.secondaryRole !== 'None' && member.secondaryRole !== member.role && (
+                        getRoleBadge(member.secondaryRole as any)
+                      )}
+                    </div>
                   </div>
                   <h3 className="font-black text-slate-900 dark:text-white text-base tracking-tight truncate group-hover:text-superior-teal transition-colors" title={member.fullName}>
                     {member.fullName}
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate">
-                    {member.designation || member.role || 'Staff Member'}
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate" title={member.designation || member.role}>
+                    {member.designation || (member.secondaryRole && member.secondaryRole !== 'None' ? `${member.role} & ${member.secondaryRole}` : member.role)}
                   </p>
                 </div>
               </div>
@@ -877,6 +1032,15 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                           <Fingerprint size={15} /> <span>Biometric Fingerprint</span>
                         </DropdownMenuItem>
                         <DropdownMenuItem 
+                          className="flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer font-bold text-[#085a4e] focus:bg-emerald-50" 
+                          onClick={() => {
+                            setSelectedDossierStaff(member);
+                            setIsDossierOpen(true);
+                          }}
+                        >
+                          <FileText size={15} className="text-[#085a4e]" /> <span>Joining Dossier (Print/PDF)</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
                           className="flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer font-bold text-slate-600 focus:bg-slate-50" 
                           onClick={() => setCardStaffMember(member)}
                         >
@@ -962,7 +1126,19 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>{getRoleBadge(member.role)}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap items-center gap-1">
+                      {getRoleBadge(member.role)}
+                      {member.secondaryRole && member.secondaryRole !== 'None' && member.secondaryRole !== member.role && (
+                        getRoleBadge(member.secondaryRole as any)
+                      )}
+                    </div>
+                    {(member.designation || (member.secondaryRole && member.secondaryRole !== 'None')) && (
+                      <p className="text-[10px] text-slate-400 font-medium truncate max-w-[150px] mt-0.5">
+                        {member.designation || `${member.role} & ${member.secondaryRole}`}
+                      </p>
+                    )}
+                  </TableCell>
                   <TableCell className="text-xs font-semibold text-slate-700 dark:text-slate-300">{member.contact || "N/A"}</TableCell>
                   <TableCell className="text-xs text-slate-500">{member.joinDate || "N/A"}</TableCell>
                   <TableCell className="text-xs font-black text-slate-800 dark:text-slate-100">Rs. {(member.salary || 0).toLocaleString()}</TableCell>
@@ -986,6 +1162,9 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                     <div className="flex items-center justify-end gap-1">
                       <Button size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-lg text-slate-500 hover:text-superior-teal" onClick={() => { setSelectedStaff(member); setDialogType('profile'); }} title="View Profile">
                         <Eye size={14} />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-lg text-[#085a4e] hover:bg-emerald-50" onClick={() => { setSelectedDossierStaff(member); setIsDossierOpen(true); }} title="Print Official Joining Dossier">
+                        <FileText size={14} />
                       </Button>
                       <Button size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-lg text-emerald-600 hover:bg-emerald-50" onClick={() => setCardStaffMember(member)} title="Official ID Card">
                         <CreditCard size={14} />
@@ -1236,31 +1415,33 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
       />
 
       {/* Biometric Fingerprint Enrollment Modal for Staff */}
-      <BiometricEnrollmentModal
-        isOpen={isBiometricModalOpen}
-        onClose={() => {
-          setIsBiometricModalOpen(false);
-          setBiometricTargetStaff(null);
-        }}
-        staffList={data.staff || []}
-        studentsList={data.students || []}
-        targetPerson={biometricTargetStaff ? {
-          id: biometricTargetStaff.id,
-          fullName: biometricTargetStaff.fullName,
-          fatherName: biometricTargetStaff.fatherName,
-          personType: 'staff',
-          roleOrGroup: biometricTargetStaff.role,
-          photo: biometricTargetStaff.photo,
-          phone: biometricTargetStaff.contact,
-          fingerprintTemplate: biometricTargetStaff.fingerprintTemplate,
-          fingerprintFinger: biometricTargetStaff.fingerprintFinger,
-          fingerprintEnrolledAt: biometricTargetStaff.fingerprintEnrolledAt,
-        } : null}
-        onEnrollmentSaved={(personId, personType, template, finger) => {
-          data.updateFingerprintRecord?.(personId, personType, template, finger);
-          data.fetchData?.(true);
-        }}
-      />
+      {isBiometricModalOpen && (
+        <BiometricEnrollmentModal
+          isOpen={isBiometricModalOpen}
+          onClose={() => {
+            setIsBiometricModalOpen(false);
+            setBiometricTargetStaff(null);
+          }}
+          staffList={data.staff || []}
+          studentsList={data.students || []}
+          targetPerson={biometricTargetStaff ? {
+            id: biometricTargetStaff.id,
+            fullName: biometricTargetStaff.fullName,
+            fatherName: biometricTargetStaff.fatherName,
+            personType: 'staff',
+            roleOrGroup: biometricTargetStaff.designation || biometricTargetStaff.role,
+            photo: biometricTargetStaff.photo,
+            phone: biometricTargetStaff.contact,
+            fingerprintTemplate: biometricTargetStaff.fingerprintTemplate,
+            fingerprintFinger: biometricTargetStaff.fingerprintFinger,
+            fingerprintEnrolledAt: biometricTargetStaff.fingerprintEnrolledAt,
+          } : null}
+          onEnrollmentSaved={(personId, personType, template, finger) => {
+            data.updateFingerprintRecord?.(personId, personType, template, finger);
+            data.fetchData?.(true);
+          }}
+        />
+      )}
 
       {/* Instant 1-Touch Spot-Check Scanner (Student & Staff Identification) */}
       <InstantBiometricVerifyModal
@@ -1270,6 +1451,19 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
         staffList={data.staff || []}
         data={data}
       />
+
+      {/* Official Staff Joining Dossier & Employment Record Modal */}
+      {isDossierOpen && selectedDossierStaff && (
+        <StaffJoiningDossierModal
+          isOpen={isDossierOpen}
+          onClose={() => {
+            setIsDossierOpen(false);
+            setSelectedDossierStaff(null);
+          }}
+          staff={selectedDossierStaff}
+          brandingSettings={data?.settings}
+        />
+      )}
     </div>
   );
 }
@@ -1539,6 +1733,16 @@ function StaffProfile({ member, data, onEdit, onShowCard }: { member: Staff, dat
         <div className="flex flex-col sm:flex-row justify-end items-center gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
           <Button 
             variant="outline" 
+            className="h-10 px-5 text-[#085a4e] border-emerald-300 hover:bg-emerald-50 font-bold rounded-xl text-xs flex items-center gap-2"
+            onClick={() => {
+              setSelectedDossierStaff(member);
+              setIsDossierOpen(true);
+            }}
+          >
+            <FileText size={15} className="text-[#085a4e]" /> Joining Dossier (Print/PDF)
+          </Button>
+          <Button 
+            variant="outline" 
             className="h-10 px-5 text-superior-teal border-superior-teal/30 hover:bg-superior-teal/5 font-bold rounded-xl text-xs flex items-center gap-2"
             onClick={onShowCard}
           >
@@ -1595,7 +1799,22 @@ const QUICK_TEACHING_SUBJECTS = [
   'Commerce'
 ];
 
+const SECONDARY_ROLES = [
+  'None',
+  'Lecturer (Teaching Faculty)',
+  'Visiting Faculty',
+  'Course Instructor',
+  'HOD (Head of Department)',
+  'Academic Coordinator',
+  'Examination In-charge',
+  'Lab In-charge',
+  'Custom'
+];
+
 function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, data: any, onClose?: () => void, onDelete?: () => void }) {
+  const initialSecRole = member.secondaryRole || (member.designation && member.designation.includes('&') ? member.designation.split('&')[1].trim() : 'None');
+  const isStandardSecRole = SECONDARY_ROLES.includes(initialSecRole);
+
   const [formData, setFormData] = useState({
     fullName: member.fullName || '',
     fatherName: member.fatherName || '',
@@ -1603,11 +1822,15 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
     contact: member.contact || '',
     address: member.address || '',
     dob: member.dob || '',
+    joinDate: member.joinDate || new Date().toISOString().split('T')[0],
     qualification: member.qualification || '',
     salary: member.salary || 0,
     baseSalary: member.baseSalary || member.salary || 0,
     subjects: member.subjects || [],
     role: member.role || 'Lecturer',
+    secondaryRole: isStandardSecRole ? initialSecRole : (initialSecRole && initialSecRole !== 'None' ? 'Custom' : 'None'),
+    customSecondaryRole: isStandardSecRole ? '' : (initialSecRole !== 'None' ? initialSecRole : ''),
+    designation: member.designation || member.role,
     status: member.status || 'Active',
     photo: member.photo || ''
   });
@@ -1655,7 +1878,13 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
   };
 
   const handleSave = () => {
-    data.updateStaff(member.id, formData);
+    const sec = formData.secondaryRole === 'None' ? '' : (formData.secondaryRole === 'Custom' ? formData.customSecondaryRole.trim() : formData.secondaryRole);
+    const fullDesig = sec ? `${formData.role} & ${sec}` : formData.role;
+    data.updateStaff(member.id, {
+      ...formData,
+      secondaryRole: sec,
+      designation: fullDesig
+    });
     toast.success("Staff profile updated successfully!");
     if (onClose) onClose();
   };
@@ -1745,6 +1974,32 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
             </div>
 
             <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Secondary Role / Teaching Capacity (Dual Role)</Label>
+              <Select value={formData.secondaryRole || "None"} onValueChange={(v: any) => setFormData({...formData, secondaryRole: v})}>
+                <SelectTrigger className="h-9 text-xs rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-56">
+                  {SECONDARY_ROLES.map(role => (
+                    <SelectItem key={role} value={role} className="text-xs">{role}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {formData.secondaryRole === 'Custom' && (
+              <div className="space-y-1 sm:col-span-2">
+                <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Custom Secondary Designation</Label>
+                <Input 
+                  className="h-9 text-xs rounded-xl"
+                  value={formData.customSecondaryRole} 
+                  onChange={e => setFormData({...formData, customSecondaryRole: e.target.value})} 
+                  placeholder="e.g. Senior Course Instructor, Lab In-charge"
+                />
+              </div>
+            )}
+
+            <div className="space-y-1 sm:col-span-2">
               <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Qualification</Label>
               <Input 
                 className="h-9 text-xs rounded-xl"
@@ -1832,7 +2087,7 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
             <span>Contact & Identity</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
             <div className="space-y-1">
               <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">CNIC Number</Label>
               <Input 
@@ -1858,6 +2113,15 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
                 className="h-9 text-xs rounded-xl"
                 value={formData.dob} 
                 onChange={e => setFormData({...formData, dob: e.target.value})} 
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-[#085a4e] dark:text-emerald-400">Date of Joining College *</Label>
+              <Input 
+                type="date"
+                className="h-9 text-xs rounded-xl border-emerald-300 dark:border-emerald-700 bg-emerald-50/30"
+                value={formData.joinDate} 
+                onChange={e => setFormData({...formData, joinDate: e.target.value})} 
               />
             </div>
           </div>
@@ -1933,9 +2197,20 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
   );
 }
 
-function AddStaffDialog({ data }: { data: any }) {
-  const [formData, setFormData] = useState({
-    id: '',
+function AddStaffDialog({ data, isOpen, onClose }: { data: any; isOpen?: boolean; onClose?: () => void }) {
+  const computeNextId = useCallback(() => {
+    const currentIds = (data.staff || [])
+      .map((s: Staff) => s.id)
+      .filter((id: string) => typeof id === 'string' && id.startsWith('SGC-T-'))
+      .map((id: string) => parseInt(id.replace('SGC-T-', ''), 10))
+      .filter((num: number) => !isNaN(num));
+    
+    const nextNum = currentIds.length > 0 ? Math.max(...currentIds) + 1 : 1;
+    return `SGC-T-${nextNum.toString().padStart(3, '0')}`;
+  }, [data.staff]);
+
+  const createBlankForm = useCallback(() => ({
+    id: computeNextId(),
     fullName: '',
     fatherName: '',
     cnic: '',
@@ -1948,23 +2223,23 @@ function AddStaffDialog({ data }: { data: any }) {
     baseSalary: 0,
     subjects: [] as string[],
     role: 'Lecturer' as StaffRole,
+    secondaryRole: 'None',
+    customSecondaryRole: '',
+    designation: '',
     status: 'Active' as const,
     photo: ''
-  });
+  }), [computeNextId]);
+
+  const [formData, setFormData] = useState(createBlankForm);
   const [customSubjectInput, setCustomSubjectInput] = useState('');
 
-  React.useEffect(() => {
-    // Generate next staff ID automatically
-    const currentIds = data.staff.map((s: Staff) => s.id)
-      .filter((id: string) => typeof id === 'string' && id.startsWith('SGC-T-'))
-      .map((id: string) => parseInt(id.replace('SGC-T-', ''), 10))
-      .filter((num: number) => !isNaN(num));
-    
-    const nextNum = currentIds.length > 0 ? Math.max(...currentIds) + 1 : 1;
-    const nextId = `SGC-T-${nextNum.toString().padStart(3, '0')}`;
-    
-    setFormData(prev => ({ ...prev, id: nextId }));
-  }, [data.staff]);
+  // Always reset to a completely blank, fresh form with next unique ID whenever opened
+  useEffect(() => {
+    if (isOpen) {
+      setFormData(createBlankForm());
+      setCustomSubjectInput('');
+    }
+  }, [isOpen, createBlankForm]);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2010,14 +2285,23 @@ function AddStaffDialog({ data }: { data: any }) {
     }
 
     // Uniqueness check
-    const idExists = data.staff.some((s: Staff) => s.id.toLowerCase() === formData.id.toLowerCase());
+    const idExists = (data.staff || []).some((s: Staff) => s.id.toLowerCase() === formData.id.toLowerCase());
     if (idExists) {
       toast.error(`Staff ID '${formData.id}' already exists! Please use a unique ID.`);
       return;
     }
 
-    data.addStaff({ ...formData });
+    const sec = formData.secondaryRole === 'None' ? '' : (formData.secondaryRole === 'Custom' ? formData.customSecondaryRole.trim() : formData.secondaryRole);
+    const fullDesig = sec ? `${formData.role} & ${sec}` : formData.role;
+
+    data.addStaff({ 
+      ...formData,
+      secondaryRole: sec,
+      designation: fullDesig,
+    });
     toast.success("Staff member enrolled successfully!");
+    setFormData(createBlankForm());
+    if (onClose) onClose();
   };
 
   return (
@@ -2112,6 +2396,32 @@ function AddStaffDialog({ data }: { data: any }) {
             </div>
 
             <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Secondary Role / Teaching Capacity (Dual Role)</Label>
+              <Select value={formData.secondaryRole || "None"} onValueChange={(v: any) => setFormData({...formData, secondaryRole: v})}>
+                <SelectTrigger className="h-9 text-xs rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-56">
+                  {SECONDARY_ROLES.map(role => (
+                    <SelectItem key={role} value={role} className="text-xs">{role}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {formData.secondaryRole === 'Custom' && (
+              <div className="space-y-1 sm:col-span-2">
+                <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Custom Secondary Designation</Label>
+                <Input 
+                  className="h-9 text-xs rounded-xl"
+                  value={formData.customSecondaryRole} 
+                  onChange={e => setFormData({...formData, customSecondaryRole: e.target.value})} 
+                  placeholder="e.g. Senior Course Instructor, Lab In-charge"
+                />
+              </div>
+            )}
+
+            <div className="space-y-1 sm:col-span-2">
               <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Qualification</Label>
               <Input 
                 className="h-9 text-xs rounded-xl"
@@ -2199,7 +2509,7 @@ function AddStaffDialog({ data }: { data: any }) {
             <span>Contact & Identity</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
             <div className="space-y-1">
               <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">CNIC Number</Label>
               <Input 
@@ -2225,6 +2535,15 @@ function AddStaffDialog({ data }: { data: any }) {
                 className="h-9 text-xs rounded-xl"
                 value={formData.dob} 
                 onChange={e => setFormData({...formData, dob: e.target.value})} 
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-[#085a4e] dark:text-emerald-400">Date of Joining College *</Label>
+              <Input 
+                type="date"
+                className="h-9 text-xs rounded-xl border-emerald-300 dark:border-emerald-700 bg-emerald-50/30"
+                value={formData.joinDate} 
+                onChange={e => setFormData({...formData, joinDate: e.target.value})} 
               />
             </div>
           </div>
@@ -2275,17 +2594,21 @@ function AddStaffDialog({ data }: { data: any }) {
 
         {/* Action Buttons */}
         <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
-          <DialogClose nativeButton={true} render={<button className="h-9 px-4 text-xs rounded-xl font-bold border border-slate-200 hover:bg-slate-50 transition-colors" />}>
+          <Button 
+            type="button" 
+            variant="outline" 
+            onClick={onClose} 
+            className="h-9 px-4 text-xs rounded-xl font-bold border border-slate-200 hover:bg-slate-50 transition-colors"
+          >
             Cancel
-          </DialogClose>
-          <DialogClose nativeButton={true} render={
-            <button 
-              className="h-9 px-5 text-xs rounded-xl font-bold bg-superior-teal text-white hover:bg-superior-teal/90 transition-colors shadow-sm"
-              onClick={handleSave}
-            >
-              Add Staff Member
-            </button>
-          } />
+          </Button>
+          <Button 
+            type="button" 
+            className="h-9 px-5 text-xs rounded-xl font-bold bg-superior-teal text-white hover:bg-superior-teal/90 transition-colors shadow-sm"
+            onClick={handleSave}
+          >
+            Add Staff Member
+          </Button>
         </div>
       </div>
     </DialogContent>

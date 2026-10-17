@@ -387,6 +387,8 @@ export function useSupabaseData(user: any) {
         fullName: st.full_name,
         fatherName: st.father_name,
         joinDate: st.join_date,
+        designation: st.designation || undefined,
+        secondaryRole: (st as any).secondary_role || (st.designation && st.designation.includes('&') ? st.designation.split('&')[1].trim() : undefined),
         baseSalary: st.base_salary,
         salary: st.salary,
         photo: st.photo_url || st.photo,
