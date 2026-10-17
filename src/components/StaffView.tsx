@@ -1,6 +1,6 @@
 
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   Search, 
   Filter, 
@@ -30,7 +30,8 @@ import {
   CheckCircle2,
   X,
   Fingerprint,
-  BookOpen
+  BookOpen,
+  FileText
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { 
@@ -1250,6 +1251,10 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
               data={data} 
               onEdit={() => setDialogType('edit')}
               onShowCard={() => setCardStaffMember(selectedStaff)}
+              onOpenDossier={(staff) => {
+                setSelectedDossierStaff(staff);
+                setIsDossierOpen(true);
+              }}
             />
           )}
         </DialogContent>
@@ -1468,7 +1473,19 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
   );
 }
 
-function StaffProfile({ member, data, onEdit, onShowCard }: { member: Staff, data: any, onEdit?: () => void, onShowCard?: () => void }) {
+function StaffProfile({ 
+  member, 
+  data, 
+  onEdit, 
+  onShowCard,
+  onOpenDossier
+}: { 
+  member: Staff, 
+  data: any, 
+  onEdit?: () => void, 
+  onShowCard?: () => void,
+  onOpenDossier?: (staff: Staff) => void
+}) {
   const [imageError, setImageError] = useState(false);
   const [selectedSlipPayment, setSelectedSlipPayment] = useState<any | null>(null);
 
@@ -1735,8 +1752,9 @@ function StaffProfile({ member, data, onEdit, onShowCard }: { member: Staff, dat
             variant="outline" 
             className="h-10 px-5 text-[#085a4e] border-emerald-300 hover:bg-emerald-50 font-bold rounded-xl text-xs flex items-center gap-2"
             onClick={() => {
-              setSelectedDossierStaff(member);
-              setIsDossierOpen(true);
+              if (onOpenDossier) {
+                onOpenDossier(member);
+              }
             }}
           >
             <FileText size={15} className="text-[#085a4e]" /> Joining Dossier (Print/PDF)
