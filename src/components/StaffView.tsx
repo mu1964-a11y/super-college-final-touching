@@ -1576,7 +1576,12 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
       )}
 
       {/* Centralized Dialogs */}
-      <Dialog open={dialogType === 'delete'} onOpenChange={(open) => !open && setDialogType(null)}>
+      <Dialog open={dialogType === 'delete'} onOpenChange={(open) => {
+        if (!open) {
+          setDialogType(null);
+          setSelectedStaff(null);
+        }
+      }}>
         <DialogContent className="rounded-3xl">
           <DialogHeader>
             <DialogTitle className="text-2xl font-serif text-red-600">Delete Staff Record</DialogTitle>
@@ -1593,10 +1598,12 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
             </div>
           </div>
           <DialogFooter className="gap-3">
-            <Button variant="ghost" onClick={() => setDialogType(null)} className="rounded-xl h-12 px-6 font-bold">Cancel</Button>
+            <Button variant="ghost" onClick={() => { setDialogType(null); setSelectedStaff(null); }} className="rounded-xl h-12 px-6 font-bold">Cancel</Button>
             <Button variant="destructive" className="rounded-xl h-12 px-8 font-black uppercase tracking-widest text-xs" onClick={() => {
               if (selectedStaff) {
-                data.deleteStaff(selectedStaff.id);
+                const idToDelete = selectedStaff.id;
+                data.deleteStaff(idToDelete);
+                setSelectedStaff(null);
                 setDialogType(null);
                 toast.success("Staff record deleted successfully!");
               }
@@ -1633,10 +1640,16 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
         </DialogContent>
       </Dialog>
 
-      <Dialog open={dialogType === 'profile'} onOpenChange={(open) => !open && setDialogType(null)}>
+      <Dialog open={dialogType === 'profile'} onOpenChange={(open) => {
+        if (!open) {
+          setDialogType(null);
+          setSelectedStaff(null);
+        }
+      }}>
         <DialogContent className="max-w-4xl w-full max-h-[90vh] overflow-y-auto p-0 border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl">
           {selectedStaff && (
             <StaffProfile 
+              key={`profile-${selectedStaff.id}`}
               member={selectedStaff} 
               data={data} 
               onEdit={() => setDialogType('edit')}
@@ -1650,12 +1663,21 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
         </DialogContent>
       </Dialog>
 
-      <Dialog open={dialogType === 'edit'} onOpenChange={(open) => !open && setDialogType(null)}>
+      <Dialog open={dialogType === 'edit'} onOpenChange={(open) => {
+        if (!open) {
+          setDialogType(null);
+          setSelectedStaff(null);
+        }
+      }}>
         {selectedStaff && (
           <EditStaffDialog 
+            key={`edit-${selectedStaff.id}`}
             member={selectedStaff} 
             data={data} 
-            onClose={() => setDialogType(null)} 
+            onClose={() => {
+              setDialogType(null);
+              setSelectedStaff(null);
+            }} 
             onDelete={() => setDialogType('delete')}
           />
         )}
@@ -2220,29 +2242,40 @@ const SECONDARY_ROLES = [
 ];
 
 function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, data: any, onClose?: () => void, onDelete?: () => void }) {
-  const initialSecRole = member.secondaryRole || (member.designation && member.designation.includes('&') ? member.designation.split('&')[1].trim() : 'None');
-  const isStandardSecRole = SECONDARY_ROLES.includes(initialSecRole);
+  const getInitialFormData = useCallback((m: Staff) => {
+    const secRole = m?.secondaryRole || (m?.designation && m.designation.includes('&') ? m.designation.split('&')[1].trim() : 'None');
+    const isStd = SECONDARY_ROLES.includes(secRole);
+    return {
+      fullName: m?.fullName || '',
+      fatherName: m?.fatherName || '',
+      cnic: m?.cnic || '',
+      contact: m?.contact || '',
+      address: m?.address || '',
+      dob: m?.dob || '',
+      joinDate: m?.joinDate || new Date().toISOString().split('T')[0],
+      qualification: m?.qualification || '',
+      salary: m?.salary || 0,
+      baseSalary: m?.baseSalary || m?.salary || 0,
+      subjects: m?.subjects || [],
+      role: m?.role || 'Lecturer',
+      secondaryRole: isStd ? secRole : (secRole && secRole !== 'None' ? 'Custom' : 'None'),
+      customSecondaryRole: isStd ? '' : (secRole !== 'None' ? secRole : ''),
+      designation: m?.designation || m?.role || 'Lecturer',
+      status: m?.status || 'Active',
+      photo: m?.photo || ''
+    };
+  }, []);
 
-  const [formData, setFormData] = useState({
-    fullName: member.fullName || '',
-    fatherName: member.fatherName || '',
-    cnic: member.cnic || '',
-    contact: member.contact || '',
-    address: member.address || '',
-    dob: member.dob || '',
-    joinDate: member.joinDate || new Date().toISOString().split('T')[0],
-    qualification: member.qualification || '',
-    salary: member.salary || 0,
-    baseSalary: member.baseSalary || member.salary || 0,
-    subjects: member.subjects || [],
-    role: member.role || 'Lecturer',
-    secondaryRole: isStandardSecRole ? initialSecRole : (initialSecRole && initialSecRole !== 'None' ? 'Custom' : 'None'),
-    customSecondaryRole: isStandardSecRole ? '' : (initialSecRole !== 'None' ? initialSecRole : ''),
-    designation: member.designation || member.role,
-    status: member.status || 'Active',
-    photo: member.photo || ''
-  });
+  const [formData, setFormData] = useState(() => getInitialFormData(member));
   const [customSubjectInput, setCustomSubjectInput] = useState('');
+
+  // Critical: Always re-sync formData when member changes
+  useEffect(() => {
+    if (member) {
+      setFormData(getInitialFormData(member));
+      setCustomSubjectInput('');
+    }
+  }, [member, getInitialFormData]);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
