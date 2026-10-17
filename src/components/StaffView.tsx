@@ -186,44 +186,158 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
     setIsBulkStaffModalOpen(true);
   };
 
-  const handleExportPDF = (exportAll: boolean = false) => {
+  const loadLogoBase64 = async (customUrl?: string): Promise<string | null> => {
+    if (customUrl && customUrl.startsWith('data:image')) return customUrl;
+    const target = customUrl || '/superior-logo.png';
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(null), 1500);
+      const img = new Image();
+      img.crossOrigin = 'Anonymous';
+      img.onload = () => {
+        clearTimeout(timer);
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || 120;
+          canvas.height = img.naturalHeight || 120;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+            return;
+          }
+          resolve(null);
+        } catch {
+          resolve(null);
+        }
+      };
+      img.onerror = () => {
+        clearTimeout(timer);
+        resolve(null);
+      };
+      img.src = target;
+    });
+  };
+
+  const handleExportPDF = async ({
+    mode = 'directory',
+    exportAll = false
+  }: {
+    mode: 'directory' | 'payroll';
+    exportAll?: boolean;
+  }) => {
     const listToExport: Staff[] = exportAll ? (data.staff || []) : filteredStaff;
     if (!listToExport || listToExport.length === 0) {
       toast.error("No staff records found to export!");
       return;
     }
 
+    const toastId = toast.loading(`Generating official ${mode === 'payroll' ? 'Payroll Master Sheet' : 'Faculty Directory'} PDF...`);
+
     try {
       const doc = new jsPDF('landscape', 'pt', 'a4');
       const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
 
-      // Official Header Band
-      doc.setFillColor(8, 90, 78); // Superior Teal
-      doc.rect(0, 0, pageWidth, 54, 'F');
+      // 1. Fetch official college crest / logo
+      const logoBase64 = await loadLogoBase64(data?.settings?.logo);
 
+      // 2. Top Royal Header
+      const headerHeight = 64;
+      doc.setFillColor(6, 78, 67); // Superior Teal #064e43
+      doc.rect(0, 0, pageWidth, headerHeight, 'F');
+
+      // Gold Accent Ribbon
+      doc.setFillColor(212, 175, 55); // #d4af37 Gold
+      doc.rect(0, headerHeight, pageWidth, 2.5, 'F');
+
+      // Logo rendering on the left
+      let textStartX = 24;
+      if (logoBase64) {
+        try {
+          const logoCenterX = 44;
+          const logoCenterY = 32;
+          const logoRadius = 21;
+          
+          doc.setFillColor(255, 255, 255);
+          doc.circle(logoCenterX, logoCenterY, logoRadius, 'F');
+          doc.setDrawColor(212, 175, 55);
+          doc.setLineWidth(1.2);
+          doc.circle(logoCenterX, logoCenterY, logoRadius, 'S');
+          
+          doc.addImage(logoBase64, 'PNG', logoCenterX - 16, logoCenterY - 16, 32, 32);
+          textStartX = 78;
+        } catch (err) {
+          console.warn('Logo embed warning:', err);
+        }
+      }
+
+      // College Title
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
+      doc.setFontSize(15);
       doc.setTextColor(255, 255, 255);
-      doc.text((data?.settings?.collegeName || "SUPERIOR GROUP OF COLLEGES JAHANIAN").toUpperCase(), pageWidth / 2, 22, { align: 'center' });
+      const collegeTitle = (data?.settings?.collegeName || "SUPERIOR GROUP OF COLLEGES JAHANIAN").toUpperCase();
+      doc.text(collegeTitle, textStartX, 22);
 
-      doc.setFontSize(10);
+      // Document Subtitle
+      doc.setFontSize(9.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(212, 175, 55); // Gold
+      const docTitle = mode === 'payroll'
+        ? "EXECUTIVE STAFF REMUNERATION & PAYROLL MASTER SHEET"
+        : "OFFICIAL FACULTY & STAFF PROFILE DIRECTORY";
+      doc.text(docTitle, textStartX, 36);
+
+      // Sub-metadata Line
+      doc.setFontSize(7.5);
       doc.setFont('helvetica', 'normal');
-      doc.text("Official Faculty & Staff Directory - Session 2026-28", pageWidth / 2, 36, { align: 'center' });
+      doc.setTextColor(226, 232, 240); // Silver slate
+      const sessionLabel = "Session 2026-28";
+      const campusName = (data?.settings?.campusName || "Jahanian Campus").toUpperCase();
+      const dateFormatted = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      const metaText = `Campus: ${campusName}  |  ${sessionLabel}  |  Scope: ${exportAll ? 'Full College Roster' : 'Filtered Selection'}  |  Total Employees: ${listToExport.length}  |  Issued: ${dateFormatted}`;
+      doc.text(metaText, textStartX, 50);
 
-      // Sub-note
-      doc.setFontSize(8.5);
-      doc.setTextColor(201, 168, 76); // Gold
-      doc.text(
-        `Directory Scope: ${exportAll ? 'Full College Roster' : 'Filtered Faculty/Staff'} | Total Records: ${listToExport.length} | Date: ${new Date().toLocaleDateString('en-GB')}`,
-        pageWidth / 2,
-        48,
-        { align: 'center' }
-      );
+      // Right Badge Pill
+      const badgeW = 120;
+      const badgeH = 22;
+      const badgeX = pageWidth - badgeW - 24;
+      const badgeY = 21;
+      if (mode === 'payroll') {
+        doc.setFillColor(153, 27, 27); // Rich Burgundy
+        doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 4, 4, 'F');
+        doc.setDrawColor(254, 202, 202);
+        doc.setLineWidth(0.8);
+        doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 4, 4, 'S');
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(255, 255, 255);
+        doc.text("STRICTLY CONFIDENTIAL", badgeX + badgeW / 2, badgeY + 14, { align: 'center' });
+      } else {
+        doc.setFillColor(8, 90, 78); // Teal
+        doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 4, 4, 'F');
+        doc.setDrawColor(212, 175, 55); // Gold
+        doc.setLineWidth(0.8);
+        doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 4, 4, 'S');
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(212, 175, 55);
+        doc.text("OFFICIAL DIRECTORY", badgeX + badgeW / 2, badgeY + 14, { align: 'center' });
+      }
 
-      autoTable(doc, {
-        startY: 62,
-        head: [[
-          'ID',
+      // 3. Prepare Columns & Table Data
+      const totalPayroll = listToExport.reduce((acc, s) => acc + (Number(s.baseSalary) || Number(s.salary) || 0), 0);
+
+      let head: string[][] = [];
+      let body: any[][] = [];
+      let columnStyles: Record<string | number, any> = {};
+
+      if (mode === 'directory') {
+        // General Directory - NO SALARY COLUMN
+        head = [[
+          'Sr #',
+          'Staff ID',
           'Full Name',
           'Father Name',
           'Designations & Roles',
@@ -232,14 +346,15 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
           'CNIC',
           'Contact',
           'Joining Date',
-          'Base Salary',
-          'Biometric'
-        ]],
-        body: listToExport.map((staff: Staff) => {
+          'Biometric Access'
+        ]];
+
+        body = listToExport.map((staff: Staff, idx: number) => {
           const secondary = staff.secondaryRole || (staff.designation && staff.designation.includes('&') ? staff.designation.split('&')[1].trim() : '');
           const fullDesig = staff.designation || (secondary ? `${staff.role} & ${secondary}` : staff.role);
           const subjectsStr = staff.subjects && staff.subjects.length > 0 ? staff.subjects.join(', ') : 'N/A';
           return [
+            (idx + 1).toString(),
             staff.id,
             staff.fullName,
             staff.fatherName || 'N/A',
@@ -248,37 +363,258 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
             staff.qualification || 'N/A',
             staff.cnic || 'N/A',
             staff.contact || 'N/A',
-            staff.joinDate || 'N/A',
-            `Rs. ${(staff.baseSalary || staff.salary || 0).toLocaleString()}`,
+            staff.joinDate || 'Official',
             staff.fingerprintTemplate ? 'Enrolled' : 'Missing'
           ];
-        }),
+        });
+
+        columnStyles = {
+          0: { cellWidth: 26, halign: 'center', fontStyle: 'bold', textColor: [100, 116, 139] },
+          1: { cellWidth: 55, halign: 'center', fontStyle: 'bold', textColor: [6, 78, 67] },
+          2: { cellWidth: 95, halign: 'left', fontStyle: 'bold', textColor: [15, 23, 42] },
+          3: { cellWidth: 85, halign: 'left', textColor: [51, 65, 85] },
+          4: { cellWidth: 105, halign: 'left', textColor: [30, 41, 59] },
+          5: { cellWidth: 100, halign: 'left', textColor: [71, 85, 105] },
+          6: { cellWidth: 85, halign: 'left', textColor: [71, 85, 105] },
+          7: { cellWidth: 78, halign: 'center', textColor: [51, 65, 85] },
+          8: { cellWidth: 68, halign: 'center', textColor: [51, 65, 85] },
+          9: { cellWidth: 54, halign: 'center', textColor: [71, 85, 105] },
+          10: { cellWidth: 55, halign: 'center' }
+        };
+      } else {
+        // Executive Payroll Sheet - WITH SALARY & SIGNATURE
+        head = [[
+          'Sr #',
+          'Staff ID',
+          'Full Name',
+          'Father Name',
+          'Designations & Roles',
+          'Qualification',
+          'Contact Number',
+          'Joining Date',
+          'Base Salary (PKR)',
+          'Biometric',
+          'Receiver Signature'
+        ]];
+
+        body = listToExport.map((staff: Staff, idx: number) => {
+          const secondary = staff.secondaryRole || (staff.designation && staff.designation.includes('&') ? staff.designation.split('&')[1].trim() : '');
+          const fullDesig = staff.designation || (secondary ? `${staff.role} & ${secondary}` : staff.role);
+          const salaryVal = Number(staff.baseSalary) || Number(staff.salary) || 0;
+          return [
+            (idx + 1).toString(),
+            staff.id,
+            staff.fullName,
+            staff.fatherName || 'N/A',
+            fullDesig,
+            staff.qualification || 'N/A',
+            staff.contact || 'N/A',
+            staff.joinDate || 'Official',
+            `Rs. ${salaryVal.toLocaleString()}`,
+            staff.fingerprintTemplate ? 'Enrolled' : 'Missing',
+            '..................................'
+          ];
+        });
+
+        columnStyles = {
+          0: { cellWidth: 26, halign: 'center', fontStyle: 'bold', textColor: [100, 116, 139] },
+          1: { cellWidth: 55, halign: 'center', fontStyle: 'bold', textColor: [6, 78, 67] },
+          2: { cellWidth: 100, halign: 'left', fontStyle: 'bold', textColor: [15, 23, 42] },
+          3: { cellWidth: 90, halign: 'left', textColor: [51, 65, 85] },
+          4: { cellWidth: 120, halign: 'left', textColor: [30, 41, 59] },
+          5: { cellWidth: 85, halign: 'left', textColor: [71, 85, 105] },
+          6: { cellWidth: 70, halign: 'center', textColor: [51, 65, 85] },
+          7: { cellWidth: 55, halign: 'center', textColor: [71, 85, 105] },
+          8: { cellWidth: 80, halign: 'right', fontStyle: 'bold', textColor: [6, 95, 70] },
+          9: { cellWidth: 55, halign: 'center' },
+          10: { cellWidth: 65, halign: 'center', textColor: [148, 163, 184] }
+        };
+      }
+
+      const biometricColIndex = mode === 'directory' ? 10 : 9;
+
+      // 4. Render AutoTable
+      autoTable(doc, {
+        startY: 72,
+        head,
+        body,
+        foot: mode === 'payroll' ? [[
+          { 
+            content: 'TOTAL MONTHLY PAYROLL BUDGET (PKR):', 
+            colSpan: 8, 
+            styles: { halign: 'right', fontStyle: 'bold', fillColor: [241, 245, 249], textColor: [15, 23, 42], fontSize: 8 } 
+          },
+          { 
+            content: `Rs. ${totalPayroll.toLocaleString()}`, 
+            styles: { halign: 'right', fontStyle: 'bold', fillColor: [236, 253, 245], textColor: [6, 95, 70], fontSize: 8.5 } 
+          },
+          { 
+            content: '', 
+            colSpan: 2, 
+            styles: { fillColor: [241, 245, 249] } 
+          }
+        ]] : undefined,
         theme: 'grid',
-        styles: { fontSize: 7.5, cellPadding: 3.5 },
-        headStyles: { fillColor: [8, 90, 78], textColor: [255, 255, 255], fontStyle: 'bold' },
-        alternateRowStyles: { fillColor: [248, 250, 252] },
-        margin: { left: 20, right: 20, bottom: 25 }
+        styles: {
+          fontSize: 7.2,
+          cellPadding: { top: 4, bottom: 4, left: 3, right: 3 },
+          lineColor: [226, 232, 240], // delicate silver border
+          lineWidth: 0.4,
+          overflow: 'linebreak',
+          valign: 'middle'
+        },
+        headStyles: {
+          fillColor: [6, 78, 67], // Superior Teal
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 7.5,
+          halign: 'center',
+          cellPadding: { top: 5, bottom: 5, left: 3, right: 3 },
+          lineColor: [212, 175, 55], // Gold bottom border line
+          lineWidth: { bottom: 1.5, top: 0, left: 0, right: 0 }
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252] // Slate-50 alternating row
+        },
+        columnStyles,
+        margin: { left: 20, right: 20, bottom: 45 },
+        didDrawCell: (hookData) => {
+          // Draw modern status pill badge in Biometric column
+          if (hookData.section === 'body' && hookData.column.index === biometricColIndex) {
+            const { x, y, width, height } = hookData.cell;
+            const isEnrolled = hookData.cell.raw === 'Enrolled';
+            const badgeW = 48;
+            const badgeH = 13;
+            const badgeX = x + (width - badgeW) / 2;
+            const badgeY = y + (height - badgeH) / 2;
+
+            if (isEnrolled) {
+              // Soft emerald pill
+              doc.setFillColor(236, 253, 245);
+              doc.setDrawColor(167, 243, 208);
+              doc.setLineWidth(0.5);
+              doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 3, 3, 'FD');
+
+              // Emerald indicator dot
+              doc.setFillColor(16, 185, 129);
+              doc.circle(badgeX + 6, badgeY + 6.5, 2.2, 'F');
+
+              // Text
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(6.8);
+              doc.setTextColor(6, 95, 70);
+              doc.text("Enrolled", badgeX + 13, badgeY + 9.5);
+            } else {
+              // Soft rose pill
+              doc.setFillColor(254, 242, 242);
+              doc.setDrawColor(254, 202, 202);
+              doc.setLineWidth(0.5);
+              doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 3, 3, 'FD');
+
+              // Rose indicator dot
+              doc.setFillColor(239, 68, 68);
+              doc.circle(badgeX + 6, badgeY + 6.5, 2.2, 'F');
+
+              // Text
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(6.8);
+              doc.setTextColor(185, 28, 28);
+              doc.text("Missing", badgeX + 13, badgeY + 9.5);
+            }
+          }
+        }
       });
 
-      doc.save(`Staff_Directory_${exportAll ? 'All' : 'Filtered'}_${new Date().toISOString().split('T')[0]}.pdf`);
-      toast.success(`Exported ${listToExport.length} staff records to official PDF!`);
+      // 5. Add Verification Signature Blocks on the last page
+      const finalY = (doc as any).lastAutoTable?.finalY || 400;
+      const remainingSpace = pageHeight - finalY;
+      
+      if (remainingSpace < 75) {
+        doc.addPage();
+      }
+
+      const sigY = remainingSpace < 75 ? 60 : finalY + 28;
+      const sigBoxW = 180;
+      const spacing = (pageWidth - 40 - (sigBoxW * 3)) / 2;
+
+      const sigs = [
+        { label: "Prepared By", desig: "Accounts & Payroll Officer" },
+        { label: "Verified By", desig: "Admin / HR Coordinator" },
+        { label: "Approved & Signed By", desig: "Principal / Executive Director" }
+      ];
+
+      sigs.forEach((sig, i) => {
+        const sigX = 20 + i * (sigBoxW + spacing);
+        doc.setDrawColor(148, 163, 184);
+        doc.setLineWidth(0.6);
+        doc.setLineDashPattern([2, 2], 0);
+        doc.line(sigX + 10, sigY + 20, sigX + sigBoxW - 10, sigY + 20);
+        doc.setLineDashPattern([], 0);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(30, 41, 59);
+        doc.text(sig.label, sigX + sigBoxW / 2, sigY + 30, { align: 'center' });
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.8);
+        doc.setTextColor(100, 116, 139);
+        doc.text(sig.desig, sigX + sigBoxW / 2, sigY + 40, { align: 'center' });
+      });
+
+      // 6. Universal Header / Footer numbering across all pages
+      const totalPages = doc.getNumberOfPages();
+      for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.5);
+        doc.line(20, pageHeight - 22, pageWidth - 20, pageHeight - 22);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text("SCJ Management System LMS • Official College Administration Record • Superior College Jahanian", 20, pageHeight - 11);
+
+        if (mode === 'payroll') {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(185, 28, 28);
+          doc.text("CONFIDENTIAL PAYROLL DOCUMENT — UNAUTHORIZED SHARING PROHIBITED", pageWidth / 2, pageHeight - 11, { align: 'center' });
+        }
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(148, 163, 184);
+        doc.text(`Page ${p} of ${totalPages}`, pageWidth - 20, pageHeight - 11, { align: 'right' });
+      }
+
+      // 7. Save Document
+      const fileName = mode === 'payroll'
+        ? `Staff_Payroll_Sheet_${exportAll ? 'Full' : 'Filtered'}_${new Date().toISOString().split('T')[0]}.pdf`
+        : `Staff_Directory_${exportAll ? 'Full' : 'Filtered'}_${new Date().toISOString().split('T')[0]}.pdf`;
+
+      doc.save(fileName);
+      toast.dismiss(toastId);
+      toast.success(`Exported ${listToExport.length} staff records (${mode === 'payroll' ? 'Payroll Master Sheet' : 'Official Directory'})!`);
     } catch (err: any) {
       console.error("Staff PDF export error:", err);
-      toast.error("Failed to generate PDF directory.");
+      toast.dismiss(toastId);
+      toast.error("Failed to generate PDF document.");
     }
   };
 
-  const handleExportExcel = (exportAll: boolean = false) => {
+  const handleExportExcel = (exportAll: boolean = false, includeSalary: boolean = false) => {
     const listToExport: Staff[] = exportAll ? (data.staff || []) : filteredStaff;
     if (!listToExport || listToExport.length === 0) {
       toast.error("No staff records found to export!");
       return;
     }
 
-    const ws = XLSX.utils.json_to_sheet(listToExport.map((staff: Staff) => {
+    const ws = XLSX.utils.json_to_sheet(listToExport.map((staff: Staff, idx: number) => {
       const secondary = staff.secondaryRole || (staff.designation && staff.designation.includes('&') ? staff.designation.split('&')[1].trim() : '');
       const fullDesig = staff.designation || (secondary ? `${staff.role} & ${secondary}` : staff.role);
-      return {
+      
+      const record: Record<string, any> = {
+        "Sr #": idx + 1,
         "Staff ID": staff.id,
         "Full Name": staff.fullName,
         "Father Name": staff.fatherName || "",
@@ -291,30 +627,45 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
         "Contact Number": staff.contact || "",
         "Date of Joining": staff.joinDate || "",
         "Date of Birth": staff.dob || "",
-        "Residential Address": staff.address || "",
-        "Monthly Base Salary (Rs)": staff.baseSalary || staff.salary || 0,
-        "Biometric Enrolled": staff.fingerprintTemplate ? "Yes" : "No",
-        "Registered Finger": staff.fingerprintFinger || "",
-        "Account Status": staff.status
+        "Residential Address": staff.address || ""
       };
+
+      if (includeSalary) {
+        record["Monthly Base Salary (Rs)"] = Number(staff.baseSalary) || Number(staff.salary) || 0;
+      }
+
+      record["Biometric Enrolled"] = staff.fingerprintTemplate ? "Yes" : "No";
+      record["Registered Finger"] = staff.fingerprintFinger || "";
+      record["Account Status"] = staff.status;
+
+      return record;
     }));
+    
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Staff");
-    XLSX.writeFile(wb, `Staff_Export_${exportAll ? 'All' : 'Filtered'}_${new Date().toISOString().split('T')[0]}.xlsx`);
-    toast.success(`Exported ${listToExport.length} staff records to Excel!`);
+    const sheetTitle = includeSalary ? "Staff Payroll" : "Staff Directory";
+    XLSX.utils.book_append_sheet(wb, ws, sheetTitle);
+    
+    const fileName = includeSalary
+      ? `Staff_Payroll_Sheet_${exportAll ? 'All' : 'Filtered'}_${new Date().toISOString().split('T')[0]}.xlsx`
+      : `Staff_Directory_General_${exportAll ? 'All' : 'Filtered'}_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    XLSX.writeFile(wb, fileName);
+    toast.success(`Exported ${listToExport.length} staff records to Excel (${sheetTitle})!`);
   };
 
-  const handleExportCSV = (exportAll: boolean = false) => {
+  const handleExportCSV = (exportAll: boolean = false, includeSalary: boolean = false) => {
     const listToExport: Staff[] = exportAll ? (data.staff || []) : filteredStaff;
     if (!listToExport || listToExport.length === 0) {
       toast.error("No staff records found to export!");
       return;
     }
 
-    const ws = XLSX.utils.json_to_sheet(listToExport.map((staff: Staff) => {
+    const ws = XLSX.utils.json_to_sheet(listToExport.map((staff: Staff, idx: number) => {
       const secondary = staff.secondaryRole || (staff.designation && staff.designation.includes('&') ? staff.designation.split('&')[1].trim() : '');
       const fullDesig = staff.designation || (secondary ? `${staff.role} & ${secondary}` : staff.role);
-      return {
+      
+      const record: Record<string, any> = {
+        "Sr #": idx + 1,
         "Staff ID": staff.id,
         "Full Name": staff.fullName,
         "Father Name": staff.fatherName || "",
@@ -327,19 +678,26 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
         "Contact Number": staff.contact || "",
         "Date of Joining": staff.joinDate || "",
         "Date of Birth": staff.dob || "",
-        "Residential Address": staff.address || "",
-        "Monthly Base Salary (Rs)": staff.baseSalary || staff.salary || 0,
-        "Biometric Enrolled": staff.fingerprintTemplate ? "Yes" : "No",
-        "Registered Finger": staff.fingerprintFinger || "",
-        "Account Status": staff.status
+        "Residential Address": staff.address || ""
       };
+
+      if (includeSalary) {
+        record["Monthly Base Salary (Rs)"] = Number(staff.baseSalary) || Number(staff.salary) || 0;
+      }
+
+      record["Biometric Enrolled"] = staff.fingerprintTemplate ? "Yes" : "No";
+      record["Registered Finger"] = staff.fingerprintFinger || "";
+      record["Account Status"] = staff.status;
+
+      return record;
     }));
+    
     const csv = XLSX.utils.sheet_to_csv(ws);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `Staff_Export_${exportAll ? 'All' : 'Filtered'}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `Staff_Export_${includeSalary ? 'Payroll' : 'Directory'}_${exportAll ? 'All' : 'Filtered'}_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -594,16 +952,68 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
         <div className="flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger render={
-              <Button variant="outline" size="sm" className="h-8.5 px-2.5 rounded-xl border-slate-200 text-slate-500 hover:bg-slate-50 text-xs font-bold">
-                <MoreHorizontal size={15} />
+              <Button variant="outline" size="sm" className="h-8.5 px-3 rounded-xl border-slate-200/90 hover:border-superior-teal/40 text-slate-700 dark:text-slate-200 hover:bg-emerald-50/50 dark:hover:bg-slate-800 text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-all">
+                <Download size={14} className="text-superior-teal dark:text-emerald-400" />
+                <span>Export Reports</span>
               </Button>
             } />
-            <DropdownMenuContent align="end" className="w-56 p-2 rounded-2xl shadow-xl shadow-slate-200/50">
-              <div className="px-2 py-1.5 text-[10px] font-black tracking-widest text-slate-400 uppercase">
-                Bulk Actions
+            <DropdownMenuContent align="end" className="w-80 p-2.5 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 z-50">
+              {/* Category 1: General Directory (NO SALARY) */}
+              <div className="px-2 py-1.5 text-[10.5px] font-black tracking-wider text-emerald-800 dark:text-emerald-400 uppercase flex items-center justify-between bg-emerald-50/70 dark:bg-emerald-950/40 rounded-lg mb-1">
+                <span className="flex items-center gap-1.5">
+                  <FileText size={13} className="text-emerald-700 dark:text-emerald-400" />
+                  1. Staff Directory (General)
+                </span>
+                <span className="text-[9px] bg-white dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded font-black border border-emerald-200 dark:border-emerald-700">NO SALARY</span>
               </div>
-              <DropdownMenuItem onClick={handleDownloadTemplate} className="rounded-lg py-2 cursor-pointer text-xs">
-                <FileSpreadsheet size={15} className="mr-2 text-superior-teal" />
+              <DropdownMenuItem onClick={() => handleExportPDF({ mode: 'directory', exportAll: false })} className="rounded-xl py-2 cursor-pointer text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-emerald-50/60 dark:hover:bg-slate-800">
+                <FileText size={15} className="mr-2 text-emerald-600" />
+                PDF Directory (Filtered Staff)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportPDF({ mode: 'directory', exportAll: true })} className="rounded-xl py-2 cursor-pointer text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-emerald-50/60 dark:hover:bg-slate-800">
+                <FileText size={15} className="mr-2 text-teal-700 dark:text-teal-400" />
+                PDF Directory (All Staff Roster)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportExcel(false, false)} className="rounded-xl py-1.5 cursor-pointer text-xs text-slate-600 dark:text-slate-300">
+                <Download size={14} className="mr-2 text-emerald-600" />
+                Excel Directory (No Salary)
+              </DropdownMenuItem>
+
+              <Separator className="my-2" />
+
+              {/* Category 2: Executive Payroll Master Sheet (WITH SALARY) */}
+              <div className="px-2 py-1.5 text-[10.5px] font-black tracking-wider text-amber-900 dark:text-amber-400 uppercase flex items-center justify-between bg-amber-50/80 dark:bg-amber-950/40 rounded-lg mb-1">
+                <span className="flex items-center gap-1.5">
+                  <CreditCard size={13} className="text-amber-700 dark:text-amber-400" />
+                  2. Payroll Sheet (Financial)
+                </span>
+                <span className="text-[9px] bg-white dark:bg-amber-900 text-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded font-black border border-amber-200 dark:border-amber-700">WITH SALARY</span>
+              </div>
+              <DropdownMenuItem onClick={() => handleExportPDF({ mode: 'payroll', exportAll: false })} className="rounded-xl py-2 cursor-pointer text-xs font-bold text-amber-900 dark:text-amber-300 hover:bg-amber-50/60 dark:hover:bg-slate-800">
+                <CreditCard size={15} className="mr-2 text-amber-600" />
+                PDF Payroll Sheet (Filtered Staff)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportPDF({ mode: 'payroll', exportAll: true })} className="rounded-xl py-2 cursor-pointer text-xs font-bold text-amber-900 dark:text-amber-300 hover:bg-amber-50/60 dark:hover:bg-slate-800">
+                <CreditCard size={15} className="mr-2 text-amber-700" />
+                PDF Payroll Sheet (All Staff Master)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportExcel(false, true)} className="rounded-xl py-1.5 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <FileSpreadsheet size={14} className="mr-2 text-amber-600" />
+                Excel Payroll Sheet (Filtered)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportExcel(true, true)} className="rounded-xl py-1.5 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <FileSpreadsheet size={14} className="mr-2 text-amber-700" />
+                Excel All Staff Master Sheet
+              </DropdownMenuItem>
+
+              <Separator className="my-2" />
+
+              {/* Category 3: Bulk Data & CSV */}
+              <div className="px-2 py-1 text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                Bulk Tools & Templates
+              </div>
+              <DropdownMenuItem onClick={handleDownloadTemplate} className="rounded-xl py-1.5 cursor-pointer text-xs text-slate-600 dark:text-slate-300">
+                <FileSpreadsheet size={14} className="mr-2 text-superior-teal" />
                 Download Format Template
               </DropdownMenuItem>
               <div className="relative">
@@ -613,34 +1023,14 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                   accept=".xlsx, .xls, .csv"
                   onChange={handleBulkImport}
                 />
-                <DropdownMenuItem className="rounded-lg py-2 cursor-pointer text-xs">
-                  <Upload size={15} className="mr-2 text-blue-600" />
-                  Bulk Import Staff
+                <DropdownMenuItem className="rounded-xl py-1.5 cursor-pointer text-xs text-slate-600 dark:text-slate-300">
+                  <Upload size={14} className="mr-2 text-blue-600" />
+                  Bulk Import Staff (Excel/CSV)
                 </DropdownMenuItem>
               </div>
-              <Separator className="my-1.5" />
-              <div className="px-2 py-1 text-[10px] font-black tracking-widest text-slate-400 uppercase">
-                Download & Print Reports
-              </div>
-              <DropdownMenuItem onClick={() => handleExportPDF(false)} className="rounded-lg py-2 cursor-pointer text-xs font-bold text-[#085a4e]">
-                <FileText size={15} className="mr-2 text-[#085a4e]" />
-                Export Filtered to PDF (Official)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportPDF(true)} className="rounded-lg py-2 cursor-pointer text-xs font-bold text-teal-800">
-                <FileText size={15} className="mr-2 text-teal-700" />
-                Export All Staff to PDF (Roster)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportExcel(false)} className="rounded-lg py-2 cursor-pointer text-xs">
-                <Download size={15} className="mr-2 text-emerald-600" />
-                Export Filtered to Excel
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportExcel(true)} className="rounded-lg py-2 cursor-pointer text-xs">
-                <Download size={15} className="mr-2 text-emerald-700" />
-                Export All Staff to Excel
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportCSV(false)} className="rounded-lg py-2 cursor-pointer text-xs">
-                <Download size={15} className="mr-2 text-[#c9a84c]" />
-                Export to CSV
+              <DropdownMenuItem onClick={() => handleExportCSV(false, false)} className="rounded-xl py-1.5 cursor-pointer text-xs text-slate-500">
+                <Download size={14} className="mr-2 text-slate-400" />
+                Export CSV Data
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
