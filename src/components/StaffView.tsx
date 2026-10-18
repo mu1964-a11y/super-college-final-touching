@@ -74,7 +74,12 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { Staff, StaffRole } from '../types';
-import { STAFF_ROLES } from '../constants';
+import { 
+  STAFF_ROLES, 
+  ADDITIONAL_PORTFOLIOS, 
+  PAKISTAN_QUALIFICATIONS_PRESETS, 
+  POPULAR_FACULTY_DEGREES 
+} from '../constants';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { compressImage, base64ToBlob } from '../lib/imageUtils';
@@ -1308,8 +1313,21 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                     </span>
                     <div className="flex flex-wrap items-center gap-1 justify-end">
                       {getRoleBadge(member.role)}
-                      {member.secondaryRole && member.secondaryRole !== 'None' && member.secondaryRole !== member.role && (
-                        getRoleBadge(member.secondaryRole as any)
+                      {member.additionalRoles && member.additionalRoles.length > 0 ? (
+                        member.additionalRoles.slice(0, 2).map((r, idx) => (
+                          <Badge key={idx} className="text-[9px] font-bold bg-amber-100/90 text-amber-900 dark:bg-amber-950 dark:text-amber-200 border-amber-300 dark:border-amber-700">
+                            {r.length > 15 ? r.slice(0, 15) + '…' : r}
+                          </Badge>
+                        ))
+                      ) : (
+                        member.secondaryRole && member.secondaryRole !== 'None' && member.secondaryRole !== member.role && (
+                          getRoleBadge(member.secondaryRole as any)
+                        )
+                      )}
+                      {member.additionalRoles && member.additionalRoles.length > 2 && (
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                          +{member.additionalRoles.length - 2}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -1319,6 +1337,11 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                   <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate" title={member.designation || member.role}>
                     {member.designation || (member.secondaryRole && member.secondaryRole !== 'None' ? `${member.role} & ${member.secondaryRole}` : member.role)}
                   </p>
+                  {member.qualification && (
+                    <p className="text-[11px] text-blue-700 dark:text-blue-400 font-bold truncate mt-0.5" title={member.qualification}>
+                      🎓 {member.qualification}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -1527,13 +1550,26 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-1">
                       {getRoleBadge(member.role)}
-                      {member.secondaryRole && member.secondaryRole !== 'None' && member.secondaryRole !== member.role && (
-                        getRoleBadge(member.secondaryRole as any)
+                      {member.additionalRoles && member.additionalRoles.length > 0 ? (
+                        member.additionalRoles.slice(0, 2).map((r, idx) => (
+                          <Badge key={idx} className="text-[9px] font-bold bg-amber-100 text-amber-900 border-amber-300">
+                            {r.length > 15 ? r.slice(0, 15) + '…' : r}
+                          </Badge>
+                        ))
+                      ) : (
+                        member.secondaryRole && member.secondaryRole !== 'None' && member.secondaryRole !== member.role && (
+                          getRoleBadge(member.secondaryRole as any)
+                        )
                       )}
                     </div>
                     {(member.designation || (member.secondaryRole && member.secondaryRole !== 'None')) && (
-                      <p className="text-[10px] text-slate-400 font-medium truncate max-w-[150px] mt-0.5">
+                      <p className="text-[10px] text-slate-500 font-medium truncate max-w-[200px] mt-0.5">
                         {member.designation || `${member.role} & ${member.secondaryRole}`}
+                      </p>
+                    )}
+                    {member.qualification && (
+                      <p className="text-[10px] text-blue-700 dark:text-blue-400 font-bold truncate max-w-[200px]">
+                        🎓 {member.qualification}
                       </p>
                     )}
                   </TableCell>
@@ -2052,11 +2088,36 @@ function StaffProfile({
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Designation / Role</p>
-                <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5 truncate">{member.role || 'Lecturer'}</p>
+                <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">{member.role || 'Lecturer'}</p>
+                {member.additionalRoles && member.additionalRoles.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {member.additionalRoles.map(r => (
+                      <span key={r} className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                        {r}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Highest Qualification</p>
-                <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5 truncate">{member.qualification || 'N/A'}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Qualifications & Degrees</p>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {member.qualifications && member.qualifications.length > 0 ? (
+                    member.qualifications.map(q => (
+                      <span key={q} className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-900 border border-blue-300">
+                        {q}
+                      </span>
+                    ))
+                  ) : member.qualification ? (
+                    member.qualification.split(',').map(q => q.trim()).filter(Boolean).map(q => (
+                      <span key={q} className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-900 border border-blue-300">
+                        {q}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-slate-400 font-medium">N/A</span>
+                  )}
+                </div>
               </div>
               <div className="col-span-2 p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800 flex items-center justify-between">
                 <div>
@@ -2251,8 +2312,25 @@ const SECONDARY_ROLES = [
 
 function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, data: any, onClose?: () => void, onDelete?: () => void }) {
   const getInitialFormData = useCallback((m: Staff) => {
-    const secRole = m?.secondaryRole || (m?.designation && m.designation.includes('&') ? m.designation.split('&')[1].trim() : 'None');
-    const isStd = SECONDARY_ROLES.includes(secRole);
+    // Parse existing additional roles
+    let initRoles: string[] = [];
+    if (Array.isArray(m?.additionalRoles) && m.additionalRoles.length > 0) {
+      initRoles = [...m.additionalRoles];
+    } else if (m?.secondaryRole && m.secondaryRole !== 'None') {
+      initRoles = m.secondaryRole.split('&').map(r => r.trim()).filter(Boolean);
+    } else if (m?.designation && m.designation.includes('&')) {
+      const parts = m.designation.split('&').map(r => r.trim()).filter(Boolean);
+      initRoles = parts.slice(1);
+    }
+
+    // Parse existing qualifications
+    let initQuals: string[] = [];
+    if (Array.isArray(m?.qualifications) && m.qualifications.length > 0) {
+      initQuals = [...m.qualifications];
+    } else if (m?.qualification && typeof m.qualification === 'string') {
+      initQuals = m.qualification.split(',').map(q => q.trim()).filter(Boolean);
+    }
+
     return {
       fullName: m?.fullName || '',
       fatherName: m?.fatherName || '',
@@ -2262,12 +2340,13 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
       dob: m?.dob || '',
       joinDate: m?.joinDate || new Date().toISOString().split('T')[0],
       qualification: m?.qualification || '',
+      qualifications: initQuals,
       salary: m?.salary || 0,
       baseSalary: m?.baseSalary || m?.salary || 0,
       subjects: m?.subjects || [],
-      role: m?.role || 'Lecturer',
-      secondaryRole: isStd ? secRole : (secRole && secRole !== 'None' ? 'Custom' : 'None'),
-      customSecondaryRole: isStd ? '' : (secRole !== 'None' ? secRole : ''),
+      role: (m?.role || 'Lecturer') as StaffRole,
+      additionalRoles: initRoles,
+      secondaryRole: initRoles.join(' & ') || 'None',
       designation: m?.designation || m?.role || 'Lecturer',
       status: m?.status || 'Active',
       photo: m?.photo || ''
@@ -2276,12 +2355,16 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
 
   const [formData, setFormData] = useState(() => getInitialFormData(member));
   const [customSubjectInput, setCustomSubjectInput] = useState('');
+  const [customPortfolioInput, setCustomPortfolioInput] = useState('');
+  const [customDegreeInput, setCustomDegreeInput] = useState('');
 
   // Critical: Always re-sync formData when member changes
   useEffect(() => {
     if (member) {
       setFormData(getInitialFormData(member));
       setCustomSubjectInput('');
+      setCustomPortfolioInput('');
+      setCustomDegreeInput('');
     }
   }, [member, getInitialFormData]);
 
@@ -2302,6 +2385,84 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
     }
   };
 
+  // Additional Portfolios / Multi-Role management
+  const togglePortfolio = (portfolio: string) => {
+    setFormData(prev => {
+      const exists = prev.additionalRoles.includes(portfolio);
+      const updated = exists 
+        ? prev.additionalRoles.filter(p => p !== portfolio)
+        : [...prev.additionalRoles, portfolio];
+      return {
+        ...prev,
+        additionalRoles: updated,
+        secondaryRole: updated.join(' & ')
+      };
+    });
+  };
+
+  const handleAddCustomPortfolio = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = customPortfolioInput.trim();
+    if (!trimmed) return;
+    if (!formData.additionalRoles.includes(trimmed)) {
+      setFormData(prev => {
+        const updated = [...prev.additionalRoles, trimmed];
+        return {
+          ...prev,
+          additionalRoles: updated,
+          secondaryRole: updated.join(' & ')
+        };
+      });
+    }
+    setCustomPortfolioInput('');
+  };
+
+  const removePortfolio = (portfolio: string) => {
+    setFormData(prev => {
+      const updated = prev.additionalRoles.filter(p => p !== portfolio);
+      return {
+        ...prev,
+        additionalRoles: updated,
+        secondaryRole: updated.join(' & ')
+      };
+    });
+  };
+
+  // Qualifications / Multiple Degrees management
+  const addQualification = (deg: string) => {
+    const trimmed = deg.trim();
+    if (!trimmed) return;
+    setFormData(prev => {
+      if (prev.qualifications.includes(trimmed)) return prev;
+      const updated = [...prev.qualifications, trimmed];
+      return {
+        ...prev,
+        qualifications: updated,
+        qualification: updated.join(', ')
+      };
+    });
+  };
+
+  const removeQualification = (deg: string) => {
+    setFormData(prev => {
+      const updated = prev.qualifications.filter(q => q !== deg);
+      return {
+        ...prev,
+        qualifications: updated,
+        qualification: updated.join(', ')
+      };
+    });
+  };
+
+  const handleAddCustomQualification = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = customDegreeInput.trim();
+    if (!trimmed) return;
+    addQualification(trimmed);
+    setCustomDegreeInput('');
+  };
+
+  // Teaching subjects management
   const toggleSubject = (sub: string) => {
     setFormData(prev => {
       const exists = prev.subjects.includes(sub);
@@ -2327,10 +2488,17 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
   };
 
   const handleSave = () => {
-    const sec = formData.secondaryRole === 'None' ? '' : (formData.secondaryRole === 'Custom' ? formData.customSecondaryRole.trim() : formData.secondaryRole);
-    const fullDesig = sec ? `${formData.role} & ${sec}` : formData.role;
+    const sec = formData.additionalRoles.join(' & ');
+    const fullDesig = formData.additionalRoles.length > 0 
+      ? `${formData.role} & ${sec}`
+      : formData.role;
+    const qualStr = formData.qualifications.join(', ') || formData.qualification;
+
     data.updateStaff(member.id, {
       ...formData,
+      qualifications: formData.qualifications,
+      qualification: qualStr,
+      additionalRoles: formData.additionalRoles,
       secondaryRole: sec,
       designation: fullDesig
     });
@@ -2339,15 +2507,16 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
   };
 
   return (
-    <DialogContent className="max-w-2xl sm:max-w-3xl w-full max-h-[90vh] overflow-y-auto p-0 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
-      <div className="bg-gradient-to-r from-superior-teal to-emerald-900 text-white p-5 flex items-center justify-between">
+    <DialogContent className="max-w-3xl w-[95vw] sm:w-full max-h-[92vh] h-[92vh] flex flex-col p-0 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+      {/* Pinned Top Header */}
+      <div className="shrink-0 bg-gradient-to-r from-superior-teal to-emerald-900 text-white p-4 sm:p-5 flex items-center justify-between z-10 shadow-xs">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20">
             <User size={20} className="text-superior-gold" />
           </div>
           <div>
             <DialogTitle className="text-lg font-black tracking-tight text-white">Edit Staff Profile</DialogTitle>
-            <p className="text-xs text-white/70">Modify credentials, administrative designation & teaching subjects</p>
+            <p className="text-xs text-white/70">Modify credentials, multiple portfolios & academic degrees</p>
           </div>
         </div>
         <span className="font-mono text-xs px-2.5 py-1 rounded-xl bg-white/10 text-superior-gold font-bold border border-white/15">
@@ -2355,7 +2524,8 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
         </span>
       </div>
 
-      <div className="p-5 sm:p-6 space-y-5">
+      {/* Scrollable Modal Body */}
+      <div className="flex-1 overflow-y-auto min-h-0 p-5 sm:p-6 space-y-5">
         {/* Top Profile Strip with Photo */}
         <div className="flex items-center gap-4 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
           <div className="relative group shrink-0">
@@ -2376,16 +2546,23 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
           </div>
           <div className="min-w-0 flex-1">
             <h4 className="font-black text-slate-800 dark:text-white text-base truncate">{formData.fullName || "Unnamed Staff Member"}</h4>
-            <p className="text-xs text-slate-500 font-medium">Designation: <span className="text-superior-teal font-bold">{formData.role}</span></p>
+            <p className="text-xs text-slate-500 font-medium">
+              Primary Role: <span className="text-superior-teal font-bold">{formData.role}</span>
+              {formData.additionalRoles.length > 0 && (
+                <span className="text-amber-700 dark:text-amber-300 font-bold ml-1.5">
+                  (+{formData.additionalRoles.length} Portfolios)
+                </span>
+              )}
+            </p>
             <p className="text-[11px] text-slate-400 mt-0.5">Click camera icon to change passport photo for biometric gate & ID cards.</p>
           </div>
         </div>
 
-        {/* Section 1: Identity & Designation */}
+        {/* Section 1: Basic Identity & Primary Role */}
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
             <Briefcase size={14} className="text-superior-teal" />
-            <span>Designation & Teaching Roles</span>
+            <span>Basic Identity & Primary Role</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -2408,8 +2585,8 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
               />
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Primary Designation / Administrative Role</Label>
+            <div className="space-y-1 sm:col-span-2">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Primary Designation / Core College Role *</Label>
               <Select value={formData.role || ""} onValueChange={(v: any) => setFormData({...formData, role: v})}>
                 <SelectTrigger className="h-9 text-xs rounded-xl">
                   <SelectValue />
@@ -2421,115 +2598,270 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Secondary Role / Teaching Capacity (Dual Role)</Label>
-              <Select value={formData.secondaryRole || "None"} onValueChange={(v: any) => setFormData({...formData, secondaryRole: v})}>
-                <SelectTrigger className="h-9 text-xs rounded-xl">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="max-h-56">
-                  {SECONDARY_ROLES.map(role => (
-                    <SelectItem key={role} value={role} className="text-xs">{role}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {formData.secondaryRole === 'Custom' && (
-              <div className="space-y-1 sm:col-span-2">
-                <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Custom Secondary Designation</Label>
-                <Input 
-                  className="h-9 text-xs rounded-xl"
-                  value={formData.customSecondaryRole} 
-                  onChange={e => setFormData({...formData, customSecondaryRole: e.target.value})} 
-                  placeholder="e.g. Senior Course Instructor, Lab In-charge"
-                />
-              </div>
-            )}
-
-            <div className="space-y-1 sm:col-span-2">
-              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Qualification</Label>
-              <Input 
-                className="h-9 text-xs rounded-xl"
-                value={formData.qualification} 
-                onChange={e => setFormData({...formData, qualification: e.target.value})} 
-                placeholder="e.g. M.Sc Physics, M.Phil"
-              />
-            </div>
           </div>
+        </div>
 
-          {/* Dual-Role: Teaching Subjects Selector */}
-          <div className="p-3.5 rounded-2xl bg-teal-50/60 dark:bg-teal-950/20 border border-teal-200/60 dark:border-teal-800/40 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <BookOpen size={14} className="text-superior-teal" />
-                <Label className="text-xs font-black text-teal-950 dark:text-teal-200">
-                  Teaching Subjects (Dual-Role: e.g. Principal or Lecturer teaching subjects)
-                </Label>
-              </div>
-              <span className="text-[10px] font-bold text-teal-700 dark:text-teal-300">
-                {formData.subjects.length} Selected
-              </span>
+        {/* Section 2: Multi-Role / Additional Portfolios */}
+        <div className="p-4 rounded-2xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-800/40 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Briefcase size={15} className="text-amber-700 dark:text-amber-400" />
+              <Label className="text-xs font-black text-amber-950 dark:text-amber-200">
+                Additional Portfolios & Roles (Assign 2, 3 or More Portfolios)
+              </Label>
             </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300">
+              {formData.additionalRoles.length} Assigned
+            </span>
+          </div>
+          <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
+            A staff member can hold multiple responsibilities simultaneously (e.g. Campus Head, HOD, Campus Coordinator, Timetable In-charge).
+          </p>
 
-            {/* Quick-select pills */}
-            <div className="flex flex-wrap gap-1.5">
-              {QUICK_TEACHING_SUBJECTS.map(subj => {
-                const isSelected = formData.subjects.includes(subj);
+          {/* Active Assigned Portfolios Badges */}
+          {formData.additionalRoles.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800/60">
+              <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold self-center mr-1">Active Portfolios:</span>
+              {formData.additionalRoles.map(r => (
+                <span key={r} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100/90 dark:bg-amber-950 text-amber-900 dark:text-amber-200 text-xs font-bold border border-amber-300 dark:border-amber-700 shadow-2xs">
+                  <span>{r}</span>
+                  <button 
+                    type="button" 
+                    onClick={() => removePortfolio(r)}
+                    className="text-amber-700 hover:text-rose-600 font-black text-sm leading-none ml-0.5"
+                    title="Remove portfolio"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Quick Toggle Portfolios */}
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Quick Select Common College Portfolios:</p>
+            <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 rounded-xl bg-white/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-700/60">
+              {ADDITIONAL_PORTFOLIOS.map(p => {
+                const isSelected = formData.additionalRoles.includes(p);
                 return (
                   <button
-                    key={subj}
+                    key={p}
                     type="button"
-                    onClick={() => toggleSubject(subj)}
+                    onClick={() => togglePortfolio(p)}
                     className={cn(
                       "px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all border",
                       isSelected
-                        ? "bg-superior-teal text-white border-superior-teal shadow-2xs scale-102"
-                        : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-superior-teal/50"
+                        ? "bg-amber-600 text-white border-amber-600 shadow-2xs scale-102"
+                        : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-400"
                     )}
                   >
-                    {isSelected ? `✓ ${subj}` : `+ ${subj}`}
+                    {isSelected ? `✓ ${p}` : `+ ${p}`}
                   </button>
                 );
               })}
             </div>
+          </div>
 
-            {/* Custom subject adder */}
-            <div className="flex gap-2 pt-1">
-              <Input
-                placeholder="Type custom subject and press Add..."
-                className="h-8 text-xs rounded-xl bg-white dark:bg-slate-800"
-                value={customSubjectInput}
-                onChange={e => setCustomSubjectInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomSubject(); } }}
-              />
-              <Button 
-                type="button"
-                size="sm" 
-                variant="outline" 
-                onClick={() => handleAddCustomSubject()}
-                className="h-8 px-3 text-xs rounded-xl font-bold border-teal-300 text-superior-teal hover:bg-teal-100/50"
-              >
-                Add
-              </Button>
-            </div>
-
-            {formData.subjects.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                <span className="text-[10px] text-slate-400 font-bold self-center">Assigned:</span>
-                {formData.subjects.map(s => (
-                  <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-superior-teal dark:text-teal-300 text-[10px] font-bold border border-teal-200 dark:border-teal-800">
-                    {s}
-                    <button type="button" onClick={() => toggleSubject(s)} className="text-slate-400 hover:text-rose-500">×</button>
-                  </span>
-                ))}
-              </div>
-            )}
+          {/* Custom Portfolio Adder */}
+          <div className="flex gap-2 pt-1">
+            <Input
+              placeholder="Type custom portfolio (e.g. Science Club In-charge, Transport In-charge)..."
+              className="h-8 text-xs rounded-xl bg-white dark:bg-slate-800 border-slate-200"
+              value={customPortfolioInput}
+              onChange={e => setCustomPortfolioInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomPortfolio(); } }}
+            />
+            <Button 
+              type="button"
+              size="sm" 
+              variant="outline" 
+              onClick={() => handleAddCustomPortfolio()}
+              className="h-8 px-3 text-xs rounded-xl font-bold border-amber-300 text-amber-800 hover:bg-amber-100"
+            >
+              Add Role
+            </Button>
           </div>
         </div>
 
-        {/* Section 2: Contact & Identification */}
+        {/* Section 3: Pakistani Qualifications Hierarchy & Multiple Degrees */}
+        <div className="p-4 rounded-2xl bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-800/40 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <GraduationCap size={15} className="text-blue-700 dark:text-blue-400" />
+              <Label className="text-xs font-black text-blue-950 dark:text-blue-200">
+                Academic Qualifications & Pakistani Degrees (Multiple Degrees)
+              </Label>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-300">
+              {formData.qualifications.length} Degrees Added
+            </span>
+          </div>
+          <p className="text-[11px] text-blue-800/80 dark:text-blue-300/80">
+            Select degrees from Pakistan education system (Post-Graduate, Masters, BS 4-Years, B.Ed, Intermediate, Schooling) or enter custom.
+          </p>
+
+          {/* Active Qualifications Badges */}
+          {formData.qualifications.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800/60">
+              <span className="text-[10px] text-blue-700 dark:text-blue-400 font-bold self-center mr-1">Enrolled Degrees:</span>
+              {formData.qualifications.map(q => (
+                <span key={q} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-100/90 dark:bg-blue-950 text-blue-900 dark:text-blue-200 text-xs font-bold border border-blue-300 dark:border-blue-700 shadow-2xs">
+                  <span>{q}</span>
+                  <button 
+                    type="button" 
+                    onClick={() => removeQualification(q)}
+                    className="text-blue-700 hover:text-rose-600 font-black text-sm leading-none ml-0.5"
+                    title="Remove degree"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Categorized Dropdown Selector */}
+          <div className="space-y-1">
+            <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Select Degree from Pakistani Categories:</Label>
+            <Select value="" onValueChange={(val) => { if (val) addQualification(val); }}>
+              <SelectTrigger className="h-9 text-xs rounded-xl bg-white dark:bg-slate-800 border-slate-200">
+                <SelectValue placeholder="Click to choose a Pakistani degree/qualification..." />
+              </SelectTrigger>
+              <SelectContent className="max-h-72">
+                {PAKISTAN_QUALIFICATIONS_PRESETS.map((catGroup) => (
+                  <div key={catGroup.category} className="py-1">
+                    <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-superior-teal bg-slate-50 dark:bg-slate-800/60 rounded">
+                      {catGroup.category}
+                    </div>
+                    {catGroup.degrees.map((deg) => (
+                      <SelectItem key={deg} value={deg} className="text-xs font-medium cursor-pointer pl-4">
+                        {deg}
+                      </SelectItem>
+                    ))}
+                  </div>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Popular Faculty Degrees Quick Pills */}
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Popular Faculty Degrees (1-Click Add):</p>
+            <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1.5 rounded-xl bg-white/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-700/60">
+              {POPULAR_FACULTY_DEGREES.map(deg => {
+                const isSelected = formData.qualifications.includes(deg);
+                return (
+                  <button
+                    key={deg}
+                    type="button"
+                    onClick={() => isSelected ? removeQualification(deg) : addQualification(deg)}
+                    className={cn(
+                      "px-2 py-1 rounded-lg text-[11px] font-bold transition-all border",
+                      isSelected
+                        ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                        : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400"
+                    )}
+                  >
+                    {isSelected ? `✓ ${deg}` : `+ ${deg}`}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Custom Degree Adder */}
+          <div className="flex gap-2 pt-1">
+            <Input
+              placeholder="Type custom degree / specialization (e.g. M.Phil Nanotechnology, Ph.D Applied Physics)..."
+              className="h-8 text-xs rounded-xl bg-white dark:bg-slate-800 border-slate-200"
+              value={customDegreeInput}
+              onChange={e => setCustomDegreeInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomQualification(); } }}
+            />
+            <Button 
+              type="button"
+              size="sm" 
+              variant="outline" 
+              onClick={() => handleAddCustomQualification()}
+              className="h-8 px-3 text-xs rounded-xl font-bold border-blue-300 text-blue-800 hover:bg-blue-100"
+            >
+              Add Degree
+            </Button>
+          </div>
+        </div>
+
+        {/* Section 4: Teaching Subjects Selector */}
+        <div className="p-4 rounded-2xl bg-teal-50/70 dark:bg-teal-950/20 border border-teal-200/80 dark:border-teal-800/40 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <BookOpen size={14} className="text-superior-teal" />
+              <Label className="text-xs font-black text-teal-950 dark:text-teal-200">
+                Teaching Subjects (Lectures & Academic Specialization)
+              </Label>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-300">
+              {formData.subjects.length} Selected
+            </span>
+          </div>
+
+          {/* Active Assigned Subjects Badges */}
+          {formData.subjects.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-white dark:bg-slate-800 border border-teal-200 dark:border-teal-800/60">
+              <span className="text-[10px] text-teal-700 dark:text-teal-400 font-bold self-center mr-1">Assigned Subjects:</span>
+              {formData.subjects.map(s => (
+                <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-superior-teal dark:text-teal-300 text-[11px] font-bold border border-teal-200 dark:border-teal-800 shadow-2xs">
+                  {s}
+                  <button type="button" onClick={() => toggleSubject(s)} className="text-slate-400 hover:text-rose-500 font-bold ml-0.5">×</button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Quick-select pills */}
+          <div className="flex flex-wrap gap-1.5">
+            {QUICK_TEACHING_SUBJECTS.map(subj => {
+              const isSelected = formData.subjects.includes(subj);
+              return (
+                <button
+                  key={subj}
+                  type="button"
+                  onClick={() => toggleSubject(subj)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all border",
+                    isSelected
+                      ? "bg-superior-teal text-white border-superior-teal shadow-2xs scale-102"
+                      : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-superior-teal/50"
+                  )}
+                >
+                  {isSelected ? `✓ ${subj}` : `+ ${subj}`}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Custom subject adder */}
+          <div className="flex gap-2 pt-1">
+            <Input
+              placeholder="Type custom subject and press Add..."
+              className="h-8 text-xs rounded-xl bg-white dark:bg-slate-800"
+              value={customSubjectInput}
+              onChange={e => setCustomSubjectInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomSubject(); } }}
+            />
+            <Button 
+              type="button"
+              size="sm" 
+              variant="outline" 
+              onClick={() => handleAddCustomSubject()}
+              className="h-8 px-3 text-xs rounded-xl font-bold border-teal-300 text-superior-teal hover:bg-teal-100/50"
+            >
+              Add
+            </Button>
+          </div>
+        </div>
+
+        {/* Section 5: Contact & Identification */}
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
             <Phone size={14} className="text-superior-teal" />
@@ -2586,7 +2918,7 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
           </div>
         </div>
 
-        {/* Section 3: Payroll & Status */}
+        {/* Section 6: Payroll & Status */}
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
             <CreditCard size={14} className="text-superior-teal" />
@@ -2618,28 +2950,28 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Action Buttons */}
-        <div className="pt-3 flex items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800">
-          <Button 
-            variant="ghost" 
-            type="button"
-            className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs h-9 rounded-xl font-bold" 
-            onClick={handleDelete}
-          >
-            <Trash2 size={15} className="mr-1.5" /> Delete Staff
+      {/* Pinned Sticky Bottom Footer - Always visible on all screens & zoom levels */}
+      <div className="shrink-0 sticky bottom-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-5 py-3.5 flex items-center justify-between gap-3 border-t border-slate-200 dark:border-slate-800 z-20 shadow-lg">
+        <Button 
+          variant="ghost" 
+          type="button"
+          className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs h-9 rounded-xl font-bold cursor-pointer" 
+          onClick={handleDelete}
+        >
+          <Trash2 size={15} className="mr-1.5" /> Delete Staff
+        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" type="button" onClick={onClose} className="h-9 px-4 text-xs rounded-xl font-bold cursor-pointer">
+            Cancel
           </Button>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" type="button" onClick={onClose} className="h-9 px-4 text-xs rounded-xl font-bold">
-              Cancel
-            </Button>
-            <Button 
-              className="bg-superior-teal text-white hover:bg-superior-teal/90 h-9 px-5 text-xs rounded-xl font-bold shadow-sm" 
-              onClick={handleSave}
-            >
-              Save Profile Changes
-            </Button>
-          </div>
+          <Button 
+            className="bg-superior-teal text-white hover:bg-superior-teal/90 h-9 px-5 text-xs rounded-xl font-bold shadow-sm cursor-pointer" 
+            onClick={handleSave}
+          >
+            Save Profile Changes
+          </Button>
         </div>
       </div>
     </DialogContent>
@@ -2668,10 +3000,12 @@ function AddStaffDialog({ data, isOpen, onClose }: { data: any; isOpen?: boolean
     dob: '',
     joinDate: new Date().toISOString().split('T')[0],
     qualification: '',
+    qualifications: [] as string[],
     salary: 0,
     baseSalary: 0,
     subjects: [] as string[],
     role: 'Lecturer' as StaffRole,
+    additionalRoles: [] as string[],
     secondaryRole: 'None',
     customSecondaryRole: '',
     designation: '',
@@ -2681,12 +3015,16 @@ function AddStaffDialog({ data, isOpen, onClose }: { data: any; isOpen?: boolean
 
   const [formData, setFormData] = useState(createBlankForm);
   const [customSubjectInput, setCustomSubjectInput] = useState('');
+  const [customPortfolioInput, setCustomPortfolioInput] = useState('');
+  const [customDegreeInput, setCustomDegreeInput] = useState('');
 
   // Always reset to a completely blank, fresh form with next unique ID whenever opened
   useEffect(() => {
     if (isOpen) {
       setFormData(createBlankForm());
       setCustomSubjectInput('');
+      setCustomPortfolioInput('');
+      setCustomDegreeInput('');
     }
   }, [isOpen, createBlankForm]);
 
@@ -2707,6 +3045,84 @@ function AddStaffDialog({ data, isOpen, onClose }: { data: any; isOpen?: boolean
     }
   };
 
+  // Additional Portfolios / Multi-Role management
+  const togglePortfolio = (portfolio: string) => {
+    setFormData(prev => {
+      const exists = prev.additionalRoles.includes(portfolio);
+      const updated = exists 
+        ? prev.additionalRoles.filter(p => p !== portfolio)
+        : [...prev.additionalRoles, portfolio];
+      return {
+        ...prev,
+        additionalRoles: updated,
+        secondaryRole: updated.join(' & ')
+      };
+    });
+  };
+
+  const handleAddCustomPortfolio = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = customPortfolioInput.trim();
+    if (!trimmed) return;
+    if (!formData.additionalRoles.includes(trimmed)) {
+      setFormData(prev => {
+        const updated = [...prev.additionalRoles, trimmed];
+        return {
+          ...prev,
+          additionalRoles: updated,
+          secondaryRole: updated.join(' & ')
+        };
+      });
+    }
+    setCustomPortfolioInput('');
+  };
+
+  const removePortfolio = (portfolio: string) => {
+    setFormData(prev => {
+      const updated = prev.additionalRoles.filter(p => p !== portfolio);
+      return {
+        ...prev,
+        additionalRoles: updated,
+        secondaryRole: updated.join(' & ')
+      };
+    });
+  };
+
+  // Qualifications / Multiple Degrees management
+  const addQualification = (deg: string) => {
+    const trimmed = deg.trim();
+    if (!trimmed) return;
+    setFormData(prev => {
+      if (prev.qualifications.includes(trimmed)) return prev;
+      const updated = [...prev.qualifications, trimmed];
+      return {
+        ...prev,
+        qualifications: updated,
+        qualification: updated.join(', ')
+      };
+    });
+  };
+
+  const removeQualification = (deg: string) => {
+    setFormData(prev => {
+      const updated = prev.qualifications.filter(q => q !== deg);
+      return {
+        ...prev,
+        qualifications: updated,
+        qualification: updated.join(', ')
+      };
+    });
+  };
+
+  const handleAddCustomQualification = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = customDegreeInput.trim();
+    if (!trimmed) return;
+    addQualification(trimmed);
+    setCustomDegreeInput('');
+  };
+
+  // Teaching subjects management
   const toggleSubject = (sub: string) => {
     setFormData(prev => {
       const exists = prev.subjects.includes(sub);
@@ -2740,11 +3156,17 @@ function AddStaffDialog({ data, isOpen, onClose }: { data: any; isOpen?: boolean
       return;
     }
 
-    const sec = formData.secondaryRole === 'None' ? '' : (formData.secondaryRole === 'Custom' ? formData.customSecondaryRole.trim() : formData.secondaryRole);
-    const fullDesig = sec ? `${formData.role} & ${sec}` : formData.role;
+    const sec = formData.additionalRoles.join(' & ');
+    const fullDesig = formData.additionalRoles.length > 0 
+      ? `${formData.role} & ${sec}`
+      : formData.role;
+    const qualStr = formData.qualifications.join(', ') || formData.qualification;
 
     data.addStaff({ 
       ...formData,
+      qualifications: formData.qualifications,
+      qualification: qualStr,
+      additionalRoles: formData.additionalRoles,
       secondaryRole: sec,
       designation: fullDesig,
     });
@@ -2754,15 +3176,16 @@ function AddStaffDialog({ data, isOpen, onClose }: { data: any; isOpen?: boolean
   };
 
   return (
-    <DialogContent className="max-w-2xl sm:max-w-3xl w-full max-h-[90vh] overflow-y-auto p-0 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
-      <div className="bg-gradient-to-r from-superior-teal to-emerald-900 text-white p-5 flex items-center justify-between">
+    <DialogContent className="max-w-3xl w-[95vw] sm:w-full max-h-[92vh] h-[92vh] flex flex-col p-0 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+      {/* Pinned Top Header */}
+      <div className="shrink-0 bg-gradient-to-r from-superior-teal to-emerald-900 text-white p-4 sm:p-5 flex items-center justify-between z-10 shadow-xs">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20">
             <User size={20} className="text-superior-gold" />
           </div>
           <div>
             <DialogTitle className="text-lg font-black tracking-tight text-white">Add New Staff / Faculty Member</DialogTitle>
-            <p className="text-xs text-white/70">Register employee details, administrative role & teaching subjects</p>
+            <p className="text-xs text-white/70">Register employee details, multiple portfolios & academic degrees</p>
           </div>
         </div>
         <span className="font-mono text-xs px-2.5 py-1 rounded-xl bg-white/10 text-superior-gold font-bold border border-white/15">
@@ -2770,7 +3193,8 @@ function AddStaffDialog({ data, isOpen, onClose }: { data: any; isOpen?: boolean
         </span>
       </div>
 
-      <div className="p-5 sm:p-6 space-y-5">
+      {/* Scrollable Modal Body */}
+      <div className="flex-1 overflow-y-auto min-h-0 p-5 sm:p-6 space-y-5">
         {/* Top Profile Strip with Photo */}
         <div className="flex items-center gap-4 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
           <div className="relative group shrink-0">
@@ -2803,11 +3227,11 @@ function AddStaffDialog({ data, isOpen, onClose }: { data: any; isOpen?: boolean
           </div>
         </div>
 
-        {/* Section 1: Designation & Role */}
+        {/* Section 1: Basic Identity & Core Designation */}
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
             <Briefcase size={14} className="text-superior-teal" />
-            <span>Designation & Teaching Roles</span>
+            <span>Basic Identity & Core Designation</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -2830,8 +3254,8 @@ function AddStaffDialog({ data, isOpen, onClose }: { data: any; isOpen?: boolean
               />
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Primary Designation / Administrative Role</Label>
+            <div className="space-y-1 sm:col-span-2">
+              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Primary Designation / Core College Role *</Label>
               <Select value={formData.role || ""} onValueChange={(v: any) => setFormData({...formData, role: v})}>
                 <SelectTrigger className="h-9 text-xs rounded-xl">
                   <SelectValue />
@@ -2843,115 +3267,270 @@ function AddStaffDialog({ data, isOpen, onClose }: { data: any; isOpen?: boolean
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Secondary Role / Teaching Capacity (Dual Role)</Label>
-              <Select value={formData.secondaryRole || "None"} onValueChange={(v: any) => setFormData({...formData, secondaryRole: v})}>
-                <SelectTrigger className="h-9 text-xs rounded-xl">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="max-h-56">
-                  {SECONDARY_ROLES.map(role => (
-                    <SelectItem key={role} value={role} className="text-xs">{role}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {formData.secondaryRole === 'Custom' && (
-              <div className="space-y-1 sm:col-span-2">
-                <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Custom Secondary Designation</Label>
-                <Input 
-                  className="h-9 text-xs rounded-xl"
-                  value={formData.customSecondaryRole} 
-                  onChange={e => setFormData({...formData, customSecondaryRole: e.target.value})} 
-                  placeholder="e.g. Senior Course Instructor, Lab In-charge"
-                />
-              </div>
-            )}
-
-            <div className="space-y-1 sm:col-span-2">
-              <Label className="text-xs font-bold text-slate-600 dark:text-slate-300">Qualification</Label>
-              <Input 
-                className="h-9 text-xs rounded-xl"
-                value={formData.qualification} 
-                onChange={e => setFormData({...formData, qualification: e.target.value})} 
-                placeholder="e.g. M.Sc English, M.Phil"
-              />
-            </div>
           </div>
+        </div>
 
-          {/* Dual-Role: Teaching Subjects Selector */}
-          <div className="p-3.5 rounded-2xl bg-teal-50/60 dark:bg-teal-950/20 border border-teal-200/60 dark:border-teal-800/40 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <BookOpen size={14} className="text-superior-teal" />
-                <Label className="text-xs font-black text-teal-950 dark:text-teal-200">
-                  Teaching Subjects (Dual-Role: e.g. Principal or Lecturer teaching subjects)
-                </Label>
-              </div>
-              <span className="text-[10px] font-bold text-teal-700 dark:text-teal-300">
-                {formData.subjects.length} Selected
-              </span>
+        {/* Section 2: Multi-Role / Additional Portfolios */}
+        <div className="p-4 rounded-2xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-800/40 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Briefcase size={15} className="text-amber-700 dark:text-amber-400" />
+              <Label className="text-xs font-black text-amber-950 dark:text-amber-200">
+                Additional Portfolios & Roles (Assign 2, 3 or More Portfolios)
+              </Label>
             </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300">
+              {formData.additionalRoles.length} Assigned
+            </span>
+          </div>
+          <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
+            A staff member can hold multiple responsibilities simultaneously (e.g. Campus Head, HOD, Campus Coordinator, Timetable In-charge).
+          </p>
 
-            {/* Quick-select pills */}
-            <div className="flex flex-wrap gap-1.5">
-              {QUICK_TEACHING_SUBJECTS.map(subj => {
-                const isSelected = formData.subjects.includes(subj);
+          {/* Active Assigned Portfolios Badges */}
+          {formData.additionalRoles.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800/60">
+              <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold self-center mr-1">Active Portfolios:</span>
+              {formData.additionalRoles.map(r => (
+                <span key={r} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100/90 dark:bg-amber-950 text-amber-900 dark:text-amber-200 text-xs font-bold border border-amber-300 dark:border-amber-700 shadow-2xs">
+                  <span>{r}</span>
+                  <button 
+                    type="button" 
+                    onClick={() => removePortfolio(r)}
+                    className="text-amber-700 hover:text-rose-600 font-black text-sm leading-none ml-0.5"
+                    title="Remove portfolio"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Quick Toggle Portfolios */}
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Quick Select Common College Portfolios:</p>
+            <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 rounded-xl bg-white/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-700/60">
+              {ADDITIONAL_PORTFOLIOS.map(p => {
+                const isSelected = formData.additionalRoles.includes(p);
                 return (
                   <button
-                    key={subj}
+                    key={p}
                     type="button"
-                    onClick={() => toggleSubject(subj)}
+                    onClick={() => togglePortfolio(p)}
                     className={cn(
                       "px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all border",
                       isSelected
-                        ? "bg-superior-teal text-white border-superior-teal shadow-2xs scale-102"
-                        : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-superior-teal/50"
+                        ? "bg-amber-600 text-white border-amber-600 shadow-2xs scale-102"
+                        : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-400"
                     )}
                   >
-                    {isSelected ? `✓ ${subj}` : `+ ${subj}`}
+                    {isSelected ? `✓ ${p}` : `+ ${p}`}
                   </button>
                 );
               })}
             </div>
+          </div>
 
-            {/* Custom subject adder */}
-            <div className="flex gap-2 pt-1">
-              <Input
-                placeholder="Type custom subject and press Add..."
-                className="h-8 text-xs rounded-xl bg-white dark:bg-slate-800"
-                value={customSubjectInput}
-                onChange={e => setCustomSubjectInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomSubject(); } }}
-              />
-              <Button 
-                type="button"
-                size="sm" 
-                variant="outline" 
-                onClick={() => handleAddCustomSubject()}
-                className="h-8 px-3 text-xs rounded-xl font-bold border-teal-300 text-superior-teal hover:bg-teal-100/50"
-              >
-                Add
-              </Button>
-            </div>
-
-            {formData.subjects.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                <span className="text-[10px] text-slate-400 font-bold self-center">Assigned:</span>
-                {formData.subjects.map(s => (
-                  <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-superior-teal dark:text-teal-300 text-[10px] font-bold border border-teal-200 dark:border-teal-800">
-                    {s}
-                    <button type="button" onClick={() => toggleSubject(s)} className="text-slate-400 hover:text-rose-500">×</button>
-                  </span>
-                ))}
-              </div>
-            )}
+          {/* Custom Portfolio Adder */}
+          <div className="flex gap-2 pt-1">
+            <Input
+              placeholder="Type custom portfolio (e.g. Science Club In-charge, Transport In-charge)..."
+              className="h-8 text-xs rounded-xl bg-white dark:bg-slate-800 border-slate-200"
+              value={customPortfolioInput}
+              onChange={e => setCustomPortfolioInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomPortfolio(); } }}
+            />
+            <Button 
+              type="button"
+              size="sm" 
+              variant="outline" 
+              onClick={() => handleAddCustomPortfolio()}
+              className="h-8 px-3 text-xs rounded-xl font-bold border-amber-300 text-amber-800 hover:bg-amber-100"
+            >
+              Add Role
+            </Button>
           </div>
         </div>
 
-        {/* Section 2: Contact & Identification */}
+        {/* Section 3: Pakistani Qualifications Hierarchy & Multiple Degrees */}
+        <div className="p-4 rounded-2xl bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-800/40 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <GraduationCap size={15} className="text-blue-700 dark:text-blue-400" />
+              <Label className="text-xs font-black text-blue-950 dark:text-blue-200">
+                Academic Qualifications & Pakistani Degrees (Multiple Degrees)
+              </Label>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-300">
+              {formData.qualifications.length} Degrees Added
+            </span>
+          </div>
+          <p className="text-[11px] text-blue-800/80 dark:text-blue-300/80">
+            Select degrees from Pakistan education system (Post-Graduate, Masters, BS 4-Years, B.Ed, Intermediate, Schooling) or enter custom.
+          </p>
+
+          {/* Active Qualifications Badges */}
+          {formData.qualifications.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800/60">
+              <span className="text-[10px] text-blue-700 dark:text-blue-400 font-bold self-center mr-1">Enrolled Degrees:</span>
+              {formData.qualifications.map(q => (
+                <span key={q} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-100/90 dark:bg-blue-950 text-blue-900 dark:text-blue-200 text-xs font-bold border border-blue-300 dark:border-blue-700 shadow-2xs">
+                  <span>{q}</span>
+                  <button 
+                    type="button" 
+                    onClick={() => removeQualification(q)}
+                    className="text-blue-700 hover:text-rose-600 font-black text-sm leading-none ml-0.5"
+                    title="Remove degree"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Categorized Dropdown Selector */}
+          <div className="space-y-1">
+            <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Select Degree from Pakistani Categories:</Label>
+            <Select value="" onValueChange={(val) => { if (val) addQualification(val); }}>
+              <SelectTrigger className="h-9 text-xs rounded-xl bg-white dark:bg-slate-800 border-slate-200">
+                <SelectValue placeholder="Click to choose a Pakistani degree/qualification..." />
+              </SelectTrigger>
+              <SelectContent className="max-h-72">
+                {PAKISTAN_QUALIFICATIONS_PRESETS.map((catGroup) => (
+                  <div key={catGroup.category} className="py-1">
+                    <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-superior-teal bg-slate-50 dark:bg-slate-800/60 rounded">
+                      {catGroup.category}
+                    </div>
+                    {catGroup.degrees.map((deg) => (
+                      <SelectItem key={deg} value={deg} className="text-xs font-medium cursor-pointer pl-4">
+                        {deg}
+                      </SelectItem>
+                    ))}
+                  </div>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Popular Faculty Degrees Quick Pills */}
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Popular Faculty Degrees (1-Click Add):</p>
+            <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1.5 rounded-xl bg-white/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-700/60">
+              {POPULAR_FACULTY_DEGREES.map(deg => {
+                const isSelected = formData.qualifications.includes(deg);
+                return (
+                  <button
+                    key={deg}
+                    type="button"
+                    onClick={() => isSelected ? removeQualification(deg) : addQualification(deg)}
+                    className={cn(
+                      "px-2 py-1 rounded-lg text-[11px] font-bold transition-all border",
+                      isSelected
+                        ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                        : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400"
+                    )}
+                  >
+                    {isSelected ? `✓ ${deg}` : `+ ${deg}`}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Custom Degree Adder */}
+          <div className="flex gap-2 pt-1">
+            <Input
+              placeholder="Type custom degree / specialization (e.g. M.Phil Nanotechnology, Ph.D Applied Physics)..."
+              className="h-8 text-xs rounded-xl bg-white dark:bg-slate-800 border-slate-200"
+              value={customDegreeInput}
+              onChange={e => setCustomDegreeInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomQualification(); } }}
+            />
+            <Button 
+              type="button"
+              size="sm" 
+              variant="outline" 
+              onClick={() => handleAddCustomQualification()}
+              className="h-8 px-3 text-xs rounded-xl font-bold border-blue-300 text-blue-800 hover:bg-blue-100"
+            >
+              Add Degree
+            </Button>
+          </div>
+        </div>
+
+        {/* Section 4: Teaching Subjects Selector */}
+        <div className="p-4 rounded-2xl bg-teal-50/70 dark:bg-teal-950/20 border border-teal-200/80 dark:border-teal-800/40 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <BookOpen size={14} className="text-superior-teal" />
+              <Label className="text-xs font-black text-teal-950 dark:text-teal-200">
+                Teaching Subjects (Lectures & Academic Specialization)
+              </Label>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-300">
+              {formData.subjects.length} Selected
+            </span>
+          </div>
+
+          {/* Active Assigned Subjects Badges */}
+          {formData.subjects.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-white dark:bg-slate-800 border border-teal-200 dark:border-teal-800/60">
+              <span className="text-[10px] text-teal-700 dark:text-teal-400 font-bold self-center mr-1">Assigned Subjects:</span>
+              {formData.subjects.map(s => (
+                <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-superior-teal dark:text-teal-300 text-[11px] font-bold border border-teal-200 dark:border-teal-800 shadow-2xs">
+                  {s}
+                  <button type="button" onClick={() => toggleSubject(s)} className="text-slate-400 hover:text-rose-500 font-bold ml-0.5">×</button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Quick-select pills */}
+          <div className="flex flex-wrap gap-1.5">
+            {QUICK_TEACHING_SUBJECTS.map(subj => {
+              const isSelected = formData.subjects.includes(subj);
+              return (
+                <button
+                  key={subj}
+                  type="button"
+                  onClick={() => toggleSubject(subj)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all border",
+                    isSelected
+                      ? "bg-superior-teal text-white border-superior-teal shadow-2xs scale-102"
+                      : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-superior-teal/50"
+                  )}
+                >
+                  {isSelected ? `✓ ${subj}` : `+ ${subj}`}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Custom subject adder */}
+          <div className="flex gap-2 pt-1">
+            <Input
+              placeholder="Type custom subject and press Add..."
+              className="h-8 text-xs rounded-xl bg-white dark:bg-slate-800"
+              value={customSubjectInput}
+              onChange={e => setCustomSubjectInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomSubject(); } }}
+            />
+            <Button 
+              type="button"
+              size="sm" 
+              variant="outline" 
+              onClick={() => handleAddCustomSubject()}
+              className="h-8 px-3 text-xs rounded-xl font-bold border-teal-300 text-superior-teal hover:bg-teal-100/50"
+            >
+              Add
+            </Button>
+          </div>
+        </div>
+
+        {/* Section 5: Contact & Identification */}
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
             <Phone size={14} className="text-superior-teal" />
@@ -3008,7 +3587,7 @@ function AddStaffDialog({ data, isOpen, onClose }: { data: any; isOpen?: boolean
           </div>
         </div>
 
-        {/* Section 3: Payroll & Status */}
+        {/* Section 6: Payroll & Status */}
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
             <CreditCard size={14} className="text-superior-teal" />
@@ -3040,25 +3619,25 @@ function AddStaffDialog({ data, isOpen, onClose }: { data: any; isOpen?: boolean
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Action Buttons */}
-        <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
-          <Button 
-            type="button" 
-            variant="outline" 
-            onClick={onClose} 
-            className="h-9 px-4 text-xs rounded-xl font-bold border border-slate-200 hover:bg-slate-50 transition-colors"
-          >
-            Cancel
-          </Button>
-          <Button 
-            type="button" 
-            className="h-9 px-5 text-xs rounded-xl font-bold bg-superior-teal text-white hover:bg-superior-teal/90 transition-colors shadow-sm"
-            onClick={handleSave}
-          >
-            Add Staff Member
-          </Button>
-        </div>
+      {/* Pinned Sticky Bottom Footer - Always visible on all screens & zoom levels */}
+      <div className="shrink-0 sticky bottom-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-5 py-3.5 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800 z-20 shadow-lg">
+        <Button 
+          type="button" 
+          variant="outline" 
+          onClick={onClose} 
+          className="h-9 px-4 text-xs rounded-xl font-bold border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer"
+        >
+          Cancel
+        </Button>
+        <Button 
+          type="button" 
+          className="h-9 px-5 text-xs rounded-xl font-bold bg-superior-teal text-white hover:bg-superior-teal/90 transition-colors shadow-sm cursor-pointer"
+          onClick={handleSave}
+        >
+          Add Staff Member
+        </Button>
       </div>
     </DialogContent>
   );

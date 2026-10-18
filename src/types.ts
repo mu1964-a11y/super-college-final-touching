@@ -279,10 +279,12 @@ export interface Staff {
   dob: string;
   joinDate: string;
   qualification?: string;
+  qualifications?: string[];
   specialization?: string[];
   role: StaffRole;
   designation?: string;
   secondaryRole?: string;
+  additionalRoles?: string[];
   salary: number;
   baseSalary?: number;
   subjects?: string[];

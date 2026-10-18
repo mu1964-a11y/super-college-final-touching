@@ -72,6 +72,132 @@ export const STAFF_ROLES = [
   'Sweeper'
 ];
 
+export const ADDITIONAL_PORTFOLIOS = [
+  'HOD (Head of Department)',
+  'Campus Coordinator',
+  'Lecturer (Teaching Faculty)',
+  'Academic Coordinator',
+  'Examination Controller / In-charge',
+  'Discipline In-charge',
+  'Senior Course Instructor',
+  'Admission Counselor',
+  'Sports In-charge',
+  'Student Affairs In-charge',
+  'Lab In-charge',
+  'Visiting Faculty',
+  'Chief Proctor',
+  'Timetable In-charge'
+];
+
+export const PAKISTAN_QUALIFICATIONS_PRESETS = [
+  {
+    category: "Post-Graduate & Doctorate (18+ Years)",
+    degrees: [
+      "Ph.D",
+      "M.Phil Physics",
+      "M.Phil Chemistry",
+      "M.Phil Mathematics",
+      "M.Phil English",
+      "M.Phil Urdu",
+      "M.Phil Botany",
+      "M.Phil Zoology",
+      "M.Phil Economics",
+      "M.Phil Education",
+      "M.Phil Computer Science",
+      "MS Computer Science (MSCS)",
+      "MS Information Technology (MSIT)",
+      "MS Software Engineering (MSSE)",
+      "MS Management Sciences"
+    ]
+  },
+  {
+    category: "Master Degrees (16 Years)",
+    degrees: [
+      "M.Sc Physics",
+      "M.Sc Chemistry",
+      "M.Sc Mathematics",
+      "M.Sc Zoology",
+      "M.Sc Botany",
+      "M.Sc Economics",
+      "M.Sc Statistics",
+      "M.A English",
+      "M.A Urdu",
+      "M.A Islamic Studies",
+      "M.A Pak Studies",
+      "M.A Education",
+      "M.A Political Science",
+      "M.Com",
+      "MBA",
+      "MCS",
+      "MIT"
+    ]
+  },
+  {
+    category: "BS 4-Years & Graduation",
+    degrees: [
+      "BS Computer Science (BSCS)",
+      "BS Information Technology (BSIT)",
+      "BS Software Engineering (BSSE)",
+      "BS Physics",
+      "BS Chemistry",
+      "BS Mathematics",
+      "BS English",
+      "BS Botany",
+      "BS Zoology",
+      "BBA (Bachelor of Business Admin)",
+      "B.Sc",
+      "B.A",
+      "B.Com",
+      "ADP (Associate Degree Program)"
+    ]
+  },
+  {
+    category: "Teaching & Professional Diplomas",
+    degrees: [
+      "B.Ed (1.5 Years)",
+      "B.Ed (2.5 Years)",
+      "B.Ed (4 Years)",
+      "M.Ed",
+      "DIT (Diploma in Information Technology)",
+      "ACCA / CA Inter",
+      "CMA / PIPFA"
+    ]
+  },
+  {
+    category: "Intermediate & Schooling",
+    degrees: [
+      "F.Sc (Pre-Medical)",
+      "F.Sc (Pre-Engineering)",
+      "ICS (Computer Science)",
+      "I.Com",
+      "F.A",
+      "Matric (Science)",
+      "Matric (Computer Science)",
+      "Matric (Arts)",
+      "Middle Pass",
+      "Primary Pass"
+    ]
+  }
+];
+
+export const POPULAR_FACULTY_DEGREES = [
+  "M.Phil Physics",
+  "M.Sc Physics",
+  "M.Phil Chemistry",
+  "M.Sc Chemistry",
+  "M.Phil English",
+  "M.A English",
+  "M.Phil Mathematics",
+  "M.Sc Mathematics",
+  "BS Computer Science (BSCS)",
+  "M.Phil Botany",
+  "M.Sc Zoology",
+  "B.Ed",
+  "M.Ed",
+  "MBA",
+  "M.Com"
+];
+
 export const INITIAL_SETTINGS: AppSettings = {
   collegeName: 'Superior Group',
   campusName: 'Colleges Jahanian',

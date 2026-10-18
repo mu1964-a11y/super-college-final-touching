@@ -80,8 +80,11 @@ export default function StaffJoiningDossierModal({
     }
   };
 
-  const secondaryRole = staff.secondaryRole || (staff.designation && staff.designation.includes("&") ? staff.designation.split("&")[1].trim() : "");
-  const fullDesignation = staff.designation || (secondaryRole ? `${staff.role} & ${secondaryRole}` : staff.role);
+  const additionalPortfolios = (staff.additionalRoles && staff.additionalRoles.length > 0)
+    ? staff.additionalRoles
+    : (staff.secondaryRole && staff.secondaryRole !== 'None' ? staff.secondaryRole.split('&').map(r => r.trim()).filter(Boolean) : []);
+  const secondaryRole = additionalPortfolios.join(' & ');
+  const fullDesignation = staff.designation || (additionalPortfolios.length > 0 ? `${staff.role} & ${additionalPortfolios.join(' & ')}` : staff.role);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-sm overflow-y-auto print:p-0 print:bg-white print:static">
@@ -238,10 +241,18 @@ export default function StaffJoiningDossierModal({
                 </div>
 
                 <div>
-                  <span className="text-[10.5px] uppercase font-bold tracking-wider text-slate-400 block">Secondary / Teaching Role</span>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 font-bold text-xs mt-0.5 border border-emerald-200">
-                    <GraduationCap size={12} /> {secondaryRole || "Not Applicable (Staff)"}
-                  </span>
+                  <span className="text-[10.5px] uppercase font-bold tracking-wider text-slate-400 block">Additional Portfolios & Roles</span>
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {additionalPortfolios.length > 0 ? (
+                      additionalPortfolios.map((r, i) => (
+                        <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 font-bold text-[11px]">
+                          <Briefcase size={10} className="text-amber-700" /> {r}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-400 italic">No secondary portfolio</span>
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -277,8 +288,18 @@ export default function StaffJoiningDossierModal({
                   <span className="text-xs font-bold text-slate-800">{staff.dob || "N/A"}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Academic Qualification</span>
-                  <span className="text-xs font-bold text-slate-800">{staff.qualification || "M.Sc / M.Phil"}</span>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Academic Qualifications</span>
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {staff.qualifications && staff.qualifications.length > 0 ? (
+                      staff.qualifications.map((q, i) => (
+                        <span key={i} className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-900 border border-blue-200">
+                          {q}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs font-bold text-slate-800">{staff.qualification || "N/A"}</span>
+                    )}
+                  </div>
                 </div>
                 <div className="col-span-2 sm:col-span-4 mt-1 pt-2 border-t border-slate-100">
                   <span className="text-[10px] uppercase font-bold text-slate-400 block">Residential Address</span>
