@@ -841,7 +841,7 @@ export default function DashboardView({
     let totalBaseSalary = 0;
 
     activeStaff.forEach((s:any) => {
-      if (s.role === 'Principal' || s.role === 'Director' || s.role === 'Management') management++;
+      if (s.role === 'Campus Head' || s.role === 'Principal' || s.role === 'Vice Principal' || s.role === 'Director' || s.role === 'Directors' || s.role === 'Management' || s.role === 'Coordinator') management++;
       else if (s.role === 'Lecturer' || s.role === 'Professor' || s.role === 'Academic') academic++;
       else if (s.role === 'Admin' || s.role === 'Clerk' || s.role === 'Administration') administration++;
       else support++;

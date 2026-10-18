@@ -804,7 +804,7 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
   }, [initialFilter]);
 
   const roleGroups: Record<string, StaffRole[]> = {
-    'Management': ['Principal', 'Vice Principal', 'Directors', 'Coordinator'],
+    'Management': ['Campus Head', 'Principal', 'Vice Principal', 'Directors', 'Coordinator'],
     'Academic': ['Lecturer', 'Faculty', 'Exam Controller', 'Exam Officer', 'Librarian', 'Lab Attendant'],
     'Administration': ['Admin Officer', 'Accountant', 'Receptionist'],
     'Support': ['Office Boy', 'Guard', 'Gardener', 'Sweeper']
@@ -857,14 +857,21 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
   };
 
   const getRoleBadge = (role: StaffRole) => {
+    if (role === 'Campus Head') {
+      return (
+        <Badge className="bg-amber-100 dark:bg-amber-950/50 text-amber-900 dark:text-amber-300 border border-amber-300/80 dark:border-amber-700 font-black shadow-2xs">
+          Campus Head
+        </Badge>
+      );
+    }
     const group = Object.entries(roleGroups).find(([_, roles]) => roles.includes(role))?.[0];
     
     switch (group) {
-      case 'Management': return <Badge className="bg-rose-100 text-rose-700 border-rose-200">{role}</Badge>;
-      case 'Academic': return <Badge className="bg-superior-teal/10 text-superior-teal border-superior-teal/20">{role}</Badge>;
-      case 'Administration': return <Badge className="bg-purple-100 text-purple-700 border-purple-200">{role}</Badge>;
-      case 'Support': return <Badge className="bg-slate-100 text-slate-700 border-slate-200">{role}</Badge>;
-      default: return <Badge className="bg-slate-100 text-slate-700 border-slate-200">{role}</Badge>;
+      case 'Management': return <Badge className="bg-rose-100 text-rose-700 border-rose-200 font-bold">{role}</Badge>;
+      case 'Academic': return <Badge className="bg-superior-teal/10 text-superior-teal border-superior-teal/20 font-bold">{role}</Badge>;
+      case 'Administration': return <Badge className="bg-purple-100 text-purple-700 border-purple-200 font-bold">{role}</Badge>;
+      case 'Support': return <Badge className="bg-slate-100 text-slate-700 border-slate-200 font-bold">{role}</Badge>;
+      default: return <Badge className="bg-slate-100 text-slate-700 border-slate-200 font-bold">{role}</Badge>;
     }
   };
 
@@ -2231,6 +2238,7 @@ const QUICK_TEACHING_SUBJECTS = [
 
 const SECONDARY_ROLES = [
   'None',
+  'Campus Head',
   'Lecturer (Teaching Faculty)',
   'Visiting Faculty',
   'Course Instructor',

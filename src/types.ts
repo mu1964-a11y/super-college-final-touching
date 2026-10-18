@@ -208,6 +208,7 @@ export interface SalaryPayment {
 }
 
 export type StaffRole = 
+  | 'Campus Head'
   | 'Principal'
   | 'Vice Principal'
   | 'Directors' 

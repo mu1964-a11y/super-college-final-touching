@@ -52,6 +52,7 @@ export const SUBJECTS = [
 ];
 
 export const STAFF_ROLES = [
+  'Campus Head',
   'Principal',
   'Vice Principal',
   'Directors',
