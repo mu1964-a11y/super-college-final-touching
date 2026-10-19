@@ -202,7 +202,7 @@ export default function AdmissionsView({
           const categoryLower = (a.category || "").toLowerCase();
           
           const isDIT = groupLower.includes("dit") || groupLower.includes("diploma") || categoryLower.includes("dit") || categoryLower.includes("diploma");
-          const isBS = groupLower.includes("bs") || groupLower.includes("b.s") || categoryLower.includes("bs");
+          const isBS = groupLower.includes("bs") || groupLower.includes("b.s") || categoryLower.includes("bs") || groupLower.includes("bba") || groupLower.includes("bachelor") || groupLower.includes("bscs") || groupLower.includes("bsit");
           const isUKL3 = groupLower.includes("uk") || groupLower.includes("level 3") || groupLower.includes("l3") || categoryLower.includes("uk");
 
           if (localProgram === "fsc")
@@ -275,35 +275,15 @@ export default function AdmissionsView({
     localProgram,
   ]);
 
-  const summaryStats = useMemo(() => {
-    return data.admissions.reduce(
-      (acc: any, a: any) => {
-        const received = Number(a.feeReceived || 0);
-        const total = Number(a.totalPackage || 0);
-
-        if (received >= total && total > 0) {
-          acc.fullPaid++;
-        } else if (received > 0) {
-          acc.partialPaid++;
-        } else {
-          acc.unpaid++;
-        }
-
-        return acc;
-      },
-      { total: data.admissions.length, fullPaid: 0, partialPaid: 0, unpaid: 0 },
-    );
-  }, [data.admissions]);
-
   const programAdmissions = useMemo(() => {
-    return data.admissions.filter((a: any) => {
+    return (data.admissions || []).filter((a: any) => {
       let matchesProgram = true;
       if (localProgram && localProgram !== "all") {
         const groupLower = (a.group || "").toLowerCase();
         const categoryLower = (a.category || "").toLowerCase();
         
         const isDIT = groupLower.includes("dit") || groupLower.includes("diploma") || categoryLower.includes("dit") || categoryLower.includes("diploma");
-        const isBS = groupLower.includes("bs") || groupLower.includes("b.s") || categoryLower.includes("bs");
+        const isBS = groupLower.includes("bs") || groupLower.includes("b.s") || categoryLower.includes("bs") || groupLower.includes("bba") || groupLower.includes("bachelor") || groupLower.includes("bscs") || groupLower.includes("bsit");
         const isUKL3 = groupLower.includes("uk") || groupLower.includes("level 3") || groupLower.includes("l3") || categoryLower.includes("uk");
 
         if (localProgram === "fsc")
@@ -319,6 +299,26 @@ export default function AdmissionsView({
     });
   }, [data.admissions, localProgram]);
 
+  const summaryStats = useMemo(() => {
+    return programAdmissions.reduce(
+      (acc: any, a: any) => {
+        const received = Number(a.feeReceived || 0);
+        const total = Number(a.totalPackage || 0);
+
+        if (received >= total && total > 0) {
+          acc.fullPaid++;
+        } else if (received > 0) {
+          acc.partialPaid++;
+        } else {
+          acc.unpaid++;
+        }
+
+        return acc;
+      },
+      { total: programAdmissions.length, fullPaid: 0, partialPaid: 0, unpaid: 0 },
+    );
+  }, [programAdmissions]);
+
   const programStats = useMemo(() => {
     return programAdmissions.reduce(
       (acc: any, a: any) => {
@@ -330,17 +330,32 @@ export default function AdmissionsView({
         else acc.unpaid++;
 
         const groupLower = (a.group || "").toLowerCase();
+        const catLower = (a.category || "").toLowerCase();
         if (localProgram === "fsc") {
           if (
             groupLower.includes("part 2") ||
             groupLower.includes("part ii") ||
             groupLower.includes("part-2") ||
-            groupLower.includes("12th")
+            groupLower.includes("12th") ||
+            catLower.includes("part-2") ||
+            catLower.includes("part 2")
           ) {
             acc.part2++;
           } else {
             acc.part1++;
           }
+        }
+        if (localProgram === "bs") {
+          const combined = `${groupLower} ${catLower}`;
+          if (combined.includes("1st") || combined.includes("sem 1") || combined.includes("semester 1")) acc.sem1++;
+          else if (combined.includes("2nd") || combined.includes("sem 2") || combined.includes("semester 2")) acc.sem2++;
+          else if (combined.includes("3rd") || combined.includes("sem 3") || combined.includes("semester 3")) acc.sem3++;
+          else if (combined.includes("4th") || combined.includes("sem 4") || combined.includes("semester 4")) acc.sem4++;
+          else if (combined.includes("5th") || combined.includes("sem 5") || combined.includes("semester 5") || combined.includes("lateral")) acc.sem5++;
+          else if (combined.includes("6th") || combined.includes("sem 6") || combined.includes("semester 6")) acc.sem6++;
+          else if (combined.includes("7th") || combined.includes("sem 7") || combined.includes("semester 7")) acc.sem7++;
+          else if (combined.includes("8th") || combined.includes("sem 8") || combined.includes("semester 8")) acc.sem8++;
+          else acc.otherSem++;
         }
         if (localProgram === "ukl3") {
           if (groupLower.includes("dit")) {
@@ -361,6 +376,15 @@ export default function AdmissionsView({
         unpaid: 0,
         part1: 0,
         part2: 0,
+        sem1: 0,
+        sem2: 0,
+        sem3: 0,
+        sem4: 0,
+        sem5: 0,
+        sem6: 0,
+        sem7: 0,
+        sem8: 0,
+        otherSem: 0,
         dit: 0,
         bs: 0,
         other: 0,
@@ -1462,11 +1486,18 @@ export default function AdmissionsView({
           </button>
         </div>
 
-        {program && programStats.total > 0 && (
-          <div className="hidden lg:flex items-center gap-1 text-[11px] text-emerald-200 bg-white/10 px-2.5 py-0.5 rounded-xl">
+        {localProgram && localProgram !== "all" && summaryStats.total > 0 && (
+          <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-emerald-200 bg-white/10 px-2.5 py-0.5 rounded-xl border border-white/10">
             <span className="font-bold">{programTitle}:</span>
-            <span>{programStats.total}</span>
-            {program === "fsc" && <span className="opacity-70">(P1: {programStats.part1}, P2: {programStats.part2})</span>}
+            <span className="font-black text-white">{summaryStats.total}</span>
+            {localProgram === "fsc" && <span className="opacity-80">(Part-1: {programStats.part1}, Part-2: {programStats.part2})</span>}
+            {localProgram === "bs" && (
+              <span className="opacity-80">
+                (Sem 1: {programStats.sem1}, Sem 3: {programStats.sem3}, Sem 5: {programStats.sem5}, Sem 7: {programStats.sem7})
+              </span>
+            )}
+            {localProgram === "dit" && <span className="opacity-80">(Diploma in IT)</span>}
+            {localProgram === "ukl3" && <span className="opacity-80">(UK Level 3)</span>}
           </div>
         )}
       </div>
@@ -3906,6 +3937,7 @@ function AdmissionForm({
     admissionFee: admission?.admissionFee ? String(admission.admissionFee) : "",
     miscFunds: admission?.miscFunds ? String(admission.miscFunds) : "",
     totalFeeFinalized: admission?.totalFeeFinalized ? String(admission.totalFeeFinalized) : "", // Tuition Fee
+    previousArrears: (admission as any)?.previousArrears ? String((admission as any).previousArrears) : "0", // Previous Semester Arrears (بقایا جات)
     totalPackage: admission?.totalPackage || 0,
     feeReceived: admission?.feeReceived ? String(admission.feeReceived) : "",
     paymentPlan: admission?.paymentPlan || "Installments",
@@ -3959,6 +3991,7 @@ function AdmissionForm({
         admissionFee: admission.admissionFee ? String(admission.admissionFee) : "",
         miscFunds: admission.miscFunds ? String(admission.miscFunds) : "",
         totalFeeFinalized: admission.totalFeeFinalized ? String(admission.totalFeeFinalized) : "",
+        previousArrears: (admission as any).previousArrears ? String((admission as any).previousArrears) : "0",
         totalPackage: admission.totalPackage || 0,
         feeReceived: admission.feeReceived ? String(admission.feeReceived) : "",
         paymentPlan: admission.paymentPlan || "Installments",
@@ -4091,14 +4124,15 @@ function AdmissionForm({
     });
   };
 
-  // Auto-calculate Total Package
+  // Auto-calculate Total Package (Tuition + Admission + Misc + Previous Arrears)
   React.useEffect(() => {
     const total =
       Number(formData.admissionFee || 0) +
       Number(formData.miscFunds || 0) +
-      Number(formData.totalFeeFinalized || 0);
+      Number(formData.totalFeeFinalized || 0) +
+      Number(formData.previousArrears || 0);
     setFormData((prev) => ({ ...prev, totalPackage: total }));
-  }, [formData.admissionFee, formData.miscFunds, formData.totalFeeFinalized]);
+  }, [formData.admissionFee, formData.miscFunds, formData.totalFeeFinalized, formData.previousArrears]);
 
   // Auto-confirm admission when received amount is entered (Allot unique Student ID on Fee Submission)
   React.useEffect(() => {
@@ -4116,33 +4150,68 @@ function AdmissionForm({
     }
   }, [formData.feeReceived, formData.studentId, formData.group, data, program]);
 
-  const categories = React.useMemo(() => {
-    let result = [
-      "Inter Part-1 Boys",
-      "Inter Part-2 Boys",
-      "Inter Part-1 Girls",
-      "Inter Part-2 Girls",
-    ];
-    if (program === "dit") result = ["DIT Boys", "DIT Girls"];
-    if (program === "ukl3") result = ["UK L3 Boys", "UK L3 Girls"];
-    if (program === "bs") result = ["BS Boys", "BS Girls"];
+  // Detect program dynamically from selected group or category
+  const detectedProgram = React.useMemo(() => {
+    const groupLower = (formData.group || "").toLowerCase();
+    const categoryLower = (formData.category || "").toLowerCase();
+    if (groupLower.includes("dit") || groupLower.includes("diploma") || categoryLower.includes("dit") || categoryLower.includes("diploma")) {
+      return "dit";
+    }
+    if (
+      groupLower.includes("bs") ||
+      groupLower.includes("b.s") ||
+      groupLower.includes("bba") ||
+      groupLower.includes("bachelor") ||
+      groupLower.includes("bscs") ||
+      groupLower.includes("bsit") ||
+      categoryLower.includes("bs")
+    ) {
+      return "bs";
+    }
+    if (groupLower.includes("uk") || groupLower.includes("level 3") || groupLower.includes("l3") || categoryLower.includes("uk")) {
+      return "ukl3";
+    }
+    if (program && program !== "all") {
+      return program;
+    }
+    return "fsc";
+  }, [formData.group, formData.category, program]);
 
-    if (formData.gender === "Male") {
-      result = result.filter(c => c.toLowerCase().includes("boys") || c.toLowerCase().includes("male"));
-    } else if (formData.gender === "Female") {
-      result = result.filter(c => c.toLowerCase().includes("girls") || c.toLowerCase().includes("female"));
+  const categories = React.useMemo(() => {
+    let result: string[] = [];
+
+    if (detectedProgram === "bs") {
+      result = [
+        "BS Semester 1st (Fresh Intake)",
+        "BS Semester 2nd",
+        "BS Semester 3rd (2nd Year)",
+        "BS Semester 4th",
+        "BS Semester 5th (ADP Lateral Entry)",
+        "BS Semester 6th",
+        "BS Semester 7th (Final Year)",
+        "BS Semester 8th",
+        formData.gender === "Female" ? "BS Girls Campus" : "BS Boys Campus",
+      ];
+    } else if (detectedProgram === "dit") {
+      result = [
+        "DIT Part-1",
+        "DIT Part-2",
+        formData.gender === "Female" ? "DIT Girls" : "DIT Boys",
+      ];
+    } else if (detectedProgram === "ukl3") {
+      result = [
+        "UK Level 3 Year-1",
+        "UK Level 3 Year-2",
+        formData.gender === "Female" ? "UK L3 Girls" : "UK L3 Boys",
+      ];
+    } else {
+      result = formData.gender === "Female"
+        ? ["Inter Part-1 Girls", "Inter Part-2 Girls"]
+        : ["Inter Part-1 Boys", "Inter Part-2 Boys"];
     }
 
-    // Ensure the default category is valid for the current program
-    setFormData((prev) => {
-      if (!result.includes(prev.category)) {
-        return { ...prev, category: result[0] };
-      }
-      return prev;
-    });
-
     return result;
-  }, [program, formData.gender]);
+  }, [detectedProgram, formData.gender]);
 
   const months = [
     "Jan",
@@ -4164,98 +4233,120 @@ function AdmissionForm({
   const filteredSections = React.useMemo(() => {
     if (!data.settings?.predefinedSections) return [];
 
-    return data.settings.predefinedSections.filter((sec) => {
+    return data.settings.predefinedSections.filter((sec: any) => {
       // 1. Gender Match (Male/Female/Co-ed)
       const matchesGender =
-        sec.gender === formData.gender || sec.gender === "Co-ed";
+        !sec.gender || sec.gender === "Co-ed" || sec.gender === formData.gender;
       if (!matchesGender) return false;
 
       // 2. Program Match
-      if (!program || program === "all") return true;
+      const sp = (sec.program || "").toLowerCase();
+      if (!sec.program || sp === "all" || sp === "other") return true;
 
-      const p = program.toLowerCase();
-      const sp = sec.program.toLowerCase();
+      if (detectedProgram === "fsc") {
+        return sp === "inter" || sp === "fsc" || sp === "intermediate";
+      }
+      if (detectedProgram === "dit") {
+        return sp.includes("dit") || sp.includes("diploma");
+      }
+      if (detectedProgram === "ukl3") {
+        return sp.includes("uk") || sp.includes("level 3");
+      }
+      if (detectedProgram === "bs") {
+        return sp.includes("bs") || sp.includes("degree");
+      }
 
-      if (p === "fsc" && sp === "inter") return true;
-      if (p === sp) return true;
-      if (p === "ukl3" && sp === "uk level 3") return true;
-      if (p === "bs" && sp === "bs program") return true;
-
-      return false;
+      return true;
     });
-  }, [data.settings?.predefinedSections, formData.gender, program]);
+  }, [data.settings?.predefinedSections, formData.gender, detectedProgram]);
 
   const filteredGroups = React.useMemo(
     () =>
       ACADEMIC_GROUPS.filter((g) => {
-        if (!program || program === "all") return true;
+        if (!detectedProgram || detectedProgram === "all") return true;
         const name = g.name.toLowerCase();
         const isDIT = name.includes("dit") || name.includes("diploma");
         const isUK = name.includes("uk") || name.includes("level 3");
-        const isBS = name.includes("bs") || name.includes("b.s") || name.includes("bba");
+        const isBS = name.includes("bs") || name.includes("b.s") || name.includes("bba") || name.includes("bachelor");
 
-        if (program === "fsc") return !isDIT && !isUK && !isBS;
-        if (program === "dit") return isDIT;
-        if (program === "ukl3") return isUK;
-        if (program === "bs") return isBS;
+        if (detectedProgram === "fsc") return !isDIT && !isUK && !isBS;
+        if (detectedProgram === "dit") return isDIT;
+        if (detectedProgram === "ukl3") return isUK;
+        if (detectedProgram === "bs") return isBS;
         return true;
       }),
-    [program],
+    [detectedProgram],
   );
 
   const filteredSubjects = React.useMemo(
     () =>
       SUBJECTS.filter((s: string) => {
         if (COMPULSORY_SUBJECTS.includes(s)) return false; // Handled separately
-        if (!program || program === "all") return true;
+        if (!detectedProgram || detectedProgram === "all") return true;
         const name = s.toLowerCase();
         const isDIT = name.includes("dit") || name.includes("diploma") || name.includes("office automation") || name.includes("networking & hardware");
         const isUK = name.includes("uk") || name.includes("applied science") || name.includes("business analysis") || name.includes("cyber security");
         const isBS = name.includes("bs") || name.includes("programming fundamentals") || name.includes("data structures") || name.includes("database systems") || name.includes("software engineering") || name.includes("calculus") || name.includes("linear algebra") || name.includes("mechanics") || name.includes("electromagnetism") || name.includes("quantum") || name.includes("organic") || name.includes("inorganic") || name.includes("linguistics") || name.includes("management") || name.includes("plant") || name.includes("animal");
 
-        if (program === "fsc") return !isDIT && !isUK && !isBS;
-        if (program === "dit") return isDIT;
-        if (program === "ukl3") return isUK;
-        if (program === "bs") return isBS;
+        if (detectedProgram === "fsc") return !isDIT && !isUK && !isBS;
+        if (detectedProgram === "dit") return isDIT;
+        if (detectedProgram === "ukl3") return isUK;
+        if (detectedProgram === "bs") return isBS;
         return true;
       }),
-    [program],
+    [detectedProgram],
   );
 
   const handleGroupChange = (groupName: string) => {
     const group = ACADEMIC_GROUPS.find((g) => g.name === groupName);
     if (group) {
-      const newSubjects = Array.from(
-        new Set([...COMPULSORY_SUBJECTS, ...group.subjects]),
-      );
+      const lowerGroupName = groupName.toLowerCase();
+      const isBS = lowerGroupName.includes("bs") || lowerGroupName.includes("b.s") || lowerGroupName.includes("bba") || lowerGroupName.includes("bachelor");
+      const isDIT = lowerGroupName.includes("dit") || lowerGroupName.includes("diploma");
+      const isUK = lowerGroupName.includes("uk") || lowerGroupName.includes("level 3");
 
-      // Auto-logic for Semester Programs (DIT = 4 Semesters, UK L3 = 3 Semesters, BS = 8 Semesters)
+      const newSubjects = isBS
+        ? Array.from(new Set(['English / Communication', 'Pakistan Studies / Ideology', 'Islamic Studies / Ethics', ...group.subjects]))
+        : isDIT
+        ? Array.from(new Set(['English', ...group.subjects]))
+        : Array.from(new Set([...COMPULSORY_SUBJECTS, ...group.subjects]));
+
       let paymentPlan = formData.paymentPlan;
       let totalSemesters = formData.totalSemesters;
       let programType = "Yearly" as "Yearly" | "Semester";
-      let currentSemester = formData.currentSemester;
+      let currentSemester = formData.currentSemester || 1;
+      let defaultCategory = formData.category;
 
-      const lowerGroupName = groupName.toLowerCase();
-      if (
-        lowerGroupName.includes("dit") ||
-        lowerGroupName.includes("uk") ||
-        lowerGroupName.includes("level 3") ||
-        lowerGroupName.includes("bs") ||
-        lowerGroupName.includes("b.s") ||
-        lowerGroupName.includes("bba")
-      ) {
+      if (isBS) {
         paymentPlan = "Semester";
-        totalSemesters = lowerGroupName.includes("dit") ? 4 : (lowerGroupName.includes("uk") || lowerGroupName.includes("level 3") ? 3 : 8);
+        totalSemesters = 8;
         programType = "Semester";
-        currentSemester = currentSemester || 1;
+        defaultCategory = (formData.currentSemester && formData.currentSemester > 1)
+          ? `BS Semester ${formData.currentSemester}${formData.currentSemester === 2 ? 'nd' : formData.currentSemester === 3 ? 'rd' : 'th'}`
+          : "BS Semester 1st (Fresh Intake)";
         toast.info(
-          `${groupName} follows an ${totalSemesters}-Semester System. Plan adjusted automatically.`,
+          `${groupName}: 8-Semester University Degree program selected.`,
         );
+      } else if (isDIT) {
+        paymentPlan = "Semester";
+        totalSemesters = 4;
+        programType = "Semester";
+        defaultCategory = "DIT Part-1";
+      } else if (isUK) {
+        paymentPlan = "Semester";
+        totalSemesters = 3;
+        programType = "Semester";
+        defaultCategory = "UK Level 3 Year-1";
+      } else {
+        paymentPlan = "Installments";
+        programType = "Yearly";
+        defaultCategory = formData.gender === "Female" ? "Inter Part-1 Girls" : "Inter Part-1 Boys";
       }
 
       setFormData((prev) => ({
         ...prev,
         group: groupName,
+        category: defaultCategory,
         subjects: newSubjects,
         paymentPlan,
         totalSemesters,
@@ -4263,6 +4354,28 @@ function AdmissionForm({
         currentSemester,
       }));
     }
+  };
+
+  const handleCategoryChange = (val: string) => {
+    let currentSem = formData.currentSemester;
+    const lower = val.toLowerCase();
+    if (lower.includes("1st") || lower.includes("sem 1") || lower.includes("semester 1")) currentSem = 1;
+    else if (lower.includes("2nd") || lower.includes("sem 2") || lower.includes("semester 2")) currentSem = 2;
+    else if (lower.includes("3rd") || lower.includes("sem 3") || lower.includes("semester 3")) currentSem = 3;
+    else if (lower.includes("4th") || lower.includes("sem 4") || lower.includes("semester 4")) currentSem = 4;
+    else if (lower.includes("5th") || lower.includes("sem 5") || lower.includes("semester 5") || lower.includes("lateral")) currentSem = 5;
+    else if (lower.includes("6th") || lower.includes("sem 6") || lower.includes("semester 6")) currentSem = 6;
+    else if (lower.includes("7th") || lower.includes("sem 7") || lower.includes("semester 7")) currentSem = 7;
+    else if (lower.includes("8th") || lower.includes("sem 8") || lower.includes("semester 8")) currentSem = 8;
+
+    const academicPart = currentSem && currentSem > 4 ? "Part-2" : "Part-1";
+
+    setFormData(prev => ({
+      ...prev,
+      category: val,
+      currentSemester: currentSem || prev.currentSemester,
+      academicPart: academicPart as any
+    }));
   };
 
   const handlePrint = async () => {
@@ -4326,6 +4439,7 @@ function AdmissionForm({
         admissionFee: Number(formData.admissionFee),
         miscFunds: Number(formData.miscFunds),
         totalFeeFinalized: finalized,
+        previousArrears: Number(formData.previousArrears || 0),
         totalPackage: totalPkg,
         feeReceived: received,
         isAdmitted: formData.status === "Admitted/Confirmed" || received > 0,
@@ -4358,6 +4472,7 @@ function AdmissionForm({
       admissionFee: Number(formData.admissionFee),
       miscFunds: Number(formData.miscFunds),
       totalFeeFinalized: finalized,
+      previousArrears: Number(formData.previousArrears || 0),
       totalPackage: totalPkg,
       feeReceived: received,
       paymentPlan: formData.paymentPlan,
@@ -4451,60 +4566,61 @@ function AdmissionForm({
   return (
     <div className="space-y-6">
       {!preSelectionComplete ? (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <div className="text-center space-y-2 max-w-2xl mx-auto">
-            <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight leading-tight">
-              Admission Category Setup
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500 max-w-5xl mx-auto">
+          <div className="text-center space-y-1.5 max-w-xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-superior-teal/10 text-superior-teal text-[11px] font-black uppercase tracking-widest border border-superior-teal/20">
+              <Layers size={13} />
+              <span>Step 1 of 2 · Program & Intake Placement</span>
+            </div>
+            <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
+              Admission Category & Group Setup
             </h2>
-            <p className="text-slate-500 font-medium">
-              Please finalize the student's program categorization before
-              proceeding to the full admission form. This ensures accurate
-              record management and section placement.
+            <p className="text-slate-500 dark:text-slate-400 text-xs font-medium leading-relaxed">
+              Configure student gender, academic program group, semester or class category, and section placement.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-7xl mx-auto">
-            {/* Gender Selection */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-sm">
-                  <Users size={20} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            {/* 1. Gender Selection */}
+            <div className="bg-slate-50/80 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                  <Users size={14} />
                 </div>
-                <Label className="text-xs font-black uppercase tracking-widest text-slate-400">
-                  1. Select Gender
+                <Label className="text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                  1. Gender
                 </Label>
               </div>
               <Select
                 value={formData.gender || ""}
                 onValueChange={(v) => {
-                  setFormData(prev => ({ ...prev, gender: v as Gender,
-                    section: undefined as any })); // reset section to undefined on gender change
+                  setFormData(prev => ({ ...prev, gender: v as Gender, section: undefined as any }));
                 }}
               >
-                <SelectTrigger className="h-20 rounded-3xl border-2 border-slate-100 bg-white shadow-sm p-6 focus:ring-superior-teal/20 focus:border-superior-teal/30">
+                <SelectTrigger className="h-11 rounded-xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold text-xs shadow-xs focus:ring-superior-teal/20">
                   <SelectValue placeholder="Choose Gender" />
                 </SelectTrigger>
-                <SelectContent className="rounded-2xl p-2">
+                <SelectContent className="rounded-xl p-1 shadow-xl">
                   {["Male", "Female"].map((g) => (
                     <SelectItem
                       key={g}
                       value={g}
-                      className="rounded-xl py-3 font-bold text-slate-900 focus:bg-superior-teal/5"
+                      className="rounded-lg py-2 font-bold text-xs text-slate-900 dark:text-slate-100"
                     >
-                      {g}
+                      {g === "Male" ? "Male (Boys Campus)" : "Female (Girls Campus)"}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Academic Group */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shadow-sm">
-                  <GraduationCap size={20} />
+            {/* 2. Academic Group */}
+            <div className="bg-slate-50/80 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <GraduationCap size={14} />
                 </div>
-                <Label className="text-xs font-black uppercase tracking-widest text-slate-400">
+                <Label className="text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
                   2. Academic Group
                 </Label>
               </div>
@@ -4512,21 +4628,21 @@ function AdmissionForm({
                 value={formData.group || ""}
                 onValueChange={handleGroupChange}
               >
-                <SelectTrigger className="h-20 rounded-3xl border-2 border-slate-100 bg-white shadow-sm p-6 focus:ring-superior-teal/20 focus:border-superior-teal/30 text-left">
+                <SelectTrigger className="h-11 rounded-xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold text-xs shadow-xs focus:ring-superior-teal/20 text-left truncate">
                   <SelectValue placeholder="Choose Program Group" />
                 </SelectTrigger>
-                <SelectContent className="rounded-2xl p-2 min-w-[max-content] w-max">
+                <SelectContent className="rounded-xl p-1 max-h-[320px] shadow-2xl min-w-[280px]">
                   {filteredGroups.map((group) => (
                     <SelectItem
                       key={group.name}
                       value={group.name}
-                      className="rounded-xl py-3 focus:bg-superior-teal/5 min-w-[300px]"
+                      className="rounded-lg py-2 focus:bg-superior-teal/10"
                     >
                       <div className="flex flex-col text-left">
-                        <span className="font-bold text-slate-900 whitespace-normal">
+                        <span className="font-bold text-xs text-slate-900 dark:text-slate-100">
                           {group.name}
                         </span>
-                        <span className="text-[10px] text-slate-400 uppercase tracking-wider font-black">
+                        <span className="text-[9px] text-slate-400 uppercase tracking-wider font-black">
                           {group.type}
                         </span>
                       </div>
@@ -4536,29 +4652,29 @@ function AdmissionForm({
               </Select>
             </div>
 
-            {/* Category / Subjects Info */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-sm">
-                  <Layers size={20} />
+            {/* 3. Class Category / Semester */}
+            <div className="bg-slate-50/80 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <Layers size={14} />
                 </div>
-                <Label className="text-xs font-black uppercase tracking-widest text-slate-400">
-                  3. Class Category
+                <Label className="text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                  {detectedProgram === "bs" ? "3. BS Semester" : "3. Class Category"}
                 </Label>
               </div>
               <Select
                 value={formData.category || ""}
-                onValueChange={(v) => setFormData(prev => ({ ...prev, category: v }))}
+                onValueChange={handleCategoryChange}
               >
-                <SelectTrigger className="h-20 rounded-3xl border-2 border-slate-100 bg-white shadow-sm p-6 focus:ring-superior-teal/20">
+                <SelectTrigger className="h-11 rounded-xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold text-xs shadow-xs focus:ring-superior-teal/20 text-left truncate">
                   <SelectValue placeholder="Select Category" />
                 </SelectTrigger>
-                <SelectContent className="rounded-2xl p-2">
+                <SelectContent className="rounded-xl p-1 max-h-[320px] shadow-2xl min-w-[240px]">
                   {categories.map((cat) => (
                     <SelectItem
                       key={cat}
                       value={cat}
-                      className="rounded-xl py-3"
+                      className="rounded-lg py-2 font-bold text-xs"
                     >
                       {cat}
                     </SelectItem>
@@ -4567,18 +4683,18 @@ function AdmissionForm({
               </Select>
             </div>
 
-            {/* Section */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shadow-sm">
-                  <School size={20} />
+            {/* 4. Section */}
+            <div className="bg-slate-50/80 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                  <School size={14} />
                 </div>
-                <Label className="text-xs font-black uppercase tracking-widest text-slate-400">
+                <Label className="text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
                   4. Section
                 </Label>
               </div>
               <Select
-                key={`section-select-${formData.gender}`}
+                key={`section-select-${formData.gender}-${detectedProgram}`}
                 value={formData.section || ""}
                 onValueChange={(v) => {
                   const sectionObj = (
@@ -4592,26 +4708,24 @@ function AdmissionForm({
                   setFormData(prev => ({ ...prev, section: v, session: newSession }));
                 }}
               >
-                <SelectTrigger className="h-20 rounded-3xl border-2 border-slate-100 bg-white shadow-sm p-6 focus:ring-superior-teal/20">
+                <SelectTrigger className="h-11 rounded-xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold text-xs shadow-xs focus:ring-superior-teal/20">
                   <SelectValue placeholder="Select Section" />
                 </SelectTrigger>
-                <SelectContent className="rounded-2xl p-2 max-h-[300px]">
-                  {(data?.settings?.predefinedSections || [])
-                    .filter((s: any) => s.gender === formData.gender)
-                    .map((sec: any) => (
-                      <SelectItem
-                        key={sec.id}
-                        value={sec.name}
-                        className="rounded-xl py-3"
-                      >
-                        {sec.name}
-                      </SelectItem>
-                    ))}
+                <SelectContent className="rounded-xl p-1 max-h-[260px] shadow-2xl">
+                  {filteredSections.map((sec: any) => (
+                    <SelectItem
+                      key={sec.id}
+                      value={sec.name}
+                      className="rounded-lg py-2 font-bold text-xs"
+                    >
+                      {sec.name} {sec.class ? `(${sec.class})` : ""}
+                    </SelectItem>
+                  ))}
                   <SelectItem
                     value="Other / Manual"
-                    className="rounded-xl py-3"
+                    className="rounded-lg py-2 font-bold text-xs text-slate-500"
                   >
-                    Other / Manual
+                    Other / Manual Section
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -4620,77 +4734,73 @@ function AdmissionForm({
 
           {/* Subjects Selection (If Group Selected) */}
           {formData.group && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="max-w-4xl mx-auto space-y-6"
-            >
+            <div className="bg-slate-50/70 dark:bg-slate-800/30 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-sm">
-                    <CheckCircle2 size={20} />
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-md bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                    <CheckCircle2 size={13} />
                   </div>
-                  <Label className="text-xs font-black uppercase tracking-widest text-slate-400">
-                    4. Review Elective Subjects
+                  <Label className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                    Review Course Curriculum & Electives
                   </Label>
                 </div>
                 <Badge
                   variant="outline"
-                  className="border-slate-200 text-slate-400 text-[9px] uppercase tracking-widest font-black"
+                  className="border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-bold"
                 >
-                  Based on {formData.group}
+                  {formData.group} · {detectedProgram === 'bs' ? 'BS Degree' : 'Program'}
                 </Badge>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {filteredSubjects.map((s: string) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => toggleSubject(s)}
-                    className={cn(
-                      "h-14 rounded-2xl border transition-all text-xs font-bold uppercase tracking-tight flex items-center px-4 gap-3",
-                      formData.subjects.includes(s)
-                        ? "bg-superior-teal/5 border-superior-teal/50 text-superior-teal"
-                        : "bg-white border-slate-100 text-slate-400 hover:border-slate-200",
-                    )}
-                  >
-                    <div
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {filteredSubjects.map((s: string) => {
+                  const isSelected = formData.subjects.includes(s);
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => toggleSubject(s)}
                       className={cn(
-                        "w-4 h-4 rounded-md border flex items-center justify-center transition-colors",
-                        formData.subjects.includes(s)
-                          ? "bg-superior-teal border-superior-teal"
-                          : "border-slate-300",
+                        "h-9 px-3 rounded-xl border transition-all text-xs font-bold flex items-center justify-between gap-1.5 text-left",
+                        isSelected
+                          ? "bg-superior-teal/10 border-superior-teal/40 text-superior-teal dark:text-emerald-400 font-extrabold shadow-xs"
+                          : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300",
                       )}
                     >
-                      {formData.subjects.includes(s) && (
-                        <Plus
-                          size={12}
-                          className="text-white transform rotate-45"
-                        />
-                      )}
-                    </div>
-                    {s}
-                  </button>
-                ))}
+                      <span className="truncate">{s}</span>
+                      <div
+                        className={cn(
+                          "w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 transition-colors",
+                          isSelected
+                            ? "bg-superior-teal border-superior-teal text-white"
+                            : "border-slate-300 dark:border-slate-600",
+                        )}
+                      >
+                        {isSelected && <CheckCircle2 size={10} className="stroke-[3]" />}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-            </motion.div>
+            </div>
           )}
 
-          <div className="flex justify-center pt-6">
+          {/* Continue Action Button */}
+          <div className="flex justify-end pt-2">
             <Button
               disabled={!formData.group || !formData.gender}
               onClick={() => {
                 setPreSelectionComplete(true);
                 toast.success(
-                  "Categorization confirmed. Loading admission details...",
+                  "Categorization confirmed. Loading candidate dossier...",
                 );
               }}
-              className="h-20 px-16 rounded-3xl bg-superior-teal text-white font-black uppercase tracking-widest text-lg hover:bg-superior-teal/90 transition-all shadow-2xl shadow-superior-teal/20 flex items-center justify-center gap-4 group"
+              className="h-11 px-6 rounded-xl bg-superior-teal hover:bg-superior-teal/90 text-white font-black uppercase tracking-wider text-xs transition-all shadow-md shadow-superior-teal/20 flex items-center gap-2 group"
             >
-              Continue to Admission Form
+              <span>Continue to Candidate Profile</span>
               <ArrowRight
-                size={24}
-                className="group-hover:translate-x-2 transition-transform"
+                size={16}
+                className="group-hover:translate-x-1 transition-transform"
               />
             </Button>
           </div>
@@ -4986,15 +5096,34 @@ function AdmissionForm({
                           }
                         />
                       </FormFieldWrapper>
-                      <FormFieldWrapper label="Guardian Contact" required>
-                        <Input
-                          className="h-12 border-slate-200 rounded-xl"
-                          placeholder="03xx-xxxxxxx"
-                          value={formData.fatherContact || ""}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, fatherContact: e.target.value, }))
-                          }
-                        />
+                      <FormFieldWrapper
+                        label={
+                          <div className="flex items-center justify-between w-full">
+                            <span className="font-bold text-slate-700 dark:text-slate-200">Guardian WhatsApp Contact</span>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                              <MessageSquare size={11} className="text-emerald-500 fill-emerald-500/20" />
+                              WhatsApp Active
+                            </span>
+                          </div>
+                        }
+                        required
+                      >
+                        <div className="relative">
+                          <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-emerald-600">
+                            <MessageSquare size={16} className="fill-emerald-500/20" />
+                          </div>
+                          <Input
+                            className="h-12 pl-10 border-slate-200 dark:border-slate-700 rounded-xl font-mono text-sm focus:border-emerald-500 focus:ring-emerald-500/20"
+                            placeholder="03xx-xxxxxxx (Father / Guardian WhatsApp)"
+                            value={formData.fatherContact || ""}
+                            onChange={(e) =>
+                              setFormData(prev => ({ ...prev, fatherContact: e.target.value }))
+                            }
+                          />
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                          Official fee vouchers, attendance alerts & admission notices will be dispatched here.
+                        </p>
                       </FormFieldWrapper>
                       <FormFieldWrapper label="Email Address">
                         <Input
@@ -5054,12 +5183,12 @@ function AdmissionForm({
                     <FormSectionHeader
                       icon={Search}
                       title="Academic History"
-                      sub="Previous Record (SSC)"
+                      sub={detectedProgram === "bs" ? "Previous Record (Inter / 12th / ADP)" : "Previous Record (SSC / Matric)"}
                     />
                     <div className="grid grid-cols-1 gap-6 bg-slate-50/50 p-8 rounded-[2.5rem] border border-slate-100 group-hover:border-superior-teal/30 transition-colors">
-                      <FormFieldWrapper label="SSC Board Roll #">
+                      <FormFieldWrapper label={detectedProgram === "bs" ? "Board / University Roll #" : "SSC Board Roll #"}>
                         <Input
-                          placeholder="Registration #"
+                          placeholder="Registration / Roll #"
                           className="h-12 rounded-xl border-slate-200 bg-white"
                           value={formData.boardRollNo || ""}
                           onChange={(e) =>
@@ -5067,7 +5196,7 @@ function AdmissionForm({
                           }
                         />
                       </FormFieldWrapper>
-                      <FormFieldWrapper label="SSC Obtained Marks">
+                      <FormFieldWrapper label={detectedProgram === "bs" ? "Obtained Marks (out of 1100/1200)" : "SSC Obtained Marks"}>
                         <Input
                           type="number"
                           placeholder="Obtained Marks"
@@ -5080,7 +5209,7 @@ function AdmissionForm({
                       </FormFieldWrapper>
                       <FormFieldWrapper label="Previous Institute">
                         <Input
-                          placeholder="Enter school/college name"
+                          placeholder={detectedProgram === "bs" ? "Previous College / Institution" : "School name"}
                           className="h-12 rounded-xl border-slate-200 bg-white"
                           value={formData.previousInstitute || ""}
                           onChange={(e) =>
@@ -5088,9 +5217,9 @@ function AdmissionForm({
                           }
                         />
                       </FormFieldWrapper>
-                      <FormFieldWrapper label="Previous Class">
+                      <FormFieldWrapper label="Previous Class / Degree">
                         <Select
-                          value={formData.previousClass || ""}
+                          value={formData.previousClass || (detectedProgram === "bs" ? "12th" : "10th")}
                           onValueChange={(v: any) =>
                             setFormData(prev => ({ ...prev, previousClass: v }))
                           }
@@ -5099,8 +5228,20 @@ function AdmissionForm({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="9th">9th Class</SelectItem>
-                            <SelectItem value="10th">10th Class</SelectItem>
+                            {detectedProgram === "bs" ? (
+                              <>
+                                <SelectItem value="12th">12th Class (F.Sc / ICS / I.Com - Part 2)</SelectItem>
+                                <SelectItem value="ADP">ADP / B.Sc (Associate Degree Lateral Entry)</SelectItem>
+                                <SelectItem value="11th">11th Class (Inter Part-1)</SelectItem>
+                                <SelectItem value="DAE">DAE (3-Year Technical Diploma)</SelectItem>
+                                <SelectItem value="10th">10th Class (Matric)</SelectItem>
+                              </>
+                            ) : (
+                              <>
+                                <SelectItem value="10th">10th Class (Matric)</SelectItem>
+                                <SelectItem value="9th">9th Class</SelectItem>
+                              </>
+                            )}
                           </SelectContent>
                         </Select>
                       </FormFieldWrapper>
@@ -5392,6 +5533,36 @@ function AdmissionForm({
                             />
                           </div>
                         </FormFieldWrapper>
+                        <FormFieldWrapper
+                          label={
+                            <div className="flex items-center justify-between">
+                              <span>Previous Arrears (پچھلا بقایا جات)</span>
+                              <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md font-bold border border-amber-200">
+                                Bakaya-jat
+                              </span>
+                            </div>
+                          }
+                        >
+                          <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
+                              Rs.
+                            </span>
+                            <Input
+                              type="number"
+                              placeholder="0"
+                              className="h-14 pl-12 rounded-2xl border-slate-200 bg-white font-black text-amber-700 focus:border-amber-500"
+                              value={formData.previousArrears || ""}
+                              onChange={(e) =>
+                                setFormData(prev => ({ ...prev, previousArrears: e.target.value }))
+                              }
+                            />
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-medium mt-1">
+                            {detectedProgram === 'bs' 
+                              ? "Outstanding dues carried over from previous semesters (S1, S2, S3, etc.)" 
+                              : "Previous unpaid balance or carry-forward arrears"}
+                          </p>
+                        </FormFieldWrapper>
                         <FormFieldWrapper label="Scholarship / Concession Category">
                           <Select
                             value={formData.concessionReason || "None"}
@@ -5422,13 +5593,31 @@ function AdmissionForm({
                           <h4 className="text-4xl font-black text-superior-gold tracking-tighter">
                             Rs. {formData.totalPackage.toLocaleString()}
                           </h4>
-                          <div className="mt-6 flex items-center gap-2 bg-white/5 p-2 rounded-xl border border-white/5">
+                          <div className="mt-4 text-xs text-white/80 space-y-1 bg-white/10 p-3 rounded-2xl border border-white/10">
+                            <div className="flex justify-between">
+                              <span className="text-white/70">Tuition Fee:</span>
+                              <span className="font-bold">Rs. {Number(formData.totalFeeFinalized || 0).toLocaleString()}</span>
+                            </div>
+                            {Number(formData.previousArrears || 0) > 0 && (
+                              <div className="flex justify-between text-amber-300 font-bold">
+                                <span>Previous Arrears (بقایا جات):</span>
+                                <span>Rs. {Number(formData.previousArrears || 0).toLocaleString()}</span>
+                              </div>
+                            )}
+                            {(Number(formData.admissionFee || 0) + Number(formData.miscFunds || 0)) > 0 && (
+                              <div className="flex justify-between text-white/70">
+                                <span>Adm & Misc Funds:</span>
+                                <span>Rs. {(Number(formData.admissionFee || 0) + Number(formData.miscFunds || 0)).toLocaleString()}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-4 flex items-center gap-2 bg-white/5 p-2 rounded-xl border border-white/5">
                             <TrendingUp
                               size={14}
                               className="text-emerald-400"
                             />
                             <span className="text-[10px] font-bold text-white/60 uppercase">
-                              Auto-calculating installments
+                              {detectedProgram === 'bs' ? `BS ${formData.category || 'Semester System'}` : 'Auto-calculating installments'}
                             </span>
                           </div>
                         </div>
@@ -5479,7 +5668,7 @@ function AdmissionForm({
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-6 p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm">
                       <FormFieldWrapper label="Billing Frequency">
                         <Select
-                          value={formData.paymentPlan || ""}
+                          value={formData.paymentPlan || (detectedProgram === "bs" ? "Semester" : "Installments")}
                           onValueChange={(v: any) =>
                             setFormData(prev => ({ ...prev, paymentPlan: v }))
                           }
@@ -5488,8 +5677,11 @@ function AdmissionForm({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="Semester">
+                              Semester System (Per-Semester Payment)
+                            </SelectItem>
                             <SelectItem value="Installments">
-                              Monthly Installments
+                              Monthly / Periodic Installments
                             </SelectItem>
                           </SelectContent>
                         </Select>
@@ -5537,57 +5729,88 @@ function AdmissionForm({
                   </div>
                 </div>
 
-                {formData.paymentPlan === "Semester" && (
-                  <div className="p-6 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-                      <div className="space-y-2">
-                        <Label>Total Semesters (کل سمسٹر)</Label>
+                {(formData.paymentPlan === "Semester" || detectedProgram === "bs") && (
+                  <div className="p-6 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-superior-teal">
+                        <GraduationCap size={16} />
+                        <span className="font-bold text-xs uppercase tracking-wider">
+                          Semester Intake & Progression Plan (سمسٹر سسٹم ترتیبات)
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] font-bold border-superior-teal/30 text-superior-teal">
+                        {detectedProgram === 'bs' ? 'BS 4-Year Degree' : 'Semester Program'}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          Total Semesters (کل سمسٹر)
+                        </Label>
                         <Input
                           type="number"
-                          value={formData.totalSemesters || 8}
+                          value={formData.totalSemesters || (detectedProgram === "bs" ? 8 : 4)}
                           onChange={(e) =>
-                            setFormData(prev => ({ ...prev, totalSemesters: Number(e.target.value), }))
+                            setFormData((prev) => ({ ...prev, totalSemesters: Number(e.target.value) }))
                           }
-                          className="h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+                          className="h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-xs font-bold"
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label>Current Semester (موجودہ سمسٹر)</Label>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          Active Semester (موجودہ سمسٹر)
+                        </Label>
                         <select
                           value={formData.currentSemester || 1}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, currentSemester: Number(e.target.value) }))
-                          }
-                          className="w-full h-11 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-superior-teal/30 cursor-pointer"
+                          onChange={(e) => {
+                            const sem = Number(e.target.value);
+                            const suffix = sem === 1 ? '1st' : sem === 2 ? '2nd' : sem === 3 ? '3rd' : `${sem}th`;
+                            const newCategory = detectedProgram === 'bs'
+                              ? `BS Semester ${suffix}${sem === 1 ? ' (Fresh Intake)' : sem === 5 ? ' (ADP Lateral Entry)' : ''}`
+                              : formData.category;
+                            setFormData((prev) => ({
+                              ...prev,
+                              currentSemester: sem,
+                              academicPart: sem > 4 ? "Part-2" : "Part-1",
+                              category: newCategory
+                            }));
+                          }}
+                          className="w-full h-11 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-superior-teal/30 cursor-pointer"
                         >
-                          {Array.from({ length: formData.totalSemesters || 8 }, (_, i) => i + 1).map((sem) => (
+                          {Array.from({ length: formData.totalSemesters || (detectedProgram === "bs" ? 8 : 4) }, (_, i) => i + 1).map((sem) => (
                             <option key={sem} value={sem} className="bg-white dark:bg-slate-900">
-                              Semester {sem} (S{sem})
+                              Semester {sem} (S{sem}){sem === 1 ? ' - Fresh Intake' : sem === 3 ? ' - 2nd Year' : sem === 5 ? ' - ADP Lateral' : sem === 7 ? ' - Final Year' : ''}
                             </option>
                           ))}
                         </select>
                       </div>
-                      <div className="space-y-2">
-                        <Label>Fee Per Semester (فی سمسٹر فیس)</Label>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          Fee Per Semester (فی سمسٹر ٹیوشن)
+                        </Label>
                         <Input
                           type="number"
                           placeholder="e.g. 45000"
-                          value={formData.feePerSemester || ""}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, feePerSemester: Number(e.target.value), }))
-                          }
-                          className="h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+                          value={formData.feePerSemester || formData.totalFeeFinalized || ""}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setFormData((prev) => ({ ...prev, feePerSemester: val, totalFeeFinalized: String(val) }));
+                          }}
+                          className="h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-xs font-bold"
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label>Next Semester Due Date</Label>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          Next Semester Due Date
+                        </Label>
                         <Input
                           type="date"
                           value={formData.nextSemesterDueDate || ""}
                           onChange={(e) =>
-                            setFormData(prev => ({ ...prev, nextSemesterDueDate: e.target.value, }))
+                            setFormData((prev) => ({ ...prev, nextSemesterDueDate: e.target.value }))
                           }
-                          className="h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+                          className="h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-xs"
                         />
                       </div>
                     </div>

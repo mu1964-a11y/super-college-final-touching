@@ -69,7 +69,7 @@ export interface Admission {
   collegeNo?: string;
   bayFormNo?: string;
   dob?: string;
-  previousClass?: '9th' | '10th';
+  previousClass?: '9th' | '10th' | '11th' | '12th' | 'ADP' | 'DAE' | string;
   boardRollNo?: string;
   category: StudentCategory;
   group: string;
@@ -79,7 +79,8 @@ export interface Admission {
   admissionFee: number;
   miscFunds?: number;
   totalFeeFinalized: number; // This will be the Tuition Fee
-  totalPackage: number; // Admission + Misc + Tuition
+  totalPackage: number; // Admission + Misc + Tuition + Arrears
+  previousArrears?: number; // Previous Semester / Session Arrears (بقایا جات)
   feeReceived: number;
   paymentPlan: 'Semester' | 'Installments';
   paidMonths?: string[]; 
@@ -123,7 +124,7 @@ export interface Student {
   collegeNo?: string;
   bayFormNo?: string;
   dob?: string;
-  previousClass?: '9th' | '10th';
+  previousClass?: '9th' | '10th' | '11th' | '12th' | 'ADP' | 'DAE' | string;
   boardRollNo?: string;
   previousMarks?: number;
   contact: string;
@@ -144,6 +145,7 @@ export interface Student {
   miscFunds?: number;
   totalFeeFinalized?: number; // Tuition Fee
   totalPackage: number;
+  previousArrears?: number; // Previous Semester Arrears (بقایا جات)
   feeReceived?: number;
   totalInstallments?: number; // 4, 10, 12 etc
   monthlyFee: number; // This is the Installment Amount

@@ -2169,6 +2169,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
     admissionFee: student.admissionFee || 0,
     miscFunds: student.miscFunds || 0,
     totalFeeFinalized: student.totalFeeFinalized || 0,
+    previousArrears: (student as any).previousArrears ? Number((student as any).previousArrears) : 0,
     totalInstallments: student.totalInstallments || 12,
     monthlyFee: student.monthlyFee || 0,
     subjects: [...(student.subjects || [])],
@@ -2179,8 +2180,17 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
     session: student.session || '',
     sessionStartDate: student.sessionStartDate || '',
     sessionEndDate: student.sessionEndDate || '',
-    academicPart: student.academicPart || 'Part-1'
+    academicPart: student.academicPart || 'Part-1',
+    programType: student.programType || 'Yearly',
+    currentSemester: student.currentSemester || 1,
+    totalSemesters: student.totalSemesters || 8,
   });
+
+  const isBS = React.useMemo(() => {
+    const grp = (formData.group || student.group || '').toLowerCase();
+    const cat = (formData.category || student.category || '').toLowerCase();
+    return grp.includes('bs') || grp.includes('b.s') || grp.includes('bba') || grp.includes('bachelor') || cat.includes('bs');
+  }, [formData.group, formData.category, student.group, student.category]);
 
   const filteredSections = React.useMemo(() => {
     if (!data.settings?.predefinedSections) return [];
@@ -2190,24 +2200,35 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
       if (!matchesGender) return false;
 
       const sp = sec.program.toLowerCase();
-      const cat = (student.category || '').toLowerCase();
+      const cat = (formData.category || student.category || '').toLowerCase();
       
       let programMatch = false;
       if (cat.includes('inter') && sp === 'inter') programMatch = true;
-      else if (cat.includes('bs') && sp === 'bs program') programMatch = true;
+      else if ((cat.includes('bs') || isBS) && (sp === 'bs program' || sp.includes('bs'))) programMatch = true;
       else if (cat.includes('dit') && sp === 'dit') programMatch = true;
       else if (cat.includes('uk') && sp === 'uk level 3') programMatch = true;
-      else if (sp === 'other') programMatch = true;
+      else if (sp === 'other' || sp === 'all') programMatch = true;
 
       return matchesGender && programMatch;
     });
-  }, [data.settings?.predefinedSections, student.gender, student.category]);
+  }, [data.settings?.predefinedSections, student.gender, formData.category, student.category, isBS]);
 
   const handleGroupChange = (groupName: string) => {
     const group = ACADEMIC_GROUPS.find(g => g.name === groupName);
     if (group) {
-      const newSubjects = Array.from(new Set([...COMPULSORY_SUBJECTS, ...group.subjects]));
-      setFormData(prev => ({ ...prev, group: groupName, subjects: newSubjects }));
+      const lowerGroupName = groupName.toLowerCase();
+      const groupIsBS = lowerGroupName.includes('bs') || lowerGroupName.includes('b.s') || lowerGroupName.includes('bba');
+      const newSubjects = groupIsBS
+        ? Array.from(new Set(['English / Communication', 'Pakistan Studies / Ideology', 'Islamic Studies / Ethics', ...group.subjects]))
+        : Array.from(new Set([...COMPULSORY_SUBJECTS, ...group.subjects]));
+
+      setFormData(prev => ({
+        ...prev,
+        group: groupName,
+        subjects: newSubjects,
+        programType: groupIsBS ? 'Semester' : 'Yearly',
+        totalSemesters: groupIsBS ? 8 : prev.totalSemesters,
+      }));
     }
   };
 
@@ -2233,7 +2254,8 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
     const finalized = Number(formData.totalFeeFinalized);
     const adm = Number(formData.admissionFee);
     const misc = Number(formData.miscFunds);
-    const totalPkg = finalized + adm + misc;
+    const arrears = Number(formData.previousArrears || 0);
+    const totalPkg = finalized + adm + misc + arrears;
     const instCount = Number(formData.totalInstallments) || 12;
     const instAmount = Math.round(totalPkg / instCount);
     
@@ -2241,6 +2263,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
       ...formData,
       previousMarks: formData.previousMarks ? Number(formData.previousMarks) : undefined,
       totalPackage: totalPkg,
+      previousArrears: arrears,
       monthlyFee: instAmount,
       totalInstallments: instCount,
       'feeLedger.totalPackage': totalPkg
@@ -2304,23 +2327,54 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Admission Category</Label>
-            <Select value={formData.category || ""} onValueChange={(v: any) => setFormData({...formData, category: v})}>
+            <Select value={formData.category || ""} onValueChange={(v: any) => {
+              let sem = formData.currentSemester;
+              const lower = v.toLowerCase();
+              if (lower.includes("1st")) sem = 1;
+              else if (lower.includes("2nd")) sem = 2;
+              else if (lower.includes("3rd")) sem = 3;
+              else if (lower.includes("4th")) sem = 4;
+              else if (lower.includes("5th")) sem = 5;
+              else if (lower.includes("6th")) sem = 6;
+              else if (lower.includes("7th")) sem = 7;
+              else if (lower.includes("8th")) sem = 8;
+              setFormData({ ...formData, category: v, currentSemester: sem, academicPart: sem > 4 ? "Part-2" : "Part-1" });
+            }}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {(() => {
                    let cats = ['Inter Part-1 Boys', 'Inter Part-2 Boys', 'Inter Part-1 Girls', 'Inter Part-2 Girls'];
-                   const program = student.programType?.toLowerCase() || 'yearly';
-                   if (program === 'dit') cats = ['DIT Boys', 'DIT Girls'];
-                   else if (program === 'ukl3') cats = ['UK L3 Boys', 'UK L3 Girls'];
-                   else if (program === 'bs') cats = ["BS Boys", "BS Girls"];
+                   const grp = (formData.group || student.group || '').toLowerCase();
+                   const cat = (formData.category || student.category || '').toLowerCase();
+                   const isStudentBS = grp.includes('bs') || grp.includes('b.s') || grp.includes('bba') || grp.includes('bachelor') || cat.includes('bs') || isBS;
+                   const isDIT = grp.includes('dit') || cat.includes('dit');
+                   const isUK = grp.includes('uk') || cat.includes('uk');
+
+                   if (isStudentBS) {
+                     cats = [
+                       "BS Semester 1st (Fresh Intake)",
+                       "BS Semester 2nd",
+                       "BS Semester 3rd (2nd Year)",
+                       "BS Semester 4th",
+                       "BS Semester 5th (ADP Lateral Entry)",
+                       "BS Semester 6th",
+                       "BS Semester 7th (Final Year)",
+                       "BS Semester 8th",
+                       student.gender === 'Female' ? "BS Girls Campus" : "BS Boys Campus"
+                     ];
+                   } else if (isDIT) {
+                     cats = ['DIT Part-1', 'DIT Part-2', student.gender === 'Female' ? 'DIT Girls' : 'DIT Boys'];
+                   } else if (isUK) {
+                     cats = ['UK Level 3 Year-1', 'UK Level 3 Year-2', student.gender === 'Female' ? 'UK L3 Girls' : 'UK L3 Boys'];
+                   } else {
+                     if (student.gender === 'Male') cats = cats.filter(c => c.toLowerCase().includes("boys"));
+                     else if (student.gender === 'Female') cats = cats.filter(c => c.toLowerCase().includes("girls"));
+                   }
                    
-                   if (student.gender === 'Male') cats = cats.filter(c => c.toLowerCase().includes("boys"));
-                   else if (student.gender === 'Female') cats = cats.filter(c => c.toLowerCase().includes("girls"));
-                   
-                   return cats.map(cat => (
-                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                   return cats.map(c => (
+                     <SelectItem key={c} value={c}>{c}</SelectItem>
                    ));
                 })()}
               </SelectContent>
@@ -2335,7 +2389,16 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
             <Input value={formData.fatherName || ""} onChange={e => setFormData({...formData, fatherName: e.target.value})} />
           </div>
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 col-span-2 space-y-4">
-            <h4 className="text-xs font-black text-superior-teal uppercase tracking-widest">Academic & Identity Details</h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-black text-superior-teal uppercase tracking-widest">
+                Academic & Identity Details {isBS && "· BS 4-Year System"}
+              </h4>
+              {isBS && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                  Semester Mode Active
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>College Roll #</Label>
@@ -2374,33 +2437,71 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
                 <Input type="date" value={formData.dob || ""} onChange={e => setFormData({...formData, dob: e.target.value})} className="bg-white" />
               </div>
               <div className="space-y-2">
-                <Label>Previous Class</Label>
-                <Select value={formData.previousClass || "10th"} onValueChange={v => setFormData({...formData, previousClass: v as any})}>
+                <Label>{isBS ? "Previous Qualification" : "Previous Class"}</Label>
+                <Select value={formData.previousClass || (isBS ? "12th" : "10th")} onValueChange={v => setFormData({...formData, previousClass: v as any})}>
                   <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="9th">9th Class</SelectItem>
-                    <SelectItem value="10th">10th Class (Matric)</SelectItem>
+                    {isBS ? (
+                      <>
+                        <SelectItem value="12th">12th Class (F.Sc / ICS / I.Com - Part 2)</SelectItem>
+                        <SelectItem value="ADP">ADP / B.Sc (Lateral Entry)</SelectItem>
+                        <SelectItem value="11th">11th Class (Inter Part-1)</SelectItem>
+                        <SelectItem value="DAE">DAE (3-Year Technical Diploma)</SelectItem>
+                        <SelectItem value="10th">10th Class (Matric)</SelectItem>
+                      </>
+                    ) : (
+                      <>
+                        <SelectItem value="9th">9th Class</SelectItem>
+                        <SelectItem value="10th">10th Class (Matric)</SelectItem>
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>SSC / Matric Marks</Label>
+                <Label>{isBS ? "Obtained Marks (Inter/ADP)" : "SSC / Matric Marks"}</Label>
                 <Input type="number" value={formData.previousMarks || ""} onChange={e => setFormData({...formData, previousMarks: e.target.value})} placeholder="Obtained Marks" className="bg-white" />
               </div>
               <div className="space-y-2">
-                <Label>Board Roll #</Label>
-                <Input value={formData.boardRollNo || ""} onChange={e => setFormData({...formData, boardRollNo: e.target.value})} placeholder="Matric Roll #" className="bg-white" />
+                <Label>{isBS ? "Board / Uni Roll #" : "Board Roll #"}</Label>
+                <Input value={formData.boardRollNo || ""} onChange={e => setFormData({...formData, boardRollNo: e.target.value})} placeholder="Roll #" className="bg-white" />
               </div>
-              <div className="space-y-2">
-                <Label>Academic Stage</Label>
-                <Select value={formData.academicPart || "Part-1"} onValueChange={v => setFormData({...formData, academicPart: v as any})}>
-                  <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Part-1">Inter Part-1</SelectItem>
-                    <SelectItem value="Part-2">Inter Part-2</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {isBS ? (
+                <div className="space-y-2">
+                  <Label>Current Semester (موجودہ سمسٹر)</Label>
+                  <Select
+                    value={String(formData.currentSemester || 1)}
+                    onValueChange={(v) => {
+                      const sem = Number(v);
+                      const suffix = sem === 1 ? '1st' : sem === 2 ? '2nd' : sem === 3 ? '3rd' : `${sem}th`;
+                      setFormData(prev => ({
+                        ...prev,
+                        currentSemester: sem,
+                        academicPart: sem > 4 ? "Part-2" : "Part-1",
+                        category: `BS Semester ${suffix}${sem === 1 ? ' (Fresh Intake)' : sem === 5 ? ' (ADP Lateral Entry)' : ''}`
+                      }));
+                    }}
+                  >
+                    <SelectTrigger className="bg-white font-bold text-superior-teal"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
+                        <SelectItem key={s} value={String(s)}>Semester {s} (S{s})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label>Academic Stage</Label>
+                  <Select value={formData.academicPart || "Part-1"} onValueChange={v => setFormData({...formData, academicPart: v as any})}>
+                    <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Part-1">Inter Part-1</SelectItem>
+                      <SelectItem value="Part-2">Inter Part-2</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Session (Academic Period)</Label>
                 <Select value={formData.session || ""} onValueChange={v => setFormData({...formData, session: v})}>
@@ -2421,17 +2522,64 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Contact Number</Label>
-            <Input value={formData.contact || ""} onChange={e => setFormData({...formData, contact: e.target.value})} />
+            <Label className="font-bold text-xs">Student Contact Number</Label>
+            <Input value={formData.contact || ""} onChange={e => setFormData({...formData, contact: e.target.value})} placeholder="03xx-xxxxxxx" />
           </div>
           <div className="space-y-2">
-            <Label>Monthly Installment (Auto-Calc)</Label>
-            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-lg font-black text-superior-teal">
-              Rs. {Math.round((Number(formData.totalFeeFinalized || 0) + Number(formData.admissionFee || 0) + Number(formData.miscFunds || 0)) / (formData.totalInstallments || 1)).toLocaleString()}
+            <Label className="flex items-center justify-between font-bold text-xs">
+              <span>Guardian WhatsApp Contact</span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200">
+                <MessageSquare size={10} className="text-emerald-500 fill-emerald-500/20" />
+                WhatsApp Active
+              </span>
+            </Label>
+            <div className="relative">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-emerald-600">
+                <MessageSquare size={14} className="fill-emerald-500/20" />
+              </div>
+              <Input
+                className="pl-9 font-mono text-sm border-slate-200 focus:border-emerald-500"
+                placeholder="03xx-xxxxxxx (Father/Guardian)"
+                value={formData.fatherContact || ""}
+                onChange={e => setFormData({...formData, fatherContact: e.target.value})}
+              />
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Total Installments Plan (Months)</Label>
+            <Label>Tuition Fee (Total / Semester)</Label>
+            <Input type="number" value={formData.totalFeeFinalized || ""} onChange={e => setFormData({...formData, totalFeeFinalized: Number(e.target.value)})} />
+          </div>
+          <div className="space-y-2">
+            <Label className="flex items-center justify-between">
+              <span>Previous Arrears (پچھلا بقایا جات)</span>
+              <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md font-bold border border-amber-200">
+                Bakaya-jat
+              </span>
+            </Label>
+            <Input
+              type="number"
+              placeholder="0"
+              className="font-bold text-amber-700 border-amber-200 focus:border-amber-400"
+              value={formData.previousArrears || ""}
+              onChange={e => setFormData({...formData, previousArrears: Number(e.target.value)})}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Admission Fee</Label>
+            <Input type="number" value={formData.admissionFee || ""} onChange={e => setFormData({...formData, admissionFee: Number(e.target.value)})} />
+          </div>
+          <div className="space-y-2">
+            <Label>Misc Funds</Label>
+            <Input type="number" value={formData.miscFunds || ""} onChange={e => setFormData({...formData, miscFunds: Number(e.target.value)})} />
+          </div>
+          <div className="space-y-2">
+            <Label>Installment / Month Dues (Auto-Calc)</Label>
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-lg font-black text-superior-teal">
+              Rs. {Math.round((Number(formData.totalFeeFinalized || 0) + Number(formData.admissionFee || 0) + Number(formData.miscFunds || 0) + Number(formData.previousArrears || 0)) / (formData.totalInstallments || 1)).toLocaleString()}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Total Installments Plan</Label>
             <Select value={String(formData.totalInstallments ?? 12)} onValueChange={(v) => setFormData({...formData, totalInstallments: Number(v)})}>
               <SelectTrigger>
                 <SelectValue />
@@ -2442,18 +2590,6 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
                 ))}
               </SelectContent>
             </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Tuition Fee (Total)</Label>
-            <Input type="number" value={formData.totalFeeFinalized || ""} onChange={e => setFormData({...formData, totalFeeFinalized: Number(e.target.value)})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Admission Fee</Label>
-            <Input type="number" value={formData.admissionFee || ""} onChange={e => setFormData({...formData, admissionFee: Number(e.target.value)})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Misc Funds</Label>
-            <Input type="number" value={formData.miscFunds || ""} onChange={e => setFormData({...formData, miscFunds: Number(e.target.value)})} />
           </div>
           <div className="space-y-2">
             <Label>Academic Group</Label>
