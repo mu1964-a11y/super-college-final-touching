@@ -153,10 +153,54 @@ export default function AdmissionsView({
     setLocalProgram(program);
   }, [program]);
 
+  const programAdmissions = useMemo(() => {
+    return (data.admissions || []).filter((a: any) => {
+      let matchesProgram = true;
+      if (localProgram && localProgram !== "all") {
+        const groupLower = (a.group || "").toLowerCase();
+        const categoryLower = (a.category || "").toLowerCase();
+        
+        const isDIT = groupLower.includes("dit") || groupLower.includes("diploma") || categoryLower.includes("dit") || categoryLower.includes("diploma");
+        const isBS = groupLower.includes("bs") || groupLower.includes("b.s") || categoryLower.includes("bs") || groupLower.includes("bba") || groupLower.includes("bachelor") || groupLower.includes("bscs") || groupLower.includes("bsit") || groupLower.includes("ads") || categoryLower.includes("ads") || groupLower.includes("adp") || categoryLower.includes("adp");
+        const isUKL3 = groupLower.includes("uk") || groupLower.includes("level 3") || groupLower.includes("l3") || categoryLower.includes("uk");
+
+        if (localProgram === "fsc")
+          matchesProgram = !isDIT && !isBS && !isUKL3;
+        else if (localProgram === "dit")
+          matchesProgram = isDIT;
+        else if (localProgram === "ukl3")
+          matchesProgram = isUKL3;
+        else if (localProgram === "bs")
+          matchesProgram = isBS;
+      }
+      return matchesProgram;
+    });
+  }, [data.admissions, localProgram]);
+
+  const summaryStats = useMemo(() => {
+    return programAdmissions.reduce(
+      (acc: any, a: any) => {
+        const received = Number(a.feeReceived ?? a.fee_received ?? 0);
+        const total = Number(a.totalPackage ?? a.total_package ?? a.totalFeeFinalized ?? 0);
+
+        if (received >= total && total > 0) {
+          acc.fullPaid++;
+        } else if (received > 0) {
+          acc.partialPaid++;
+        } else {
+          acc.unpaid++;
+        }
+
+        return acc;
+      },
+      { total: programAdmissions.length, fullPaid: 0, partialPaid: 0, unpaid: 0 },
+    );
+  }, [programAdmissions]);
+
   const photoStats = useMemo(() => {
     let withPhoto = 0;
     let missingPhoto = 0;
-    for (const a of data.admissions || []) {
+    for (const a of programAdmissions) {
       const hasP = Boolean(
         (a.photo && a.photo.trim().length > 10) ||
         ((a as any).photoUrl && (a as any).photoUrl.trim().length > 10) ||
@@ -165,11 +209,12 @@ export default function AdmissionsView({
       if (hasP) withPhoto++;
       else missingPhoto++;
     }
-    return { withPhoto, missingPhoto, total: (data.admissions || []).length };
-  }, [data.admissions]);
+    return { withPhoto, missingPhoto, total: programAdmissions.length };
+  }, [programAdmissions]);
 
   const filteredAdmissions = useMemo(() => {
-    return data.admissions
+    const baseList = debouncedSearch.trim() ? (data.admissions || []) : programAdmissions;
+    return baseList
       .filter((a: Admission) => {
         const searchClean = (debouncedSearch || "").trim().toLowerCase();
         const matchesSearch =
@@ -181,8 +226,9 @@ export default function AdmissionsView({
           (String(a.contactNumber || (a as any).contact || "").includes(searchClean)) ||
           (String(a.fatherContact || "").includes(searchClean)) ||
           (String(a.bayFormNo || (a as any).bay_form_no || "").includes(searchClean));
-        const received = Number(a.feeReceived || 0);
-        const total = Number(a.totalPackage || 0);
+
+        const received = Number(a.feeReceived ?? (a as any).fee_received ?? 0);
+        const total = Number(a.totalPackage ?? (a as any).total_package ?? (a as any).totalFeeFinalized ?? 0);
         let calcFeeStatus = "";
         if (received >= total && total > 0) {
           calcFeeStatus = "Full Paid";
@@ -196,13 +242,13 @@ export default function AdmissionsView({
           genderFilter === "all" || a.gender === genderFilter;
 
         let matchesProgram = true;
-        // When searching by query, search across all programs so results are never hidden by active tab
-        if (!searchClean && localProgram && localProgram !== "all") {
+        // When searching by query across all admissions, apply program filter if active
+        if (debouncedSearch.trim() && localProgram && localProgram !== "all") {
           const groupLower = (a.group || "").toLowerCase();
           const categoryLower = (a.category || "").toLowerCase();
           
           const isDIT = groupLower.includes("dit") || groupLower.includes("diploma") || categoryLower.includes("dit") || categoryLower.includes("diploma");
-          const isBS = groupLower.includes("bs") || groupLower.includes("b.s") || categoryLower.includes("bs") || groupLower.includes("bba") || groupLower.includes("bachelor") || groupLower.includes("bscs") || groupLower.includes("bsit");
+          const isBS = groupLower.includes("bs") || groupLower.includes("b.s") || categoryLower.includes("bs") || groupLower.includes("bba") || groupLower.includes("bachelor") || groupLower.includes("bscs") || groupLower.includes("bsit") || groupLower.includes("ads") || categoryLower.includes("ads") || groupLower.includes("adp") || categoryLower.includes("adp");
           const isUKL3 = groupLower.includes("uk") || groupLower.includes("level 3") || groupLower.includes("l3") || categoryLower.includes("uk");
 
           if (localProgram === "fsc")
@@ -223,7 +269,7 @@ export default function AdmissionsView({
         statusStr === "Confirmed" ||
         statusStr === "Full Paid" ||
         statusStr === "Partial Paid" ||
-        Number(a.feeReceived) > 0;
+        received > 0;
         
         const matchesAdmitted =
           admittedFilter === "all" ||
@@ -265,6 +311,7 @@ export default function AdmissionsView({
         return 0;
       });
   }, [
+    programAdmissions,
     data.admissions,
     debouncedSearch,
     feeFilter,
@@ -274,50 +321,6 @@ export default function AdmissionsView({
     sortBy,
     localProgram,
   ]);
-
-  const programAdmissions = useMemo(() => {
-    return (data.admissions || []).filter((a: any) => {
-      let matchesProgram = true;
-      if (localProgram && localProgram !== "all") {
-        const groupLower = (a.group || "").toLowerCase();
-        const categoryLower = (a.category || "").toLowerCase();
-        
-        const isDIT = groupLower.includes("dit") || groupLower.includes("diploma") || categoryLower.includes("dit") || categoryLower.includes("diploma");
-        const isBS = groupLower.includes("bs") || groupLower.includes("b.s") || categoryLower.includes("bs") || groupLower.includes("bba") || groupLower.includes("bachelor") || groupLower.includes("bscs") || groupLower.includes("bsit");
-        const isUKL3 = groupLower.includes("uk") || groupLower.includes("level 3") || groupLower.includes("l3") || categoryLower.includes("uk");
-
-        if (localProgram === "fsc")
-          matchesProgram = !isDIT && !isBS && !isUKL3;
-        else if (localProgram === "dit")
-          matchesProgram = isDIT;
-        else if (localProgram === "ukl3")
-          matchesProgram = isUKL3;
-        else if (localProgram === "bs")
-          matchesProgram = isBS;
-      }
-      return matchesProgram;
-    });
-  }, [data.admissions, localProgram]);
-
-  const summaryStats = useMemo(() => {
-    return programAdmissions.reduce(
-      (acc: any, a: any) => {
-        const received = Number(a.feeReceived || 0);
-        const total = Number(a.totalPackage || 0);
-
-        if (received >= total && total > 0) {
-          acc.fullPaid++;
-        } else if (received > 0) {
-          acc.partialPaid++;
-        } else {
-          acc.unpaid++;
-        }
-
-        return acc;
-      },
-      { total: programAdmissions.length, fullPaid: 0, partialPaid: 0, unpaid: 0 },
-    );
-  }, [programAdmissions]);
 
   const programStats = useMemo(() => {
     return programAdmissions.reduce(
@@ -1203,9 +1206,12 @@ export default function AdmissionsView({
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setLocalProgram(tab.id)}
+                onClick={() => {
+                  setLocalProgram(tab.id);
+                  setCurrentPage(1);
+                }}
                 className={cn(
-                  "px-2.5 py-1 rounded-lg font-bold transition-all whitespace-nowrap",
+                  "px-2.5 py-1 rounded-lg font-bold transition-all whitespace-nowrap cursor-pointer",
                   (localProgram || 'all') === tab.id
                     ? "bg-white dark:bg-slate-700 text-superior-teal dark:text-superior-gold shadow-xs"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
@@ -2123,7 +2129,7 @@ export default function AdmissionsView({
       {data.admissions.length > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 mt-4 border-t border-slate-100 pb-8">
           <p className="text-sm font-bold text-slate-500">
-            Showing {visibleAdmissions.length} of {filteredAdmissions.length} Admissions {data.admissions.length !== filteredAdmissions.length ? `(Total: ${data.admissions.length})` : ''} 
+            Showing {visibleAdmissions.length} of {filteredAdmissions.length} Admissions {localProgram && localProgram !== 'all' ? `(${programTitle} Total: ${programAdmissions.length})` : data.admissions.length !== filteredAdmissions.length ? `(Total: ${data.admissions.length})` : ''} 
             {totalPages > 1 && ` | Page ${currentPage} of ${totalPages}`}
           </p>
           {totalPages > 1 && (

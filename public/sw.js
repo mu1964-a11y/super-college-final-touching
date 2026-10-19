@@ -1,5 +1,5 @@
 // Superior College Jahanian - Lightweight PWA Service Worker
-const CACHE_NAME = 'scj-gate-kiosk-cache-v2';
+const CACHE_NAME = 'scj-gate-kiosk-cache-v4';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -27,6 +27,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
+            console.log('[SW] Deleting old cache:', key);
             return caches.delete(key);
           }
         })
@@ -44,10 +45,26 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Network-First for HTML navigation requests (ensures instant deployment updates, offline fallback)
+  if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || caches.match('/index.html')))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Return cached, and fetch update in background (stale-while-revalidate)
+        // Return cached, and fetch update in background (stale-while-revalidate for static assets)
         fetch(event.request).then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
@@ -56,7 +73,6 @@ self.addEventListener('fetch', (event) => {
         return cachedResponse;
       }
       return fetch(event.request).catch(() => {
-        // Fallback to cached index.html for navigation requests
         if (event.request.mode === 'navigate') {
           return caches.match('/index.html');
         }
