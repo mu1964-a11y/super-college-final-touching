@@ -27,6 +27,7 @@ import {
   Phone,
   Receipt,
   FileText,
+  FileSpreadsheet,
   MessageSquare,
   Fingerprint
 } from 'lucide-react';
@@ -411,52 +412,469 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
     }
   };
 
-  const handleExportPDF = () => {
-    const doc = new jsPDF('l', 'pt', 'a4');
-    const title = `Students List - ${programFilter !== 'all' ? programFilter : 'All Programs'} ${sectionFilter !== 'all' ? '- Section ' + sectionFilter : ''}`;
-    doc.text(title, 40, 40);
-    
-    autoTable(doc, {
-      startY: 50,
-      head: [['ID', 'Name', 'Father Name', 'Gender', 'Group', 'Class', 'Section', 'Contact']],
-      body: filteredStudents.map((s: any) => [
-        s.id,
-        isNewStudent(s) ? `${s.fullName} [NEW]` : s.fullName,
-        s.fatherName,
-        s.gender,
-        s.group,
-        s.category,
-        s.section || 'N/A',
-        s.parentContact || 'N/A'
-      ]),
-      theme: 'grid',
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [5, 59, 50], textColor: [255, 255, 255] }
+  const loadLogoBase64 = async (customUrl?: string): Promise<string | null> => {
+    if (customUrl && customUrl.startsWith('data:image')) return customUrl;
+    const target = customUrl || '/superior-logo.png';
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(null), 1500);
+      const img = new Image();
+      img.crossOrigin = 'Anonymous';
+      img.onload = () => {
+        clearTimeout(timer);
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || 120;
+          canvas.height = img.naturalHeight || 120;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+            return;
+          }
+          resolve(null);
+        } catch {
+          resolve(null);
+        }
+      };
+      img.onerror = () => {
+        clearTimeout(timer);
+        resolve(null);
+      };
+      img.src = target;
     });
-    
-    doc.save(`Students_Export_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
-  const handleExportExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(filteredStudents.map((s: any) => ({
-      'ID': s.id,
-      'Name': isNewStudent(s) ? `${s.fullName} [NEW]` : s.fullName,
-      'Father Name': s.fatherName,
-      'DOB': s.dob || 'N/A',
-      'Gender': s.gender,
-      'Group': s.group,
-      'Class': s.category,
-      'Section': s.section || 'N/A',
-      'Session': s.session || 'N/A',
-      'Parent Contact': s.parentContact || 'N/A',
-      'Address': s.address || 'N/A',
-      'Blood Group': s.bloodGroup || 'N/A',
-      'Admission Date': s.admissionDate || 'N/A'
-    })));
-    
+  const getExportStudentList = (scope: 'filtered' | 'all' | 'selected' = 'filtered') => {
+    if (scope === 'selected') {
+      return (mergedStudents || []).filter((s: any) => selectedStudents.includes(s.id));
+    }
+    if (scope === 'all') {
+      return mergedStudents || [];
+    }
+    return filteredStudents || [];
+  };
+
+  const handleExportPDF = async ({
+    mode = 'directory',
+    exportScope = 'filtered'
+  }: {
+    mode: 'directory' | 'financial';
+    exportScope?: 'filtered' | 'all' | 'selected';
+  }) => {
+    const listToExport = getExportStudentList(exportScope);
+    if (!listToExport || listToExport.length === 0) {
+      toast.error("No student records found to export!");
+      return;
+    }
+
+    const toastId = toast.loading(`Generating official ${mode === 'financial' ? 'Student Financial Ledger' : 'Student Directory'} PDF...`);
+
+    try {
+      const doc = new jsPDF('landscape', 'pt', 'a4');
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+
+      // 1. Fetch official college crest / logo
+      const logoBase64 = await loadLogoBase64(data?.settings?.logo);
+
+      // 2. Top Royal Header
+      const headerHeight = 64;
+      doc.setFillColor(6, 78, 67); // Superior Teal #064e43
+      doc.rect(0, 0, pageWidth, headerHeight, 'F');
+
+      // Gold Accent Ribbon
+      doc.setFillColor(212, 175, 55); // #d4af37 Gold
+      doc.rect(0, headerHeight, pageWidth, 2.5, 'F');
+
+      // Logo rendering on the left
+      let textStartX = 24;
+      if (logoBase64) {
+        try {
+          const logoCenterX = 44;
+          const logoCenterY = 32;
+          const logoRadius = 21;
+          
+          doc.setFillColor(255, 255, 255);
+          doc.circle(logoCenterX, logoCenterY, logoRadius, 'F');
+          doc.setDrawColor(212, 175, 55);
+          doc.setLineWidth(1.2);
+          doc.circle(logoCenterX, logoCenterY, logoRadius, 'S');
+          
+          doc.addImage(logoBase64, 'PNG', logoCenterX - 16, logoCenterY - 16, 32, 32);
+          textStartX = 78;
+        } catch (err) {
+          console.warn('Logo embed warning:', err);
+        }
+      }
+
+      // College Title
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(15);
+      doc.setTextColor(255, 255, 255);
+      const collegeTitle = (data?.settings?.collegeName || "SUPERIOR GROUP OF COLLEGES JAHANIAN").toUpperCase();
+      doc.text(collegeTitle, textStartX, 22);
+
+      // Document Subtitle
+      doc.setFontSize(9.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(212, 175, 55); // Gold
+      const docTitle = mode === 'financial'
+        ? "STUDENT FINANCIAL LEDGER & FEE RECOVERY MASTER REPORT"
+        : "OFFICIAL STUDENT ACADEMIC & ENROLLMENT DIRECTORY";
+      doc.text(docTitle, textStartX, 36);
+
+      // Sub-metadata Line
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(226, 232, 240); // Silver slate
+      const sessionLabel = data?.settings?.academicSession || "Session 2026-28";
+      const campusName = (data?.settings?.campusName || "Jahanian Campus").toUpperCase();
+      const dateFormatted = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      const programLabel = programFilter !== 'all' ? `Program: ${programFilter.toUpperCase()}` : 'All Programs';
+      const sectionLabel = sectionFilter !== 'all' ? `Section: ${sectionFilter}` : '';
+      const scopeLabel = exportScope === 'selected' 
+        ? `Scope: Selected (${listToExport.length} Students)` 
+        : exportScope === 'all' 
+          ? `Scope: Full College Roster (${listToExport.length} Students)` 
+          : `Scope: Filtered View (${listToExport.length} Students)`;
+      
+      const metaText = `Campus: ${campusName}  |  ${sessionLabel}  |  ${programLabel}  ${sectionLabel ? `|  ${sectionLabel}  ` : ''}|  ${scopeLabel}  |  Issued: ${dateFormatted}`;
+      doc.text(metaText, textStartX, 50);
+
+      // Right Badge Pill
+      const badgeW = 135;
+      const badgeH = 22;
+      const badgeX = pageWidth - badgeW - 24;
+      const badgeY = 21;
+      if (mode === 'financial') {
+        doc.setFillColor(153, 27, 27); // Rich Burgundy
+        doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 4, 4, 'F');
+        doc.setDrawColor(254, 202, 202);
+        doc.setLineWidth(0.8);
+        doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 4, 4, 'S');
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(255, 255, 255);
+        doc.text("ACCOUNTS CONFIDENTIAL", badgeX + badgeW / 2, badgeY + 14, { align: 'center' });
+      } else {
+        doc.setFillColor(8, 90, 78); // Teal
+        doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 4, 4, 'F');
+        doc.setDrawColor(212, 175, 55); // Gold
+        doc.setLineWidth(0.8);
+        doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 4, 4, 'S');
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(212, 175, 55);
+        doc.text("ACADEMIC ROSTER", badgeX + badgeW / 2, badgeY + 14, { align: 'center' });
+      }
+
+      let head: string[][] = [];
+      let body: any[][] = [];
+      let foot: string[][] = [];
+      let columnStyles: Record<string | number, any> = {};
+
+      if (mode === 'directory') {
+        // Academic & General Roster (NO FEES)
+        head = [[
+          'Sr #',
+          'Student ID',
+          'College #',
+          'Student Full Name',
+          'Father Name',
+          'Gender',
+          'Group / Degree',
+          'Class / Stage',
+          'Sec',
+          'Contact / WhatsApp',
+          'Bay Form / CNIC'
+        ]];
+
+        body = listToExport.map((s: any, idx: number) => [
+          String(idx + 1),
+          s.id || s.studentId || '-',
+          s.collegeNo || (s as any).college_no || '-',
+          isNewStudent(s) ? `${s.fullName} [NEW]` : (s.fullName || '-'),
+          s.fatherName || '-',
+          s.gender || '-',
+          s.group || '-',
+          s.category || '-',
+          s.section && s.section !== '-' ? s.section : '-',
+          s.parentContact || s.fatherContact || s.contact || s.contactNumber || '-',
+          s.bayFormNo || (s as any).bay_form_no || '-'
+        ]);
+
+        foot = [[
+          'Total',
+          '',
+          `${listToExport.length} Student(s)`,
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          ''
+        ]];
+
+        columnStyles = {
+          0: { cellWidth: 26, halign: 'center' },
+          1: { cellWidth: 65, fontStyle: 'bold', textColor: [6, 78, 67] },
+          2: { cellWidth: 50, halign: 'center' },
+          3: { cellWidth: 105, fontStyle: 'bold' },
+          4: { cellWidth: 95 },
+          5: { cellWidth: 42, halign: 'center' },
+          6: { cellWidth: 90 },
+          7: { cellWidth: 80 },
+          8: { cellWidth: 32, halign: 'center' },
+          9: { cellWidth: 80 },
+          10: { cellWidth: 75 }
+        };
+      } else {
+        // Financial Ledger & Recovery Sheet (WITH FEES & REMAINING)
+        let totalGrossPkg = 0;
+        let totalGrossPaid = 0;
+        let totalGrossRem = 0;
+
+        listToExport.forEach((s: any) => {
+          const pkg = Number(s.totalPackage || s.total_package || s.feeLedger?.totalPackage || s.totalFeeFinalized || 0);
+          const paid = Number(s.feeReceived || s.fee_received || s.feeLedger?.totalReceived || 0);
+          const rem = Math.max(0, pkg - paid);
+          totalGrossPkg += pkg;
+          totalGrossPaid += paid;
+          totalGrossRem += rem;
+        });
+
+        head = [[
+          'Sr #',
+          'Student ID',
+          'Student Full Name',
+          'Father Name',
+          'Program & Group',
+          'Sec',
+          'Contact / Phone',
+          'Total Fee (Rs)',
+          'Paid (Rs)',
+          'Remaining (Rs)',
+          'Fee Status'
+        ]];
+
+        body = listToExport.map((s: any, idx: number) => {
+          const pkg = Number(s.totalPackage || s.total_package || s.feeLedger?.totalPackage || s.totalFeeFinalized || 0);
+          const paid = Number(s.feeReceived || s.fee_received || s.feeLedger?.totalReceived || 0);
+          const rem = Math.max(0, pkg - paid);
+          const status = pkg > 0 && paid >= pkg ? 'Full Paid' : paid > 0 ? 'Partial Paid' : 'Unpaid';
+
+          return [
+            String(idx + 1),
+            s.id || s.studentId || '-',
+            isNewStudent(s) ? `${s.fullName} [NEW]` : (s.fullName || '-'),
+            s.fatherName || '-',
+            `${s.group || ''} ${s.category ? `(${s.category})` : ''}`.trim() || '-',
+            s.section && s.section !== '-' ? s.section : '-',
+            s.parentContact || s.fatherContact || s.contact || s.contactNumber || '-',
+            `Rs. ${pkg.toLocaleString()}`,
+            `Rs. ${paid.toLocaleString()}`,
+            `Rs. ${rem.toLocaleString()}`,
+            status
+          ];
+        });
+
+        foot = [[
+          'Total',
+          '',
+          `${listToExport.length} Student(s)`,
+          '',
+          '',
+          '',
+          '',
+          `Rs. ${totalGrossPkg.toLocaleString()}`,
+          `Rs. ${totalGrossPaid.toLocaleString()}`,
+          `Rs. ${totalGrossRem.toLocaleString()}`,
+          ''
+        ]];
+
+        columnStyles = {
+          0: { cellWidth: 26, halign: 'center' },
+          1: { cellWidth: 68, fontStyle: 'bold', textColor: [6, 78, 67] },
+          2: { cellWidth: 105, fontStyle: 'bold' },
+          3: { cellWidth: 95 },
+          4: { cellWidth: 110 },
+          5: { cellWidth: 30, halign: 'center' },
+          6: { cellWidth: 78 },
+          7: { cellWidth: 70, halign: 'right' },
+          8: { cellWidth: 70, halign: 'right', fontStyle: 'bold', textColor: [6, 78, 67] },
+          9: { cellWidth: 75, halign: 'right', fontStyle: 'bold', textColor: [180, 83, 9] },
+          10: { cellWidth: 60, halign: 'center', fontStyle: 'bold' }
+        };
+      }
+
+      autoTable(doc, {
+        startY: 76,
+        head,
+        body,
+        foot,
+        theme: 'grid',
+        styles: {
+          fontSize: 7.5,
+          cellPadding: 3.5,
+          valign: 'middle',
+          lineColor: [226, 232, 240],
+          lineWidth: 0.5,
+        },
+        headStyles: {
+          fillColor: mode === 'financial' ? [8, 90, 78] : [6, 78, 67],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 8,
+          halign: 'center',
+        },
+        footStyles: {
+          fillColor: [241, 245, 249],
+          textColor: [15, 23, 42],
+          fontStyle: 'bold',
+          fontSize: 8,
+        },
+        columnStyles,
+        didDrawPage: (dataHook) => {
+          const str = `Page ${dataHook.pageNumber} of ${doc.getNumberOfPages()}`;
+          doc.setFontSize(7.5);
+          doc.setTextColor(148, 163, 184);
+          doc.text("Official Computer-Generated Document · Superior College ERP System", 36, pageHeight - 18);
+          doc.text(str, pageWidth - 36, pageHeight - 18, { align: 'right' });
+        }
+      });
+
+      const fileName = mode === 'financial'
+        ? `Students_Fee_Ledger_${exportScope}_${new Date().toISOString().split('T')[0]}.pdf`
+        : `Students_Directory_${exportScope}_${new Date().toISOString().split('T')[0]}.pdf`;
+
+      doc.save(fileName);
+      toast.dismiss(toastId);
+      toast.success(`Exported ${listToExport.length} students to official PDF (${mode === 'financial' ? 'Fee Ledger' : 'Directory'})!`);
+    } catch (err) {
+      console.error("PDF export error:", err);
+      toast.dismiss(toastId);
+      toast.error("Failed to generate PDF document.");
+    }
+  };
+
+  const handleExportExcel = (mode: 'directory' | 'financial' = 'directory', exportScope: 'filtered' | 'all' | 'selected' = 'filtered') => {
+    const listToExport = getExportStudentList(exportScope);
+    if (!listToExport || listToExport.length === 0) {
+      toast.error("No student records found to export!");
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(listToExport.map((s: any, idx: number) => {
+      const pkg = Number(s.totalPackage || s.total_package || s.feeLedger?.totalPackage || s.totalFeeFinalized || 0);
+      const paid = Number(s.feeReceived || s.fee_received || s.feeLedger?.totalReceived || 0);
+      const rem = Math.max(0, pkg - paid);
+      const arrears = Number((s as any).arrears || (s as any).col49Arrears || 0);
+      const status = pkg > 0 && paid >= pkg ? 'Full Paid' : paid > 0 ? 'Partial Paid' : 'Unpaid';
+
+      const record: Record<string, any> = {
+        "Sr #": idx + 1,
+        "Student ID / Roll No": s.id || s.studentId || "",
+        "College Roll No": s.collegeNo || (s as any).college_no || "",
+        "Student Full Name": isNewStudent(s) ? `${s.fullName} [NEW]` : (s.fullName || ""),
+        "Father Name": s.fatherName || "",
+        "Gender": s.gender || "",
+        "Academic Stream": s.program || s.programType || "",
+        "Academic Group": s.group || "",
+        "Class / Category": s.category || "",
+        "Section": s.section && s.section !== '-' ? s.section : "",
+        "Academic Session": s.session || "",
+        "Date of Birth": s.dob || "",
+        "Bay Form / CNIC": s.bayFormNo || (s as any).bay_form_no || "",
+        "Student Contact": s.contact || s.contactNumber || "",
+        "Father Contact / WhatsApp": s.fatherContact || s.parentContact || "",
+        "Residential Address": s.address || "",
+        "Blood Group": s.bloodGroup || "",
+        "Previous School": s.previousSchool || "",
+        "Board Roll No": s.boardRollNo || (s as any).board_roll_no || "",
+        "Matric / Previous Marks": s.previousMarks ?? (s as any).previous_marks ?? ""
+      };
+
+      if (mode === 'financial') {
+        record["Total Package Fee (Rs)"] = pkg;
+        record["Fee Paid to Date (Rs)"] = paid;
+        record["Remaining Outstanding Balance (Rs)"] = rem;
+        record["Previous Arrears (Rs)"] = arrears;
+        record["Payment Status"] = status;
+        record["Installments Count"] = s.totalInstallments || 12;
+        record["Monthly Fee Rate (Rs)"] = s.monthlyFee || 0;
+      }
+
+      return record;
+    }));
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Students");
-    XLSX.writeFile(wb, `Students_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+    const sheetTitle = mode === 'financial' ? "Fee Ledger" : "Students Directory";
+    XLSX.utils.book_append_sheet(wb, ws, sheetTitle);
+
+    const fileName = mode === 'financial'
+      ? `Students_Fee_Ledger_${exportScope}_${new Date().toISOString().split('T')[0]}.xlsx`
+      : `Students_Directory_${exportScope}_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    XLSX.writeFile(wb, fileName);
+    toast.success(`Exported ${listToExport.length} students to Excel (${sheetTitle})!`);
+  };
+
+  const handleExportCSV = (mode: 'directory' | 'financial' = 'directory', exportScope: 'filtered' | 'all' | 'selected' = 'filtered') => {
+    const listToExport = getExportStudentList(exportScope);
+    if (!listToExport || listToExport.length === 0) {
+      toast.error("No student records found to export!");
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(listToExport.map((s: any, idx: number) => {
+      const pkg = Number(s.totalPackage || s.total_package || s.feeLedger?.totalPackage || s.totalFeeFinalized || 0);
+      const paid = Number(s.feeReceived || s.fee_received || s.feeLedger?.totalReceived || 0);
+      const rem = Math.max(0, pkg - paid);
+      const arrears = Number((s as any).arrears || (s as any).col49Arrears || 0);
+      const status = pkg > 0 && paid >= pkg ? 'Full Paid' : paid > 0 ? 'Partial Paid' : 'Unpaid';
+
+      const record: Record<string, any> = {
+        "Sr #": idx + 1,
+        "Student ID / Roll No": s.id || s.studentId || "",
+        "College Roll No": s.collegeNo || (s as any).college_no || "",
+        "Student Full Name": isNewStudent(s) ? `${s.fullName} [NEW]` : (s.fullName || ""),
+        "Father Name": s.fatherName || "",
+        "Gender": s.gender || "",
+        "Academic Stream": s.program || s.programType || "",
+        "Academic Group": s.group || "",
+        "Class / Category": s.category || "",
+        "Section": s.section && s.section !== '-' ? s.section : "",
+        "Academic Session": s.session || "",
+        "Bay Form / CNIC": s.bayFormNo || (s as any).bay_form_no || "",
+        "Contact Number": s.contact || s.contactNumber || "",
+        "Father Contact": s.fatherContact || s.parentContact || "",
+      };
+
+      if (mode === 'financial') {
+        record["Total Fee (Rs)"] = pkg;
+        record["Paid (Rs)"] = paid;
+        record["Remaining Balance (Rs)"] = rem;
+        record["Arrears (Rs)"] = arrears;
+        record["Status"] = status;
+      }
+
+      return record;
+    }));
+
+    const csv = XLSX.utils.sheet_to_csv(ws);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Students_Export_${mode === 'financial' ? 'FeeLedger' : 'Directory'}_${exportScope}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success(`Exported ${listToExport.length} students to CSV!`);
   };
 
   const toggleSelectStudent = (id: string) => {
@@ -651,22 +1069,103 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            <Button 
-              onClick={handleExportPDF} 
-              variant="outline" 
-              size="sm"
-              className="h-7.5 px-2.5 rounded-xl border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:text-rose-600 hover:bg-rose-50 font-bold text-[10px] uppercase gap-1"
-            >
-              <Download size={12} className="text-rose-500" /> PDF
-            </Button>
-            <Button 
-              onClick={handleExportExcel} 
-              variant="outline" 
-              size="sm"
-              className="h-7.5 px-2.5 rounded-xl border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:text-emerald-600 hover:bg-emerald-50 font-bold text-[10px] uppercase gap-1"
-            >
-              <Download size={12} className="text-emerald-500" /> Excel
-            </Button>
+            {/* Comprehensive Export Reports Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger render={
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-7.5 px-3 rounded-xl border-slate-200/90 dark:border-slate-800 hover:border-superior-teal/40 text-slate-700 dark:text-slate-200 hover:bg-emerald-50/50 dark:hover:bg-slate-800 text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                >
+                  <Download size={13} className="text-superior-teal dark:text-emerald-400" />
+                  <span>Export Reports</span>
+                </Button>
+              } />
+              <DropdownMenuContent align="end" className="w-80 p-2.5 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 z-50">
+                {/* Category 1: Academic & General Directory (NO FEES) */}
+                <div className="px-2 py-1.5 text-[10.5px] font-black tracking-wider text-emerald-800 dark:text-emerald-400 uppercase flex items-center justify-between bg-emerald-50/70 dark:bg-emerald-950/40 rounded-lg mb-1">
+                  <span className="flex items-center gap-1.5">
+                    <FileText size={13} className="text-emerald-700 dark:text-emerald-400" />
+                    1. Students Roster (General)
+                  </span>
+                  <span className="text-[9px] bg-white dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded font-black border border-emerald-200 dark:border-emerald-700">NO FEES</span>
+                </div>
+                <DropdownMenuItem onClick={() => handleExportPDF({ mode: 'directory', exportScope: 'filtered' })} className="rounded-xl py-2 cursor-pointer text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-emerald-50/60 dark:hover:bg-slate-800">
+                  <FileText size={15} className="mr-2 text-emerald-600" />
+                  PDF Roster (Filtered - {filteredStudents.length} Students)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportPDF({ mode: 'directory', exportScope: 'all' })} className="rounded-xl py-2 cursor-pointer text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-emerald-50/60 dark:hover:bg-slate-800">
+                  <FileText size={15} className="mr-2 text-teal-700 dark:text-teal-400" />
+                  PDF Roster (All Students - {mergedStudents.length} Students)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportExcel('directory', 'filtered')} className="rounded-xl py-1.5 cursor-pointer text-xs text-slate-600 dark:text-slate-300">
+                  <FileSpreadsheet size={14} className="mr-2 text-emerald-600" />
+                  Excel Roster (No Fees - Filtered)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportExcel('directory', 'all')} className="rounded-xl py-1.5 cursor-pointer text-xs text-slate-600 dark:text-slate-300">
+                  <FileSpreadsheet size={14} className="mr-2 text-teal-700" />
+                  Excel All Students Master Roster
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportCSV('directory', 'filtered')} className="rounded-xl py-1.5 cursor-pointer text-xs text-slate-600 dark:text-slate-300">
+                  <Download size={14} className="mr-2 text-emerald-600" />
+                  CSV Student Roster (Filtered)
+                </DropdownMenuItem>
+
+                <Separator className="my-2" />
+
+                {/* Category 2: Fee Ledger & Financial Recovery (WITH FEES & REMAINING) */}
+                <div className="px-2 py-1.5 text-[10.5px] font-black tracking-wider text-amber-900 dark:text-amber-400 uppercase flex items-center justify-between bg-amber-50/80 dark:bg-amber-950/40 rounded-lg mb-1">
+                  <span className="flex items-center gap-1.5">
+                    <CreditCard size={13} className="text-amber-700 dark:text-amber-400" />
+                    2. Fee Ledger & Recovery
+                  </span>
+                  <span className="text-[9px] bg-white dark:bg-amber-900 text-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded font-black border border-amber-200 dark:border-amber-700">WITH FEES & BALANCES</span>
+                </div>
+                <DropdownMenuItem onClick={() => handleExportPDF({ mode: 'financial', exportScope: 'filtered' })} className="rounded-xl py-2 cursor-pointer text-xs font-bold text-amber-900 dark:text-amber-300 hover:bg-amber-50/60 dark:hover:bg-slate-800">
+                  <CreditCard size={15} className="mr-2 text-amber-600" />
+                  PDF Fee Ledger (Filtered - {filteredStudents.length} Students)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportPDF({ mode: 'financial', exportScope: 'all' })} className="rounded-xl py-2 cursor-pointer text-xs font-bold text-amber-900 dark:text-amber-300 hover:bg-amber-50/60 dark:hover:bg-slate-800">
+                  <CreditCard size={15} className="mr-2 text-amber-700" />
+                  PDF Master Fee Ledger (All Students)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportExcel('financial', 'filtered')} className="rounded-xl py-1.5 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <FileSpreadsheet size={14} className="mr-2 text-amber-600" />
+                  Excel Fee Ledger (Filtered - With Dues)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportExcel('financial', 'all')} className="rounded-xl py-1.5 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <FileSpreadsheet size={14} className="mr-2 text-amber-700" />
+                  Excel Master Fee Ledger (All Students)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportCSV('financial', 'filtered')} className="rounded-xl py-1.5 cursor-pointer text-xs text-slate-600 dark:text-slate-300">
+                  <Download size={14} className="mr-2 text-amber-600" />
+                  CSV Fee Ledger (With Balances)
+                </DropdownMenuItem>
+
+                {/* Category 3: Export Selected Students (If checked) */}
+                {selectedStudents.length > 0 && (
+                  <>
+                    <Separator className="my-2" />
+                    <div className="px-2 py-1 text-[10px] font-black tracking-widest text-indigo-700 dark:text-indigo-400 uppercase bg-indigo-50/80 dark:bg-indigo-950/40 rounded-lg mb-1 flex items-center justify-between">
+                      <span>Selected Candidates</span>
+                      <span className="font-black text-indigo-900 dark:text-indigo-200">{selectedStudents.length} Students</span>
+                    </div>
+                    <DropdownMenuItem onClick={() => handleExportPDF({ mode: 'directory', exportScope: 'selected' })} className="rounded-xl py-1.5 cursor-pointer text-xs font-bold text-indigo-900 dark:text-indigo-300">
+                      <FileText size={14} className="mr-2 text-indigo-600" />
+                      PDF Selected (No Fees)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExportPDF({ mode: 'financial', exportScope: 'selected' })} className="rounded-xl py-1.5 cursor-pointer text-xs font-bold text-indigo-900 dark:text-indigo-300">
+                      <CreditCard size={14} className="mr-2 text-indigo-600" />
+                      PDF Selected (With Fees & Balances)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExportExcel('financial', 'selected')} className="rounded-xl py-1.5 cursor-pointer text-xs font-semibold text-indigo-800 dark:text-indigo-300">
+                      <FileSpreadsheet size={14} className="mr-2 text-indigo-600" />
+                      Excel Selected (With Fees)
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button 
               onClick={() => handleOpenBulkWhatsAppModal()} 
               size="sm"
@@ -842,6 +1341,14 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
               className="h-8 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 font-bold text-[9px] uppercase tracking-wider px-3 shadow-sm gap-1 flex items-center"
             >
               <MessageSquare size={12} /> WhatsApp ({selectedStudents.length})
+            </Button>
+            <Button 
+              onClick={() => handleExportPDF({ mode: 'financial', exportScope: 'selected' })}
+              size="sm"
+              className="h-8 rounded-xl bg-white/20 text-white hover:bg-white/30 border border-white/20 font-bold text-[9px] uppercase tracking-wider px-3 gap-1 cursor-pointer"
+              title="Download PDF Ledger for Selected Students"
+            >
+              <Download size={12} /> Export Selected ({selectedStudents.length})
             </Button>
             <Button 
               onClick={() => setDialogType('bulk_promote')}
