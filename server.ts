@@ -1532,9 +1532,32 @@ Return strictly the raw JSON without markdown code fences.`;
     const distPath = fs.existsSync(path.join(__dirname, "dist"))
       ? path.join(__dirname, "dist")
       : path.join(process.cwd(), "dist");
-    app.use("/assets", express.static(path.join(distPath, "assets"), { maxAge: '30d' }));
-    app.use(express.static(distPath));
+
+    // Static assets with immutable content hashes can be cached safely for 30 days
+    app.use("/assets", express.static(path.join(distPath, "assets"), { maxAge: '30d', immutable: true }));
+
+    // Service Worker and app entry points must NEVER be cached by browser or proxies
+    app.get(["/sw.js", "/sw.js*"], (req, res) => {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+      res.sendFile(path.join(distPath, "sw.js"));
+    });
+
+    app.use(express.static(distPath, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith("index.html") || filePath.endsWith("sw.js") || filePath.endsWith("manifest.webmanifest") || filePath.endsWith("manifest.json")) {
+          res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+          res.setHeader("Pragma", "no-cache");
+          res.setHeader("Expires", "0");
+        }
+      }
+    }));
+
     app.get("*", (req, res) => {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

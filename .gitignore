@@ -1,6 +1,8 @@
 node_modules/
 build/
-dist/
+dist/downloads/*.exe
+dist/downloads/*.zip
+dist/downloads/*.apk
 coverage/
 .DS_Store
 *.log
