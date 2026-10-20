@@ -68,6 +68,7 @@ export function useStudentsOperations(ctx: any) {
           section: updates.section,
           subjects: updates.subjects,
           contact: updates.contact,
+          father_contact: updates.fatherContact || (updates as any).parentContact,
           email: updates.email,
           blood_group: updates.bloodGroup,
           address: updates.address,

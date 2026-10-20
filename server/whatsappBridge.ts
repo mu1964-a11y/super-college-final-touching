@@ -3698,6 +3698,8 @@ College Key Info:
   // Helper to extract candidate keywords (names, identifiers) from text
   private extractCandidateKeywords(text: string): string[] {
     const stopWords = new Set([
+      // Program & educational stream acronyms (never match as student names!)
+      "bs", "cs", "it", "adp", "inter", "fsc", "ics", "icom", "fa", "dit", "ukl3", "semester", "part", "batch", "session",
       // Fees & financial terms
       "fee", "fees", "dues", "status", "baqaya", "paisa", "paise", "rupay", "installment", "ledger", "challan", "package", "balance",
       // Academic terms
@@ -3719,7 +3721,7 @@ College Key Info:
       "bhejo", "bhejna", "bhej", "send", "give", "share",
       "naam", "name", "walid", "father", "section", "sec", "class", "group", "college", "superior", "jahanian",
       "please", "plz", "sir", "madam", "bhai", "admin", "desk", "zara", "kitni", "kitna", "kitne", "kab", "kahan", "kaise", "kese",
-      "bhi", "to", "toh", "aur", "or", "kuch", "koi", "ye", "yeh", "wo", "woh"
+      "bhi", "to", "toh", "aur", "or", "kuch", "koi", "ye", "yeh", "wo", "woh", "ok", "acha", "jee", "ji", "haan"
     ]);
 
     const clean = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
@@ -3877,8 +3879,11 @@ College Key Info:
       const { data: staffList } = await supabase.from("staff").select("*");
       if (staffList && staffList.length > 0) {
         const matched = staffList.find((st: any) => {
-          const stPhone = this.normalizePhoneNumber(st.contact);
-          return stPhone && (stPhone === std || (stPhone.length >= 9 && std.endsWith(stPhone.slice(-9))));
+          const phonesToCheck = [st.contact, st.phone, st.mobile, st.whatsapp].filter(Boolean);
+          return phonesToCheck.some((p: string) => {
+            const stPhone = this.normalizePhoneNumber(p);
+            return stPhone && (stPhone === std || (stPhone.length >= 9 && std.endsWith(stPhone.slice(-9))));
+          });
         });
         if (matched) return matched;
       }
@@ -3886,8 +3891,11 @@ College Key Info:
       const { data: perms } = await supabase.from("permissions").select("*");
       if (perms && perms.length > 0) {
         const permMatched = perms.find((p: any) => {
-          const pPhone = this.normalizePhoneNumber(p.contact || p.phone);
-          return pPhone && (pPhone === std || (pPhone.length >= 9 && std.endsWith(pPhone.slice(-9))));
+          const phonesToCheck = [p.contact, p.phone, p.mobile, p.whatsapp].filter(Boolean);
+          return phonesToCheck.some((ph: string) => {
+            const pPhone = this.normalizePhoneNumber(ph);
+            return pPhone && (pPhone === std || (pPhone.length >= 9 && std.endsWith(pPhone.slice(-9))));
+          });
         });
         if (permMatched) {
           return {
@@ -4199,13 +4207,32 @@ College Key Info:
       }
     }
 
-    // 5. Roll Number / College No Match
+    // 5. Roll Number / College No Match (Strict Token & Word-Boundary Verification)
     let rollMatched = false;
-    if (explicitRoll && (expRoll.includes(explicitRoll) || explicitRoll.includes(expRoll))) {
+    const cleanRoll = expRoll.replace(/\D/g, "");
+    if (explicitRoll && (expRoll === explicitRoll.toLowerCase() || (cleanRoll && explicitRoll === cleanRoll))) {
       rollMatched = true;
-    } else {
-      const matchRollInText = inputDigits && expRoll.replace(/\D/g, "") && inputDigits.includes(expRoll.replace(/\D/g, ""));
-      if (matchRollInText) rollMatched = true;
+    } else if (cleanRoll && cleanRoll.length >= 1) {
+      // Must match as an exact whole number token in text, NOT a loose substring of 2026 or a phone number!
+      const rollTokenRegex = new RegExp(`(?:^|[^0-9])${cleanRoll}(?:[^0-9]|$)`);
+      // Critical Anti-Leak Guard: Ensure cleanRoll isn't just matching the session year (e.g. 20 in 2026/2028/2030) or a phone number!
+      const isPartOfYear = text.includes(`20${cleanRoll}`) || text.includes(`19${cleanRoll}`) || text.includes("2026") || text.includes("2028") || text.includes("2030");
+      const isPartOfPhone = inputDigits.length >= 7 && inputDigits.includes(cleanRoll) && !text.toLowerCase().includes("roll") && !text.toLowerCase().includes("id");
+
+      if (rollTokenRegex.test(text)) {
+        if (cleanRoll.length <= 2) {
+          // For short roll numbers like 1, 2, 20, strictly require explicit roll intent word or standalone digit message
+          const hasRollKeyword = /\b(roll|id|no|num|cr|rollno|roll\s*number)\b/i.test(text);
+          const isJustRollNumber = text.trim() === cleanRoll;
+          if ((hasRollKeyword || isJustRollNumber) && (!isPartOfYear || hasRollKeyword)) {
+            rollMatched = true;
+          }
+        } else {
+          if (!isPartOfPhone) {
+            rollMatched = true;
+          }
+        }
+      }
     }
 
     // 6. B-Form / CNIC Match
@@ -4391,6 +4418,23 @@ College Key Info:
         designation: principalInfo.title || "Principal / Executive Leadership",
         linkedAt: new Date().toISOString(),
       });
+    }
+
+    // Auto-bind verified Faculty / Registered Staff session with zero OTP (Air-Gap Security)
+    if (!isPrincipal && !this.verifiedUsers.has(standardPhone)) {
+      const registeredStaff = await this.findStaffByRegisteredPhone(supabase, standardPhone);
+      if (registeredStaff) {
+        this.verifiedUsers.set(standardPhone, {
+          phone: standardPhone,
+          role: registeredStaff.role || "Faculty",
+          staffId: registeredStaff.id,
+          name: registeredStaff.full_name,
+          email: registeredStaff.email,
+          designation: registeredStaff.designation || registeredStaff.role || "Faculty Member",
+          linkedAt: new Date().toISOString(),
+        });
+        await this.saveVerifiedUsers(supabase);
+      }
     }
 
     // ─── 00. IMMEDIATE FAST PING / PUNCTUATION HANDLER (< 200ms) ───
@@ -6550,8 +6594,12 @@ Baraye meherbani wo 4-digit OTP code yahan reply karein taake record share kiya 
         return await sendReply(challengeMsg, "Student Remote OTP Challenge Sent", candidate.full_name);
       } else {
         // Fallback if student record has no phone number in DB:
+        // STRICT AIR-GAP: NEVER disclose financial dues or student dossier to unknown number without strict father name + B-Form/Roll!
         const evalResult = this.evaluateVerificationCredentials(candidate, text, rawNumber, explicitRoll);
-        if (evalResult.isSatisfied) {
+        const hasStrictFatherMatch = evalResult.fatherMatched && (candidate.father_name || "").trim().length >= 3;
+        const hasStrictDualVerification = (hasStrictFatherMatch && (evalResult.rollMatched || evalResult.bayMatched)) || evalResult.bayMatched;
+
+        if (hasStrictDualVerification) {
           session.stage = "VERIFIED";
           session.verifiedStudent = candidate;
           session.candidateStudent = undefined;
@@ -6560,8 +6608,8 @@ Baraye meherbani wo 4-digit OTP code yahan reply karein taake record share kiya 
           session.failedVerificationAttempts = 0;
 
           const successGreeting = 
-`Shukriya! Aapki tasdeeq (Verification) kamyab ho chuki hai. ✅
-Hum *${candidate.full_name}* (Walid: ${candidate.father_name}, Sec: ${candidate.section || "A"}) ka official record share kar rahe hain:`;
+`Shukriya! Aapki tasdeeq (Verification) kamyab ho chuki hai. ✅ (Walid Name + B-Form/Roll)
+Hum *${candidate.full_name}* (Walid: ${candidate.father_name || "N/A"}, Sec: ${candidate.section || "A"}) ka official record share kar rahe hain:`;
 
           const detailsMsg = await this.buildStudentReply(supabase, candidate, session.pendingIntent || "general");
           const combined = `${successGreeting}\n\n${detailsMsg}`;
@@ -6581,9 +6629,16 @@ Hum *${candidate.full_name}* (Walid: ${candidate.father_name}, Sec: ${candidate.
         };
 
         const challengeMsg = 
-`Student (*${candidate.full_name}*) ka record dhoondh liya gaya hai lekin database mein contact number darj nahi hai.
-Student privacy aur hifazat ke pesh-e-nazar, tasdeeq mukammal karne ke liye baraye meherbani Walid ka Naam (Father's Name) ya Class Section (maslan: MEPB ya ICS) likh kar reply karein:`;
-        return await sendReply(challengeMsg, "Missing Phone Fallback Challenge", candidate.full_name);
+`🔒 *STUDENT PRIVACY & SECURITY GUARD*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Student *${candidate.full_name}* ka record database mein mojood hai lekin official mobile number darj nahi hai.
+
+College Data Protection Policy ke tehat kisi ghair-tasdeeq shuda number par fee dues ya private data share karna sakht mana hai.
+Tasdeeq ke liye baraye meherbani darj zail mein se maloomat faraham karein:
+• Walid Ka Mukammal Naam (Father Name)
+• Student ka B-Form / CNIC Number
+• Ya seedha College Accounts Office se rabta karein: 📞 *${this.collegeHelpline || "0331-2211147"}*`;
+        return await sendReply(challengeMsg, "Missing Phone Fallback Strict Challenge", candidate.full_name);
       }
     }
 

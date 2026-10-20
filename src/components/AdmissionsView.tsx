@@ -41,6 +41,10 @@ import {
   FileText,
   Fingerprint,
   Smartphone,
+  Building2,
+  Laptop,
+  RefreshCw,
+  ExternalLink,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
@@ -1293,7 +1297,7 @@ export default function AdmissionsView({
                 </button>
               }
             ></DialogTrigger>
-            <DialogContent className="max-w-4xl lg:max-w-5xl w-full max-h-[92vh] overflow-y-auto rounded-3xl border-none p-0 shadow-2xl">
+            <DialogContent className="max-w-6xl xl:max-w-7xl w-[96vw] max-h-[92vh] overflow-y-auto rounded-3xl border-none p-0 shadow-2xl bg-white dark:bg-slate-900">
               <div className="bg-superior-teal p-8 text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-80 h-80 bg-white/5 rounded-full -mr-40 -mt-40 blur-3xl" />
                 <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-superior-gold/10 rounded-full blur-2xl" />
@@ -2281,7 +2285,7 @@ export default function AdmissionsView({
         open={dialogType === "edit"}
         onOpenChange={(open) => !open && setDialogType(null)}
       >
-        <DialogContent className="max-w-4xl lg:max-w-5xl w-full max-h-[92vh] overflow-y-auto rounded-3xl border-none p-0 shadow-2xl">
+        <DialogContent className="max-w-6xl xl:max-w-7xl w-[96vw] max-h-[92vh] overflow-y-auto rounded-3xl border-none p-0 shadow-2xl bg-white dark:bg-slate-900">
           <div className="bg-superior-teal p-10 text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 p-8 opacity-10">
               <ScrollText size={120} />
@@ -3927,14 +3931,36 @@ function AdmissionForm({
 }) {
   const [activeTab, setActiveTab] = useState("student");
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [preSelectionComplete, setPreSelectionComplete] = useState(false);
+
+  // Stream-First Engine: Identify or prompt educational level first
+  const initialStream = React.useMemo(() => {
+    if (admission) {
+      const grp = (admission.group || "").toLowerCase();
+      const cat = (admission.category || "").toLowerCase();
+      if (grp.includes("bs") || grp.includes("b.s") || grp.includes("bba") || cat.includes("bs")) return "bs";
+      if (grp.includes("dit") || cat.includes("dit")) return "dit";
+      if (grp.includes("uk") || cat.includes("uk")) return "ukl3";
+      return "fsc";
+    }
+    if (program && program !== "all") {
+      if (program === "bs") return "bs";
+      if (program === "dit") return "dit";
+      if (program === "ukl3") return "ukl3";
+      if (program === "fsc" || program === "inter") return "fsc";
+    }
+    return null;
+  }, [admission, program]);
+
+  const [selectedStream, setSelectedStream] = useState<"fsc" | "bs" | "dit" | "ukl3" | null>(initialStream);
+  const [preSelectionComplete, setPreSelectionComplete] = useState<boolean>(Boolean(admission || initialStream));
+
   const [formData, setFormData] = useState({
     fullName: admission?.fullName || "",
     fatherName: admission?.fatherName || "",
     collegeNo: admission?.collegeNo || "",
     bayFormNo: admission?.bayFormNo || "",
     dob: admission?.dob || "",
-    previousClass: admission?.previousClass || "10th",
+    previousClass: admission?.previousClass || (initialStream === "bs" ? "12th" : "10th"),
     boardRollNo: admission?.boardRollNo || "",
     previousMarks: admission?.previousMarks ? String(admission.previousMarks) : "",
     previousInstitute: admission?.previousInstitute || "",
@@ -3943,15 +3969,15 @@ function AdmissionForm({
     admissionFee: admission?.admissionFee ? String(admission.admissionFee) : "",
     miscFunds: admission?.miscFunds ? String(admission.miscFunds) : "",
     totalFeeFinalized: admission?.totalFeeFinalized ? String(admission.totalFeeFinalized) : "", // Tuition Fee
-    previousArrears: (admission as any)?.previousArrears ? String((admission as any).previousArrears) : "0", // Previous Semester Arrears (بقایا جات)
+    previousArrears: (admission as any)?.previousArrears ? String((admission as any).previousArrears) : "0", // Previous Semester Arrears
     totalPackage: admission?.totalPackage || 0,
     feeReceived: admission?.feeReceived ? String(admission.feeReceived) : "",
-    paymentPlan: admission?.paymentPlan || "Installments",
+    paymentPlan: admission?.paymentPlan || (initialStream === "bs" ? "Semester" : "Installments"),
     paidMonths: admission?.paidMonths || ([] as string[]),
     paidInstallments: admission?.paidInstallments || 0,
-    totalInstallments: admission?.totalInstallments || 12,
+    totalInstallments: admission?.totalInstallments || (initialStream === "bs" ? 2 : 12),
     nextInstallmentDate: admission?.nextInstallmentDate || "",
-    totalSemesters: admission?.totalSemesters || 0,
+    totalSemesters: admission?.totalSemesters || (initialStream === "bs" ? 8 : 0),
     feePerSemester: admission?.feePerSemester || 0,
     nextSemesterDueDate: admission?.nextSemesterDueDate || "",
     contactNumber: admission?.contactNumber || "",
@@ -3961,25 +3987,25 @@ function AdmissionForm({
     bloodGroup: admission?.bloodGroup || "",
     reference: admission?.reference || "",
     gender: admission?.gender || "Male",
-    category: admission?.category || "Inter Part-1 Boys",
-    group: admission?.group || "",
+    category: admission?.category || (initialStream === "bs" ? "BS Semester 1st (Fresh Intake)" : "Inter Part-1 Boys"),
+    group: admission?.group || (initialStream === "bs" ? "BS Computer Science (BSCS)" : "FSC (Premedical)"),
     section: admission?.section || "",
     photo: admission?.photo || "",
     studentId: admission?.studentId || "",
     status: admission?.status || "Prospective",
-    session: admission?.session || "",
+    session: admission?.session || (initialStream === "bs" ? "2026-30" : "2026-28"),
     sessionStartDate: admission?.sessionStartDate || "",
     sessionEndDate: admission?.sessionEndDate || "",
     academicPart: admission?.academicPart || "Part-1",
-    programType: admission?.programType || "Yearly",
-    currentSemester: admission?.currentSemester || 0,
+    programType: admission?.programType || (initialStream === "bs" ? "Semester" : "Yearly"),
+    currentSemester: admission?.currentSemester || (initialStream === "bs" ? 1 : 0),
     concessionReason: admission?.concessionReason || "",
     fingerprintTemplate: admission?.fingerprintTemplate || "",
     fingerprintFinger: admission?.fingerprintFinger || "Right Thumb (دایاں انگوٹھا)",
     fingerprintEnrolledAt: admission?.fingerprintEnrolledAt || "",
   });
 
-  // Sync form data when admission changes to prevent data leak
+  // Sync form data when admission changes
   React.useEffect(() => {
     if (admission) {
       setFormData({
@@ -4156,11 +4182,12 @@ function AdmissionForm({
     }
   }, [formData.feeReceived, formData.studentId, formData.group, data, program]);
 
-  // Detect program dynamically from selected group or category
+  // Detect program dynamically with strict stream adherence
   const detectedProgram = React.useMemo(() => {
+    if (selectedStream) return selectedStream;
     const groupLower = (formData.group || "").toLowerCase();
     const categoryLower = (formData.category || "").toLowerCase();
-    if (groupLower.includes("dit") || groupLower.includes("diploma") || categoryLower.includes("dit") || categoryLower.includes("diploma")) {
+    if (groupLower.includes("dit") || groupLower.includes("diploma") || categoryLower.includes("dit")) {
       return "dit";
     }
     if (
@@ -4168,20 +4195,88 @@ function AdmissionForm({
       groupLower.includes("b.s") ||
       groupLower.includes("bba") ||
       groupLower.includes("bachelor") ||
-      groupLower.includes("bscs") ||
-      groupLower.includes("bsit") ||
       categoryLower.includes("bs")
     ) {
       return "bs";
     }
-    if (groupLower.includes("uk") || groupLower.includes("level 3") || groupLower.includes("l3") || categoryLower.includes("uk")) {
+    if (groupLower.includes("uk") || groupLower.includes("level 3") || categoryLower.includes("uk")) {
       return "ukl3";
     }
-    if (program && program !== "all") {
-      return program;
-    }
     return "fsc";
-  }, [formData.group, formData.category, program]);
+  }, [selectedStream, formData.group, formData.category]);
+
+  // Handle stream selection from Step 0 Cards
+  const handleStreamSelect = (stream: "fsc" | "bs" | "dit" | "ukl3") => {
+    setSelectedStream(stream);
+    let defaultSession = "2026-28";
+    let defaultGroup = "";
+    let defaultCategory = "";
+    let defaultSubjects: string[] = [];
+    let paymentPlan = "Installments";
+    let totalSemesters = 0;
+    let programType: "Yearly" | "Semester" = "Yearly";
+    let currentSemester = 1;
+    let prevClass = "10th";
+
+    if (stream === "bs") {
+      defaultSession = "2026-30";
+      defaultGroup = "BS Computer Science (BSCS)";
+      defaultCategory = "BS Semester 1st (Fresh Intake)";
+      paymentPlan = "Semester";
+      totalSemesters = 8;
+      programType = "Semester";
+      currentSemester = 1;
+      prevClass = "12th";
+      const bscsGroup = ACADEMIC_GROUPS.find(g => g.name.includes("BS Computer Science"));
+      defaultSubjects = bscsGroup 
+        ? Array.from(new Set(['English / Communication', 'Pakistan Studies / Ideology', 'Islamic Studies / Ethics', ...bscsGroup.subjects]))
+        : ['Programming Fundamentals', 'Calculus', 'English Composition'];
+    } else if (stream === "dit") {
+      defaultSession = "2026-27";
+      defaultGroup = "DIT";
+      defaultCategory = formData.gender === "Female" ? "DIT Girls" : "DIT Boys";
+      paymentPlan = "Semester";
+      totalSemesters = 4;
+      programType = "Semester";
+      prevClass = "10th";
+      const ditGroup = ACADEMIC_GROUPS.find(g => g.name.includes("DIT"));
+      defaultSubjects = ditGroup ? [...ditGroup.subjects] : ['Office Automation', 'Web Development'];
+    } else if (stream === "ukl3") {
+      defaultSession = "2026-28";
+      defaultGroup = "UK Level 3";
+      defaultCategory = "UK Level 3 Year-1";
+      paymentPlan = "Semester";
+      totalSemesters = 3;
+      programType = "Semester";
+      prevClass = "10th";
+      const ukGroup = ACADEMIC_GROUPS.find(g => g.name.includes("UK Level 3"));
+      defaultSubjects = ukGroup ? [...ukGroup.subjects] : ['Applied Science', 'Business Analysis'];
+    } else {
+      defaultSession = "2026-28";
+      defaultGroup = "FSC (Premedical)";
+      defaultCategory = formData.gender === "Female" ? "Inter Part-1 Girls" : "Inter Part-1 Boys";
+      paymentPlan = "Installments";
+      programType = "Yearly";
+      prevClass = "10th";
+      const fscGroup = ACADEMIC_GROUPS.find(g => g.name.includes("Premedical"));
+      defaultSubjects = fscGroup ? Array.from(new Set([...COMPULSORY_SUBJECTS, ...fscGroup.subjects])) : ['Biology', 'Physics', 'Chemistry', ...COMPULSORY_SUBJECTS];
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      session: defaultSession,
+      group: defaultGroup,
+      category: defaultCategory,
+      subjects: defaultSubjects,
+      paymentPlan,
+      totalSemesters,
+      programType,
+      currentSemester,
+      previousClass: prevClass,
+    }));
+    setPreSelectionComplete(true);
+    toast.success(`Stream Selected: ${stream.toUpperCase()}`);
+  };
 
   const categories = React.useMemo(() => {
     let result: string[] = [];
@@ -4219,21 +4314,6 @@ function AdmissionForm({
     return result;
   }, [detectedProgram, formData.gender]);
 
-  const months = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
-
   const previewRef = React.useRef<HTMLDivElement>(null);
 
   const filteredSections = React.useMemo(() => {
@@ -4266,42 +4346,21 @@ function AdmissionForm({
     });
   }, [data.settings?.predefinedSections, formData.gender, detectedProgram]);
 
-  const filteredGroups = React.useMemo(
-    () =>
-      ACADEMIC_GROUPS.filter((g) => {
-        if (!detectedProgram || detectedProgram === "all") return true;
-        const name = g.name.toLowerCase();
-        const isDIT = name.includes("dit") || name.includes("diploma");
-        const isUK = name.includes("uk") || name.includes("level 3");
-        const isBS = name.includes("bs") || name.includes("b.s") || name.includes("bba") || name.includes("bachelor");
+  // Strict Stream Isolation: Groups belong ONLY to selected educational stream
+  const filteredGroups = React.useMemo(() => {
+    return ACADEMIC_GROUPS.filter((g) => {
+      const name = g.name.toLowerCase();
+      const isDIT = name.includes("dit") || name.includes("diploma") || g.type === "Diploma";
+      const isUK = name.includes("uk") || name.includes("level 3") || g.type === "Vocational";
+      const isBS = name.includes("bs") || name.includes("b.s") || name.includes("bba") || name.includes("bachelor") || g.type === "Degree";
 
-        if (detectedProgram === "fsc") return !isDIT && !isUK && !isBS;
-        if (detectedProgram === "dit") return isDIT;
-        if (detectedProgram === "ukl3") return isUK;
-        if (detectedProgram === "bs") return isBS;
-        return true;
-      }),
-    [detectedProgram],
-  );
-
-  const filteredSubjects = React.useMemo(
-    () =>
-      SUBJECTS.filter((s: string) => {
-        if (COMPULSORY_SUBJECTS.includes(s)) return false; // Handled separately
-        if (!detectedProgram || detectedProgram === "all") return true;
-        const name = s.toLowerCase();
-        const isDIT = name.includes("dit") || name.includes("diploma") || name.includes("office automation") || name.includes("networking & hardware");
-        const isUK = name.includes("uk") || name.includes("applied science") || name.includes("business analysis") || name.includes("cyber security");
-        const isBS = name.includes("bs") || name.includes("programming fundamentals") || name.includes("data structures") || name.includes("database systems") || name.includes("software engineering") || name.includes("calculus") || name.includes("linear algebra") || name.includes("mechanics") || name.includes("electromagnetism") || name.includes("quantum") || name.includes("organic") || name.includes("inorganic") || name.includes("linguistics") || name.includes("management") || name.includes("plant") || name.includes("animal");
-
-        if (detectedProgram === "fsc") return !isDIT && !isUK && !isBS;
-        if (detectedProgram === "dit") return isDIT;
-        if (detectedProgram === "ukl3") return isUK;
-        if (detectedProgram === "bs") return isBS;
-        return true;
-      }),
-    [detectedProgram],
-  );
+      if (detectedProgram === "fsc") return !isDIT && !isUK && !isBS;
+      if (detectedProgram === "dit") return isDIT;
+      if (detectedProgram === "ukl3") return isUK;
+      if (detectedProgram === "bs") return isBS;
+      return true;
+    });
+  }, [detectedProgram]);
 
   const handleGroupChange = (groupName: string) => {
     const group = ACADEMIC_GROUPS.find((g) => g.name === groupName);
@@ -4330,9 +4389,6 @@ function AdmissionForm({
         defaultCategory = (formData.currentSemester && formData.currentSemester > 1)
           ? `BS Semester ${formData.currentSemester}${formData.currentSemester === 2 ? 'nd' : formData.currentSemester === 3 ? 'rd' : 'th'}`
           : "BS Semester 1st (Fresh Intake)";
-        toast.info(
-          `${groupName}: 8-Semester University Degree program selected.`,
-        );
       } else if (isDIT) {
         paymentPlan = "Semester";
         totalSemesters = 4;
@@ -4382,28 +4438,6 @@ function AdmissionForm({
       currentSemester: currentSem || prev.currentSemester,
       academicPart: academicPart as any
     }));
-  };
-
-  const handlePrint = async () => {
-    if (!previewRef.current) return;
-
-    const toastId = toast.loading("Preparing High-Fidelity Admission Form PDF...");
-    try {
-      await exportElementToPdf(previewRef.current, {
-        filename: `Admission-Form-${formData.fullName?.replace(/\s+/g, '_') || "Student"}`,
-        format: 'a4',
-        orientation: 'portrait',
-        pixelRatio: 2.5,
-        backgroundColor: '#ffffff',
-        marginMm: 6,
-      });
-      toast.dismiss(toastId);
-      toast.success("Admission Form downloaded successfully!");
-    } catch (err) {
-      console.error("PDF generation error:", err);
-      toast.dismiss(toastId);
-      toast.error("Failed to generate PDF");
-    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -4547,623 +4581,580 @@ function AdmissionForm({
     }
   };
 
-  const downloadPreview = async () => {
-    if (previewRef.current === null) return;
-
-    const toastId = toast.loading("Rendering High-Fidelity A4 Admission Form...");
-    try {
-      await exportElementToPdf(previewRef.current, {
-        filename: `Admission-Form-${formData.fullName?.replace(/\s+/g, '_') || "Student"}`,
-        format: 'a4',
-        orientation: 'portrait',
-        pixelRatio: 2.5,
-        backgroundColor: '#ffffff',
-        marginMm: 6,
-      });
-      toast.dismiss(toastId);
-      toast.success("Admission Form downloaded as PDF!");
-    } catch (err) {
-      console.error("Error downloading preview:", err);
-      toast.dismiss(toastId);
-      toast.error("Failed to download PDF");
-    }
-  };
-
   return (
     <div className="space-y-6">
+      {/* ─── STEP 0: STREAM-FIRST LEVEL SELECTION ─── */}
       {!preSelectionComplete ? (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500 max-w-5xl mx-auto">
-          <div className="text-center space-y-1.5 max-w-xl mx-auto">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-superior-teal/10 text-superior-teal text-[11px] font-black uppercase tracking-widest border border-superior-teal/20">
-              <Layers size={13} />
-              <span>Step 1 of 2 · Program & Intake Placement</span>
+        <div className="space-y-8 py-6 px-4 max-w-5xl mx-auto animate-in fade-in zoom-in-95 duration-400">
+          <div className="text-center space-y-2 max-w-2xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-superior-teal/10 text-superior-teal text-xs font-black uppercase tracking-widest border border-superior-teal/20">
+              <Sparkles size={14} className="text-superior-gold" />
+              <span>Step 1 · Select Degree & Educational Stream</span>
             </div>
-            <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
-              Admission Category & Group Setup
+            <h2 className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
+              Select Educational Stream
             </h2>
-            <p className="text-slate-500 dark:text-slate-400 text-xs font-medium leading-relaxed">
-              Configure student gender, academic program group, semester or class category, and section placement.
+            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">
+              Choose the educational level to open its tailored admission dossier with zero cross-program clutter or unrelated courses.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-            {/* 1. Gender Selection */}
-            <div className="bg-slate-50/80 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                  <Users size={14} />
-                </div>
-                <Label className="text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                  1. Gender
-                </Label>
-              </div>
-              <Select
-                value={formData.gender || ""}
-                onValueChange={(v) => {
-                  setFormData(prev => ({ ...prev, gender: v as Gender, section: undefined as any }));
-                }}
-              >
-                <SelectTrigger className="h-11 rounded-xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold text-xs shadow-xs focus:ring-superior-teal/20">
-                  <SelectValue placeholder="Choose Gender" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl p-1 shadow-xl">
-                  {["Male", "Female"].map((g) => (
-                    <SelectItem
-                      key={g}
-                      value={g}
-                      className="rounded-lg py-2 font-bold text-xs text-slate-900 dark:text-slate-100"
-                    >
-                      {g === "Male" ? "Male (Boys Campus)" : "Female (Girls Campus)"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* 2. Academic Group */}
-            <div className="bg-slate-50/80 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                  <GraduationCap size={14} />
-                </div>
-                <Label className="text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                  2. Academic Group
-                </Label>
-              </div>
-              <Select
-                value={formData.group || ""}
-                onValueChange={handleGroupChange}
-              >
-                <SelectTrigger className="h-11 rounded-xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold text-xs shadow-xs focus:ring-superior-teal/20 text-left truncate">
-                  <SelectValue placeholder="Choose Program Group" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl p-1 max-h-[320px] shadow-2xl min-w-[280px]">
-                  {filteredGroups.map((group) => (
-                    <SelectItem
-                      key={group.name}
-                      value={group.name}
-                      className="rounded-lg py-2 focus:bg-superior-teal/10"
-                    >
-                      <div className="flex flex-col text-left">
-                        <span className="font-bold text-xs text-slate-900 dark:text-slate-100">
-                          {group.name}
-                        </span>
-                        <span className="text-[9px] text-slate-400 uppercase tracking-wider font-black">
-                          {group.type}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* 3. Class Category / Semester */}
-            <div className="bg-slate-50/80 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                  <Layers size={14} />
-                </div>
-                <Label className="text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                  {detectedProgram === "bs" ? "3. BS Semester" : "3. Class Category"}
-                </Label>
-              </div>
-              <Select
-                value={formData.category || ""}
-                onValueChange={handleCategoryChange}
-              >
-                <SelectTrigger className="h-11 rounded-xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold text-xs shadow-xs focus:ring-superior-teal/20 text-left truncate">
-                  <SelectValue placeholder="Select Category" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl p-1 max-h-[320px] shadow-2xl min-w-[240px]">
-                  {categories.map((cat) => (
-                    <SelectItem
-                      key={cat}
-                      value={cat}
-                      className="rounded-lg py-2 font-bold text-xs"
-                    >
-                      {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* 4. Section */}
-            <div className="bg-slate-50/80 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
-                  <School size={14} />
-                </div>
-                <Label className="text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                  4. Section
-                </Label>
-              </div>
-              <Select
-                key={`section-select-${formData.gender}-${detectedProgram}`}
-                value={formData.section || ""}
-                onValueChange={(v) => {
-                  const sectionObj = (
-                    data?.settings?.predefinedSections || []
-                  ).find((s: any) => s.name === v);
-                  const newSession =
-                    sectionObj?.class ||
-                    formData.session ||
-                    data?.settings?.academicSession ||
-                    "2026-28";
-                  setFormData(prev => ({ ...prev, section: v, session: newSession }));
-                }}
-              >
-                <SelectTrigger className="h-11 rounded-xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold text-xs shadow-xs focus:ring-superior-teal/20">
-                  <SelectValue placeholder="Select Section" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl p-1 max-h-[260px] shadow-2xl">
-                  {filteredSections.map((sec: any) => (
-                    <SelectItem
-                      key={sec.id}
-                      value={sec.name}
-                      className="rounded-lg py-2 font-bold text-xs"
-                    >
-                      {sec.name} {sec.class ? `(${sec.class})` : ""}
-                    </SelectItem>
-                  ))}
-                  <SelectItem
-                    value="Other / Manual"
-                    className="rounded-lg py-2 font-bold text-xs text-slate-500"
-                  >
-                    Other / Manual Section
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Subjects Selection (If Group Selected) */}
-          {formData.group && (
-            <div className="bg-slate-50/70 dark:bg-slate-800/30 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-md bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-                    <CheckCircle2 size={13} />
-                  </div>
-                  <Label className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">
-                    Review Course Curriculum & Electives
-                  </Label>
-                </div>
-                <Badge
-                  variant="outline"
-                  className="border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-bold"
-                >
-                  {formData.group} · {detectedProgram === 'bs' ? 'BS Degree' : 'Program'}
-                </Badge>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {filteredSubjects.map((s: string) => {
-                  const isSelected = formData.subjects.includes(s);
-                  return (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => toggleSubject(s)}
-                      className={cn(
-                        "h-9 px-3 rounded-xl border transition-all text-xs font-bold flex items-center justify-between gap-1.5 text-left",
-                        isSelected
-                          ? "bg-superior-teal/10 border-superior-teal/40 text-superior-teal dark:text-emerald-400 font-extrabold shadow-xs"
-                          : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300",
-                      )}
-                    >
-                      <span className="truncate">{s}</span>
-                      <div
-                        className={cn(
-                          "w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 transition-colors",
-                          isSelected
-                            ? "bg-superior-teal border-superior-teal text-white"
-                            : "border-slate-300 dark:border-slate-600",
-                        )}
-                      >
-                        {isSelected && <CheckCircle2 size={10} className="stroke-[3]" />}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Continue Action Button */}
-          <div className="flex justify-end pt-2">
-            <Button
-              disabled={!formData.group || !formData.gender}
-              onClick={() => {
-                setPreSelectionComplete(true);
-                toast.success(
-                  "Categorization confirmed. Loading candidate dossier...",
-                );
-              }}
-              className="h-11 px-6 rounded-xl bg-superior-teal hover:bg-superior-teal/90 text-white font-black uppercase tracking-wider text-xs transition-all shadow-md shadow-superior-teal/20 flex items-center gap-2 group"
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* 1. Intermediate (HSSC) */}
+            <div
+              onClick={() => handleStreamSelect("fsc")}
+              className="group p-6 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-superior-teal hover:shadow-xl hover:shadow-superior-teal/10 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between"
             >
-              <span>Continue to Candidate Profile</span>
-              <ArrowRight
-                size={16}
-                className="group-hover:translate-x-1 transition-transform"
-              />
-            </Button>
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500" />
+              <div className="space-y-4 relative z-10">
+                <div className="flex items-center justify-between">
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform">
+                    <GraduationCap size={28} />
+                  </div>
+                  <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 text-[11px] font-black uppercase tracking-wider">
+                    BISE Multan Board
+                  </Badge>
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 group-hover:text-superior-teal transition-colors">
+                    Intermediate (F.Sc / ICS / I.Com / FA)
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1 leading-relaxed">
+                    2-Year Higher Secondary Certificate. Tailored for Matric (10th) graduates with board subjects & monthly installment options.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-2">
+                  {["F.Sc Pre-Med", "F.Sc Pre-Eng", "ICS Computer", "I.Com", "F.A."].map((badge) => (
+                    <span key={badge} className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold">
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="pt-6 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between relative z-10">
+                <span className="text-[11px] font-bold text-slate-400">Standard Session: 2026-28</span>
+                <span className="inline-flex items-center gap-1.5 text-xs font-black text-superior-teal group-hover:translate-x-1 transition-transform">
+                  Apply Intermediate <ArrowRight size={15} />
+                </span>
+              </div>
+            </div>
+
+            {/* 2. BS 4-Year University Degree & ADP Lateral */}
+            <div
+              onClick={() => handleStreamSelect("bs")}
+              className="group p-6 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-600 hover:shadow-xl hover:shadow-indigo-500/10 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between"
+            >
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500" />
+              <div className="space-y-4 relative z-10">
+                <div className="flex items-center justify-between">
+                  <div className="w-14 h-14 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform">
+                    <Building2 size={28} />
+                  </div>
+                  <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 text-[11px] font-black uppercase tracking-wider">
+                    HEC University Degree
+                  </Badge>
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 transition-colors">
+                    BS 4-Year Degree & ADP Lateral (5th Sem)
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1 leading-relaxed">
+                    Semester system (Semesters 1–8) with university syllabus. Direct 5th semester ADP Lateral entry for 14-year graduates.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-2">
+                  {["BS CS", "BS IT", "BS English", "BS Chemistry", "BS Physics", "BS Math", "BS Botany", "BS Zoology", "BBA"].map((badge) => (
+                    <span key={badge} className="px-2.5 py-1 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 text-[10px] font-bold">
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="pt-6 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between relative z-10">
+                <span className="text-[11px] font-bold text-slate-400">Sessions: 2026-30 / 2024-26 (ADP)</span>
+                <span className="inline-flex items-center gap-1.5 text-xs font-black text-indigo-600 group-hover:translate-x-1 transition-transform">
+                  Apply BS Degree <ArrowRight size={15} />
+                </span>
+              </div>
+            </div>
+
+            {/* 3. D.I.T. (Diploma in Information Technology) */}
+            <div
+              onClick={() => handleStreamSelect("dit")}
+              className="group p-6 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-sky-600 hover:shadow-xl hover:shadow-sky-500/10 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between"
+            >
+              <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500" />
+              <div className="space-y-4 relative z-10">
+                <div className="flex items-center justify-between">
+                  <div className="w-14 h-14 rounded-2xl bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-400 flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform">
+                    <Laptop size={28} />
+                  </div>
+                  <Badge className="bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950 dark:text-sky-300 text-[11px] font-black uppercase tracking-wider">
+                    PBTE Technical Board
+                  </Badge>
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 group-hover:text-sky-600 transition-colors">
+                    D.I.T. (Diploma in Information Technology)
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1 leading-relaxed">
+                    1 to 2 Years professional technical diploma. Office automation, web development, hardware, computer graphics & networking.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-2">
+                  {["Office Automation", "Web Development", "Hardware & Networking", "Computer Graphics"].map((badge) => (
+                    <span key={badge} className="px-2.5 py-1 rounded-lg bg-sky-50/70 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 text-[10px] font-bold">
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="pt-6 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between relative z-10">
+                <span className="text-[11px] font-bold text-slate-400">Technical Session: 2026-27</span>
+                <span className="inline-flex items-center gap-1.5 text-xs font-black text-sky-600 group-hover:translate-x-1 transition-transform">
+                  Apply D.I.T. <ArrowRight size={15} />
+                </span>
+              </div>
+            </div>
+
+            {/* 4. U.K. Level 3 International */}
+            <div
+              onClick={() => handleStreamSelect("ukl3")}
+              className="group p-6 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-amber-600 hover:shadow-xl hover:shadow-amber-500/10 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between"
+            >
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500" />
+              <div className="space-y-4 relative z-10">
+                <div className="flex items-center justify-between">
+                  <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform">
+                    <Globe size={28} />
+                  </div>
+                  <Badge className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 text-[11px] font-black uppercase tracking-wider">
+                    Pearson / OTHM UK
+                  </Badge>
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 group-hover:text-amber-600 transition-colors">
+                    U.K. Level 3 International Diploma
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1 leading-relaxed">
+                    Globally recognized international diploma pathway for foreign university degrees in Business & Information Technology.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-2">
+                  {["Applied Science", "Business Analysis", "Cyber Security", "IT Fundamentals"].map((badge) => (
+                    <span key={badge} className="px-2.5 py-1 rounded-lg bg-amber-50/70 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-[10px] font-bold">
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="pt-6 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between relative z-10">
+                <span className="text-[11px] font-bold text-slate-400">Intl Session: 2026-28</span>
+                <span className="inline-flex items-center gap-1.5 text-xs font-black text-amber-600 group-hover:translate-x-1 transition-transform">
+                  Apply UK Level 3 <ArrowRight size={15} />
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       ) : (
-        <>
+        <div className="space-y-6">
+          {/* Top Landscape Stream & Session Control Bar */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white flex flex-wrap items-center justify-between gap-4 border border-slate-700/60 shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                "w-11 h-11 rounded-xl flex items-center justify-center font-bold text-white shadow-md",
+                detectedProgram === "bs" ? "bg-indigo-600" :
+                detectedProgram === "dit" ? "bg-sky-600" :
+                detectedProgram === "ukl3" ? "bg-amber-600" : "bg-superior-teal"
+              )}>
+                {detectedProgram === "bs" ? <Building2 size={22} /> :
+                 detectedProgram === "dit" ? <Laptop size={22} /> :
+                 detectedProgram === "ukl3" ? <Globe size={22} /> : <GraduationCap size={22} />}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-black uppercase tracking-wider text-white">
+                    {detectedProgram === "bs" ? "BS 4-Year University Degree & ADP Lateral" :
+                     detectedProgram === "dit" ? "D.I.T. Technical Diploma" :
+                     detectedProgram === "ukl3" ? "U.K. Level 3 International" : "Intermediate (HSSC BISE)"}
+                  </span>
+                  <Badge variant="outline" className="text-[10px] font-bold border-white/20 text-white/90">
+                    {formData.gender === "Female" ? "Girls Campus" : "Boys Campus"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-white/70 font-medium">
+                  Group: <span className="text-superior-gold font-bold">{formData.group || "Not Selected"}</span> · Session: <span className="font-bold text-white">{formData.session || "2026-28"}</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <Select
+                value={formData.session || ""}
+                onValueChange={(s) => setFormData(prev => ({ ...prev, session: s }))}
+              >
+                <SelectTrigger className="h-9 w-32 rounded-xl bg-white/10 border-white/20 text-white text-xs font-bold focus:ring-0">
+                  <SelectValue placeholder="Session" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl shadow-2xl">
+                  {(data.availableSessions || [
+                    "2026-30", "2026-28", "2024-26", "2025-29", "2025-27", "2024-28", "2023-27"
+                  ]).map((sess: string) => (
+                    <SelectItem key={sess} value={sess} className="font-bold text-xs">
+                      Session {sess}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPreSelectionComplete(false)}
+                className="h-9 px-3 rounded-xl border-white/20 bg-white/10 hover:bg-white/20 text-white text-xs font-bold gap-1.5 transition-all"
+              >
+                <RefreshCw size={13} />
+                <span>Switch Stream</span>
+              </Button>
+            </div>
+          </div>
+
           <Tabs
             value={activeTab}
             onValueChange={setActiveTab}
             className="w-full"
           >
-            <TabsList className="grid grid-cols-3 w-full mb-8">
-              <TabsTrigger value="student" className="text-sm font-bold">
-                1. Student Details
+            <TabsList className="grid grid-cols-3 w-full mb-6 h-12 bg-slate-100 dark:bg-slate-800 rounded-2xl p-1.5">
+              <TabsTrigger value="student" className="rounded-xl text-xs font-bold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:shadow-sm">
+                1. Candidate & Guardian Profile
               </TabsTrigger>
-              <TabsTrigger value="subjects" className="text-sm font-bold">
-                2. Subjects & Group
+              <TabsTrigger value="subjects" className="rounded-xl text-xs font-bold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:shadow-sm">
+                2. Academic & Curriculum
               </TabsTrigger>
-              <TabsTrigger value="fees" className="text-sm font-bold">
-                3. Fee Details
+              <TabsTrigger value="fees" className="rounded-xl text-xs font-bold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:shadow-sm">
+                3. Financials & Biometrics
               </TabsTrigger>
             </TabsList>
 
-            <form onSubmit={handleSubmit} className="space-y-6 min-h-[400px]">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* ─── TAB 1: CANDIDATE & GUARDIAN PROFILE ─── */}
               <TabsContent
                 value="student"
-                className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-500"
+                className="space-y-6 animate-in fade-in duration-300"
               >
-                {/* Identity Banner */}
-                <div className="bg-slate-50 rounded-[2.5rem] p-8 border border-slate-100 flex flex-col md:flex-row items-center gap-8">
-                  <div className="relative group shrink-0">
-                    <div className="w-36 h-36 rounded-full border-4 border-dashed border-slate-200 bg-white flex flex-col items-center justify-center overflow-hidden transition-all group-hover:border-superior-teal/50 group-hover:bg-superior-teal/[0.02] shadow-inner">
-                      {formData.photo ? (
-                        <img
-                          src={formData.photo}
-                          alt=""
-                          className="w-full h-full object-cover object-[center_top] rounded-full"
-                        />
-                      ) : (
-                        <>
-                          <Camera className="text-slate-200 mb-2" size={36} />
-                          <span className="text-[9px] text-slate-400 font-black uppercase text-center px-4 leading-tight">
-                            Student
-                            <br />
-                            Photograph
-                          </span>
-                        </>
-                      )}
-                    </div>
-                    <label className="absolute inset-0 cursor-pointer">
-                      <input
-                        type="file"
-                        className="hidden"
-                        accept="image/*"
-                        onChange={handlePhotoUpload}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Left 8 columns: Identity & Communication */}
+                  <div className="lg:col-span-8 space-y-6">
+                    {/* Primary Identity Section */}
+                    <div className="bg-slate-50/70 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 space-y-4">
+                      <FormSectionHeader
+                        icon={User}
+                        title="Primary Candidate Identity"
+                        sub="Official legal credentials matching board / university documents"
                       />
-                    </label>
-                    {formData.photo && (
-                      <div className="absolute -top-2 -right-2 bg-emerald-500 text-white p-2 rounded-2xl border-4 border-white shadow-lg">
-                        <CheckCircle2 size={16} />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 space-y-3 text-center md:text-left">
-                    <h3 className="text-3xl font-black text-slate-800 uppercase tracking-tight">
-                      Candidate Profile
-                    </h3>
-                    <p className="text-sm text-slate-500 font-medium">
-                      Registering candidate for{" "}
-                      <span className="font-bold text-superior-teal">
-                        {program?.toUpperCase() || "General Admission"}
-                      </span>
-                      . Please ensure all names match official documents.
-                    </p>
-                    {formData.studentId && (
-                      <div className="inline-flex items-center gap-3 bg-emerald-50 border border-emerald-100 px-4 py-2 rounded-xl">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-xs font-black text-emerald-700 uppercase tracking-widest">
-                          Enrollment ID: {formData.studentId}
-                        </span>
-                      </div>
-                    )}
-                  </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <FormFieldWrapper label="Full Student Name" required>
+                          <Input
+                            placeholder="Student Full Name"
+                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-bold text-xs"
+                            value={formData.fullName || ""}
+                            onChange={(e) => setFormData(prev => ({ ...prev, fullName: e.target.value }))}
+                          />
+                        </FormFieldWrapper>
 
-                  {/* Biometric Thumb Impression Scanner Widget */}
-                  <div className="shrink-0 flex flex-col items-center justify-center p-4 bg-white rounded-3xl border border-slate-200/80 shadow-xs min-w-[210px]">
-                    <div className="text-center mb-2.5">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <Fingerprint size={15} className="text-superior-teal" />
-                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-800">Thumb Impression</span>
+                        <FormFieldWrapper label="Father's Full Name" required>
+                          <Input
+                            placeholder="Father's Name"
+                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-bold text-xs"
+                            value={formData.fatherName || ""}
+                            onChange={(e) => setFormData(prev => ({ ...prev, fatherName: e.target.value }))}
+                          />
+                        </FormFieldWrapper>
+
+                        <FormFieldWrapper label="B-Form / CNIC Number">
+                          <Input
+                            placeholder="38403-xxxxxxx-x"
+                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-mono text-xs"
+                            value={formData.bayFormNo || ""}
+                            onChange={(e) => setFormData(prev => ({ ...prev, bayFormNo: e.target.value }))}
+                          />
+                        </FormFieldWrapper>
+
+                        <FormFieldWrapper label="Date of Birth">
+                          <Input
+                            type="date"
+                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 text-xs"
+                            value={formData.dob || ""}
+                            onChange={(e) => setFormData(prev => ({ ...prev, dob: e.target.value }))}
+                          />
+                        </FormFieldWrapper>
+
+                        <FormFieldWrapper label="Gender / Campus">
+                          <Select
+                            value={formData.gender || "Male"}
+                            onValueChange={(v: any) => setFormData(prev => ({ ...prev, gender: v }))}
+                          >
+                            <SelectTrigger className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-bold text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                              <SelectItem value="Male">Male (Boys Campus)</SelectItem>
+                              <SelectItem value="Female">Female (Girls Campus)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FormFieldWrapper>
+
+                        <FormFieldWrapper label="Blood Group">
+                          <Select
+                            value={formData.bloodGroup || ""}
+                            onValueChange={(v) => setFormData(prev => ({ ...prev, bloodGroup: v }))}
+                          >
+                            <SelectTrigger className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 text-xs font-bold">
+                              <SelectValue placeholder="Select Blood Group" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                              {["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"].map((bg) => (
+                                <SelectItem key={bg} value={bg}>{bg}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </FormFieldWrapper>
                       </div>
-                      <span className="text-[9px] text-slate-400 font-medium">SecuGen HU20-A Scanner</span>
                     </div>
 
-                    <div
-                      className={cn(
-                        "w-24 h-28 rounded-2xl border-2 flex flex-col items-center justify-center transition-all relative overflow-hidden mb-3",
-                        formData.fingerprintTemplate
-                          ? "border-emerald-500 bg-emerald-50/60 text-emerald-700 shadow-inner"
-                          : isScanningFP
-                          ? "border-amber-400 bg-amber-50 text-amber-600 animate-pulse"
-                          : "border-dashed border-slate-300 bg-slate-50 text-slate-400"
-                      )}
-                    >
-                      {fpBmp ? (
-                        <img
-                          src={`data:image/bmp;base64,${fpBmp}`}
-                          alt="Fingerprint"
-                          className="w-full h-full object-contain p-1"
-                        />
-                      ) : formData.fingerprintTemplate ? (
-                        <div className="flex flex-col items-center justify-center text-center p-2">
-                          <Fingerprint size={40} className="text-emerald-600 mb-1" />
-                          <span className="text-[9px] font-black uppercase text-emerald-800 leading-tight">
-                            Enrolled
-                          </span>
-                          {fpQuality && (
-                            <span className="text-[8px] font-bold text-emerald-600">
-                              {fpQuality}% Quality
-                            </span>
+                    {/* Communication & Guardian WhatsApp Section */}
+                    <div className="bg-slate-50/70 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 space-y-4">
+                      <FormSectionHeader
+                        icon={MessageSquare}
+                        title="Communication & Verified WhatsApp"
+                        sub="Direct portal connectivity for fee vouchers & alerts"
+                      />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <FormFieldWrapper label="Student Mobile Number">
+                          <Input
+                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-mono text-xs"
+                            placeholder="03xx-xxxxxxx"
+                            value={formData.contactNumber || ""}
+                            onChange={(e) => setFormData(prev => ({ ...prev, contactNumber: e.target.value }))}
+                          />
+                        </FormFieldWrapper>
+
+                        <FormFieldWrapper
+                          label={
+                            <div className="flex items-center justify-between w-full">
+                              <span className="font-bold text-xs text-slate-800 dark:text-slate-100">Guardian WhatsApp Contact</span>
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-100/80 dark:bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-300">
+                                <MessageSquare size={10} className="text-emerald-600 fill-emerald-600/30" />
+                                WhatsApp Active
+                              </span>
+                            </div>
+                          }
+                          required
+                        >
+                          <div className="flex gap-2">
+                            <div className="relative flex-1">
+                              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-emerald-600">
+                                <MessageSquare size={15} />
+                              </div>
+                              <Input
+                                className="h-11 pl-9 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-mono text-xs font-bold focus:border-emerald-500"
+                                placeholder="03xx-xxxxxxx (Father WhatsApp)"
+                                value={formData.fatherContact || ""}
+                                onChange={(e) => setFormData(prev => ({ ...prev, fatherContact: e.target.value }))}
+                              />
+                            </div>
+                            {formData.fatherContact && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const clean = formData.fatherContact.replace(/[^\d]/g, "");
+                                  const intl = clean.startsWith("03") ? "92" + clean.slice(1) : clean.startsWith("92") ? clean : "92" + clean;
+                                  window.open(`https://wa.me/${intl}?text=Assalam-o-Alaikum%20from%20Superior%20College%20Jahanian!`, "_blank");
+                                }}
+                                className="h-11 px-3 rounded-xl border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-xs font-bold gap-1"
+                                title="Open WhatsApp Direct Chat"
+                              >
+                                <ExternalLink size={13} /> Test Ping
+                              </Button>
+                            )}
+                          </div>
+                        </FormFieldWrapper>
+
+                        <FormFieldWrapper label="Email Address">
+                          <Input
+                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 text-xs"
+                            placeholder="student@example.com"
+                            value={formData.email || ""}
+                            onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                          />
+                        </FormFieldWrapper>
+
+                        <FormFieldWrapper label="Admission Reference">
+                          <Input
+                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 text-xs"
+                            placeholder="Referred by (e.g. Teacher, Relative)"
+                            value={formData.reference || ""}
+                            onChange={(e) => setFormData(prev => ({ ...prev, reference: e.target.value }))}
+                          />
+                        </FormFieldWrapper>
+
+                        <FormFieldWrapper label="Full Residential Address" className="sm:col-span-2">
+                          <Input
+                            placeholder="Village / Town, Tehsil, City Address"
+                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 text-xs"
+                            value={formData.address || ""}
+                            onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                          />
+                        </FormFieldWrapper>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right 4 columns: Photo & Biometric Thumb Box */}
+                  <div className="lg:col-span-4 space-y-6">
+                    {/* Photo Box */}
+                    <div className="bg-slate-50/70 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 flex flex-col items-center justify-center text-center space-y-3">
+                      <div className="relative group">
+                        <div className="w-32 h-32 rounded-3xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col items-center justify-center overflow-hidden transition-all shadow-inner group-hover:border-superior-teal">
+                          {formData.photo ? (
+                            <img
+                              src={formData.photo}
+                              alt="Candidate Photo"
+                              className="w-full h-full object-cover object-[center_top]"
+                            />
+                          ) : (
+                            <>
+                              <Camera className="text-slate-400 mb-1.5" size={28} />
+                              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                                Upload Photo
+                              </span>
+                            </>
                           )}
                         </div>
-                      ) : isScanningFP ? (
-                        <div className="flex flex-col items-center justify-center text-center p-2">
-                          <Fingerprint size={40} className="text-amber-500 animate-bounce mb-1" />
-                          <span className="text-[8px] font-bold text-amber-700">
-                            Place Thumb...
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center text-center p-2">
-                          <Fingerprint size={38} className="text-slate-300 mb-1" />
-                          <span className="text-[9px] font-bold text-slate-400 text-center leading-tight">
-                            Thumb Not Scanned
-                          </span>
-                        </div>
-                      )}
-
-                      {formData.fingerprintTemplate && (
-                        <div className="absolute top-1.5 right-1.5 bg-emerald-500 text-white p-1 rounded-full shadow-xs">
-                          <CheckCircle2 size={12} />
-                        </div>
-                      )}
+                        <label className="absolute inset-0 cursor-pointer">
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept="image/*"
+                            onChange={handlePhotoUpload}
+                          />
+                        </label>
+                        {formData.photo && (
+                          <div className="absolute -top-2 -right-2 bg-emerald-500 text-white p-1.5 rounded-xl border-2 border-white shadow-md">
+                            <CheckCircle2 size={14} />
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">Student Photograph</h4>
+                        <p className="text-[10px] text-slate-400 font-medium">Passport size white background photo</p>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 w-full">
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={isScanningFP}
-                        onClick={handleScanThumb}
-                        className={cn(
-                          "flex-1 h-8 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all",
-                          formData.fingerprintTemplate
-                            ? "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200"
-                            : "bg-[#085a4e] hover:bg-[#064e43] text-white shadow-xs"
+                    {/* Biometric Thumb Impression Box (SecuGen) */}
+                    <div className="bg-slate-50/70 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                            <Fingerprint size={16} />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">Thumb Impression</h4>
+                            <p className="text-[10px] text-slate-400 font-medium">SecuGen HU20-A Scanner</p>
+                          </div>
+                        </div>
+                        {formData.fingerprintTemplate && (
+                          <Badge className="bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase">
+                            Enrolled {fpQuality ? `(${fpQuality}%)` : "✅"}
+                          </Badge>
                         )}
-                      >
-                        <Fingerprint size={12} className="mr-1" />
-                        {isScanningFP
-                          ? "Scanning..."
-                          : formData.fingerprintTemplate
-                          ? "Rescan"
-                          : "Scan Thumb"}
-                      </Button>
+                      </div>
 
-                      {formData.fingerprintTemplate && (
+                      {/* Thumb Visual Frame */}
+                      <div className={cn(
+                        "w-full h-36 rounded-2xl border-2 flex flex-col items-center justify-center transition-all relative overflow-hidden",
+                        formData.fingerprintTemplate
+                          ? "border-emerald-500 bg-slate-950 shadow-inner"
+                          : isScanningFP
+                          ? "border-amber-400 bg-amber-50 animate-pulse text-amber-600"
+                          : "border-dashed border-slate-300 bg-white text-slate-400"
+                      )}>
+                        {fpBmp ? (
+                          <img
+                            src={fpBmp.startsWith("data:") ? fpBmp : `data:image/bmp;base64,${fpBmp}`}
+                            alt="Fingerprint"
+                            className="w-full h-full object-contain p-2 filter contrast-125 brightness-110 drop-shadow-[0_0_4px_rgba(16,185,129,0.5)]"
+                            onError={() => setFpBmp(null)}
+                          />
+                        ) : formData.fingerprintTemplate ? (
+                          <div className="w-full h-full flex flex-col items-center justify-center relative p-2 bg-gradient-to-b from-slate-950 to-slate-900">
+                            <svg
+                              viewBox="0 0 40 48"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="w-16 h-20 text-emerald-400 stroke-current opacity-90 drop-shadow-[0_0_3px_rgba(52,211,153,0.5)]"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                            >
+                              <path d="M7 26 C7 14, 33 14, 33 26 C33 34, 28 40, 26 43" />
+                              <path d="M12 26 C12 18, 28 18, 28 26 C28 35, 23 38, 20 44" />
+                              <path d="M16 26 C16 21, 24 21, 24 26 C24 33, 21 37, 20 40" />
+                              <path d="M19 26 C19 23, 21 23, 21 26 C21 30, 20 33, 20 36" />
+                              <path d="M4 29 C4 18, 12 8, 20 8 C28 8, 36 18, 36 29" />
+                              <path d="M4 35 C5 39, 9 43, 15 44" />
+                              <path d="M36 35 C35 39, 31 43, 25 44" />
+                            </svg>
+                            <span className="text-[10px] font-black uppercase text-emerald-300 tracking-wider mt-1">
+                              Biometric Verified
+                            </span>
+                            <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.9)]" />
+                          </div>
+                        ) : isScanningFP ? (
+                          <div className="flex flex-col items-center justify-center p-3 text-center">
+                            <Fingerprint size={40} className="text-amber-500 animate-bounce mb-1" />
+                            <span className="text-[10px] font-bold text-amber-700 animate-pulse">
+                              Place Thumb firmly on SecuGen...
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center p-3 text-center">
+                            <Fingerprint size={38} className="text-slate-300 mb-1" />
+                            <span className="text-[10px] font-bold text-slate-400">
+                              Thumb Not Scanned
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Thumb Action Buttons */}
+                      <div className="flex items-center gap-2">
                         <Button
                           type="button"
                           size="sm"
-                          variant="outline"
-                          onClick={handleClearThumb}
-                          title="Clear thumb impression"
-                          className="h-8 w-8 p-0 rounded-xl text-rose-500 hover:text-rose-700 hover:bg-rose-50 border-rose-200 shrink-0"
+                          disabled={isScanningFP}
+                          onClick={handleScanThumb}
+                          className="flex-1 h-9 rounded-xl bg-superior-teal hover:bg-superior-teal/90 text-white font-bold text-xs gap-1.5 shadow-xs"
                         >
-                          <Trash2 size={12} />
+                          <Fingerprint size={14} />
+                          {isScanningFP ? "Scanning..." : formData.fingerprintTemplate ? "Rescan Thumb" : "Scan Thumb"}
                         </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                  <div className="space-y-8">
-                    <FormSectionHeader
-                      icon={User}
-                      title="Primary Identity"
-                      sub="Full legal documentation"
-                    />
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <FormFieldWrapper label="Full Name" required>
-                        <Input
-                          placeholder="Full Name"
-                          className="h-12 border-slate-200 rounded-xl focus:border-superior-teal/30"
-                          value={formData.fullName || ""}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, fullName: e.target.value, }))
-                          }
-                        />
-                      </FormFieldWrapper>
-                      <FormFieldWrapper label="Father's Name" required>
-                        <Input
-                          placeholder="Father's Name"
-                          className="h-12 border-slate-200 rounded-xl focus:border-superior-teal/30"
-                          value={formData.fatherName || ""}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, fatherName: e.target.value, }))
-                          }
-                        />
-                      </FormFieldWrapper>
-                      <FormFieldWrapper label="Date of Birth">
-                        <Input
-                          type="date"
-                          className="h-12 border-slate-200 rounded-xl"
-                          value={formData.dob || ""}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, dob: e.target.value }))
-                          }
-                        />
-                      </FormFieldWrapper>
-                      <FormFieldWrapper label="B-Form / CNIC">
-                        <Input
-                          placeholder="38403-xxxxxxx-x"
-                          className="h-12 border-slate-200 rounded-xl"
-                          value={formData.bayFormNo || ""}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, bayFormNo: e.target.value, }))
-                          }
-                        />
-                      </FormFieldWrapper>
-                      <FormFieldWrapper label="Gender">
-                        <Select
-                          disabled
-                          value={formData.gender || ""}
-                          onValueChange={(v: any) =>
-                            setFormData(prev => ({ ...prev, gender: v }))
-                          }
-                        >
-                          <SelectTrigger className="h-12 border-slate-200 rounded-xl bg-slate-50 cursor-not-allowed">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Male">Male</SelectItem>
-                            <SelectItem value="Female">Female</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </FormFieldWrapper>
-                      <FormFieldWrapper label="Blood Group">
-                        <Select
-                          value={formData.bloodGroup || ""}
-                          onValueChange={(v) =>
-                            setFormData(prev => ({ ...prev, bloodGroup: v }))
-                          }
-                        >
-                          <SelectTrigger className="h-12 border-slate-200 rounded-xl">
-                            <SelectValue placeholder="Select" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {[
-                              "A+",
-                              "A-",
-                              "B+",
-                              "B-",
-                              "O+",
-                              "O-",
-                              "AB+",
-                              "AB-",
-                            ].map((bg) => (
-                              <SelectItem key={bg} value={bg}>
-                                {bg}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FormFieldWrapper>
-                    </div>
-                  </div>
-
-                  <div className="space-y-8">
-                    <FormSectionHeader
-                      icon={CreditCard}
-                      title="Communication"
-                      sub="Emergency Contacts"
-                    />
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <FormFieldWrapper label="Student Contact" required>
-                        <Input
-                          className="h-12 border-slate-200 rounded-xl"
-                          placeholder="03xx-xxxxxxx"
-                          value={formData.contactNumber || ""}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, contactNumber: e.target.value, }))
-                          }
-                        />
-                      </FormFieldWrapper>
-                      <FormFieldWrapper
-                        label={
-                          <div className="flex items-center justify-between w-full">
-                            <span className="font-bold text-slate-700 dark:text-slate-200">Guardian WhatsApp Contact</span>
-                            <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                              <MessageSquare size={11} className="text-emerald-500 fill-emerald-500/20" />
-                              WhatsApp Active
-                            </span>
-                          </div>
-                        }
-                        required
-                      >
-                        <div className="relative">
-                          <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-emerald-600">
-                            <MessageSquare size={16} className="fill-emerald-500/20" />
-                          </div>
-                          <Input
-                            className="h-12 pl-10 border-slate-200 dark:border-slate-700 rounded-xl font-mono text-sm focus:border-emerald-500 focus:ring-emerald-500/20"
-                            placeholder="03xx-xxxxxxx (Father / Guardian WhatsApp)"
-                            value={formData.fatherContact || ""}
-                            onChange={(e) =>
-                              setFormData(prev => ({ ...prev, fatherContact: e.target.value }))
-                            }
-                          />
-                        </div>
-                        <p className="text-[10px] text-slate-400 font-medium mt-1">
-                          Official fee vouchers, attendance alerts & admission notices will be dispatched here.
-                        </p>
-                      </FormFieldWrapper>
-                      <FormFieldWrapper label="Email Address">
-                        <Input
-                          className="h-12 border-slate-200 rounded-xl"
-                          placeholder="student@example.com"
-                          value={formData.email || ""}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, email: e.target.value }))
-                          }
-                        />
-                      </FormFieldWrapper>
-                      <FormFieldWrapper label="Reference">
-                        <Input
-                          className="h-12 border-slate-200 rounded-xl"
-                          placeholder="Who referred?"
-                          value={formData.reference || ""}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, reference: e.target.value, }))
-                          }
-                        />
-                      </FormFieldWrapper>
-                      <FormFieldWrapper
-                        label="Address"
-                        className="md:col-span-2"
-                      >
-                        <Textarea
-                          placeholder="Full Residential Address"
-                          className="rounded-2xl border-slate-200 resize-none min-h-[90px] p-4"
-                          value={formData.address || ""}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, address: e.target.value, }))
-                          }
-                        />
-                      </FormFieldWrapper>
+                        {formData.fingerprintTemplate && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={handleClearThumb}
+                            className="h-9 w-9 p-0 rounded-xl text-rose-600 hover:bg-rose-50 border-rose-200"
+                            title="Clear Thumb Impression"
+                          >
+                            <Trash2 size={13} />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -5172,68 +5163,37 @@ function AdmissionForm({
                   <Button
                     type="button"
                     onClick={() => setActiveTab("subjects")}
-                    className="h-14 px-10 bg-superior-teal text-white hover:bg-superior-teal/90 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-xl shadow-superior-teal/20"
+                    className="h-11 px-8 bg-superior-teal text-white hover:bg-superior-teal/90 rounded-xl font-bold uppercase tracking-wider text-xs shadow-md shadow-superior-teal/20 gap-2"
                   >
-                    Continue to Academic History
+                    <span>Continue to Academic History</span>
+                    <ArrowRight size={15} />
                   </Button>
                 </div>
               </TabsContent>
 
+              {/* ─── TAB 2: ACADEMIC & CURRICULUM ─── */}
               <TabsContent
                 value="subjects"
-                className="space-y-10 animate-in fade-in slide-in-from-left-4 duration-500"
+                className="space-y-6 animate-in fade-in duration-300"
               >
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                  {/* Academic History */}
-                  <div className="space-y-8 group">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Column 1: Academic Background */}
+                  <div className="bg-slate-50/70 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 space-y-4">
                     <FormSectionHeader
-                      icon={Search}
-                      title="Academic History"
-                      sub={detectedProgram === "bs" ? "Previous Record (Inter / 12th / ADP)" : "Previous Record (SSC / Matric)"}
+                      icon={School}
+                      title="Prior Education"
+                      sub={detectedProgram === "bs" ? "HSSC / Inter / ADP Background" : "SSC / Matric Background"}
                     />
-                    <div className="grid grid-cols-1 gap-6 bg-slate-50/50 p-8 rounded-[2.5rem] border border-slate-100 group-hover:border-superior-teal/30 transition-colors">
-                      <FormFieldWrapper label={detectedProgram === "bs" ? "Board / University Roll #" : "SSC Board Roll #"}>
-                        <Input
-                          placeholder="Registration / Roll #"
-                          className="h-12 rounded-xl border-slate-200 bg-white"
-                          value={formData.boardRollNo || ""}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, boardRollNo: e.target.value, }))
-                          }
-                        />
-                      </FormFieldWrapper>
-                      <FormFieldWrapper label={detectedProgram === "bs" ? "Obtained Marks (out of 1100/1200)" : "SSC Obtained Marks"}>
-                        <Input
-                          type="number"
-                          placeholder="Obtained Marks"
-                          className="h-12 rounded-xl border-slate-200 bg-white"
-                          value={formData.previousMarks || ""}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, previousMarks: e.target.value, }))
-                          }
-                        />
-                      </FormFieldWrapper>
-                      <FormFieldWrapper label="Previous Institute">
-                        <Input
-                          placeholder={detectedProgram === "bs" ? "Previous College / Institution" : "School name"}
-                          className="h-12 rounded-xl border-slate-200 bg-white"
-                          value={formData.previousInstitute || ""}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, previousInstitute: e.target.value, }))
-                          }
-                        />
-                      </FormFieldWrapper>
-                      <FormFieldWrapper label="Previous Class / Degree">
+                    <div className="space-y-3.5">
+                      <FormFieldWrapper label={detectedProgram === "bs" ? "Previous Degree / Qualification" : "Previous Class"}>
                         <Select
                           value={formData.previousClass || (detectedProgram === "bs" ? "12th" : "10th")}
-                          onValueChange={(v: any) =>
-                            setFormData(prev => ({ ...prev, previousClass: v }))
-                          }
+                          onValueChange={(v: any) => setFormData(prev => ({ ...prev, previousClass: v }))}
                         >
-                          <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white">
+                          <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white dark:bg-slate-900 font-bold text-xs">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="rounded-xl">
                             {detectedProgram === "bs" ? (
                               <>
                                 <SelectItem value="12th">12th Class (F.Sc / ICS / I.Com - Part 2)</SelectItem>
@@ -5251,676 +5211,449 @@ function AdmissionForm({
                           </SelectContent>
                         </Select>
                       </FormFieldWrapper>
+
+                      <FormFieldWrapper label={detectedProgram === "bs" ? "Board / University Roll #" : "SSC Matric Roll #"}>
+                        <Input
+                          placeholder="Roll Number"
+                          className="h-11 rounded-xl border-slate-200 bg-white dark:bg-slate-900 font-mono text-xs"
+                          value={formData.boardRollNo || ""}
+                          onChange={(e) => setFormData(prev => ({ ...prev, boardRollNo: e.target.value }))}
+                        />
+                      </FormFieldWrapper>
+
+                      <FormFieldWrapper label={detectedProgram === "bs" ? "Obtained Marks / CGPA (out of 1100/1200)" : "SSC Marks (out of 1100/1200)"}>
+                        <Input
+                          type="number"
+                          placeholder="Marks obtained"
+                          className="h-11 rounded-xl border-slate-200 bg-white dark:bg-slate-900 font-bold text-xs"
+                          value={formData.previousMarks || ""}
+                          onChange={(e) => setFormData(prev => ({ ...prev, previousMarks: e.target.value }))}
+                        />
+                      </FormFieldWrapper>
+
+                      <FormFieldWrapper label={detectedProgram === "bs" ? "Previous College / Institution" : "Previous School Name"}>
+                        <Input
+                          placeholder="Institution name"
+                          className="h-11 rounded-xl border-slate-200 bg-white dark:bg-slate-900 text-xs"
+                          value={formData.previousInstitute || ""}
+                          onChange={(e) => setFormData(prev => ({ ...prev, previousInstitute: e.target.value }))}
+                        />
+                      </FormFieldWrapper>
                     </div>
                   </div>
 
-                  {/* Course Selection */}
-                  <div className="space-y-8 group">
+                  {/* Column 2: Program Intake & Section */}
+                  <div className="bg-slate-50/70 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 space-y-4">
                     <FormSectionHeader
                       icon={GraduationCap}
-                      title="Academic Placement"
-                      sub="Internal Program Entry"
+                      title="Intake & Placement"
+                      sub="College Section & Roll Allocation"
                     />
-                    <div className="grid grid-cols-1 gap-6 p-8 rounded-[2.5rem] bg-slate-50/50 border border-slate-100 group-hover:border-superior-teal/30 transition-colors">
+                    <div className="space-y-3.5">
                       <FormFieldWrapper label="Academic Group" required>
                         <Select
                           value={formData.group || ""}
-                          disabled
                           onValueChange={handleGroupChange}
                         >
-                          <SelectTrigger className="h-12 rounded-xl border-slate-200 font-bold bg-slate-50 cursor-not-allowed shadow-sm focus:ring-superior-teal">
-                            <SelectValue placeholder="Assign Group" />
+                          <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white dark:bg-slate-900 font-bold text-xs">
+                            <SelectValue placeholder="Select Group" />
                           </SelectTrigger>
-                          <SelectContent className="max-h-[300px]">
+                          <SelectContent className="max-h-[300px] rounded-xl">
                             {filteredGroups.map((g) => (
-                              <SelectItem key={g.name} value={g.name}>
+                              <SelectItem key={g.name} value={g.name} className="font-bold text-xs">
                                 {g.name}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </FormFieldWrapper>
-                      <FormFieldWrapper label="College Roll #">
-                        <div className="flex gap-2">
-                          <Input
-                            placeholder="Assign Roll #"
-                            className="h-12 rounded-xl border-slate-200 bg-white"
-                            value={formData.collegeNo || ""}
-                            onChange={(e) =>
-                              setFormData(prev => ({ ...prev, collegeNo: e.target.value, }))
-                            }
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={handleAutoSuggestRollNo}
-                            className="h-12 px-3 rounded-xl border-superior-teal/30 text-superior-teal hover:bg-superior-teal/10 shrink-0 font-bold text-xs gap-1.5"
-                            title="Auto-calculate next available Roll Number"
-                          >
-                            <Sparkles size={14} className="text-superior-gold" /> Auto Next
-                          </Button>
-                        </div>
-                      </FormFieldWrapper>
-                      <FormFieldWrapper label="Assigned Section" required>
+
+                      <FormFieldWrapper label={detectedProgram === "bs" ? "Active Semester" : "Class Category"} required>
                         <Select
-                          value={formData.section || ""}
-                          disabled
-                          onValueChange={(v) => {
-                            const sectionObj = filteredSections.find(
-                              (sec) => sec.name === v,
-                            );
-                            const newFormData = { ...formData, section: v };
-                            if (sectionObj && sectionObj.class) {
-                              newFormData.session = sectionObj.class;
-                            }
-                            setFormData(newFormData);
-                          }}
+                          value={formData.category || ""}
+                          onValueChange={handleCategoryChange}
                         >
-                          <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-slate-50 cursor-not-allowed">
-                            <SelectValue placeholder="Choose Section" />
+                          <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white dark:bg-slate-900 font-bold text-xs">
+                            <SelectValue placeholder="Select Category" />
                           </SelectTrigger>
-                          <SelectContent>
-                            {filteredSections.length === 0 ? (
-                              <SelectItem value="none" disabled>
-                                No sections configured for this gender/program
-                              </SelectItem>
-                            ) : (
-                              filteredSections.map((sec) => (
-                                <SelectItem key={sec.id} value={sec.name}>
-                                  {sec.name} ({sec.class})
-                                </SelectItem>
-                              ))
-                            )}
-                            <SelectItem value="Other / Manual">
-                              Other / Manual
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </FormFieldWrapper>
-                      {formData.section === "Other / Manual" && (
-                        <FormFieldWrapper label="Manual Section Name">
-                          <Input
-                            placeholder="e.g. Med-1"
-                            className="h-12 rounded-xl border-slate-200 bg-white"
-                            onChange={(e) =>
-                              setFormData(prev => ({ ...prev, section: e.target.value.toUpperCase(), }))
-                            }
-                          />
-                        </FormFieldWrapper>
-                      )}
-                      <FormFieldWrapper label="Academic Session" required>
-                        <Select
-                          value={formData.session || ""}
-                          onValueChange={(v: any) =>
-                            setFormData(prev => ({ ...prev, session: v }))
-                          }
-                        >
-                          <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white shadow-sm font-semibold">
-                            <SelectValue placeholder="Choose Session" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(data.availableSessions || [
-                              "2023-27", "2024-26", "2024-28", 
-                              "2025-27", "2025-29", "2026-28", 
-                              "2026-30", "2027-29", "2027-31"
-                            ]).map((sess: string) => (
-                              <SelectItem key={sess} value={sess} className="font-semibold">
-                                {sess}
+                          <SelectContent className="max-h-[300px] rounded-xl">
+                            {categories.map((c) => (
+                              <SelectItem key={c} value={c} className="font-bold text-xs">
+                                {c}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </FormFieldWrapper>
+
+                      <FormFieldWrapper label="Assigned Section" required>
+                        <Select
+                          value={formData.section || ""}
+                          onValueChange={(v) => {
+                            const sec = filteredSections.find(s => s.name === v);
+                            setFormData(prev => ({ ...prev, section: v, session: sec?.class || prev.session }));
+                          }}
+                        >
+                          <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white dark:bg-slate-900 font-bold text-xs">
+                            <SelectValue placeholder="Choose Section" />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-xl">
+                            {filteredSections.map((sec) => (
+                              <SelectItem key={sec.id} value={sec.name} className="font-bold text-xs">
+                                {sec.name} {sec.class ? `(${sec.class})` : ""}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="Other / Manual">Other / Manual Section</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormFieldWrapper>
+
+                      <FormFieldWrapper label="College Roll Number">
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Roll #"
+                            className="h-11 rounded-xl border-slate-200 bg-white dark:bg-slate-900 font-mono font-bold text-xs"
+                            value={formData.collegeNo || ""}
+                            onChange={(e) => setFormData(prev => ({ ...prev, collegeNo: e.target.value }))}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleAutoSuggestRollNo}
+                            className="h-11 px-3 rounded-xl border-superior-teal/30 text-superior-teal hover:bg-superior-teal/10 font-bold text-xs gap-1 shrink-0"
+                            title="Auto next roll number"
+                          >
+                            <Sparkles size={13} className="text-superior-gold" /> Auto Next
+                          </Button>
+                        </div>
+                      </FormFieldWrapper>
                     </div>
                   </div>
 
-                  {/* Subject Selection Area */}
-                  <div className="space-y-8 group">
+                  {/* Column 3: Course Curriculum & Subjects */}
+                  <div className="bg-slate-50/70 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 space-y-4 flex flex-col">
                     <FormSectionHeader
                       icon={Layers}
-                      title="Course Subjects"
-                      sub="Elective & Compulsory"
+                      title="Curriculum Subjects"
+                      sub="Stream & Group Specific Courses"
                     />
-                    <div className="p-8 rounded-[2.5rem] bg-slate-50/50 border border-slate-100 group-hover:border-superior-teal/30 transition-colors h-full max-h-[500px] overflow-y-auto">
-                      {!formData.group ? (
-                        <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4">
-                          <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-300">
-                            <Layers size={32} />
-                          </div>
-                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-relaxed">
-                            Select an Academic Group
-                            <br />
-                            to show subjects
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-6">
-                          <div className="space-y-3">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                              Compulsory Subjects
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {COMPULSORY_SUBJECTS.map((s) => (
-                                <Badge
-                                  key={s}
-                                  variant="outline"
-                                  className="bg-white border-slate-200 text-slate-500 font-bold px-3 py-1.5 rounded-lg capitalize"
-                                >
-                                  {s}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
+                    <div className="flex-1 space-y-3">
+                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                        Enrolled Courses ({formData.subjects.length})
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 max-h-[300px] overflow-y-auto pr-1">
+                        {formData.subjects.map((sub) => (
+                          <span
+                            key={sub}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold shadow-2xs"
+                          >
+                            <CheckCircle2 size={12} className="text-emerald-500" />
+                            <span>{sub}</span>
+                            <button
+                              type="button"
+                              onClick={() => toggleSubject(sub)}
+                              className="text-slate-400 hover:text-rose-500 ml-1 text-xs"
+                              title="Remove course"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
 
-                          <div className="space-y-3">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                              Selected Electives
-                            </p>
-                            <div className="grid grid-cols-1 gap-2">
-                              {filteredSubjects.map((s) => (
-                                <button
-                                  key={s}
-                                  type="button"
-                                  onClick={() => toggleSubject(s)}
-                                  className={cn(
-                                    "flex items-center justify-between p-3 rounded-xl border-2 transition-all text-left",
-                                    formData.subjects.includes(s)
-                                      ? "bg-superior-teal/5 border-superior-teal text-superior-teal"
-                                      : "bg-white border-slate-100 text-slate-500 hover:border-slate-200",
-                                  )}
-                                >
-                                  <span className="text-xs font-black uppercase tracking-tight">
-                                    {s}
-                                  </span>
-                                  {formData.subjects.includes(s) && (
-                                    <CheckCircle2 size={14} />
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
+                      <div className="pt-3 border-t border-slate-200/60 dark:border-slate-700/60">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                          Available Group Electives
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(() => {
+                            const groupObj = ACADEMIC_GROUPS.find(g => g.name === formData.group);
+                            const pool = groupObj ? groupObj.subjects : [];
+                            const unselected = pool.filter(s => !formData.subjects.includes(s));
+                            if (unselected.length === 0) {
+                              return <span className="text-[11px] text-slate-400 italic">All group subjects selected.</span>;
+                            }
+                            return unselected.map(s => (
+                              <button
+                                key={s}
+                                type="button"
+                                onClick={() => toggleSubject(s)}
+                                className="px-2.5 py-1 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-superior-teal hover:text-superior-teal text-[11px] font-bold transition-all"
+                              >
+                                + {s}
+                              </button>
+                            ));
+                          })()}
                         </div>
-                      )}
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex justify-between pt-8 border-t border-slate-100">
+                <div className="flex justify-between pt-4">
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="outline"
                     onClick={() => setActiveTab("student")}
-                    className="h-14 px-8 font-bold text-slate-400"
+                    className="h-11 px-6 rounded-xl font-bold text-xs"
                   >
-                    Back to profile
+                    Back to Profile
                   </Button>
                   <Button
                     type="button"
                     onClick={() => setActiveTab("fees")}
-                    className="h-14 px-10 bg-slate-800 text-white hover:bg-slate-900 rounded-2xl font-black uppercase tracking-widest text-[11px] group"
+                    className="h-11 px-8 bg-superior-teal text-white hover:bg-superior-teal/90 rounded-xl font-bold uppercase tracking-wider text-xs shadow-md shadow-superior-teal/20 gap-2"
                   >
-                    Continue to Financials
-                    <ArrowRight
-                      size={18}
-                      className="ml-2 group-hover:translate-x-1 transition-transform"
-                    />
+                    <span>Continue to Financials</span>
+                    <ArrowRight size={15} />
                   </Button>
                 </div>
               </TabsContent>
 
+              {/* ─── TAB 3: FINANCIALS & BIOMETRICS ─── */}
               <TabsContent
                 value="fees"
-                className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300"
+                className="space-y-6 animate-in fade-in duration-300"
               >
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {/* Left side: Financial Structure */}
-                  <div className="space-y-8">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 rounded-xl bg-superior-teal/10 flex items-center justify-center text-superior-teal">
-                        <CreditCard size={20} />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest">
-                          Financial Structure
-                        </h4>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                          Setup total package and payment plan
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-8 rounded-[2.5rem] bg-slate-50 border border-slate-100">
-                      <div className="space-y-6">
-                        <FormFieldWrapper label="Admission Fee" required>
-                          <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
-                              Rs.
-                            </span>
-                            <Input
-                              type="number"
-                              className="h-14 pl-12 rounded-2xl border-slate-200 bg-white font-black"
-                              value={formData.admissionFee || ""}
-                              onChange={(e) =>
-                                setFormData(prev => ({ ...prev, admissionFee: e.target.value, }))
-                              }
-                            />
-                          </div>
-                        </FormFieldWrapper>
-                        <FormFieldWrapper
-                          label="Tuition Fee (Finalized)"
-                          required
-                        >
-                          <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
-                              Rs.
-                            </span>
-                            <Input
-                              type="number"
-                              className="h-14 pl-12 rounded-2xl border-slate-200 bg-white font-black text-lg focus:border-superior-teal"
-                              value={formData.totalFeeFinalized || ""}
-                              onChange={(e) =>
-                                setFormData(prev => ({ ...prev, totalFeeFinalized: e.target.value, }))
-                              }
-                            />
-                          </div>
-                        </FormFieldWrapper>
-                        <FormFieldWrapper label="Miscellaneous Funds">
-                          <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
-                              Rs.
-                            </span>
-                            <Input
-                              type="number"
-                              className="h-14 pl-12 rounded-2xl border-slate-200 bg-white font-black"
-                              value={formData.miscFunds || ""}
-                              onChange={(e) =>
-                                setFormData(prev => ({ ...prev, miscFunds: e.target.value, }))
-                              }
-                            />
-                          </div>
-                        </FormFieldWrapper>
-                        <FormFieldWrapper
-                          label={
-                            <div className="flex items-center justify-between">
-                              <span>Previous Arrears (پچھلا بقایا جات)</span>
-                              <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md font-bold border border-amber-200">
-                                Bakaya-jat
-                              </span>
-                            </div>
-                          }
-                        >
-                          <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
-                              Rs.
-                            </span>
-                            <Input
-                              type="number"
-                              placeholder="0"
-                              className="h-14 pl-12 rounded-2xl border-slate-200 bg-white font-black text-amber-700 focus:border-amber-500"
-                              value={formData.previousArrears || ""}
-                              onChange={(e) =>
-                                setFormData(prev => ({ ...prev, previousArrears: e.target.value }))
-                              }
-                            />
-                          </div>
-                          <p className="text-[10px] text-slate-400 font-medium mt-1">
-                            {detectedProgram === 'bs' 
-                              ? "Outstanding dues carried over from previous semesters (S1, S2, S3, etc.)" 
-                              : "Previous unpaid balance or carry-forward arrears"}
-                          </p>
-                        </FormFieldWrapper>
-                        <FormFieldWrapper label="Scholarship / Concession Category">
-                          <Select
-                            value={formData.concessionReason || "None"}
-                            onValueChange={(v) =>
-                              setFormData(prev => ({ ...prev, concessionReason: v === "None" ? "" : v }))
-                            }
-                          >
-                            <SelectTrigger className="h-14 rounded-2xl border-slate-200 bg-white font-bold text-sm">
-                              <SelectValue placeholder="No Concession (Standard Fee)" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="None">Standard Package (No Discount)</SelectItem>
-                              <SelectItem value="Kinship">Kinship (Sibling Discount)</SelectItem>
-                              <SelectItem value="Merit / High Marks">Merit / 1000+ Marks Scholarship</SelectItem>
-                              <SelectItem value="Teacher Child">Teacher Child Concession</SelectItem>
-                              <SelectItem value="Need-based / Orphan">Need-based / Orphan Scholarship</SelectItem>
-                              <SelectItem value="Management Discretion">Management Discretion / Special</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </FormFieldWrapper>
-                      </div>
-
-                      <div className="space-y-6">
-                        <div className="p-8 rounded-[2rem] bg-slate-900 text-white shadow-xl relative overflow-hidden">
-                          <p className="text-[10px] text-white/50 font-black uppercase tracking-widest mb-1">
-                            Total Package
-                          </p>
-                          <h4 className="text-4xl font-black text-superior-gold tracking-tighter">
-                            Rs. {formData.totalPackage.toLocaleString()}
-                          </h4>
-                          <div className="mt-4 text-xs text-white/80 space-y-1 bg-white/10 p-3 rounded-2xl border border-white/10">
-                            <div className="flex justify-between">
-                              <span className="text-white/70">Tuition Fee:</span>
-                              <span className="font-bold">Rs. {Number(formData.totalFeeFinalized || 0).toLocaleString()}</span>
-                            </div>
-                            {Number(formData.previousArrears || 0) > 0 && (
-                              <div className="flex justify-between text-amber-300 font-bold">
-                                <span>Previous Arrears (بقایا جات):</span>
-                                <span>Rs. {Number(formData.previousArrears || 0).toLocaleString()}</span>
-                              </div>
-                            )}
-                            {(Number(formData.admissionFee || 0) + Number(formData.miscFunds || 0)) > 0 && (
-                              <div className="flex justify-between text-white/70">
-                                <span>Adm & Misc Funds:</span>
-                                <span>Rs. {(Number(formData.admissionFee || 0) + Number(formData.miscFunds || 0)).toLocaleString()}</span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="mt-4 flex items-center gap-2 bg-white/5 p-2 rounded-xl border border-white/5">
-                            <TrendingUp
-                              size={14}
-                              className="text-emerald-400"
-                            />
-                            <span className="text-[10px] font-bold text-white/60 uppercase">
-                              {detectedProgram === 'bs' ? `BS ${formData.category || 'Semester System'}` : 'Auto-calculating installments'}
-                            </span>
-                          </div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Column 1: Financial Structure */}
+                  <div className="bg-slate-50/70 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 space-y-4">
+                    <FormSectionHeader
+                      icon={CreditCard}
+                      title="Fee Structure"
+                      sub={detectedProgram === "bs" ? "Semester Package Setup" : "Annual Package Setup"}
+                    />
+                    <div className="space-y-3.5">
+                      <FormFieldWrapper label={detectedProgram === "bs" ? "Semester Tuition Fee" : "Tuition Fee (Finalized)"} required>
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">Rs.</span>
+                          <Input
+                            type="number"
+                            className="h-11 pl-10 rounded-xl border-slate-200 bg-white dark:bg-slate-900 font-black text-sm"
+                            value={formData.totalFeeFinalized || ""}
+                            onChange={(e) => setFormData(prev => ({ ...prev, totalFeeFinalized: e.target.value }))}
+                          />
                         </div>
+                      </FormFieldWrapper>
 
-                        <FormFieldWrapper
-                          label="Immediate Payment (Received)"
-                          required
-                          className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100"
-                        >
-                          <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300 font-bold text-sm">
-                              Rs.
-                            </span>
-                            <Input
-                              type="number"
-                              className="h-14 pl-12 rounded-2xl border-emerald-200 bg-white text-xl font-black text-emerald-700"
-                              placeholder="0.00"
-                              value={formData.feeReceived || ""}
-                              onChange={(e) =>
-                                setFormData(prev => ({ ...prev, feeReceived: e.target.value, }))
-                              }
-                            />
+                      <FormFieldWrapper label="Admission Fee">
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">Rs.</span>
+                          <Input
+                            type="number"
+                            className="h-11 pl-10 rounded-xl border-slate-200 bg-white dark:bg-slate-900 font-black text-xs"
+                            value={formData.admissionFee || ""}
+                            onChange={(e) => setFormData(prev => ({ ...prev, admissionFee: e.target.value }))}
+                          />
+                        </div>
+                      </FormFieldWrapper>
+
+                      <FormFieldWrapper
+                        label={
+                          <div className="flex items-center justify-between w-full">
+                            <span>Previous Arrears (پچھلا بقایا جات)</span>
+                            <span className="text-[9px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-md font-bold">Arrears</span>
                           </div>
-                          <p className="text-[10px] text-emerald-600 font-black uppercase tracking-wider mt-3 px-1">
-                            Triggers Enrollment & ID Allotment
-                          </p>
-                        </FormFieldWrapper>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right side: Billing Strategy */}
-                  <div className="space-y-8">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-                        <TrendingUp size={20} />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest">
-                          Installment Plan
-                        </h4>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                          Bifurcation of remaining dues
+                        }
+                      >
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">Rs.</span>
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            className="h-11 pl-10 rounded-xl border-slate-200 bg-white dark:bg-slate-900 font-black text-xs text-amber-700"
+                            value={formData.previousArrears || ""}
+                            onChange={(e) => setFormData(prev => ({ ...prev, previousArrears: e.target.value }))}
+                          />
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                          {detectedProgram === 'bs' 
+                            ? "Prior semester dues carried over (S1, S2, etc.)" 
+                            : "Previous balance carried forward"}
                         </p>
-                      </div>
-                    </div>
+                      </FormFieldWrapper>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-6 p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm">
-                      <FormFieldWrapper label="Billing Frequency">
+                      <FormFieldWrapper label="Scholarship / Concession Reason">
                         <Select
-                          value={formData.paymentPlan || (detectedProgram === "bs" ? "Semester" : "Installments")}
-                          onValueChange={(v: any) =>
-                            setFormData(prev => ({ ...prev, paymentPlan: v }))
-                          }
+                          value={formData.concessionReason || "None"}
+                          onValueChange={(v) => setFormData(prev => ({ ...prev, concessionReason: v === "None" ? "" : v }))}
                         >
-                          <SelectTrigger className="h-14 rounded-2xl border-slate-200 bg-white font-bold">
-                            <SelectValue />
+                          <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white dark:bg-slate-900 font-bold text-xs">
+                            <SelectValue placeholder="Standard Package" />
                           </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Semester">
-                              Semester System (Per-Semester Payment)
-                            </SelectItem>
-                            <SelectItem value="Installments">
-                              Monthly / Periodic Installments
-                            </SelectItem>
+                          <SelectContent className="rounded-xl">
+                            <SelectItem value="None">Standard Package (No Discount)</SelectItem>
+                            <SelectItem value="Kinship">Kinship (Sibling Discount)</SelectItem>
+                            <SelectItem value="Merit / High Marks">Merit / 1000+ Marks Scholarship</SelectItem>
+                            <SelectItem value="Teacher Child">Teacher Child Concession</SelectItem>
+                            <SelectItem value="Need-based / Orphan">Need-based / Orphan Scholarship</SelectItem>
+                            <SelectItem value="Management Discretion">Management Discretion / Special</SelectItem>
                           </SelectContent>
                         </Select>
                       </FormFieldWrapper>
-                      <FormFieldWrapper label="Total Count">
-                        <Input
-                          type="number"
-                          className="h-14 rounded-2xl border-slate-200 font-bold"
-                          value={formData.totalInstallments || ""}
-                          onChange={(e) =>
-                            setFormData(prev => ({ ...prev, totalInstallments: Number(e.target.value), }))
-                          }
-                        />
-                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-2 px-1">
-                          Dividing Rs.{" "}
-                          {(
-                            formData.totalPackage -
-                            Number(formData.feeReceived || 0)
-                          ).toLocaleString()}{" "}
-                          into {formData.totalInstallments} parts.
+                    </div>
+                  </div>
+
+                  {/* Column 2: Package & Billing Strategy */}
+                  <div className="bg-slate-50/70 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 space-y-4">
+                    <FormSectionHeader
+                      icon={TrendingUp}
+                      title="Installment Strategy"
+                      sub="Schedule & Dues Bifurcation"
+                    />
+                    <div className="space-y-4">
+                      {/* Big Package Banner */}
+                      <div className="p-5 rounded-2xl bg-slate-900 text-white shadow-md relative overflow-hidden">
+                        <p className="text-[10px] text-white/60 font-black uppercase tracking-wider">Total Package Finalized</p>
+                        <h4 className="text-3xl font-black text-superior-gold tracking-tight mt-1">
+                          Rs. {formData.totalPackage.toLocaleString()}
+                        </h4>
+                        <div className="mt-3 text-[11px] text-white/80 space-y-1 bg-white/10 p-2.5 rounded-xl border border-white/10">
+                          <div className="flex justify-between">
+                            <span className="text-white/60">Tuition Fee:</span>
+                            <span className="font-bold">Rs. {Number(formData.totalFeeFinalized || 0).toLocaleString()}</span>
+                          </div>
+                          {Number(formData.previousArrears || 0) > 0 && (
+                            <div className="flex justify-between text-amber-300 font-bold">
+                              <span>Arrears (بقایا جات):</span>
+                              <span>Rs. {Number(formData.previousArrears || 0).toLocaleString()}</span>
+                            </div>
+                          )}
+                          {Number(formData.admissionFee || 0) > 0 && (
+                            <div className="flex justify-between text-white/60">
+                              <span>Admission Fee:</span>
+                              <span>Rs. {Number(formData.admissionFee || 0).toLocaleString()}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <FormFieldWrapper label="Billing Frequency">
+                        <Select
+                          value={formData.paymentPlan || (detectedProgram === "bs" ? "Semester" : "Installments")}
+                          onValueChange={(v: any) => setFormData(prev => ({ ...prev, paymentPlan: v }))}
+                        >
+                          <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white dark:bg-slate-900 font-bold text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-xl">
+                            <SelectItem value="Semester">Semester System (Per-Semester Payment)</SelectItem>
+                            <SelectItem value="Installments">Monthly Installment Plan</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormFieldWrapper>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <FormFieldWrapper label="Installment Count">
+                          <Input
+                            type="number"
+                            className="h-11 rounded-xl border-slate-200 bg-white dark:bg-slate-900 font-bold text-xs"
+                            value={formData.totalInstallments || ""}
+                            onChange={(e) => setFormData(prev => ({ ...prev, totalInstallments: Number(e.target.value) }))}
+                          />
+                        </FormFieldWrapper>
+                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 flex flex-col justify-center">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase">Per Installment</span>
+                          <span className="text-sm font-black text-slate-800 dark:text-slate-100">
+                            Rs. {formData.totalInstallments > 0
+                              ? Math.ceil((formData.totalPackage - Number(formData.feeReceived || 0)) / formData.totalInstallments).toLocaleString()
+                              : "0"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Column 3: Immediate Collection & Confirmation */}
+                  <div className="bg-slate-50/70 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 space-y-4 flex flex-col justify-between">
+                    <FormSectionHeader
+                      icon={Receipt}
+                      title="Collection & Submission"
+                      sub="Official Admission Record Confirmation"
+                    />
+
+                    <div className="space-y-4">
+                      <FormFieldWrapper
+                        label="Immediate Cash / Bank Received"
+                        required
+                        className="bg-emerald-50 dark:bg-emerald-950/40 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800"
+                      >
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 font-black text-xs">Rs.</span>
+                          <Input
+                            type="number"
+                            className="h-11 pl-9 rounded-xl border-emerald-300 bg-white dark:bg-slate-900 text-lg font-black text-emerald-700 dark:text-emerald-300"
+                            placeholder="0.00"
+                            value={formData.feeReceived || ""}
+                            onChange={(e) => setFormData(prev => ({ ...prev, feeReceived: e.target.value }))}
+                          />
+                        </div>
+                        <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mt-1.5">
+                          Triggers official enrollment & ID allotment
                         </p>
                       </FormFieldWrapper>
 
-                      <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col items-center justify-center text-center space-y-4">
-                        <div className="w-12 h-12 rounded-2xl bg-superior-teal/10 flex items-center justify-center text-superior-teal">
-                          <AlertTriangle size={24} />
+                      <div className="p-4 rounded-2xl bg-superior-teal/5 border border-superior-teal/15 space-y-1.5">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-slate-500 font-bold uppercase">Remaining Dues</span>
+                          <span className="text-xl font-black text-superior-teal">
+                            Rs. {Math.max(0, formData.totalPackage - Number(formData.feeReceived || 0)).toLocaleString()}
+                          </span>
                         </div>
-                        <div className="space-y-1">
-                          <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-none mb-1">
-                            Per Installment
-                          </p>
-                          <h4 className="text-2xl font-black text-slate-800">
-                            Rs.{" "}
-                            {formData.totalInstallments > 0
-                              ? Math.ceil(
-                                  (formData.totalPackage -
-                                    Number(formData.feeReceived || 0)) /
-                                    formData.totalInstallments,
-                                ).toLocaleString()
-                              : "0"}
-                          </h4>
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-slate-500">Admission Status:</span>
+                          <Badge className={Number(formData.feeReceived) > 0 ? "bg-emerald-100 text-emerald-800 text-[10px] font-black" : "bg-slate-200 text-slate-700 text-[10px] font-bold"}>
+                            {Number(formData.feeReceived) >= formData.totalPackage && formData.totalPackage > 0
+                              ? "FULL PAID"
+                              : Number(formData.feeReceived) > 0
+                              ? "PARTIAL PAID / ADMITTED"
+                              : "PENDING SUBMISSION"}
+                          </Badge>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </div>
 
-                {(formData.paymentPlan === "Semester" || detectedProgram === "bs") && (
-                  <div className="p-6 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-superior-teal">
-                        <GraduationCap size={16} />
-                        <span className="font-bold text-xs uppercase tracking-wider">
-                          Semester Intake & Progression Plan (سمسٹر سسٹم ترتیبات)
-                        </span>
-                      </div>
-                      <Badge variant="outline" className="text-[10px] font-bold border-superior-teal/30 text-superior-teal">
-                        {detectedProgram === 'bs' ? 'BS 4-Year Degree' : 'Semester Program'}
-                      </Badge>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                          Total Semesters (کل سمسٹر)
-                        </Label>
-                        <Input
-                          type="number"
-                          value={formData.totalSemesters || (detectedProgram === "bs" ? 8 : 4)}
-                          onChange={(e) =>
-                            setFormData((prev) => ({ ...prev, totalSemesters: Number(e.target.value) }))
-                          }
-                          className="h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-xs font-bold"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                          Active Semester (موجودہ سمسٹر)
-                        </Label>
-                        <select
-                          value={formData.currentSemester || 1}
-                          onChange={(e) => {
-                            const sem = Number(e.target.value);
-                            const suffix = sem === 1 ? '1st' : sem === 2 ? '2nd' : sem === 3 ? '3rd' : `${sem}th`;
-                            const newCategory = detectedProgram === 'bs'
-                              ? `BS Semester ${suffix}${sem === 1 ? ' (Fresh Intake)' : sem === 5 ? ' (ADP Lateral Entry)' : ''}`
-                              : formData.category;
-                            setFormData((prev) => ({
-                              ...prev,
-                              currentSemester: sem,
-                              academicPart: sem > 4 ? "Part-2" : "Part-1",
-                              category: newCategory
-                            }));
-                          }}
-                          className="w-full h-11 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-superior-teal/30 cursor-pointer"
-                        >
-                          {Array.from({ length: formData.totalSemesters || (detectedProgram === "bs" ? 8 : 4) }, (_, i) => i + 1).map((sem) => (
-                            <option key={sem} value={sem} className="bg-white dark:bg-slate-900">
-                              Semester {sem} (S{sem}){sem === 1 ? ' - Fresh Intake' : sem === 3 ? ' - 2nd Year' : sem === 5 ? ' - ADP Lateral' : sem === 7 ? ' - Final Year' : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                          Fee Per Semester (فی سمسٹر ٹیوشن)
-                        </Label>
-                        <Input
-                          type="number"
-                          placeholder="e.g. 45000"
-                          value={formData.feePerSemester || formData.totalFeeFinalized || ""}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            setFormData((prev) => ({ ...prev, feePerSemester: val, totalFeeFinalized: String(val) }));
-                          }}
-                          className="h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-xs font-bold"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                          Next Semester Due Date
-                        </Label>
-                        <Input
-                          type="date"
-                          value={formData.nextSemesterDueDate || ""}
-                          onChange={(e) =>
-                            setFormData((prev) => ({ ...prev, nextSemesterDueDate: e.target.value }))
-                          }
-                          className="h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-xs"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="p-6 bg-superior-teal/5 rounded-2xl border border-superior-teal/10">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-sm text-slate-500 uppercase font-bold tracking-wider">
-                        Remaining Balance
-                      </p>
-                      <p className="text-3xl font-bold text-superior-teal">
-                        Rs.{" "}
-                        {(
-                          Number(formData.totalPackage || 0) -
-                          Number(formData.feeReceived || 0)
-                        ).toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-slate-500 uppercase font-bold tracking-wider">
-                        Admission Status
-                      </p>
-                      <Badge
-                        className={
-                          Number(formData.feeReceived) > 0
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-slate-100 text-slate-700"
-                        }
-                      >
-                        {Number(formData.feeReceived) > 0
-                          ? "ADMITTED"
-                          : "PENDING"}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="reference">Reference</Label>
-                  <Input
-                    id="reference"
-                    placeholder="Enter reference if any"
-                    value={formData.reference}
-                    onChange={(e) =>
-                      setFormData(prev => ({ ...prev, reference: e.target.value }))
-                    }
-                  />
-                </div>
-
-                <div className="flex items-center justify-between pt-10 border-t border-slate-100">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setPreSelectionComplete(false)}
-                    className="font-black uppercase tracking-widest text-[10px] text-slate-400 hover:text-rose-500 h-10 px-6 underline underline-offset-4 transition-colors"
-                  >
-                    Reset Categorization
-                  </Button>
-                  <div className="flex items-center gap-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        if (activeTab === "fees") setActiveTab("subjects");
-                        else if (activeTab === "subjects")
-                          setActiveTab("student");
-                      }}
-                      disabled={activeTab === "student"}
-                      className="rounded-xl border-slate-200 font-black uppercase tracking-widest text-[10px] h-12 px-6"
-                    >
-                      Back
-                    </Button>
-                    <div className="flex gap-3">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={onClose}
-                        className="rounded-xl border-slate-200 font-black uppercase tracking-widest text-[10px] h-12 px-8"
-                      >
-                        Discard
-                      </Button>
+                    <div className="space-y-2 pt-2">
                       <Button
                         type="button"
                         variant="outline"
                         onClick={() => setIsPreviewOpen(true)}
-                        className="rounded-xl border-superior-gold text-superior-gold font-black uppercase tracking-widest text-[10px] h-12 px-8 flex items-center gap-2 hover:bg-superior-gold/10"
+                        className="w-full h-11 rounded-xl border-superior-gold text-superior-gold hover:bg-superior-gold/10 font-black uppercase tracking-wider text-xs gap-2"
                       >
-                        <Eye size={16} /> Preview Form
+                        <Eye size={15} /> Preview Official Slip
                       </Button>
                       <Button
                         type="submit"
-                        className="rounded-xl bg-superior-teal text-white font-black uppercase tracking-widest text-[10px] h-12 px-12 hover:bg-superior-teal/90 shadow-lg shadow-superior-teal/10 transition-all font-black"
+                        className="w-full h-12 rounded-xl bg-superior-teal hover:bg-superior-teal/90 text-white font-black uppercase tracking-wider text-xs shadow-lg shadow-superior-teal/20"
                       >
-                        {admission ? "Update Finalized Record" : "Finalize & Submit Record"}
+                        {admission ? "Update Admission Record" : "Finalize & Admit Student"}
                       </Button>
                     </div>
                   </div>
                 </div>
+
+                <div className="flex justify-between pt-4 border-t border-slate-200/60 dark:border-slate-700/60">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setActiveTab("subjects")}
+                    className="h-11 px-6 rounded-xl font-bold text-xs"
+                  >
+                    Back to Curriculum
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={onClose}
+                    className="h-11 px-6 text-slate-400 hover:text-rose-500 font-bold text-xs"
+                  >
+                    Discard Changes
+                  </Button>
+                </div>
               </TabsContent>
             </form>
           </Tabs>
-        </>
+        </div>
       )}
 
       {/* Form Preview Dialog */}
@@ -5930,7 +5663,7 @@ function AdmissionForm({
             admission={{
               ...formData,
               id: "ST-PREVIEW",
-              session: selectedSession,
+              session: formData.session || selectedSession,
             } as unknown as Admission}
             settings={data.settings}
           />

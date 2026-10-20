@@ -29,8 +29,19 @@ import {
   FileText,
   FileSpreadsheet,
   MessageSquare,
-  Fingerprint
+  Fingerprint,
+  ExternalLink,
+  RefreshCw,
+  Sparkles,
+  BookOpen,
+  Building2,
+  Laptop,
+  Check,
+  ShieldCheck,
+  Plus,
+  X
 } from 'lucide-react';
+import { secugenService } from '../lib/secugenService';
 import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
 import { buildStudentNoticeMessage, sendAutoStudentNotice } from '../lib/whatsappAutomation';
 import BiometricEnrollmentModal from './BiometricEnrollmentModal';
@@ -2659,72 +2670,191 @@ function StudentProfile({ student, data, initialTab = 'overview', onEdit, onDown
 }
 
 function EditStudentDialog({ student, data, onClose, onDelete }: { student: Student, data: any, onClose?: () => void, onDelete?: () => void }) {
+  const initialStream = React.useMemo<'fsc' | 'bs' | 'dit' | 'ukl3'>(() => {
+    const grp = (student.group || '').toLowerCase();
+    const cat = (student.category || '').toLowerCase();
+    if (grp.includes('bs') || grp.includes('b.s') || grp.includes('bba') || grp.includes('bachelor') || cat.includes('bs')) return 'bs';
+    if (grp.includes('dit') || cat.includes('dit')) return 'dit';
+    if (grp.includes('uk') || cat.includes('uk')) return 'ukl3';
+    return 'fsc';
+  }, [student.group, student.category]);
+
+  const [activeTab, setActiveTab] = useState<'identity' | 'academic' | 'fee'>('identity');
+  const [activeStream, setActiveStream] = useState<'fsc' | 'bs' | 'dit' | 'ukl3'>(initialStream);
+  const [customSubjectInput, setCustomSubjectInput] = useState('');
+
   const [formData, setFormData] = useState({
     fullName: student.fullName || '',
     fatherName: student.fatherName || '',
     collegeNo: student.collegeNo || '',
     bayFormNo: student.bayFormNo || '',
     dob: student.dob || '',
-    previousClass: student.previousClass || '10th',
+    previousClass: student.previousClass || (initialStream === 'bs' ? '12th' : '10th'),
     boardRollNo: student.boardRollNo || '',
     previousMarks: student.previousMarks !== undefined ? String(student.previousMarks) : '',
     contact: student.contact || '',
-    fatherContact: student.fatherContact || '',
+    fatherContact: student.fatherContact || (student as any).parentContact || '',
     email: student.email || '',
     bloodGroup: student.bloodGroup || '',
+    gender: student.gender || 'Male',
     address: student.address || '',
     admissionFee: student.admissionFee || 0,
     miscFunds: student.miscFunds || 0,
     totalFeeFinalized: student.totalFeeFinalized || 0,
     previousArrears: (student as any).previousArrears ? Number((student as any).previousArrears) : 0,
-    totalInstallments: student.totalInstallments || 12,
+    totalInstallments: student.totalInstallments || (initialStream === 'bs' ? 2 : 12),
     monthlyFee: student.monthlyFee || 0,
     subjects: [...(student.subjects || [])],
-    category: student.category || 'Inter Part-1 Boys',
+    category: student.category || (initialStream === 'bs' ? 'BS Semester 1st (Fresh Intake)' : 'Inter Part-1 Boys'),
     group: student.group || '',
     section: student.section || '',
     photo: student.photo || '',
-    session: student.session || '',
+    session: student.session || (initialStream === 'bs' ? '2026-30' : '2026-28'),
     sessionStartDate: student.sessionStartDate || '',
     sessionEndDate: student.sessionEndDate || '',
     academicPart: student.academicPart || 'Part-1',
-    programType: student.programType || 'Yearly',
-    currentSemester: student.currentSemester || 1,
-    totalSemesters: student.totalSemesters || 8,
+    programType: student.programType || (initialStream === 'bs' ? 'Semester' : 'Yearly'),
+    currentSemester: student.currentSemester || (initialStream === 'bs' ? 1 : 1),
+    totalSemesters: student.totalSemesters || (initialStream === 'bs' ? 8 : 0),
+    fingerprintTemplate: student.fingerprintTemplate || '',
+    fingerprintFinger: student.fingerprintFinger || 'Right Thumb (دایاں انگوٹھا)',
+    fingerprintEnrolledAt: student.fingerprintEnrolledAt || '',
   });
 
-  const isBS = React.useMemo(() => {
-    const grp = (formData.group || student.group || '').toLowerCase();
-    const cat = (formData.category || student.category || '').toLowerCase();
-    return grp.includes('bs') || grp.includes('b.s') || grp.includes('bba') || grp.includes('bachelor') || cat.includes('bs');
-  }, [formData.group, formData.category, student.group, student.category]);
+  const isBS = activeStream === 'bs';
+
+  const [isScanningFP, setIsScanningFP] = useState(false);
+  const [fpQuality, setFpQuality] = useState<number | null>(null);
+  const [fpBmp, setFpBmp] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return (
+      localStorage.getItem(`scj_fp_thumb_${student.id}`) ||
+      (student.studentId ? localStorage.getItem(`scj_fp_thumb_${student.studentId}`) : null) ||
+      (student.collegeNo ? localStorage.getItem(`scj_fp_thumb_${student.collegeNo}`) : null) ||
+      null
+    );
+  });
+
+  const streamGroups = React.useMemo(() => {
+    return ACADEMIC_GROUPS.filter(g => {
+      const gName = g.name.toLowerCase();
+      if (activeStream === 'bs') {
+        return g.type === 'Degree' || gName.includes('bs') || gName.includes('b.s') || gName.includes('bba');
+      }
+      if (activeStream === 'dit') {
+        return g.type === 'Diploma' || gName.includes('dit');
+      }
+      if (activeStream === 'ukl3') {
+        return g.type === 'Vocational' || gName.includes('uk');
+      }
+      return g.type === 'Intermediate' || (!gName.includes('bs') && !gName.includes('dit') && !gName.includes('uk'));
+    });
+  }, [activeStream]);
 
   const filteredSections = React.useMemo(() => {
     if (!data.settings?.predefinedSections) return [];
     
     return data.settings.predefinedSections.filter(sec => {
-      const matchesGender = sec.gender === student.gender || sec.gender === 'Co-ed';
+      const matchesGender = sec.gender === formData.gender || sec.gender === 'Co-ed';
       if (!matchesGender) return false;
 
-      const sp = sec.program.toLowerCase();
-      const cat = (formData.category || student.category || '').toLowerCase();
-      
+      const sp = (sec.program || '').toLowerCase();
       let programMatch = false;
-      if (cat.includes('inter') && sp === 'inter') programMatch = true;
-      else if ((cat.includes('bs') || isBS) && (sp === 'bs program' || sp.includes('bs'))) programMatch = true;
-      else if (cat.includes('dit') && sp === 'dit') programMatch = true;
-      else if (cat.includes('uk') && sp === 'uk level 3') programMatch = true;
+      if (activeStream === 'fsc' && (sp === 'inter' || sp.includes('inter'))) programMatch = true;
+      else if (activeStream === 'bs' && (sp === 'bs program' || sp.includes('bs'))) programMatch = true;
+      else if (activeStream === 'dit' && (sp === 'dit' || sp.includes('dit'))) programMatch = true;
+      else if (activeStream === 'ukl3' && (sp === 'uk level 3' || sp.includes('uk'))) programMatch = true;
       else if (sp === 'other' || sp === 'all') programMatch = true;
 
       return matchesGender && programMatch;
     });
-  }, [data.settings?.predefinedSections, student.gender, formData.category, student.category, isBS]);
+  }, [data.settings?.predefinedSections, formData.gender, activeStream]);
+
+  const compulsoryForStream = React.useMemo(() => {
+    if (activeStream === 'bs') {
+      return ['English / Communication', 'Pakistan Studies / Ideology', 'Islamic Studies / Ethics', 'Quran Translation'];
+    }
+    if (activeStream === 'dit') {
+      return ['ICT Fundamentals', 'English Communication'];
+    }
+    if (activeStream === 'ukl3') {
+      return ['Academic English', 'Applied Research'];
+    }
+    return ['English', 'Urdu', 'Islamic Studies', 'Pakistan Studies', 'Tarjuma-tul-Quran'];
+  }, [activeStream]);
+
+  const activeGroupSubjects = React.useMemo(() => {
+    const selectedGroupObj = ACADEMIC_GROUPS.find(g => g.name === formData.group);
+    if (selectedGroupObj && selectedGroupObj.subjects) {
+      return selectedGroupObj.subjects.filter(s => !compulsoryForStream.includes(s));
+    }
+    return [];
+  }, [formData.group, compulsoryForStream]);
+
+  const handleStreamChange = (stream: 'fsc' | 'bs' | 'dit' | 'ukl3') => {
+    setActiveStream(stream);
+    let defaultGroup = '';
+    let defaultCategory = '';
+    let defaultSubjects: string[] = [];
+    let programType = 'Yearly';
+    let totalSemesters = 0;
+    let currentSemester = 1;
+    let totalInstallments = 12;
+
+    if (stream === 'bs') {
+      defaultGroup = 'BS Computer Science (BSCS)';
+      defaultCategory = 'BS Semester 1st (Fresh Intake)';
+      programType = 'Semester';
+      totalSemesters = 8;
+      currentSemester = 1;
+      totalInstallments = 2;
+      const bscsGroup = ACADEMIC_GROUPS.find(g => g.name.includes('BS Computer Science'));
+      defaultSubjects = bscsGroup 
+        ? Array.from(new Set(['English / Communication', 'Pakistan Studies / Ideology', 'Islamic Studies / Ethics', ...bscsGroup.subjects]))
+        : ['Programming Fundamentals', 'Calculus', 'English Composition'];
+    } else if (stream === 'dit') {
+      defaultGroup = 'DIT';
+      defaultCategory = formData.gender === 'Female' ? 'DIT Girls' : 'DIT Boys';
+      programType = 'Semester';
+      totalSemesters = 4;
+      totalInstallments = 4;
+      const ditGroup = ACADEMIC_GROUPS.find(g => g.name.includes('DIT'));
+      defaultSubjects = ditGroup ? [...ditGroup.subjects] : ['Office Automation', 'Web Development'];
+    } else if (stream === 'ukl3') {
+      defaultGroup = 'UK Level 3';
+      defaultCategory = 'UK Level 3 Year-1';
+      programType = 'Semester';
+      totalSemesters = 3;
+      totalInstallments = 3;
+      const ukGroup = ACADEMIC_GROUPS.find(g => g.name.includes('UK Level 3'));
+      defaultSubjects = ukGroup ? [...ukGroup.subjects] : ['Applied Science', 'Business Analysis'];
+    } else {
+      defaultGroup = 'FSC (Premedical)';
+      defaultCategory = formData.gender === 'Female' ? 'Inter Part-1 Girls' : 'Inter Part-1 Boys';
+      programType = 'Yearly';
+      totalSemesters = 0;
+      totalInstallments = 12;
+      const fscGroup = ACADEMIC_GROUPS.find(g => g.name.includes('Premedical'));
+      defaultSubjects = fscGroup ? Array.from(new Set([...COMPULSORY_SUBJECTS, ...fscGroup.subjects])) : ['Biology', 'Physics', 'Chemistry', ...COMPULSORY_SUBJECTS];
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      group: defaultGroup,
+      category: defaultCategory,
+      subjects: defaultSubjects,
+      programType,
+      totalSemesters,
+      currentSemester,
+      totalInstallments
+    }));
+  };
 
   const handleGroupChange = (groupName: string) => {
     const group = ACADEMIC_GROUPS.find(g => g.name === groupName);
     if (group) {
       const lowerGroupName = groupName.toLowerCase();
-      const groupIsBS = lowerGroupName.includes('bs') || lowerGroupName.includes('b.s') || lowerGroupName.includes('bba');
+      const groupIsBS = activeStream === 'bs' || lowerGroupName.includes('bs') || lowerGroupName.includes('b.s') || lowerGroupName.includes('bba');
       const newSubjects = groupIsBS
         ? Array.from(new Set(['English / Communication', 'Pakistan Studies / Ideology', 'Islamic Studies / Ethics', ...group.subjects]))
         : Array.from(new Set([...COMPULSORY_SUBJECTS, ...group.subjects]));
@@ -2747,7 +2877,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
         const compressedBase64 = await compressImage(file);
         setFormData(prev => ({ ...prev, photo: compressedBase64 }));
         toast.dismiss(toastId);
-        toast.success("Photo uploaded!");
+        toast.success("Photo updated!");
       } catch (err) {
         console.error('Photo upload error:', err);
         toast.dismiss(toastId);
@@ -2756,42 +2886,149 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
     }
   };
 
+  const handleScanThumb = async () => {
+    setIsScanningFP(true);
+    toast.info("Please place student's right thumb firmly on the SecuGen scanner...", { id: "secugen-edit" });
+    try {
+      const res = await secugenService.captureFingerprint({
+        timeoutMs: 12000,
+        quality: 50,
+        templateFormat: "ISO",
+      });
+      if (res.success && res.templateBase64) {
+        setFormData((prev) => ({
+          ...prev,
+          fingerprintTemplate: res.templateBase64,
+          fingerprintFinger: "Right Thumb (دایاں انگوٹھا)",
+          fingerprintEnrolledAt: new Date().toISOString(),
+        }));
+        setFpQuality(res.quality);
+        if (res.bmpBase64) {
+          setFpBmp(res.bmpBase64);
+          try {
+            const targetId = student.id || formData.collegeNo;
+            if (targetId) localStorage.setItem(`scj_fp_thumb_${targetId}`, res.bmpBase64);
+          } catch (e) {}
+        }
+        toast.success(`Thumb impression captured successfully! (Quality: ${res.quality}%)`, { id: "secugen-edit" });
+      } else {
+        toast.error(res.error || "Failed to capture fingerprint. Ensure device is plugged in.", { id: "secugen-edit" });
+      }
+    } catch (err: any) {
+      toast.error(`Scanner error: ${err.message || String(err)}`, { id: "secugen-edit" });
+    } finally {
+      setIsScanningFP(false);
+    }
+  };
+
+  const handleClearThumb = () => {
+    setFormData((prev) => ({
+      ...prev,
+      fingerprintTemplate: "",
+      fingerprintFinger: "",
+      fingerprintEnrolledAt: "",
+    }));
+    setFpQuality(null);
+    setFpBmp(null);
+    try {
+      const targetId = student.id || formData.collegeNo;
+      if (targetId) localStorage.removeItem(`scj_fp_thumb_${targetId}`);
+    } catch (e) {}
+    toast.info("Thumb impression removed.");
+  };
+
+  const handleWhatsAppPing = () => {
+    const contactRaw = formData.fatherContact || formData.contact;
+    if (!contactRaw) {
+      toast.error("No phone number entered for Guardian WhatsApp.");
+      return;
+    }
+    const cleanNumber = contactRaw.replace(/\D/g, "");
+    const formatted = cleanNumber.startsWith("0") 
+      ? `92${cleanNumber.slice(1)}` 
+      : cleanNumber.startsWith("92") 
+        ? cleanNumber 
+        : `92${cleanNumber}`;
+    const textMsg = encodeURIComponent(
+      `Assalam-o-Alaikum! Superior Group of Colleges Jahanian - Academic update for student ${formData.fullName} (Roll: ${formData.collegeNo || student.id}).`
+    );
+    window.open(`https://wa.me/${formatted}?text=${textMsg}`, "_blank");
+  };
+
+  const handleAutoSuggestRollNo = () => {
+    const allRolls: number[] = [];
+    (data.students || []).forEach((s: any) => {
+      const num = parseInt(String(s.collegeNo || '').replace(/\D/g, ''), 10);
+      if (!isNaN(num) && num > 0) allRolls.push(num);
+    });
+    const next = allRolls.length > 0 ? Math.max(...allRolls) + 1 : 1001;
+    setFormData(prev => ({ ...prev, collegeNo: String(next) }));
+    toast.success(`Suggested Roll #: ${next}`);
+  };
+
+  const toggleSubject = (subject: string) => {
+    setFormData(prev => {
+      const current = prev.subjects || [];
+      const updated = current.includes(subject)
+        ? current.filter(s => s !== subject)
+        : [...current, subject];
+      return { ...prev, subjects: updated };
+    });
+  };
+
+  const handleAddCustomSubject = () => {
+    const trimmed = customSubjectInput.trim();
+    if (!trimmed) return;
+    if ((formData.subjects || []).includes(trimmed)) {
+      toast.info("Subject already in curriculum.");
+      return;
+    }
+    setFormData(prev => ({
+      ...prev,
+      subjects: [...(prev.subjects || []), trimmed]
+    }));
+    setCustomSubjectInput('');
+    toast.success(`Added custom subject: ${trimmed}`);
+  };
+
+  const finalized = Number(formData.totalFeeFinalized || 0);
+  const adm = Number(formData.admissionFee || 0);
+  const misc = Number(formData.miscFunds || 0);
+  const arrears = Number(formData.previousArrears || 0);
+  const totalPackageFee = finalized + adm + misc + arrears;
+  const installmentsCount = Number(formData.totalInstallments) || 12;
+  const installmentMonthlyDues = Math.round(totalPackageFee / Math.max(1, installmentsCount));
+
+  const paidAmount = Number(student.feeReceived || (student as any).fee_received || student.feeLedger?.totalReceived || 0);
+  const remainingOutstanding = Math.max(0, totalPackageFee - paidAmount);
+  const feeStatus = totalPackageFee > 0 && paidAmount >= totalPackageFee ? 'Full Paid' : paidAmount > 0 ? 'Partial Paid' : 'Unpaid';
+
   const handleSave = () => {
     const groupChanged = formData.group !== student.group;
-    const finalized = Number(formData.totalFeeFinalized);
-    const adm = Number(formData.admissionFee);
-    const misc = Number(formData.miscFunds);
-    const arrears = Number(formData.previousArrears || 0);
-    const totalPkg = finalized + adm + misc + arrears;
-    const instCount = Number(formData.totalInstallments) || 12;
-    const instAmount = Math.round(totalPkg / instCount);
     
     data.updateStudent(student.id, {
       ...formData,
       previousMarks: formData.previousMarks ? Number(formData.previousMarks) : undefined,
-      totalPackage: totalPkg,
+      totalPackage: totalPackageFee,
       previousArrears: arrears,
-      monthlyFee: instAmount,
-      totalInstallments: instCount,
-      'feeLedger.totalPackage': totalPkg
+      monthlyFee: installmentMonthlyDues,
+      totalInstallments: installmentsCount,
+      fingerprintTemplate: formData.fingerprintTemplate,
+      fingerprintFinger: formData.fingerprintFinger,
+      fingerprintEnrolledAt: formData.fingerprintEnrolledAt,
+      fatherContact: formData.fatherContact,
+      'feeLedger.totalPackage': totalPackageFee
     });
+
+    if (data?.updateFingerprintRecord && formData.fingerprintTemplate) {
+      data.updateFingerprintRecord(student.id, 'student', formData.fingerprintTemplate, formData.fingerprintFinger || 'Right Thumb');
+    }
+
     toast.success("Student profile updated successfully!");
     if (onClose) onClose();
     
     if (groupChanged) {
-      toast.warning(
-        "Academic Group changed! Please review the Fee Package in Fee Manager.",
-        {
-          duration: 6000,
-          action: {
-            label: "Go to Fee Manager",
-            onClick: () => {
-              // This would ideally switch the tab, but for now just a reminder
-              console.log("Navigate to Fee Manager");
-            }
-          }
-        }
-      );
+      toast.warning("Academic Group changed! Please review the Fee Package in Fee Manager.");
     }
   };
 
@@ -2799,401 +3036,900 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
     if (onDelete) onDelete();
   };
 
-  const toggleSubject = (subject: string) => {
-    setFormData(prev => ({
-      ...prev,
-      subjects: (prev.subjects || []).includes(subject)
-        ? (prev.subjects || []).filter(s => s !== subject)
-        : [...(prev.subjects || []), subject]
-    }));
-  };
+  const STREAM_TABS = [
+    { key: 'fsc', label: 'Intermediate HSSC', icon: School },
+    { key: 'bs', label: 'BS Degree & ADP', icon: GraduationCap },
+    { key: 'dit', label: 'D.I.T. Diploma', icon: Laptop },
+    { key: 'ukl3', label: 'UK Level 3', icon: Building2 },
+  ] as const;
 
   return (
-    <DialogContent className="max-w-3xl w-full max-h-[92vh] overflow-y-auto p-6 bg-white rounded-3xl shadow-2xl">
-      <DialogHeader>
-        <DialogTitle className="text-2xl font-serif text-superior-teal">Edit Student Profile</DialogTitle>
-      </DialogHeader>
-      <div className="space-y-6 py-4">
-        <div className="flex justify-center mb-6">
-          <div className="relative group">
-            <div className="w-32 h-32 rounded-full border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center overflow-hidden transition-colors group-hover:border-superior-teal shadow-inner">
+    <DialogContent className="max-w-6xl xl:max-w-7xl w-[96vw] max-h-[92vh] overflow-hidden flex flex-col p-0 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border-none">
+      {/* 1. TOP LANDSCAPE HEADER & STREAM SWITCHER */}
+      <div className="bg-gradient-to-r from-superior-teal to-teal-900 text-white p-5 sm:p-6 shrink-0 border-b border-teal-700/50">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="relative w-14 h-14 rounded-2xl bg-white/10 border border-white/20 overflow-hidden flex items-center justify-center shrink-0 shadow-inner">
               {formData.photo ? (
-                <img src={formData.photo} alt="" className="w-full h-full object-cover object-[center_top] rounded-full" referrerPolicy="no-referrer" />
+                <img src={formData.photo} alt={formData.fullName} className="w-full h-full object-cover object-[center_top]" />
               ) : (
-                <>
-                  <Camera className="text-slate-400 mb-2" size={24} />
-                  <span className="text-[10px] text-slate-500 font-bold uppercase">Upload Photo</span>
-                </>
+                <User size={28} className="text-white/60" />
               )}
             </div>
-            <label className="absolute inset-0 cursor-pointer">
-              <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
-            </label>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xl sm:text-2xl font-serif font-black text-white tracking-tight">
+                  {formData.fullName || "Edit Student Profile"}
+                </h2>
+                <Badge className="bg-amber-400 text-slate-950 font-black text-xs px-2.5 py-0.5 shadow-xs">
+                  Roll #{formData.collegeNo || student.collegeNo || student.id}
+                </Badge>
+                <span className="text-xs bg-white/15 px-2 py-0.5 rounded-full text-teal-100 font-mono">
+                  ID: {student.id}
+                </span>
+              </div>
+              <p className="text-xs text-teal-100/80 mt-1 flex items-center gap-2 flex-wrap">
+                <span>{formData.gender}</span>
+                <span>•</span>
+                <span>{formData.category || "General Roster"}</span>
+                <span>•</span>
+                <span>Session: {formData.session || "2026-28"}</span>
+                {formData.fingerprintTemplate ? (
+                  <>
+                    <span>•</span>
+                    <span className="text-emerald-300 font-bold inline-flex items-center gap-1">
+                      <Fingerprint size={12} /> Biometric Enrolled
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span>•</span>
+                    <span className="text-amber-300 font-bold inline-flex items-center gap-1">
+                      <AlertCircle size={12} /> Thumb Missing
+                    </span>
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* Stream Switcher Badges */}
+          <div className="flex items-center gap-1.5 bg-black/20 p-1.5 rounded-2xl border border-white/10 backdrop-blur-sm self-start md:self-auto flex-wrap">
+            {STREAM_TABS.map(st => {
+              const Icon = st.icon;
+              const isActive = activeStream === st.key;
+              return (
+                <button
+                  key={st.key}
+                  type="button"
+                  onClick={() => handleStreamChange(st.key)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                    isActive
+                      ? "bg-white text-superior-teal shadow-md scale-102"
+                      : "text-white/70 hover:text-white hover:bg-white/10"
+                  )}
+                >
+                  <Icon size={13} />
+                  <span>{st.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Admission Category</Label>
-            <Select value={formData.category || ""} onValueChange={(v: any) => {
-              let sem = formData.currentSemester;
-              const lower = v.toLowerCase();
-              if (lower.includes("1st")) sem = 1;
-              else if (lower.includes("2nd")) sem = 2;
-              else if (lower.includes("3rd")) sem = 3;
-              else if (lower.includes("4th")) sem = 4;
-              else if (lower.includes("5th")) sem = 5;
-              else if (lower.includes("6th")) sem = 6;
-              else if (lower.includes("7th")) sem = 7;
-              else if (lower.includes("8th")) sem = 8;
-              setFormData({ ...formData, category: v, currentSemester: sem, academicPart: sem > 4 ? "Part-2" : "Part-1" });
-            }}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(() => {
-                   let cats = ['Inter Part-1 Boys', 'Inter Part-2 Boys', 'Inter Part-1 Girls', 'Inter Part-2 Girls'];
-                   const grp = (formData.group || student.group || '').toLowerCase();
-                   const cat = (formData.category || student.category || '').toLowerCase();
-                   const isStudentBS = grp.includes('bs') || grp.includes('b.s') || grp.includes('bba') || grp.includes('bachelor') || cat.includes('bs') || isBS;
-                   const isDIT = grp.includes('dit') || cat.includes('dit');
-                   const isUK = grp.includes('uk') || cat.includes('uk');
 
-                   if (isStudentBS) {
-                     cats = [
-                       "BS Semester 1st (Fresh Intake)",
-                       "BS Semester 2nd",
-                       "BS Semester 3rd (2nd Year)",
-                       "BS Semester 4th",
-                       "BS Semester 5th (ADP Lateral Entry)",
-                       "BS Semester 6th",
-                       "BS Semester 7th (Final Year)",
-                       "BS Semester 8th",
-                       student.gender === 'Female' ? "BS Girls Campus" : "BS Boys Campus"
-                     ];
-                   } else if (isDIT) {
-                     cats = ['DIT Part-1', 'DIT Part-2', student.gender === 'Female' ? 'DIT Girls' : 'DIT Boys'];
-                   } else if (isUK) {
-                     cats = ['UK Level 3 Year-1', 'UK Level 3 Year-2', student.gender === 'Female' ? 'UK L3 Girls' : 'UK L3 Boys'];
-                   } else {
-                     if (student.gender === 'Male') cats = cats.filter(c => c.toLowerCase().includes("boys"));
-                     else if (student.gender === 'Female') cats = cats.filter(c => c.toLowerCase().includes("girls"));
-                   }
-                   
-                   return cats.map(c => (
-                     <SelectItem key={c} value={c}>{c}</SelectItem>
-                   ));
-                })()}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Full Name</Label>
-            <Input value={formData.fullName || ""} onChange={e => setFormData({...formData, fullName: e.target.value})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Father's Name</Label>
-            <Input value={formData.fatherName || ""} onChange={e => setFormData({...formData, fatherName: e.target.value})} />
-          </div>
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 col-span-2 space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-black text-superior-teal uppercase tracking-widest">
-                Academic & Identity Details {isBS && "· BS 4-Year System"}
-              </h4>
-              {isBS && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                  Semester Mode Active
-                </span>
-              )}
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label>College Roll #</Label>
-                <div className="flex gap-2">
+        {/* Tab Selection Strip */}
+        <div className="flex items-center gap-2 mt-4 pt-4 border-t border-white/10 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setActiveTab('identity')}
+            className={cn(
+              "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0",
+              activeTab === 'identity'
+                ? "bg-white text-superior-teal shadow-xs font-black"
+                : "text-white/80 hover:bg-white/10"
+            )}
+          >
+            <User size={14} />
+            <span>1. Identity & Biometrics</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('academic')}
+            className={cn(
+              "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0",
+              activeTab === 'academic'
+                ? "bg-white text-superior-teal shadow-xs font-black"
+                : "text-white/80 hover:bg-white/10"
+            )}
+          >
+            <GraduationCap size={14} />
+            <span>2. Academic & Curriculum</span>
+            <span className="text-[10px] bg-emerald-500/30 text-emerald-200 px-1.5 py-0.2 rounded-full font-mono">
+              {formData.subjects?.length || 0}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('fee')}
+            className={cn(
+              "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0",
+              activeTab === 'fee'
+                ? "bg-white text-superior-teal shadow-xs font-black"
+                : "text-white/80 hover:bg-white/10"
+            )}
+          >
+            <CreditCard size={14} />
+            <span>3. Fee Ledger & Recovery</span>
+            <span className={cn(
+              "text-[10px] px-1.5 py-0.2 rounded-full font-mono",
+              remainingOutstanding > 0 ? "bg-amber-500/30 text-amber-200" : "bg-emerald-500/30 text-emerald-200"
+            )}>
+              {feeStatus}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* 2. TAB CONTENTS (SCROLLABLE BODY) */}
+      <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 bg-slate-50/50 dark:bg-slate-900/50">
+        {/* TAB 1: IDENTITY & BIOMETRICS */}
+        {activeTab === 'identity' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Left 8 Cols: Form Fields */}
+            <div className="lg:col-span-8 bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs space-y-5">
+              <h3 className="text-xs font-black text-superior-teal dark:text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                <User size={15} /> Student & Guardian Identification
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Full Name</Label>
                   <Input 
-                    value={formData.collegeNo || ""} 
-                    onChange={e => setFormData({...formData, collegeNo: e.target.value})} 
-                    placeholder="Assign Roll #"
-                    className="font-bold bg-white"
+                    value={formData.fullName} 
+                    onChange={e => setFormData({ ...formData, fullName: e.target.value })} 
+                    className="h-10 bg-slate-50 dark:bg-slate-900 font-medium"
                   />
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => {
-                      const allRolls: number[] = [];
-                      (data.students || []).forEach((s: any) => {
-                        const num = parseInt(String(s.collegeNo || '').replace(/\D/g, ''), 10);
-                        if (!isNaN(num) && num > 0) allRolls.push(num);
-                      });
-                      const next = allRolls.length > 0 ? Math.max(...allRolls) + 1 : 1001;
-                      setFormData(prev => ({ ...prev, collegeNo: String(next) }));
-                      toast.success(`Suggested Roll #: ${next}`);
-                    }}
-                    className="h-10 px-2.5 text-xs text-superior-teal font-bold shrink-0"
-                  >
-                    Auto
-                  </Button>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Father's Name</Label>
+                  <Input 
+                    value={formData.fatherName} 
+                    onChange={e => setFormData({ ...formData, fatherName: e.target.value })} 
+                    className="h-10 bg-slate-50 dark:bg-slate-900 font-medium"
+                  />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>B-Form / CNIC</Label>
-                <Input value={formData.bayFormNo || ""} onChange={e => setFormData({...formData, bayFormNo: e.target.value})} placeholder="36103-..." className="bg-white" />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">B-Form / CNIC Number</Label>
+                  <Input 
+                    value={formData.bayFormNo} 
+                    onChange={e => setFormData({ ...formData, bayFormNo: e.target.value })} 
+                    placeholder="36103-..." 
+                    className="h-10 bg-slate-50 dark:bg-slate-900 font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Date of Birth</Label>
+                  <Input 
+                    type="date" 
+                    value={formData.dob} 
+                    onChange={e => setFormData({ ...formData, dob: e.target.value })} 
+                    className="h-10 bg-slate-50 dark:bg-slate-900 font-medium"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Date of Birth</Label>
-                <Input type="date" value={formData.dob || ""} onChange={e => setFormData({...formData, dob: e.target.value})} className="bg-white" />
-              </div>
-              <div className="space-y-2">
-                <Label>{isBS ? "Previous Qualification" : "Previous Class"}</Label>
-                <Select value={formData.previousClass || (isBS ? "12th" : "10th")} onValueChange={v => setFormData({...formData, previousClass: v as any})}>
-                  <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {isBS ? (
-                      <>
-                        <SelectItem value="12th">12th Class (F.Sc / ICS / I.Com - Part 2)</SelectItem>
-                        <SelectItem value="ADP">ADP / B.Sc (Lateral Entry)</SelectItem>
-                        <SelectItem value="11th">11th Class (Inter Part-1)</SelectItem>
-                        <SelectItem value="DAE">DAE (3-Year Technical Diploma)</SelectItem>
-                        <SelectItem value="10th">10th Class (Matric)</SelectItem>
-                      </>
-                    ) : (
-                      <>
-                        <SelectItem value="9th">9th Class</SelectItem>
-                        <SelectItem value="10th">10th Class (Matric)</SelectItem>
-                      </>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>{isBS ? "Obtained Marks (Inter/ADP)" : "SSC / Matric Marks"}</Label>
-                <Input type="number" value={formData.previousMarks || ""} onChange={e => setFormData({...formData, previousMarks: e.target.value})} placeholder="Obtained Marks" className="bg-white" />
-              </div>
-              <div className="space-y-2">
-                <Label>{isBS ? "Board / Uni Roll #" : "Board Roll #"}</Label>
-                <Input value={formData.boardRollNo || ""} onChange={e => setFormData({...formData, boardRollNo: e.target.value})} placeholder="Roll #" className="bg-white" />
-              </div>
-              {isBS ? (
-                <div className="space-y-2">
-                  <Label>Current Semester (موجودہ سمسٹر)</Label>
-                  <Select
-                    value={String(formData.currentSemester || 1)}
-                    onValueChange={(v) => {
-                      const sem = Number(v);
-                      const suffix = sem === 1 ? '1st' : sem === 2 ? '2nd' : sem === 3 ? '3rd' : `${sem}th`;
-                      setFormData(prev => ({
-                        ...prev,
-                        currentSemester: sem,
-                        academicPart: sem > 4 ? "Part-2" : "Part-1",
-                        category: `BS Semester ${suffix}${sem === 1 ? ' (Fresh Intake)' : sem === 5 ? ' (ADP Lateral Entry)' : ''}`
-                      }));
-                    }}
-                  >
-                    <SelectTrigger className="bg-white font-bold text-superior-teal"><SelectValue /></SelectTrigger>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Gender</Label>
+                  <Select value={formData.gender} onValueChange={(v: any) => setFormData({ ...formData, gender: v })}>
+                    <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
-                        <SelectItem key={s} value={String(s)}>Semester {s} (S{s})</SelectItem>
+                      <SelectItem value="Male">Male (Boys Campus)</SelectItem>
+                      <SelectItem value="Female">Female (Girls Campus)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Blood Group</Label>
+                  <Input 
+                    value={formData.bloodGroup} 
+                    onChange={e => setFormData({ ...formData, bloodGroup: e.target.value })} 
+                    placeholder="e.g. O+, B+" 
+                    className="h-10 bg-slate-50 dark:bg-slate-900 uppercase"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Student Mobile</Label>
+                  <Input 
+                    value={formData.contact} 
+                    onChange={e => setFormData({ ...formData, contact: e.target.value })} 
+                    placeholder="03xx-xxxxxxx" 
+                    className="h-10 bg-slate-50 dark:bg-slate-900 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                    <MessageSquare size={13} className="text-emerald-600 dark:text-emerald-400" />
+                    <span>Guardian WhatsApp Contact (والد / سرپرست واٹس ایپ)</span>
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                      <MessageSquare size={10} className="fill-emerald-500/20" /> WhatsApp Active
+                    </span>
+                    {Boolean(formData.fatherContact || formData.contact) && (
+                      <button
+                        type="button"
+                        onClick={handleWhatsAppPing}
+                        className="text-[10px] font-black text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 flex items-center gap-1 bg-emerald-100/70 dark:bg-emerald-900/40 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
+                        title="Open WhatsApp chat with guardian"
+                      >
+                        <ExternalLink size={10} /> Test Ping
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="relative">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-emerald-600">
+                    <MessageSquare size={16} className="fill-emerald-500/20" />
+                  </div>
+                  <Input 
+                    value={formData.fatherContact} 
+                    onChange={e => setFormData({ ...formData, fatherContact: e.target.value })} 
+                    placeholder="03xx-xxxxxxx (Father/Guardian WhatsApp)" 
+                    className="h-10 pl-9 font-mono bg-slate-50 dark:bg-slate-900 border-slate-200 focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Residential Address</Label>
+                <Input 
+                  value={formData.address} 
+                  onChange={e => setFormData({ ...formData, address: e.target.value })} 
+                  placeholder="Street, City, Tehsil..." 
+                  className="h-10 bg-slate-50 dark:bg-slate-900"
+                />
+              </div>
+            </div>
+
+            {/* Right 4 Cols: Photo & Biometrics */}
+            <div className="lg:col-span-4 space-y-5">
+              {/* Photo Box */}
+              <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col items-center">
+                <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3 flex items-center gap-1.5 self-start">
+                  <Camera size={14} className="text-superior-teal dark:text-emerald-400" /> Student Photo
+                </h4>
+                <div className="relative group w-32 h-32 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center overflow-hidden transition-colors group-hover:border-superior-teal shadow-inner">
+                  {formData.photo ? (
+                    <img src={formData.photo} alt={formData.fullName} className="w-full h-full object-cover object-[center_top]" />
+                  ) : (
+                    <>
+                      <Camera className="text-slate-400 mb-1" size={26} />
+                      <span className="text-[10px] text-slate-500 font-bold uppercase">No Photo</span>
+                    </>
+                  )}
+                  <label className="absolute inset-0 cursor-pointer flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity text-white text-[10px] font-bold">
+                    <span>Change Photo</span>
+                    <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
+                  </label>
+                </div>
+                {formData.photo && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setFormData({ ...formData, photo: '' })}
+                    className="mt-2 text-rose-600 hover:text-rose-700 text-xs h-7 px-2"
+                  >
+                    Remove Photo
+                  </Button>
+                )}
+              </div>
+
+              {/* Biometric Thumb Impression Box (SecuGen Hardware) */}
+              <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col items-center">
+                <div className="w-full flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Fingerprint size={14} className="text-superior-teal dark:text-emerald-400" /> Biometric Thumb
+                  </h4>
+                  {formData.fingerprintTemplate && (
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                      Enrolled {fpQuality ? `(${fpQuality}%)` : ''}
+                    </span>
+                  )}
+                </div>
+
+                {/* Thumb Visual Frame */}
+                <div className={cn(
+                  "w-36 h-40 rounded-2xl border-2 flex flex-col items-center justify-center overflow-hidden transition-all duration-300 relative my-2",
+                  formData.fingerprintTemplate
+                    ? "border-emerald-500 bg-slate-950 shadow-inner"
+                    : isScanningFP
+                    ? "border-amber-400 bg-amber-50 dark:bg-amber-950/40 animate-pulse text-amber-600"
+                    : "border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-400"
+                )}>
+                  {fpBmp ? (
+                    <img
+                      src={fpBmp.startsWith("data:") ? fpBmp : `data:image/bmp;base64,${fpBmp}`}
+                      alt="Fingerprint"
+                      className="w-full h-full object-contain p-2 filter contrast-125 brightness-110 drop-shadow-[0_0_4px_rgba(16,185,129,0.5)]"
+                      onError={() => setFpBmp(null)}
+                    />
+                  ) : formData.fingerprintTemplate ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center relative p-2 bg-gradient-to-b from-slate-950 to-slate-900">
+                      <svg
+                        viewBox="0 0 40 48"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="w-16 h-20 text-emerald-400 stroke-current opacity-90 drop-shadow-[0_0_3px_rgba(52,211,153,0.5)]"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                      >
+                        <path d="M7 26 C7 14, 33 14, 33 26 C33 34, 28 40, 26 43" />
+                        <path d="M12 26 C12 18, 28 18, 28 26 C28 35, 23 38, 20 44" />
+                        <path d="M16 26 C16 21, 24 21, 24 26 C24 33, 21 37, 20 40" />
+                        <path d="M19 26 C19 23, 21 23, 21 26 C21 30, 20 33, 20 36" />
+                        <path d="M4 29 C4 18, 12 8, 20 8 C28 8, 36 18, 36 29" />
+                        <path d="M4 35 C5 39, 9 43, 15 44" />
+                        <path d="M36 35 C35 39, 31 43, 25 44" />
+                      </svg>
+                      <span className="text-[10px] font-black uppercase text-emerald-300 tracking-wider mt-1">
+                        Biometric Verified
+                      </span>
+                      <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.9)]" />
+                    </div>
+                  ) : isScanningFP ? (
+                    <div className="flex flex-col items-center justify-center p-3 text-center">
+                      <Fingerprint size={38} className="text-amber-500 animate-bounce mb-1" />
+                      <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 animate-pulse">
+                        Place Thumb on SecuGen...
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center p-3 text-center">
+                      <Fingerprint size={36} className="text-slate-300 dark:text-slate-600 mb-1" />
+                      <span className="text-[10px] font-bold text-slate-400">Thumb Not Scanned</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Thumb Action Buttons */}
+                <div className="flex items-center gap-2 w-full mt-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={isScanningFP}
+                    onClick={handleScanThumb}
+                    className="flex-1 h-9 rounded-xl bg-superior-teal hover:bg-superior-teal/90 text-white font-bold text-xs gap-1.5 shadow-xs"
+                  >
+                    <Fingerprint size={14} />
+                    {isScanningFP ? "Scanning..." : formData.fingerprintTemplate ? "Rescan Thumb" : "Scan Thumb"}
+                  </Button>
+                  {formData.fingerprintTemplate && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleClearThumb}
+                      className="h-9 w-9 p-0 rounded-xl text-rose-600 hover:bg-rose-50 border-rose-200"
+                      title="Clear Thumb Impression"
+                    >
+                      <Trash2 size={13} />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: ACADEMIC & CURRICULUM */}
+        {activeTab === 'academic' && (
+          <div className="space-y-6">
+            {/* Top Academic Placement Grid */}
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs space-y-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-black text-superior-teal dark:text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                  <GraduationCap size={15} /> Academic Placement & Program
+                </h3>
+                <Badge className="bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-bold">
+                  Active Stream: {activeStream.toUpperCase()}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Academic Group / Degree</Label>
+                  <Select value={formData.group} onValueChange={handleGroupChange}>
+                    <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 font-semibold"><SelectValue placeholder="Select Group" /></SelectTrigger>
+                    <SelectContent>
+                      {streamGroups.map(group => (
+                        <SelectItem key={group.name} value={group.name}>{group.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label>Academic Stage</Label>
-                  <Select value={formData.academicPart || "Part-1"} onValueChange={v => setFormData({...formData, academicPart: v as any})}>
-                    <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Section Assignment</Label>
+                  <Select value={formData.section || ""} onValueChange={v => setFormData({ ...formData, section: v })}>
+                    <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 font-semibold"><SelectValue placeholder="Select Section" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Part-1">Inter Part-1</SelectItem>
-                      <SelectItem value="Part-2">Inter Part-2</SelectItem>
+                      {filteredSections.map(sec => (
+                        <SelectItem key={sec.id} value={sec.name}>{sec.name} ({sec.class})</SelectItem>
+                      ))}
+                      {formData.section && formData.section !== 'Other' && !filteredSections.some(s => s.name === formData.section) && (
+                        <SelectItem key="current-sec" value={formData.section}>{formData.section} (Current)</SelectItem>
+                      )}
+                      <SelectItem value="Other">Other / Manual</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {formData.section === 'Other' && (
+                    <Input 
+                      className="mt-2 h-9 text-xs" 
+                      placeholder="Enter manual section name" 
+                      onChange={e => setFormData({ ...formData, section: e.target.value.toUpperCase() })} 
+                    />
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Academic Session</Label>
+                  <Select value={formData.session} onValueChange={v => setFormData({ ...formData, session: v })}>
+                    <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 font-semibold"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="2026-28">2026-28 (Inter / Diploma)</SelectItem>
+                      <SelectItem value="2025-2027">2025-2027</SelectItem>
+                      <SelectItem value="2024-2026">2024-2026</SelectItem>
+                      <SelectItem value="2023-2025">2023-2025</SelectItem>
+                      <SelectItem value="2026-30">2026-30 (BS 4-Year Intake)</SelectItem>
+                      <SelectItem value="2024-28">2024-28 (BS Existing)</SelectItem>
+                      <SelectItem value="2025-29">2025-29 (BS Existing)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-              )}
-              <div className="space-y-2">
-                <Label>Session (Academic Period)</Label>
-                <Select value={formData.session || ""} onValueChange={v => setFormData({...formData, session: v})}>
-                  <SelectTrigger className="bg-white"><SelectValue placeholder="Select Session" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="2023-2025">2023-2025</SelectItem>
-                    <SelectItem value="2024-2026">2024-2026</SelectItem>
-                    <SelectItem value="2025-2027">2025-2027</SelectItem>
-                    <SelectItem value="2026-28">2026-28</SelectItem>
-                    <SelectItem value="2027-2029">2027-2029</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Blood Group</Label>
-                <Input value={formData.bloodGroup || ""} onChange={e => setFormData({...formData, bloodGroup: e.target.value})} placeholder="e.g. O+, B+" className="bg-white uppercase" />
-              </div>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label className="font-bold text-xs">Student Contact Number</Label>
-            <Input value={formData.contact || ""} onChange={e => setFormData({...formData, contact: e.target.value})} placeholder="03xx-xxxxxxx" />
-          </div>
-          <div className="space-y-2">
-            <Label className="flex items-center justify-between font-bold text-xs">
-              <span>Guardian WhatsApp Contact</span>
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200">
-                <MessageSquare size={10} className="text-emerald-500 fill-emerald-500/20" />
-                WhatsApp Active
-              </span>
-            </Label>
-            <div className="relative">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-emerald-600">
-                <MessageSquare size={14} className="fill-emerald-500/20" />
-              </div>
-              <Input
-                className="pl-9 font-mono text-sm border-slate-200 focus:border-emerald-500"
-                placeholder="03xx-xxxxxxx (Father/Guardian)"
-                value={formData.fatherContact || ""}
-                onChange={e => setFormData({...formData, fatherContact: e.target.value})}
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Tuition Fee (Total / Semester)</Label>
-            <Input type="number" value={formData.totalFeeFinalized || ""} onChange={e => setFormData({...formData, totalFeeFinalized: Number(e.target.value)})} />
-          </div>
-          <div className="space-y-2">
-            <Label className="flex items-center justify-between">
-              <span>Previous Arrears (پچھلا بقایا جات)</span>
-              <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md font-bold border border-amber-200">
-                Bakaya-jat
-              </span>
-            </Label>
-            <Input
-              type="number"
-              placeholder="0"
-              className="font-bold text-amber-700 border-amber-200 focus:border-amber-400"
-              value={formData.previousArrears || ""}
-              onChange={e => setFormData({...formData, previousArrears: Number(e.target.value)})}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Admission Fee</Label>
-            <Input type="number" value={formData.admissionFee || ""} onChange={e => setFormData({...formData, admissionFee: Number(e.target.value)})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Misc Funds</Label>
-            <Input type="number" value={formData.miscFunds || ""} onChange={e => setFormData({...formData, miscFunds: Number(e.target.value)})} />
-          </div>
-          <div className="space-y-2">
-            <Label>Installment / Month Dues (Auto-Calc)</Label>
-            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-lg font-black text-superior-teal">
-              Rs. {Math.round((Number(formData.totalFeeFinalized || 0) + Number(formData.admissionFee || 0) + Number(formData.miscFunds || 0) + Number(formData.previousArrears || 0)) / (formData.totalInstallments || 1)).toLocaleString()}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Total Installments Plan</Label>
-            <Select value={String(formData.totalInstallments ?? 12)} onValueChange={(v) => setFormData({...formData, totalInstallments: Number(v)})}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(num => (
-                  <SelectItem key={num} value={String(num)}>{num} Installments</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Academic Group</Label>
-            <Select value={formData.group || ""} onValueChange={handleGroupChange}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select Group" />
-              </SelectTrigger>
-              <SelectContent>
-                {ACADEMIC_GROUPS.map(group => (
-                  <SelectItem key={group.name} value={group.name}>{group.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Section</Label>
-            <Select value={formData.section || ""} onValueChange={v => {
-              const sectionObj = filteredSections.find(sec => sec.name === v);
-              const newFormData = { ...formData, section: v };
-              if (sectionObj && sectionObj.class) {
-                newFormData.session = sectionObj.class;
-              }
-              setFormData(newFormData);
-            }}>
-              <SelectTrigger><SelectValue placeholder="Select Section" /></SelectTrigger>
-              <SelectContent>
-                {filteredSections.map(sec => (
-                  <SelectItem key={sec.id} value={sec.name}>{sec.name} ({sec.class})</SelectItem>
-                ))}
-                {formData.section && formData.section !== 'Other' && !filteredSections.some(s => s.name === formData.section) && (
-                  <SelectItem key="current-sec" value={formData.section}>{formData.section} (Current)</SelectItem>
+
+                {/* Academic Stage / Current Semester */}
+                {isBS ? (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Current Semester (موجودہ سمسٹر)</Label>
+                    <Select
+                      value={String(formData.currentSemester || 1)}
+                      onValueChange={(v) => {
+                        const sem = Number(v);
+                        const suffix = sem === 1 ? '1st' : sem === 2 ? '2nd' : sem === 3 ? '3rd' : `${sem}th`;
+                        setFormData(prev => ({
+                          ...prev,
+                          currentSemester: sem,
+                          academicPart: sem > 4 ? "Part-2" : "Part-1",
+                          category: `BS Semester ${suffix}${sem === 1 ? ' (Fresh Intake)' : sem === 5 ? ' (ADP Lateral Entry)' : ''}`
+                        }));
+                      }}
+                    >
+                      <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 font-bold text-superior-teal"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
+                          <SelectItem key={s} value={String(s)}>
+                            Semester {s} {s === 1 ? '(Fresh Intake)' : s === 5 ? '(ADP Lateral Entry 5th)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Academic Stage</Label>
+                    <Select value={formData.academicPart || "Part-1"} onValueChange={v => setFormData({ ...formData, academicPart: v as any })}>
+                      <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 font-semibold"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Part-1">Part-1 (First Year)</SelectItem>
+                        <SelectItem value="Part-2">Part-2 (Second Year)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 )}
-                <SelectItem value="Other">Other / Manual</SelectItem>
-              </SelectContent>
-            </Select>
-            {formData.section === 'Other' && (
-              <Input 
-                className="mt-2"
-                placeholder="Enter manual section name" 
-                onChange={e => setFormData({...formData, section: e.target.value.toUpperCase()})} 
-              />
-            )}
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label>Address</Label>
-          <Input value={formData.address || ""} onChange={e => setFormData({...formData, address: e.target.value})} />
-        </div>
-        <div className="space-y-4">
-          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
-            <div className="space-y-2">
-              <Label className="text-superior-teal font-bold">Compulsory Subjects / لازمی مضامین</Label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {COMPULSORY_SUBJECTS.map(subject => (
-                  <div key={subject} className="flex items-center space-x-2 bg-white p-2 rounded border border-slate-100">
-                    <Checkbox 
-                      id={`edit-comp-subject-${subject}`} 
-                      checked={(formData.subjects || []).includes(subject)}
-                      onCheckedChange={() => toggleSubject(subject)}
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">College Roll #</Label>
+                  <div className="flex gap-2">
+                    <Input 
+                      value={formData.collegeNo} 
+                      onChange={e => setFormData({ ...formData, collegeNo: e.target.value })} 
+                      placeholder="Roll #"
+                      className="h-10 bg-slate-50 dark:bg-slate-900 font-bold font-mono"
                     />
-                    <label htmlFor={`edit-comp-subject-${subject}`} className="text-xs font-medium leading-none cursor-pointer">
-                      {subject}
-                    </label>
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={handleAutoSuggestRollNo}
+                      className="h-10 px-3 text-xs text-superior-teal font-bold shrink-0"
+                    >
+                      Auto
+                    </Button>
                   </div>
-                ))}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                    {isBS ? "Previous Qualification" : "Previous Class"}
+                  </Label>
+                  <Select value={formData.previousClass || (isBS ? "12th" : "10th")} onValueChange={v => setFormData({ ...formData, previousClass: v as any })}>
+                    <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 font-semibold"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {isBS ? (
+                        <>
+                          <SelectItem value="12th">12th Class (F.Sc / ICS / I.Com - Part 2)</SelectItem>
+                          <SelectItem value="ADP">ADP / B.Sc (Lateral Entry)</SelectItem>
+                          <SelectItem value="11th">11th Class (Inter Part-1)</SelectItem>
+                          <SelectItem value="DAE">DAE (3-Year Technical Diploma)</SelectItem>
+                          <SelectItem value="10th">10th Class (Matric)</SelectItem>
+                        </>
+                      ) : (
+                        <>
+                          <SelectItem value="10th">10th Class (Matric SSC)</SelectItem>
+                          <SelectItem value="9th">9th Class</SelectItem>
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                    {isBS ? "Obtained Marks (Inter / ADP)" : "SSC / Matric Marks"}
+                  </Label>
+                  <Input 
+                    type="number" 
+                    value={formData.previousMarks} 
+                    onChange={e => setFormData({ ...formData, previousMarks: e.target.value })} 
+                    placeholder="Marks" 
+                    className="h-10 bg-slate-50 dark:bg-slate-900 font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                    {isBS ? "Uni / Board Roll #" : "Board Roll #"}
+                  </Label>
+                  <Input 
+                    value={formData.boardRollNo} 
+                    onChange={e => setFormData({ ...formData, boardRollNo: e.target.value })} 
+                    placeholder="Board Roll #" 
+                    className="h-10 bg-slate-50 dark:bg-slate-900 font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Admission Category</Label>
+                  <Input 
+                    value={formData.category} 
+                    onChange={e => setFormData({ ...formData, category: e.target.value })} 
+                    className="h-10 bg-slate-50 dark:bg-slate-900 font-semibold"
+                  />
+                </div>
               </div>
             </div>
 
-            <Separator />
+            {/* Stream-Isolated Curriculum & Subjects Deck */}
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs space-y-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-black text-superior-teal dark:text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                    <BookOpen size={15} /> Curriculum & Subjects ({formData.subjects?.length || 0} Enrolled)
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Stream-isolated curriculum. 1-click toggle to add or drop subjects from student's active semester/year.
+                  </p>
+                </div>
+                <Badge className="bg-superior-teal/10 text-superior-teal dark:text-emerald-300 font-mono text-xs px-2.5 py-0.5">
+                  {formData.group || "Custom"}
+                </Badge>
+              </div>
 
-            <div className="space-y-2">
-              <Label className="text-superior-teal font-bold">Elective & Group Subjects / اختیاری مضامین</Label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {SUBJECTS.filter(s => !COMPULSORY_SUBJECTS.includes(s)).map(subject => (
-                  <div key={subject} className="flex items-center space-x-2 bg-white p-2 rounded border border-slate-100">
-                    <Checkbox 
-                      id={`edit-subject-${subject}`} 
-                      checked={(formData.subjects || []).includes(subject)}
-                      onCheckedChange={() => toggleSubject(subject)}
-                    />
-                    <label htmlFor={`edit-subject-${subject}`} className="text-sm font-medium leading-none cursor-pointer">
-                      {subject}
-                    </label>
+              {/* Compulsory Subjects Section */}
+              <div className="space-y-2">
+                <span className="text-[11px] font-black uppercase text-slate-400 tracking-wider">
+                  Compulsory Subjects / لازمی مضامین
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {compulsoryForStream.map(subj => {
+                    const isSelected = (formData.subjects || []).includes(subj);
+                    return (
+                      <button
+                        key={subj}
+                        type="button"
+                        onClick={() => toggleSubject(subj)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border",
+                          isSelected
+                            ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 text-emerald-800 dark:text-emerald-300 shadow-2xs"
+                            : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-400"
+                        )}
+                      >
+                        {isSelected ? <Check size={12} className="text-emerald-600" /> : <div className="w-3 h-3 rounded-full border border-slate-300" />}
+                        <span>{subj}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Elective & Major Subjects Section */}
+              <div className="space-y-2">
+                <span className="text-[11px] font-black uppercase text-slate-400 tracking-wider">
+                  Major Group Electives / اختیاری مضامین ({formData.group})
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {activeGroupSubjects.map(subj => {
+                    const isSelected = (formData.subjects || []).includes(subj);
+                    return (
+                      <button
+                        key={subj}
+                        type="button"
+                        onClick={() => toggleSubject(subj)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border",
+                          isSelected
+                            ? "bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 text-indigo-800 dark:text-indigo-300 shadow-2xs"
+                            : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-400"
+                        )}
+                      >
+                        {isSelected ? <Check size={12} className="text-indigo-600" /> : <div className="w-3 h-3 rounded-full border border-slate-300" />}
+                        <span>{subj}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Other Active Subjects Not in Compulsory or Group (e.g. ad-hoc/transferred) */}
+              {(() => {
+                const otherActive = (formData.subjects || []).filter(
+                  s => !compulsoryForStream.includes(s) && !activeGroupSubjects.includes(s)
+                );
+                if (otherActive.length === 0) return null;
+                return (
+                  <div className="space-y-2 pt-1">
+                    <span className="text-[11px] font-black uppercase text-slate-400 tracking-wider">
+                      Additional Enrolled Electives
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {otherActive.map(subj => (
+                        <div
+                          key={subj}
+                          className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 flex items-center gap-1.5"
+                        >
+                          <Check size={12} className="text-amber-700" />
+                          <span>{subj}</span>
+                          <button
+                            type="button"
+                            onClick={() => toggleSubject(subj)}
+                            className="ml-1 text-amber-600 hover:text-amber-900 cursor-pointer"
+                            title="Remove Subject"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
+                );
+              })()}
+
+              {/* Add Custom Elective Input */}
+              <div className="pt-2 flex items-center gap-2 max-w-md">
+                <Input
+                  value={customSubjectInput}
+                  onChange={e => setCustomSubjectInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomSubject(); } }}
+                  placeholder="Add custom elective subject..."
+                  className="h-9 text-xs bg-slate-50 dark:bg-slate-900"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleAddCustomSubject}
+                  className="h-9 px-3 rounded-xl bg-superior-teal hover:bg-superior-teal/90 text-white font-bold text-xs gap-1 shrink-0"
+                >
+                  <Plus size={13} /> Add
+                </Button>
               </div>
             </div>
           </div>
-        </div>
-        <div className="pt-4 flex gap-3">
-          <Button variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={handleDelete}>
-            <Trash2 size={18} className="mr-2" /> Delete Student
+        )}
+
+        {/* TAB 3: FEE LEDGER & RECOVERY */}
+        {activeTab === 'fee' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Left 8 Cols: Fee Configuration Inputs */}
+              <div className="lg:col-span-8 bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs space-y-5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black text-superior-teal dark:text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                    <CreditCard size={15} /> Fee Package Structure & Breakdown
+                  </h3>
+                  <span className="text-[10px] font-bold text-slate-500">
+                    {isBS ? "BS 4-Year Semester Billing" : "Intermediate Installment Plan"}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                      {isBS ? "Semester Tuition Fee (Rs.)" : "Tuition Fee Finalized (Rs.)"}
+                    </Label>
+                    <Input 
+                      type="number" 
+                      value={formData.totalFeeFinalized || ""} 
+                      onChange={e => setFormData({ ...formData, totalFeeFinalized: Number(e.target.value) })} 
+                      className="h-10 bg-slate-50 dark:bg-slate-900 font-bold font-mono text-superior-teal text-base"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold text-amber-700 dark:text-amber-400">
+                        Previous Arrears / پچھلا بقایا جات (Rs.)
+                      </Label>
+                      <span className="text-[9px] bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded font-black border border-amber-200 dark:border-amber-800">
+                        Bakaya-jat
+                      </span>
+                    </div>
+                    <Input 
+                      type="number" 
+                      placeholder="0"
+                      value={formData.previousArrears || ""} 
+                      onChange={e => setFormData({ ...formData, previousArrears: Number(e.target.value) })} 
+                      className="h-10 bg-slate-50 dark:bg-slate-900 font-bold font-mono text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800 focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Admission Fee (Rs.)</Label>
+                    <Input 
+                      type="number" 
+                      value={formData.admissionFee || ""} 
+                      onChange={e => setFormData({ ...formData, admissionFee: Number(e.target.value) })} 
+                      className="h-10 bg-slate-50 dark:bg-slate-900 font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Misc Funds / Registration (Rs.)</Label>
+                    <Input 
+                      type="number" 
+                      value={formData.miscFunds || ""} 
+                      onChange={e => setFormData({ ...formData, miscFunds: Number(e.target.value) })} 
+                      className="h-10 bg-slate-50 dark:bg-slate-900 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-slate-700/60">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Total Installments Plan</Label>
+                    <Select 
+                      value={String(formData.totalInstallments || (isBS ? 2 : 12))} 
+                      onValueChange={v => setFormData({ ...formData, totalInstallments: Number(v) })}
+                    >
+                      <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 font-semibold"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(num => (
+                          <SelectItem key={num} value={String(num)}>
+                            {num} Installment{num > 1 ? 's' : ''} {isBS && num === 2 ? '(Standard Semester Plan)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Monthly / Installment Dues (Auto-Calc)</Label>
+                    <div className="h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex items-center font-black font-mono text-superior-teal text-base">
+                      Rs. {installmentMonthlyDues.toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right 4 Cols: Master Financial Summary Card */}
+              <div className="lg:col-span-4 bg-gradient-to-br from-slate-900 to-slate-950 text-white p-6 rounded-3xl shadow-xl flex flex-col justify-between space-y-5">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">
+                      Ledger Overview
+                    </span>
+                    <Badge className={cn(
+                      "font-black text-[10px] px-2 py-0.5",
+                      feeStatus === 'Full Paid' ? "bg-emerald-500 text-white" : feeStatus === 'Partial Paid' ? "bg-amber-500 text-white" : "bg-rose-500 text-white"
+                    )}>
+                      {feeStatus}
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="p-3 rounded-2xl bg-white/5 border border-white/10">
+                      <p className="text-[10px] font-bold uppercase text-slate-400">Total Finalized Package</p>
+                      <p className="text-2xl font-black font-mono text-white mt-0.5">
+                        Rs. {totalPackageFee.toLocaleString()}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="p-3 rounded-2xl bg-white/5 border border-white/10">
+                        <p className="text-[10px] font-bold uppercase text-emerald-400">Paid to Date</p>
+                        <p className="text-lg font-black font-mono text-emerald-300 mt-0.5">
+                          Rs. {paidAmount.toLocaleString()}
+                        </p>
+                      </div>
+
+                      <div className="p-3 rounded-2xl bg-white/5 border border-white/10">
+                        <p className="text-[10px] font-bold uppercase text-amber-400">Remaining Due</p>
+                        <p className="text-lg font-black font-mono text-amber-300 mt-0.5">
+                          Rs. {remainingOutstanding.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-white/5 border border-white/10 text-[11px] text-slate-300 space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Installments:</span>
+                    <span className="font-bold text-white">{installmentsCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Rate / Dues:</span>
+                    <span className="font-bold text-white">Rs. {installmentMonthlyDues.toLocaleString()}</span>
+                  </div>
+                  {arrears > 0 && (
+                    <div className="flex justify-between text-amber-300">
+                      <span>Included Arrears:</span>
+                      <span className="font-bold">Rs. {arrears.toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 3. BOTTOM LANDSCAPE ACTION BAR */}
+      <div className="p-4 sm:p-5 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={handleDelete}
+          className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold gap-1.5"
+        >
+          <Trash2 size={16} /> Delete Student Record
+        </Button>
+
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            className="text-xs font-bold rounded-xl h-10 px-4"
+          >
+            Cancel
           </Button>
-          <div className="flex-1" />
-          <Button variant="outline" type="button" onClick={onClose}>Cancel</Button>
-          <Button className="bg-superior-teal text-white hover:bg-superior-teal/90" onClick={handleSave}>
-            Save Changes
+          <Button
+            type="button"
+            onClick={handleSave}
+            className="bg-superior-teal hover:bg-superior-teal/90 text-white font-bold text-xs rounded-xl h-10 px-6 gap-2 shadow-md cursor-pointer"
+          >
+            <Check size={16} /> Save Changes
           </Button>
         </div>
       </div>
