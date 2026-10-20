@@ -39,8 +39,11 @@ import {
   Check,
   ShieldCheck,
   Plus,
+  Upload,
   X
 } from 'lucide-react';
+import BulkImportWizard from './BulkImportWizard';
+import BulkEditStudentsModal from './BulkEditStudentsModal';
 import { secugenService } from '../lib/secugenService';
 import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
 import { buildStudentNoticeMessage, sendAutoStudentNotice } from '../lib/whatsappAutomation';
@@ -116,6 +119,8 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
   const [subjectFilter] = useState('all');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+  const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
   const [dialogType, setDialogType] = useState<'profile' | 'profile_academic' | 'profile_fees' | 'edit' | 'pay' | 'receipt' | 'delete' | 'bulkDelete' | 'id_card' | 'bulk_promote' | 'migrate_section' | null>(null);
   const [isBiometricModalOpen, setIsBiometricModalOpen] = useState(false);
   const [biometricTargetStudent, setBiometricTargetStudent] = useState<Student | null>(null);
@@ -1080,6 +1085,17 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            {/* 3-Stage Bulk Import Wizard Button */}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setIsBulkImportOpen(true)}
+              className="h-7.5 px-3 rounded-xl border-slate-200/90 dark:border-slate-800 hover:border-blue-500/40 text-slate-700 dark:text-slate-200 hover:bg-blue-50/50 dark:hover:bg-slate-800 text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+            >
+              <Upload size={13} className="text-blue-600" />
+              <span>Import Students</span>
+            </Button>
+
             {/* Comprehensive Export Reports Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger render={
@@ -1374,6 +1390,13 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
               className="h-8 rounded-xl bg-white/20 text-white hover:bg-white/30 border border-white/20 font-bold text-[9px] uppercase tracking-wider px-3 gap-1"
             >
               <School size={12} /> Migrate Section
+            </Button>
+            <Button 
+              onClick={() => setIsBulkEditOpen(true)}
+              size="sm"
+              className="h-8 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 font-bold text-[9px] uppercase tracking-wider px-3 shadow-sm gap-1 flex items-center cursor-pointer"
+            >
+              <Edit size={12} /> Bulk Edit ({selectedStudents.length})
             </Button>
             <Button 
               variant="outline" 
@@ -2053,6 +2076,23 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
         )}
       </Dialog>
 
+      {/* 3-Stage Bulk Import Wizard */}
+      <BulkImportWizard
+        isOpen={isBulkImportOpen}
+        onClose={() => setIsBulkImportOpen(false)}
+        data={data}
+        defaultProgram={programFilter === 'bs' ? 'bs' : programFilter === 'dit' ? 'dit' : programFilter === 'ukl3' ? 'ukl3' : 'inter'}
+      />
+
+      {/* Multi-Student Bulk Edit Modal */}
+      <BulkEditStudentsModal
+        isOpen={isBulkEditOpen}
+        onClose={() => setIsBulkEditOpen(false)}
+        selectedStudents={(mergedStudents || []).filter((s: Student) => selectedStudents.includes(s.id))}
+        data={data}
+        onSuccess={() => setSelectedStudents([])}
+      />
+
       <Dialog open={dialogType === 'receipt'} onOpenChange={(open) => !open && setDialogType(null)}>
         <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] overflow-y-auto p-0 border-none bg-white rounded-3xl">
           {selectedStudent && <FeeReceipt student={selectedStudent} settings={data.settings} />}
@@ -2727,12 +2767,16 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
   const [fpQuality, setFpQuality] = useState<number | null>(null);
   const [fpBmp, setFpBmp] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
-    return (
+    const raw = (
       localStorage.getItem(`scj_fp_thumb_${student.id}`) ||
       (student.studentId ? localStorage.getItem(`scj_fp_thumb_${student.studentId}`) : null) ||
       (student.collegeNo ? localStorage.getItem(`scj_fp_thumb_${student.collegeNo}`) : null) ||
       null
     );
+    if (raw && raw.length > 100 && !raw.includes("undefined") && raw.startsWith("Qk")) {
+      return raw;
+    }
+    return null;
   });
 
   const streamGroups = React.useMemo(() => {
@@ -3044,7 +3088,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
   ] as const;
 
   return (
-    <DialogContent className="max-w-6xl xl:max-w-7xl w-[96vw] max-h-[92vh] overflow-hidden flex flex-col p-0 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border-none">
+    <DialogContent className="max-w-[1680px] w-[98vw] h-[92vh] max-h-[92vh] overflow-hidden flex flex-col p-0 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border-none">
       {/* 1. TOP LANDSCAPE HEADER & STREAM SWITCHER */}
       <div className="bg-gradient-to-r from-superior-teal to-teal-900 text-white p-5 sm:p-6 shrink-0 border-b border-teal-700/50">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -3175,187 +3219,207 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
       <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 bg-slate-50/50 dark:bg-slate-900/50">
         {/* TAB 1: IDENTITY & BIOMETRICS */}
         {activeTab === 'identity' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left 8 Cols: Form Fields */}
-            <div className="lg:col-span-8 bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs space-y-5">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+            {/* Column 1: Primary Identity Form Fields */}
+            <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs space-y-3.5">
               <h3 className="text-xs font-black text-superior-teal dark:text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-                <User size={15} /> Student & Guardian Identification
+                <User size={15} /> Student Legal Identity
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
+              <div className="space-y-3">
+                <div className="space-y-1">
                   <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Full Name</Label>
                   <Input 
                     value={formData.fullName} 
                     onChange={e => setFormData({ ...formData, fullName: e.target.value })} 
-                    className="h-10 bg-slate-50 dark:bg-slate-900 font-medium"
+                    className="h-10 bg-slate-50 dark:bg-slate-900 font-bold text-xs"
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Father's Name</Label>
                   <Input 
                     value={formData.fatherName} 
                     onChange={e => setFormData({ ...formData, fatherName: e.target.value })} 
-                    className="h-10 bg-slate-50 dark:bg-slate-900 font-medium"
+                    className="h-10 bg-slate-50 dark:bg-slate-900 font-bold text-xs"
                   />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">B-Form / CNIC</Label>
+                    <Input 
+                      value={formData.bayFormNo} 
+                      onChange={e => setFormData({ ...formData, bayFormNo: e.target.value })} 
+                      placeholder="36103-..." 
+                      className="h-10 bg-slate-50 dark:bg-slate-900 font-mono text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Date of Birth</Label>
+                    <Input 
+                      type="date" 
+                      value={formData.dob} 
+                      onChange={e => setFormData({ ...formData, dob: e.target.value })} 
+                      className="h-10 bg-slate-50 dark:bg-slate-900 text-xs"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Gender</Label>
+                    <Select value={formData.gender} onValueChange={(v: any) => setFormData({ ...formData, gender: v })}>
+                      <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 text-xs font-bold"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Male">Male (Boys)</SelectItem>
+                        <SelectItem value="Female">Female (Girls)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Blood Group</Label>
+                    <Input 
+                      value={formData.bloodGroup} 
+                      onChange={e => setFormData({ ...formData, bloodGroup: e.target.value })} 
+                      placeholder="e.g. O+, B+" 
+                      className="h-10 bg-slate-50 dark:bg-slate-900 uppercase text-xs"
+                    />
+                  </div>
                 </div>
               </div>
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">B-Form / CNIC Number</Label>
-                  <Input 
-                    value={formData.bayFormNo} 
-                    onChange={e => setFormData({ ...formData, bayFormNo: e.target.value })} 
-                    placeholder="36103-..." 
-                    className="h-10 bg-slate-50 dark:bg-slate-900 font-mono"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Date of Birth</Label>
-                  <Input 
-                    type="date" 
-                    value={formData.dob} 
-                    onChange={e => setFormData({ ...formData, dob: e.target.value })} 
-                    className="h-10 bg-slate-50 dark:bg-slate-900 font-medium"
-                  />
-                </div>
-              </div>
+            {/* Column 2: Communication & Guardian WhatsApp Section */}
+            <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs space-y-3.5">
+              <h3 className="text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                <MessageSquare size={15} /> Guardian & WhatsApp
+              </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Gender</Label>
-                  <Select value={formData.gender} onValueChange={(v: any) => setFormData({ ...formData, gender: v })}>
-                    <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Male">Male (Boys Campus)</SelectItem>
-                      <SelectItem value="Female">Female (Girls Campus)</SelectItem>
-                    </SelectContent>
-                  </Select>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Guardian WhatsApp</Label>
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1 text-[9.5px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200">
+                        <MessageSquare size={10} className="fill-emerald-500/20" /> Active
+                      </span>
+                      {Boolean(formData.fatherContact || formData.contact) && (
+                        <button
+                          type="button"
+                          onClick={handleWhatsAppPing}
+                          className="text-[9.5px] font-black text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 flex items-center gap-0.5 bg-emerald-100/70 px-1.5 py-0.5 rounded cursor-pointer"
+                          title="Open WhatsApp chat with guardian"
+                        >
+                          <ExternalLink size={10} /> Ping
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-emerald-600">
+                      <MessageSquare size={14} className="fill-emerald-500/20" />
+                    </div>
+                    <Input 
+                      value={formData.fatherContact} 
+                      onChange={e => setFormData({ ...formData, fatherContact: e.target.value })} 
+                      placeholder="03xx-xxxxxxx (Father WhatsApp)" 
+                      className="h-10 pl-8.5 font-mono text-xs font-bold bg-slate-50 dark:bg-slate-900 border-slate-200 focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Blood Group</Label>
-                  <Input 
-                    value={formData.bloodGroup} 
-                    onChange={e => setFormData({ ...formData, bloodGroup: e.target.value })} 
-                    placeholder="e.g. O+, B+" 
-                    className="h-10 bg-slate-50 dark:bg-slate-900 uppercase"
-                  />
-                </div>
-                <div className="space-y-1.5">
+
+                <div className="space-y-1">
                   <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Student Mobile</Label>
                   <Input 
                     value={formData.contact} 
                     onChange={e => setFormData({ ...formData, contact: e.target.value })} 
                     placeholder="03xx-xxxxxxx" 
-                    className="h-10 bg-slate-50 dark:bg-slate-900 font-mono"
+                    className="h-10 bg-slate-50 dark:bg-slate-900 font-mono text-xs"
                   />
                 </div>
-              </div>
 
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-                    <MessageSquare size={13} className="text-emerald-600 dark:text-emerald-400" />
-                    <span>Guardian WhatsApp Contact (والد / سرپرست واٹس ایپ)</span>
-                  </Label>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                      <MessageSquare size={10} className="fill-emerald-500/20" /> WhatsApp Active
-                    </span>
-                    {Boolean(formData.fatherContact || formData.contact) && (
-                      <button
-                        type="button"
-                        onClick={handleWhatsAppPing}
-                        className="text-[10px] font-black text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 flex items-center gap-1 bg-emerald-100/70 dark:bg-emerald-900/40 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
-                        title="Open WhatsApp chat with guardian"
-                      >
-                        <ExternalLink size={10} /> Test Ping
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-emerald-600">
-                    <MessageSquare size={16} className="fill-emerald-500/20" />
-                  </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Email Address</Label>
                   <Input 
-                    value={formData.fatherContact} 
-                    onChange={e => setFormData({ ...formData, fatherContact: e.target.value })} 
-                    placeholder="03xx-xxxxxxx (Father/Guardian WhatsApp)" 
-                    className="h-10 pl-9 font-mono bg-slate-50 dark:bg-slate-900 border-slate-200 focus:border-emerald-500"
+                    value={formData.email} 
+                    onChange={e => setFormData({ ...formData, email: e.target.value })} 
+                    placeholder="student@example.com" 
+                    className="h-10 bg-slate-50 dark:bg-slate-900 text-xs"
                   />
                 </div>
-              </div>
 
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Residential Address</Label>
-                <Input 
-                  value={formData.address} 
-                  onChange={e => setFormData({ ...formData, address: e.target.value })} 
-                  placeholder="Street, City, Tehsil..." 
-                  className="h-10 bg-slate-50 dark:bg-slate-900"
-                />
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-200">Residential Address</Label>
+                  <Input 
+                    value={formData.address} 
+                    onChange={e => setFormData({ ...formData, address: e.target.value })} 
+                    placeholder="Street, City, Tehsil..." 
+                    className="h-10 bg-slate-50 dark:bg-slate-900 text-xs"
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Right 4 Cols: Photo & Biometrics */}
-            <div className="lg:col-span-4 space-y-5">
-              {/* Photo Box */}
-              <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col items-center">
-                <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3 flex items-center gap-1.5 self-start">
-                  <Camera size={14} className="text-superior-teal dark:text-emerald-400" /> Student Photo
-                </h4>
-                <div className="relative group w-32 h-32 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center overflow-hidden transition-colors group-hover:border-superior-teal shadow-inner">
+            {/* Column 3: Photo & Biometrics */}
+            <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs space-y-4">
+              <h3 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest flex items-center gap-2">
+                <Fingerprint size={15} className="text-superior-teal dark:text-emerald-400" /> Photo & Biometrics
+              </h3>
+
+              {/* Photo Row */}
+              <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-900 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                <div className="relative group w-18 h-18 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-col items-center justify-center overflow-hidden transition-colors group-hover:border-superior-teal shadow-inner shrink-0">
                   {formData.photo ? (
                     <img src={formData.photo} alt={formData.fullName} className="w-full h-full object-cover object-[center_top]" />
                   ) : (
                     <>
-                      <Camera className="text-slate-400 mb-1" size={26} />
-                      <span className="text-[10px] text-slate-500 font-bold uppercase">No Photo</span>
+                      <Camera className="text-slate-400 mb-0.5" size={18} />
+                      <span className="text-[8px] text-slate-500 font-bold uppercase">No Photo</span>
                     </>
                   )}
-                  <label className="absolute inset-0 cursor-pointer flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity text-white text-[10px] font-bold">
-                    <span>Change Photo</span>
+                  <label className="absolute inset-0 cursor-pointer flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity text-white text-[9px] font-bold">
+                    <span>Change</span>
                     <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
                   </label>
                 </div>
-                {formData.photo && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setFormData({ ...formData, photo: '' })}
-                    className="mt-2 text-rose-600 hover:text-rose-700 text-xs h-7 px-2"
-                  >
-                    Remove Photo
-                  </Button>
-                )}
+                <div className="flex-1">
+                  <span className="text-xs font-black uppercase text-slate-800 dark:text-slate-200">Student Photo</span>
+                  <p className="text-[10px] text-slate-400">Passport white background</p>
+                  {formData.photo && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFormData({ ...formData, photo: '' })}
+                      className="mt-1 text-rose-600 hover:text-rose-700 text-[10px] h-6 px-1"
+                    >
+                      Remove Photo
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {/* Biometric Thumb Impression Box (SecuGen Hardware) */}
-              <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col items-center">
-                <div className="w-full flex items-center justify-between mb-2">
-                  <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Fingerprint size={14} className="text-superior-teal dark:text-emerald-400" /> Biometric Thumb
-                  </h4>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                    Thumb Impression
+                  </span>
                   {formData.fingerprintTemplate && (
-                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                      Enrolled {fpQuality ? `(${fpQuality}%)` : ''}
+                    <span className="text-[9.5px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200">
+                      Enrolled {fpQuality ? `(${fpQuality}%)` : '✅'}
                     </span>
                   )}
                 </div>
 
                 {/* Thumb Visual Frame */}
                 <div className={cn(
-                  "w-36 h-40 rounded-2xl border-2 flex flex-col items-center justify-center overflow-hidden transition-all duration-300 relative my-2",
+                  "w-full h-28 rounded-2xl border-2 flex flex-col items-center justify-center overflow-hidden transition-all duration-300 relative",
                   formData.fingerprintTemplate
                     ? "border-emerald-500 bg-slate-950 shadow-inner"
                     : isScanningFP
                     ? "border-amber-400 bg-amber-50 dark:bg-amber-950/40 animate-pulse text-amber-600"
                     : "border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-400"
                 )}>
-                  {fpBmp ? (
+                  {fpBmp && fpBmp.length > 100 && !fpBmp.includes("undefined") && fpBmp.startsWith("Qk") ? (
                     <img
                       src={fpBmp.startsWith("data:") ? fpBmp : `data:image/bmp;base64,${fpBmp}`}
                       alt="Fingerprint"
@@ -3368,7 +3432,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
                         viewBox="0 0 40 48"
                         fill="none"
                         xmlns="http://www.w3.org/2000/svg"
-                        className="w-16 h-20 text-emerald-400 stroke-current opacity-90 drop-shadow-[0_0_3px_rgba(52,211,153,0.5)]"
+                        className="w-12 h-16 text-emerald-400 stroke-current opacity-90 drop-shadow-[0_0_3px_rgba(52,211,153,0.5)]"
                         strokeWidth="1.6"
                         strokeLinecap="round"
                       >
@@ -3380,21 +3444,21 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
                         <path d="M4 35 C5 39, 9 43, 15 44" />
                         <path d="M36 35 C35 39, 31 43, 25 44" />
                       </svg>
-                      <span className="text-[10px] font-black uppercase text-emerald-300 tracking-wider mt-1">
+                      <span className="text-[9.5px] font-black uppercase text-emerald-300 tracking-wider mt-0.5">
                         Biometric Verified
                       </span>
                       <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.9)]" />
                     </div>
                   ) : isScanningFP ? (
-                    <div className="flex flex-col items-center justify-center p-3 text-center">
-                      <Fingerprint size={38} className="text-amber-500 animate-bounce mb-1" />
+                    <div className="flex flex-col items-center justify-center p-2 text-center">
+                      <Fingerprint size={32} className="text-amber-500 animate-bounce mb-1" />
                       <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 animate-pulse">
                         Place Thumb on SecuGen...
                       </span>
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center p-3 text-center">
-                      <Fingerprint size={36} className="text-slate-300 dark:text-slate-600 mb-1" />
+                    <div className="flex flex-col items-center justify-center p-2 text-center">
+                      <Fingerprint size={30} className="text-slate-300 dark:text-slate-600 mb-1" />
                       <span className="text-[10px] font-bold text-slate-400">Thumb Not Scanned</span>
                     </div>
                   )}
@@ -3407,9 +3471,9 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
                     size="sm"
                     disabled={isScanningFP}
                     onClick={handleScanThumb}
-                    className="flex-1 h-9 rounded-xl bg-superior-teal hover:bg-superior-teal/90 text-white font-bold text-xs gap-1.5 shadow-xs"
+                    className="flex-1 h-8.5 rounded-xl bg-superior-teal hover:bg-superior-teal/90 text-white font-bold text-xs gap-1.5 shadow-xs"
                   >
-                    <Fingerprint size={14} />
+                    <Fingerprint size={13} />
                     {isScanningFP ? "Scanning..." : formData.fingerprintTemplate ? "Rescan Thumb" : "Scan Thumb"}
                   </Button>
                   {formData.fingerprintTemplate && (
@@ -3418,7 +3482,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
                       size="sm"
                       variant="outline"
                       onClick={handleClearThumb}
-                      className="h-9 w-9 p-0 rounded-xl text-rose-600 hover:bg-rose-50 border-rose-200"
+                      className="h-8.5 w-8.5 p-0 rounded-xl text-rose-600 hover:bg-rose-50 border-rose-200"
                       title="Clear Thumb Impression"
                     >
                       <Trash2 size={13} />

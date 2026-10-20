@@ -129,11 +129,30 @@ export function useStudentsOperations(ctx: any) {
           contact: targetStudent.contact,
           totalPackage: targetStudent.totalPackage,
           feeReceived: targetStudent.feeReceived,
-          snapshot: { student: targetStudent },
+          snapshot: { 
+            student: targetStudent,
+            feeLedger: targetStudent.feeLedger || null
+          },
           deletedAt: new Date().toISOString(),
           deletedBy: user?.email || 'System'
         };
         archiveRecords([archiveItem]);
+      }
+
+      // 0.5. Soft-archive linked admission record to prevent auto-resurrection on reload
+      try {
+        if (targetStudent?.admissionId) {
+          await supabase.from('admissions').update({
+            status: 'Archived',
+            is_admitted: false
+          }).eq('id', targetStudent.admissionId);
+        }
+        await supabase.from('admissions').update({
+          status: 'Archived',
+          is_admitted: false
+        }).eq('student_id', id);
+      } catch (admArchErr) {
+        console.warn("Could not archive linked admission:", admArchErr);
       }
 
       // 1. Delete associated child records first to ensure no foreign key violation
@@ -207,11 +226,31 @@ export function useStudentsOperations(ctx: any) {
             contact: s.contact,
             totalPackage: s.totalPackage,
             feeReceived: s.feeReceived,
-            snapshot: { student: s },
+            snapshot: { 
+              student: s,
+              feeLedger: s.feeLedger || null
+            },
             deletedAt: new Date().toISOString(),
             deletedBy: user?.email || 'System'
           }));
           archiveRecords(archiveItems);
+        }
+
+        // 0.5. Soft-archive linked admissions in bulk
+        const admIdsToArchive = targetStudents.map((s: any) => s.admissionId).filter(Boolean);
+        try {
+          if (admIdsToArchive.length > 0) {
+            await supabase.from('admissions').update({
+              status: 'Archived',
+              is_admitted: false
+            }).in('id', admIdsToArchive);
+          }
+          await supabase.from('admissions').update({
+            status: 'Archived',
+            is_admitted: false
+          }).in('student_id', ids);
+        } catch (admArchErr) {
+          console.warn("Could not bulk archive linked admissions:", admArchErr);
         }
 
         const batchSize = 100;

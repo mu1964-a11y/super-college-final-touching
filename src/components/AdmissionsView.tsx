@@ -101,6 +101,7 @@ import { sendAutoAdmissionNotice, buildAdmissionNoticeMessage } from "../lib/wha
 import { secugenService } from "../lib/secugenService";
 import WhatsAppReportModal, { ReportRecipientItem } from "./WhatsAppReportModal";
 import PhotoEditorModal from "./PhotoEditorModal";
+import BulkImportWizard from "./BulkImportWizard";
 
 export default function AdmissionsView({
   data,
@@ -123,6 +124,7 @@ export default function AdmissionsView({
   const [isPhotoEditorOpen, setIsPhotoEditorOpen] = useState(false);
   const [sortBy, setSortBy] = useState<string>("date-new");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isBulkImportWizardOpen, setIsBulkImportWizardOpen] = useState(false);
   const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
   const [bulkImportResults, setBulkImportResults] = useState<{
     success: number;
@@ -1258,11 +1260,11 @@ export default function AdmissionsView({
                 Download Format Template
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => setIsBulkImportWizardOpen(true)}
                 className="rounded-lg py-2 cursor-pointer text-xs font-semibold"
               >
                 <Upload size={15} className="mr-2 text-blue-600" />
-                Bulk Import Admissions
+                Bulk Import Admissions (3-Stage Wizard)
               </DropdownMenuItem>
               <Separator className="my-1.5" />
               <DropdownMenuItem
@@ -1292,26 +1294,28 @@ export default function AdmissionsView({
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger
               render={
-                <button className="h-8.5 px-3.5 rounded-xl bg-superior-teal text-white font-bold text-xs hover:bg-superior-teal/90 transition-all shadow-xs flex items-center justify-center gap-1.5">
+                <button className="h-8.5 px-3.5 rounded-xl bg-superior-teal text-white font-bold text-xs hover:bg-superior-teal/90 transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer">
                   <Plus size={15} /> New Admission
                 </button>
               }
             ></DialogTrigger>
-            <DialogContent className="max-w-6xl xl:max-w-7xl w-[96vw] max-h-[92vh] overflow-y-auto rounded-3xl border-none p-0 shadow-2xl bg-white dark:bg-slate-900">
-              <div className="bg-superior-teal p-8 text-white relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-80 h-80 bg-white/5 rounded-full -mr-40 -mt-40 blur-3xl" />
-                <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-superior-gold/10 rounded-full blur-2xl" />
-                <DialogHeader className="relative z-10">
-                  <DialogTitle className="text-3xl font-display font-black tracking-tight uppercase">
-                    Student Admission Form
-                  </DialogTitle>
-                  <p className="text-white/60 text-xs font-black uppercase tracking-[0.3em] mt-1">
-                    Session {data?.settings?.academicSession || "2026-28"} ·{" "}
-                    {data?.settings?.collegeName || "Jahanian Campus"}
-                  </p>
-                </DialogHeader>
+            <DialogContent className="max-w-[1680px] w-[98vw] h-[92vh] max-h-[92vh] overflow-hidden flex flex-col p-0 rounded-3xl border-none shadow-2xl bg-white dark:bg-slate-900">
+              <div className="bg-gradient-to-r from-superior-teal via-teal-900 to-slate-900 px-6 py-4 text-white relative overflow-hidden flex items-center justify-between shrink-0 shadow-sm border-b border-white/10">
+                <div className="flex items-center gap-3 relative z-10">
+                  <div className="w-10 h-10 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center font-bold text-white shadow-inner">
+                    <Sparkles size={20} className="text-superior-gold" />
+                  </div>
+                  <div>
+                    <DialogTitle className="text-xl sm:text-2xl font-serif font-black tracking-tight text-white uppercase">
+                      Student Admission Dossier
+                    </DialogTitle>
+                    <p className="text-teal-100/70 text-[11px] font-bold uppercase tracking-wider">
+                      Session {selectedSession || data?.settings?.academicSession || "2026-28"} · {data?.settings?.collegeName || "Jahanian Campus"}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="p-8">
+              <div className="p-6 overflow-y-auto flex-1 bg-slate-50/50 dark:bg-slate-950/50">
                 {isAddDialogOpen && (
                   <AdmissionForm
                     data={data}
@@ -2285,23 +2289,23 @@ export default function AdmissionsView({
         open={dialogType === "edit"}
         onOpenChange={(open) => !open && setDialogType(null)}
       >
-        <DialogContent className="max-w-6xl xl:max-w-7xl w-[96vw] max-h-[92vh] overflow-y-auto rounded-3xl border-none p-0 shadow-2xl bg-white dark:bg-slate-900">
-          <div className="bg-superior-teal p-10 text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-8 opacity-10">
-              <ScrollText size={120} />
+        <DialogContent className="max-w-[1680px] w-[98vw] h-[92vh] max-h-[92vh] overflow-hidden flex flex-col p-0 rounded-3xl border-none shadow-2xl bg-white dark:bg-slate-900">
+          <div className="bg-gradient-to-r from-superior-teal via-teal-900 to-slate-900 px-6 py-4 text-white relative overflow-hidden flex items-center justify-between shrink-0 shadow-sm border-b border-white/10">
+            <div className="flex items-center gap-3 relative z-10">
+              <div className="w-10 h-10 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center font-bold text-white shadow-inner">
+                <Edit size={18} className="text-superior-gold" />
+              </div>
+              <div>
+                <DialogTitle className="text-xl sm:text-2xl font-serif font-black tracking-tight text-white uppercase">
+                  Update Admission Dossier
+                </DialogTitle>
+                <p className="text-teal-100/70 text-[11px] font-bold uppercase tracking-wider">
+                  {activeAdmission?.fullName || "Candidate"} · {data?.settings?.collegeName || "Jahanian Campus"}
+                </p>
+              </div>
             </div>
-            <DialogHeader className="relative z-10">
-              <DialogTitle className="text-4xl font-black uppercase tracking-tight flex items-center gap-4">
-                <Edit size={36} className="text-superior-gold" />
-                Edit Admission Details
-              </DialogTitle>
-              <p className="text-superior-gold/80 font-bold uppercase tracking-widest mt-2 flex items-center gap-2 text-sm">
-                <Building size={16} />{" "}
-                {data?.settings?.collegeName || "Jahanian Campus"}
-              </p>
-            </DialogHeader>
           </div>
-          <div className="p-10">
+          <div className="p-6 overflow-y-auto flex-1 bg-slate-50/50 dark:bg-slate-950/50">
             {activeAdmission && dialogType === 'edit' && (
               <AdmissionForm
                 admission={activeAdmission}
@@ -2314,6 +2318,14 @@ export default function AdmissionsView({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* 3-Stage Bulk Import Wizard */}
+      <BulkImportWizard
+        isOpen={isBulkImportWizardOpen}
+        onClose={() => setIsBulkImportWizardOpen(false)}
+        data={data}
+        defaultProgram={program === 'bs' ? 'bs' : program === 'dit' ? 'dit' : program === 'ukl3' ? 'ukl3' : 'inter'}
+      />
 
       <Dialog
         open={dialogType === "slip"}
@@ -4064,8 +4076,10 @@ function AdmissionForm({
           (admission.studentId ? localStorage.getItem(`scj_fp_thumb_${admission.studentId}`) : null) ||
           (admission.collegeNo ? localStorage.getItem(`scj_fp_thumb_${admission.collegeNo}`) : null)
         : null;
-      if (cachedBmp) {
+      if (cachedBmp && cachedBmp.length > 100 && !cachedBmp.includes("undefined") && cachedBmp.startsWith("Qk")) {
         setFpBmp(cachedBmp);
+      } else {
+        setFpBmp(null);
       }
     }
   }, [admission, admission?.id]);
@@ -4585,56 +4599,56 @@ function AdmissionForm({
     <div className="space-y-6">
       {/* ─── STEP 0: STREAM-FIRST LEVEL SELECTION ─── */}
       {!preSelectionComplete ? (
-        <div className="space-y-8 py-6 px-4 max-w-5xl mx-auto animate-in fade-in zoom-in-95 duration-400">
-          <div className="text-center space-y-2 max-w-2xl mx-auto">
+        <div className="space-y-6 py-4 px-2 w-full max-w-full animate-in fade-in zoom-in-95 duration-400">
+          <div className="text-center space-y-2 max-w-3xl mx-auto">
             <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-superior-teal/10 text-superior-teal text-xs font-black uppercase tracking-widest border border-superior-teal/20">
               <Sparkles size={14} className="text-superior-gold" />
               <span>Step 1 · Select Degree & Educational Stream</span>
             </div>
-            <h2 className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
+            <h2 className="text-2xl sm:text-3xl font-serif font-black text-slate-900 dark:text-slate-100 tracking-tight">
               Select Educational Stream
             </h2>
-            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">
+            <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm font-medium">
               Choose the educational level to open its tailored admission dossier with zero cross-program clutter or unrelated courses.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
             {/* 1. Intermediate (HSSC) */}
             <div
               onClick={() => handleStreamSelect("fsc")}
-              className="group p-6 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-superior-teal hover:shadow-xl hover:shadow-superior-teal/10 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between"
+              className="group p-5 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-superior-teal hover:shadow-xl hover:shadow-superior-teal/10 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between"
             >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500" />
-              <div className="space-y-4 relative z-10">
+              <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-500/5 rounded-full -mr-10 -mt-10 group-hover:scale-150 transition-transform duration-500" />
+              <div className="space-y-3.5 relative z-10">
                 <div className="flex items-center justify-between">
-                  <div className="w-14 h-14 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform">
-                    <GraduationCap size={28} />
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center text-xl shadow-sm group-hover:scale-110 transition-transform">
+                    <GraduationCap size={24} />
                   </div>
-                  <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 text-[11px] font-black uppercase tracking-wider">
-                    BISE Multan Board
+                  <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-black uppercase tracking-wider">
+                    BISE Multan
                   </Badge>
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 group-hover:text-superior-teal transition-colors">
-                    Intermediate (F.Sc / ICS / I.Com / FA)
+                  <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 group-hover:text-superior-teal transition-colors leading-snug">
+                    Intermediate (F.Sc / ICS / I.Com)
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1 leading-relaxed">
-                    2-Year Higher Secondary Certificate. Tailored for Matric (10th) graduates with board subjects & monthly installment options.
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1 leading-relaxed">
+                    2-Year Higher Secondary Certificate for Matric graduates with board subjects.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-1.5 pt-2">
-                  {["F.Sc Pre-Med", "F.Sc Pre-Eng", "ICS Computer", "I.Com", "F.A."].map((badge) => (
-                    <span key={badge} className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold">
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {["F.Sc Pre-Med", "F.Sc Pre-Eng", "ICS Computer", "I.Com"].map((badge) => (
+                    <span key={badge} className="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[9.5px] font-bold">
                       {badge}
                     </span>
                   ))}
                 </div>
               </div>
-              <div className="pt-6 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between relative z-10">
-                <span className="text-[11px] font-bold text-slate-400">Standard Session: 2026-28</span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-black text-superior-teal group-hover:translate-x-1 transition-transform">
-                  Apply Intermediate <ArrowRight size={15} />
+              <div className="pt-4 mt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between relative z-10">
+                <span className="text-[10px] font-bold text-slate-400">Session: 2026-28</span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-black text-superior-teal group-hover:translate-x-1 transition-transform">
+                  Apply Inter <ArrowRight size={13} />
                 </span>
               </div>
             </div>
@@ -4642,38 +4656,38 @@ function AdmissionForm({
             {/* 2. BS 4-Year University Degree & ADP Lateral */}
             <div
               onClick={() => handleStreamSelect("bs")}
-              className="group p-6 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-600 hover:shadow-xl hover:shadow-indigo-500/10 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between"
+              className="group p-5 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-600 hover:shadow-xl hover:shadow-indigo-500/10 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between"
             >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500" />
-              <div className="space-y-4 relative z-10">
+              <div className="absolute top-0 right-0 w-28 h-28 bg-indigo-500/5 rounded-full -mr-10 -mt-10 group-hover:scale-150 transition-transform duration-500" />
+              <div className="space-y-3.5 relative z-10">
                 <div className="flex items-center justify-between">
-                  <div className="w-14 h-14 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform">
-                    <Building2 size={28} />
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 flex items-center justify-center text-xl shadow-sm group-hover:scale-110 transition-transform">
+                    <Building2 size={24} />
                   </div>
-                  <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 text-[11px] font-black uppercase tracking-wider">
-                    HEC University Degree
+                  <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 text-[10px] font-black uppercase tracking-wider">
+                    HEC Degree
                   </Badge>
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 transition-colors">
-                    BS 4-Year Degree & ADP Lateral (5th Sem)
+                  <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 transition-colors leading-snug">
+                    BS Degree & ADP (5th Sem)
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1 leading-relaxed">
-                    Semester system (Semesters 1–8) with university syllabus. Direct 5th semester ADP Lateral entry for 14-year graduates.
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1 leading-relaxed">
+                    Semester system (Sem 1–8) with university syllabus & 5th sem ADP lateral entry.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-1.5 pt-2">
-                  {["BS CS", "BS IT", "BS English", "BS Chemistry", "BS Physics", "BS Math", "BS Botany", "BS Zoology", "BBA"].map((badge) => (
-                    <span key={badge} className="px-2.5 py-1 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 text-[10px] font-bold">
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {["BS CS", "BS IT", "BS English", "BS Zoology", "BS Botany"].map((badge) => (
+                    <span key={badge} className="px-2 py-0.5 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 text-[9.5px] font-bold">
                       {badge}
                     </span>
                   ))}
                 </div>
               </div>
-              <div className="pt-6 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between relative z-10">
-                <span className="text-[11px] font-bold text-slate-400">Sessions: 2026-30 / 2024-26 (ADP)</span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-black text-indigo-600 group-hover:translate-x-1 transition-transform">
-                  Apply BS Degree <ArrowRight size={15} />
+              <div className="pt-4 mt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between relative z-10">
+                <span className="text-[10px] font-bold text-slate-400">2026-30 / 2024-26</span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-black text-indigo-600 group-hover:translate-x-1 transition-transform">
+                  Apply BS <ArrowRight size={13} />
                 </span>
               </div>
             </div>
@@ -4681,38 +4695,38 @@ function AdmissionForm({
             {/* 3. D.I.T. (Diploma in Information Technology) */}
             <div
               onClick={() => handleStreamSelect("dit")}
-              className="group p-6 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-sky-600 hover:shadow-xl hover:shadow-sky-500/10 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between"
+              className="group p-5 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-sky-600 hover:shadow-xl hover:shadow-sky-500/10 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between"
             >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500" />
-              <div className="space-y-4 relative z-10">
+              <div className="absolute top-0 right-0 w-28 h-28 bg-sky-500/5 rounded-full -mr-10 -mt-10 group-hover:scale-150 transition-transform duration-500" />
+              <div className="space-y-3.5 relative z-10">
                 <div className="flex items-center justify-between">
-                  <div className="w-14 h-14 rounded-2xl bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-400 flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform">
-                    <Laptop size={28} />
+                  <div className="w-12 h-12 rounded-2xl bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-400 flex items-center justify-center text-xl shadow-sm group-hover:scale-110 transition-transform">
+                    <Laptop size={24} />
                   </div>
-                  <Badge className="bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950 dark:text-sky-300 text-[11px] font-black uppercase tracking-wider">
-                    PBTE Technical Board
+                  <Badge className="bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950 dark:text-sky-300 text-[10px] font-black uppercase tracking-wider">
+                    PBTE Board
                   </Badge>
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 group-hover:text-sky-600 transition-colors">
-                    D.I.T. (Diploma in Information Technology)
+                  <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 group-hover:text-sky-600 transition-colors leading-snug">
+                    D.I.T. Technical Diploma
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1 leading-relaxed">
-                    1 to 2 Years professional technical diploma. Office automation, web development, hardware, computer graphics & networking.
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1 leading-relaxed">
+                    1 to 2 Years professional technical diploma in office automation & programming.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-1.5 pt-2">
-                  {["Office Automation", "Web Development", "Hardware & Networking", "Computer Graphics"].map((badge) => (
-                    <span key={badge} className="px-2.5 py-1 rounded-lg bg-sky-50/70 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 text-[10px] font-bold">
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {["Office Automation", "Web Dev", "Hardware & Net"].map((badge) => (
+                    <span key={badge} className="px-2 py-0.5 rounded-lg bg-sky-50/70 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 text-[9.5px] font-bold">
                       {badge}
                     </span>
                   ))}
                 </div>
               </div>
-              <div className="pt-6 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between relative z-10">
-                <span className="text-[11px] font-bold text-slate-400">Technical Session: 2026-27</span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-black text-sky-600 group-hover:translate-x-1 transition-transform">
-                  Apply D.I.T. <ArrowRight size={15} />
+              <div className="pt-4 mt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between relative z-10">
+                <span className="text-[10px] font-bold text-slate-400">Session: 2026-27</span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-black text-sky-600 group-hover:translate-x-1 transition-transform">
+                  Apply D.I.T. <ArrowRight size={13} />
                 </span>
               </div>
             </div>
@@ -4720,38 +4734,38 @@ function AdmissionForm({
             {/* 4. U.K. Level 3 International */}
             <div
               onClick={() => handleStreamSelect("ukl3")}
-              className="group p-6 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-amber-600 hover:shadow-xl hover:shadow-amber-500/10 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between"
+              className="group p-5 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-amber-600 hover:shadow-xl hover:shadow-amber-500/10 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between"
             >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500" />
-              <div className="space-y-4 relative z-10">
+              <div className="absolute top-0 right-0 w-28 h-28 bg-amber-500/5 rounded-full -mr-10 -mt-10 group-hover:scale-150 transition-transform duration-500" />
+              <div className="space-y-3.5 relative z-10">
                 <div className="flex items-center justify-between">
-                  <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform">
-                    <Globe size={28} />
+                  <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 flex items-center justify-center text-xl shadow-sm group-hover:scale-110 transition-transform">
+                    <Globe size={24} />
                   </div>
-                  <Badge className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 text-[11px] font-black uppercase tracking-wider">
-                    Pearson / OTHM UK
+                  <Badge className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 text-[10px] font-black uppercase tracking-wider">
+                    Pearson / UK
                   </Badge>
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 group-hover:text-amber-600 transition-colors">
-                    U.K. Level 3 International Diploma
+                  <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 group-hover:text-amber-600 transition-colors leading-snug">
+                    U.K. Level 3 International
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1 leading-relaxed">
-                    Globally recognized international diploma pathway for foreign university degrees in Business & Information Technology.
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1 leading-relaxed">
+                    International diploma pathway for foreign university degrees in Business & IT.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-1.5 pt-2">
-                  {["Applied Science", "Business Analysis", "Cyber Security", "IT Fundamentals"].map((badge) => (
-                    <span key={badge} className="px-2.5 py-1 rounded-lg bg-amber-50/70 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-[10px] font-bold">
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {["Applied Science", "Business Analysis", "Cyber Sec"].map((badge) => (
+                    <span key={badge} className="px-2 py-0.5 rounded-lg bg-amber-50/70 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-[9.5px] font-bold">
                       {badge}
                     </span>
                   ))}
                 </div>
               </div>
-              <div className="pt-6 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between relative z-10">
-                <span className="text-[11px] font-bold text-slate-400">Intl Session: 2026-28</span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-black text-amber-600 group-hover:translate-x-1 transition-transform">
-                  Apply UK Level 3 <ArrowRight size={15} />
+              <div className="pt-4 mt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between relative z-10">
+                <span className="text-[10px] font-bold text-slate-400">Session: 2026-28</span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-black text-amber-600 group-hover:translate-x-1 transition-transform">
+                  Apply UK Level 3 <ArrowRight size={13} />
                 </span>
               </div>
             </div>
@@ -4844,39 +4858,38 @@ function AdmissionForm({
                 value="student"
                 className="space-y-6 animate-in fade-in duration-300"
               >
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                  {/* Left 8 columns: Identity & Communication */}
-                  <div className="lg:col-span-8 space-y-6">
-                    {/* Primary Identity Section */}
-                    <div className="bg-slate-50/70 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 space-y-4">
-                      <FormSectionHeader
-                        icon={User}
-                        title="Primary Candidate Identity"
-                        sub="Official legal credentials matching board / university documents"
-                      />
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <FormFieldWrapper label="Full Student Name" required>
-                          <Input
-                            placeholder="Student Full Name"
-                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-bold text-xs"
-                            value={formData.fullName || ""}
-                            onChange={(e) => setFormData(prev => ({ ...prev, fullName: e.target.value }))}
-                          />
-                        </FormFieldWrapper>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+                  {/* Column 1: Primary Identity Section */}
+                  <div className="bg-slate-50/70 dark:bg-slate-800/40 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 space-y-3.5">
+                    <FormSectionHeader
+                      icon={User}
+                      title="Candidate Identity"
+                      sub="Official legal credentials matching board/university"
+                    />
+                    <div className="space-y-3">
+                      <FormFieldWrapper label="Full Student Name" required>
+                        <Input
+                          placeholder="Student Full Name"
+                          className="h-10 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-bold text-xs"
+                          value={formData.fullName || ""}
+                          onChange={(e) => setFormData(prev => ({ ...prev, fullName: e.target.value }))}
+                        />
+                      </FormFieldWrapper>
 
-                        <FormFieldWrapper label="Father's Full Name" required>
-                          <Input
-                            placeholder="Father's Name"
-                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-bold text-xs"
-                            value={formData.fatherName || ""}
-                            onChange={(e) => setFormData(prev => ({ ...prev, fatherName: e.target.value }))}
-                          />
-                        </FormFieldWrapper>
+                      <FormFieldWrapper label="Father's Full Name" required>
+                        <Input
+                          placeholder="Father's Name"
+                          className="h-10 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-bold text-xs"
+                          value={formData.fatherName || ""}
+                          onChange={(e) => setFormData(prev => ({ ...prev, fatherName: e.target.value }))}
+                        />
+                      </FormFieldWrapper>
 
-                        <FormFieldWrapper label="B-Form / CNIC Number">
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <FormFieldWrapper label="B-Form / CNIC">
                           <Input
                             placeholder="38403-xxxxxxx-x"
-                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-mono text-xs"
+                            className="h-10 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-mono text-xs"
                             value={formData.bayFormNo || ""}
                             onChange={(e) => setFormData(prev => ({ ...prev, bayFormNo: e.target.value }))}
                           />
@@ -4885,23 +4898,25 @@ function AdmissionForm({
                         <FormFieldWrapper label="Date of Birth">
                           <Input
                             type="date"
-                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 text-xs"
+                            className="h-10 border-slate-200 rounded-xl bg-white dark:bg-slate-900 text-xs"
                             value={formData.dob || ""}
                             onChange={(e) => setFormData(prev => ({ ...prev, dob: e.target.value }))}
                           />
                         </FormFieldWrapper>
+                      </div>
 
+                      <div className="grid grid-cols-2 gap-2.5">
                         <FormFieldWrapper label="Gender / Campus">
                           <Select
                             value={formData.gender || "Male"}
                             onValueChange={(v: any) => setFormData(prev => ({ ...prev, gender: v }))}
                           >
-                            <SelectTrigger className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-bold text-xs">
+                            <SelectTrigger className="h-10 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-bold text-xs">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent className="rounded-xl">
-                              <SelectItem value="Male">Male (Boys Campus)</SelectItem>
-                              <SelectItem value="Female">Female (Girls Campus)</SelectItem>
+                              <SelectItem value="Male">Male (Boys)</SelectItem>
+                              <SelectItem value="Female">Female (Girls)</SelectItem>
                             </SelectContent>
                           </Select>
                         </FormFieldWrapper>
@@ -4911,8 +4926,8 @@ function AdmissionForm({
                             value={formData.bloodGroup || ""}
                             onValueChange={(v) => setFormData(prev => ({ ...prev, bloodGroup: v }))}
                           >
-                            <SelectTrigger className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 text-xs font-bold">
-                              <SelectValue placeholder="Select Blood Group" />
+                            <SelectTrigger className="h-10 border-slate-200 rounded-xl bg-white dark:bg-slate-900 text-xs font-bold">
+                              <SelectValue placeholder="Blood Group" />
                             </SelectTrigger>
                             <SelectContent className="rounded-xl">
                               {["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"].map((bg) => (
@@ -4923,103 +4938,111 @@ function AdmissionForm({
                         </FormFieldWrapper>
                       </div>
                     </div>
+                  </div>
 
-                    {/* Communication & Guardian WhatsApp Section */}
-                    <div className="bg-slate-50/70 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 space-y-4">
-                      <FormSectionHeader
-                        icon={MessageSquare}
-                        title="Communication & Verified WhatsApp"
-                        sub="Direct portal connectivity for fee vouchers & alerts"
-                      />
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <FormFieldWrapper label="Student Mobile Number">
+                  {/* Column 2: Communication & Guardian WhatsApp Section */}
+                  <div className="bg-slate-50/70 dark:bg-slate-800/40 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 space-y-3.5">
+                    <FormSectionHeader
+                      icon={MessageSquare}
+                      title="Communication & WhatsApp"
+                      sub="Direct SMS & fee alerts connectivity"
+                    />
+                    <div className="space-y-3">
+                      <FormFieldWrapper
+                        label={
+                          <div className="flex items-center justify-between w-full">
+                            <span className="font-bold text-xs text-slate-800 dark:text-slate-100">Guardian WhatsApp</span>
+                            <span className="inline-flex items-center gap-1 text-[9.5px] font-black text-emerald-700 bg-emerald-100/80 dark:bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-300">
+                              <MessageSquare size={10} className="text-emerald-600 fill-emerald-600/30" />
+                              WhatsApp Active
+                            </span>
+                          </div>
+                        }
+                        required
+                      >
+                        <div className="flex gap-1.5">
+                          <div className="relative flex-1">
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-emerald-600">
+                              <MessageSquare size={14} />
+                            </div>
+                            <Input
+                              className="h-10 pl-8.5 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-mono text-xs font-bold focus:border-emerald-500"
+                              placeholder="03xx-xxxxxxx (Father WhatsApp)"
+                              value={formData.fatherContact || ""}
+                              onChange={(e) => setFormData(prev => ({ ...prev, fatherContact: e.target.value }))}
+                            />
+                          </div>
+                          {formData.fatherContact && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const clean = formData.fatherContact.replace(/[^\d]/g, "");
+                                const intl = clean.startsWith("03") ? "92" + clean.slice(1) : clean.startsWith("92") ? clean : "92" + clean;
+                                window.open(`https://wa.me/${intl}?text=Assalam-o-Alaikum%20from%20Superior%20College%20Jahanian!`, "_blank");
+                              }}
+                              className="h-10 px-2.5 rounded-xl border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-[11px] font-bold gap-1"
+                              title="Open WhatsApp Direct Chat"
+                            >
+                              <ExternalLink size={12} /> Ping
+                            </Button>
+                          )}
+                        </div>
+                      </FormFieldWrapper>
+
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <FormFieldWrapper label="Student Mobile">
                           <Input
-                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-mono text-xs"
+                            className="h-10 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-mono text-xs"
                             placeholder="03xx-xxxxxxx"
                             value={formData.contactNumber || ""}
                             onChange={(e) => setFormData(prev => ({ ...prev, contactNumber: e.target.value }))}
                           />
                         </FormFieldWrapper>
 
-                        <FormFieldWrapper
-                          label={
-                            <div className="flex items-center justify-between w-full">
-                              <span className="font-bold text-xs text-slate-800 dark:text-slate-100">Guardian WhatsApp Contact</span>
-                              <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-100/80 dark:bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-300">
-                                <MessageSquare size={10} className="text-emerald-600 fill-emerald-600/30" />
-                                WhatsApp Active
-                              </span>
-                            </div>
-                          }
-                          required
-                        >
-                          <div className="flex gap-2">
-                            <div className="relative flex-1">
-                              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-emerald-600">
-                                <MessageSquare size={15} />
-                              </div>
-                              <Input
-                                className="h-11 pl-9 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-mono text-xs font-bold focus:border-emerald-500"
-                                placeholder="03xx-xxxxxxx (Father WhatsApp)"
-                                value={formData.fatherContact || ""}
-                                onChange={(e) => setFormData(prev => ({ ...prev, fatherContact: e.target.value }))}
-                              />
-                            </div>
-                            {formData.fatherContact && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const clean = formData.fatherContact.replace(/[^\d]/g, "");
-                                  const intl = clean.startsWith("03") ? "92" + clean.slice(1) : clean.startsWith("92") ? clean : "92" + clean;
-                                  window.open(`https://wa.me/${intl}?text=Assalam-o-Alaikum%20from%20Superior%20College%20Jahanian!`, "_blank");
-                                }}
-                                className="h-11 px-3 rounded-xl border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-xs font-bold gap-1"
-                                title="Open WhatsApp Direct Chat"
-                              >
-                                <ExternalLink size={13} /> Test Ping
-                              </Button>
-                            )}
-                          </div>
-                        </FormFieldWrapper>
-
-                        <FormFieldWrapper label="Email Address">
+                        <FormFieldWrapper label="Reference">
                           <Input
-                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 text-xs"
-                            placeholder="student@example.com"
-                            value={formData.email || ""}
-                            onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                          />
-                        </FormFieldWrapper>
-
-                        <FormFieldWrapper label="Admission Reference">
-                          <Input
-                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 text-xs"
-                            placeholder="Referred by (e.g. Teacher, Relative)"
+                            className="h-10 border-slate-200 rounded-xl bg-white dark:bg-slate-900 text-xs"
+                            placeholder="Referred by..."
                             value={formData.reference || ""}
                             onChange={(e) => setFormData(prev => ({ ...prev, reference: e.target.value }))}
                           />
                         </FormFieldWrapper>
-
-                        <FormFieldWrapper label="Full Residential Address" className="sm:col-span-2">
-                          <Input
-                            placeholder="Village / Town, Tehsil, City Address"
-                            className="h-11 border-slate-200 rounded-xl bg-white dark:bg-slate-900 text-xs"
-                            value={formData.address || ""}
-                            onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-                          />
-                        </FormFieldWrapper>
                       </div>
+
+                      <FormFieldWrapper label="Email Address">
+                        <Input
+                          className="h-10 border-slate-200 rounded-xl bg-white dark:bg-slate-900 text-xs"
+                          placeholder="student@example.com"
+                          value={formData.email || ""}
+                          onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                        />
+                      </FormFieldWrapper>
+
+                      <FormFieldWrapper label="Residential Address">
+                        <Input
+                          placeholder="Village / Town, Tehsil, City Address"
+                          className="h-10 border-slate-200 rounded-xl bg-white dark:bg-slate-900 text-xs"
+                          value={formData.address || ""}
+                          onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                        />
+                      </FormFieldWrapper>
                     </div>
                   </div>
 
-                  {/* Right 4 columns: Photo & Biometric Thumb Box */}
-                  <div className="lg:col-span-4 space-y-6">
-                    {/* Photo Box */}
-                    <div className="bg-slate-50/70 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 flex flex-col items-center justify-center text-center space-y-3">
-                      <div className="relative group">
-                        <div className="w-32 h-32 rounded-3xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col items-center justify-center overflow-hidden transition-all shadow-inner group-hover:border-superior-teal">
+                  {/* Column 3: Photo & Biometric Thumb Box */}
+                  <div className="bg-slate-50/70 dark:bg-slate-800/40 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 space-y-4">
+                    <FormSectionHeader
+                      icon={Fingerprint}
+                      title="Biometrics & Photo"
+                      sub="Physical identification dossier"
+                    />
+
+                    {/* Photo + Upload Row */}
+                    <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                      <div className="relative group shrink-0">
+                        <div className="w-20 h-20 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex flex-col items-center justify-center overflow-hidden transition-all shadow-inner group-hover:border-superior-teal">
                           {formData.photo ? (
                             <img
                               src={formData.photo}
@@ -5028,10 +5051,8 @@ function AdmissionForm({
                             />
                           ) : (
                             <>
-                              <Camera className="text-slate-400 mb-1.5" size={28} />
-                              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                                Upload Photo
-                              </span>
+                              <Camera className="text-slate-400 mb-1" size={20} />
+                              <span className="text-[9px] text-slate-500 font-bold uppercase">Upload</span>
                             </>
                           )}
                         </div>
@@ -5044,28 +5065,29 @@ function AdmissionForm({
                           />
                         </label>
                         {formData.photo && (
-                          <div className="absolute -top-2 -right-2 bg-emerald-500 text-white p-1.5 rounded-xl border-2 border-white shadow-md">
-                            <CheckCircle2 size={14} />
+                          <div className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white p-1 rounded-lg border border-white shadow-xs">
+                            <CheckCircle2 size={12} />
                           </div>
                         )}
                       </div>
-                      <div>
-                        <h4 className="text-xs font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">Student Photograph</h4>
-                        <p className="text-[10px] text-slate-400 font-medium">Passport size white background photo</p>
+                      <div className="flex-1">
+                        <h4 className="text-xs font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">Student Photo</h4>
+                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">Passport size photo with clear background</p>
+                        <label className="inline-block mt-2">
+                          <span className="text-[10px] font-bold text-superior-teal hover:underline cursor-pointer">
+                            {formData.photo ? "Change Photo" : "+ Choose File"}
+                          </span>
+                          <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
+                        </label>
                       </div>
                     </div>
 
                     {/* Biometric Thumb Impression Box (SecuGen) */}
-                    <div className="bg-slate-50/70 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 space-y-3">
+                    <div className="space-y-2.5">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                            <Fingerprint size={16} />
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">Thumb Impression</h4>
-                            <p className="text-[10px] text-slate-400 font-medium">SecuGen HU20-A Scanner</p>
-                          </div>
+                        <div className="flex items-center gap-1.5">
+                          <Fingerprint size={14} className="text-emerald-600" />
+                          <h4 className="text-xs font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">SecuGen HU20-A Scanner</h4>
                         </div>
                         {formData.fingerprintTemplate && (
                           <Badge className="bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase">
@@ -5076,14 +5098,14 @@ function AdmissionForm({
 
                       {/* Thumb Visual Frame */}
                       <div className={cn(
-                        "w-full h-36 rounded-2xl border-2 flex flex-col items-center justify-center transition-all relative overflow-hidden",
+                        "w-full h-28 rounded-2xl border-2 flex flex-col items-center justify-center transition-all relative overflow-hidden",
                         formData.fingerprintTemplate
                           ? "border-emerald-500 bg-slate-950 shadow-inner"
                           : isScanningFP
                           ? "border-amber-400 bg-amber-50 animate-pulse text-amber-600"
                           : "border-dashed border-slate-300 bg-white text-slate-400"
                       )}>
-                        {fpBmp ? (
+                        {fpBmp && fpBmp.length > 100 && !fpBmp.includes("undefined") && fpBmp.startsWith("Qk") ? (
                           <img
                             src={fpBmp.startsWith("data:") ? fpBmp : `data:image/bmp;base64,${fpBmp}`}
                             alt="Fingerprint"
@@ -5096,7 +5118,7 @@ function AdmissionForm({
                               viewBox="0 0 40 48"
                               fill="none"
                               xmlns="http://www.w3.org/2000/svg"
-                              className="w-16 h-20 text-emerald-400 stroke-current opacity-90 drop-shadow-[0_0_3px_rgba(52,211,153,0.5)]"
+                              className="w-12 h-16 text-emerald-400 stroke-current opacity-90 drop-shadow-[0_0_3px_rgba(52,211,153,0.5)]"
                               strokeWidth="1.6"
                               strokeLinecap="round"
                             >
@@ -5108,21 +5130,21 @@ function AdmissionForm({
                               <path d="M4 35 C5 39, 9 43, 15 44" />
                               <path d="M36 35 C35 39, 31 43, 25 44" />
                             </svg>
-                            <span className="text-[10px] font-black uppercase text-emerald-300 tracking-wider mt-1">
+                            <span className="text-[9.5px] font-black uppercase text-emerald-300 tracking-wider mt-0.5">
                               Biometric Verified
                             </span>
                             <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.9)]" />
                           </div>
                         ) : isScanningFP ? (
-                          <div className="flex flex-col items-center justify-center p-3 text-center">
-                            <Fingerprint size={40} className="text-amber-500 animate-bounce mb-1" />
+                          <div className="flex flex-col items-center justify-center p-2 text-center">
+                            <Fingerprint size={32} className="text-amber-500 animate-bounce mb-1" />
                             <span className="text-[10px] font-bold text-amber-700 animate-pulse">
                               Place Thumb firmly on SecuGen...
                             </span>
                           </div>
                         ) : (
-                          <div className="flex flex-col items-center justify-center p-3 text-center">
-                            <Fingerprint size={38} className="text-slate-300 mb-1" />
+                          <div className="flex flex-col items-center justify-center p-2 text-center">
+                            <Fingerprint size={30} className="text-slate-300 mb-1" />
                             <span className="text-[10px] font-bold text-slate-400">
                               Thumb Not Scanned
                             </span>
@@ -5137,9 +5159,9 @@ function AdmissionForm({
                           size="sm"
                           disabled={isScanningFP}
                           onClick={handleScanThumb}
-                          className="flex-1 h-9 rounded-xl bg-superior-teal hover:bg-superior-teal/90 text-white font-bold text-xs gap-1.5 shadow-xs"
+                          className="flex-1 h-8.5 rounded-xl bg-superior-teal hover:bg-superior-teal/90 text-white font-bold text-xs gap-1.5 shadow-xs"
                         >
-                          <Fingerprint size={14} />
+                          <Fingerprint size={13} />
                           {isScanningFP ? "Scanning..." : formData.fingerprintTemplate ? "Rescan Thumb" : "Scan Thumb"}
                         </Button>
                         {formData.fingerprintTemplate && (
@@ -5148,7 +5170,7 @@ function AdmissionForm({
                             size="sm"
                             variant="outline"
                             onClick={handleClearThumb}
-                            className="h-9 w-9 p-0 rounded-xl text-rose-600 hover:bg-rose-50 border-rose-200"
+                            className="h-8.5 w-8.5 p-0 rounded-xl text-rose-600 hover:bg-rose-50 border-rose-200"
                             title="Clear Thumb Impression"
                           >
                             <Trash2 size={13} />

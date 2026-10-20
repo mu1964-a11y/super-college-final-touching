@@ -226,7 +226,20 @@ export function useSupabaseData(user: any) {
         };
       }));
       if (studentsData) {
-        const mappedStudents = studentsData.map(s => {
+        const deletedArchiveList = (settingsData?.config?.deletedArchive || []) as any[];
+        const archivedIds = new Set<string>();
+        deletedArchiveList.forEach((arch: any) => {
+          if (arch.originalId) archivedIds.add(arch.originalId);
+          if (arch.studentId) archivedIds.add(arch.studentId);
+        });
+
+        const activeStudentsData = studentsData.filter(s => {
+          if ((s as any).status === 'archived' || (s as any).status === 'Deleted') return false;
+          if (archivedIds.has(s.id) || (s.admission_id && archivedIds.has(s.admission_id))) return false;
+          return true;
+        });
+
+        const mappedStudents = activeStudentsData.map(s => {
           let parsedSubjects = safeParseArray(s.subjects);
           
           let linkedAdmission = null;
@@ -301,11 +314,15 @@ export function useSupabaseData(user: any) {
           const existingStudentIds = new Set(studentsData.map(s => s.id));
           
           admissionsData.forEach(a => {
-            const isConfirmed = a.is_admitted === true || 
+            const isArchived = a.status === "Archived" || 
+                               a.status === "Deleted" || 
+                               archivedIds.has(a.id) || 
+                               (a.student_id && archivedIds.has(a.student_id));
+            const isConfirmed = (a.is_admitted === true || 
                                 a.status === "Admitted/Confirmed" || 
                                 a.status === "Admitted" || 
                                 a.status === "Confirmed" || 
-                                Number(a.fee_received) > 0;
+                                Number(a.fee_received) > 0) && !isArchived;
             if (isConfirmed && !existingAdmIds.has(a.id) && !existingStudentIds.has(a.student_id)) {
               let derivedGender = a.gender;
               if (!derivedGender) {
@@ -500,7 +517,11 @@ export function useSupabaseData(user: any) {
         recordedBy: i.recorded_by,
         session: i.session || defaultSession
       })));
-      if (settingsData) setSettings({
+      if (settingsData) {
+        if (settingsData.config?.deletedArchive && Array.isArray(settingsData.config.deletedArchive)) {
+          setDeletedArchive(settingsData.config.deletedArchive);
+        }
+        setSettings({
         id: settingsData.id,
         collegeName: settingsData.college_name,
         campusName: settingsData.campus_name,
@@ -536,6 +557,7 @@ export function useSupabaseData(user: any) {
         allowOffHoursScan: settingsData.config?.allowOffHoursScan ?? false,
         config: settingsData.config || {}
       } as any);
+      }
       if (permissionsData) setPermissions(permissionsData.map(p => ({
         ...p,
         displayName: p.display_name,
@@ -765,54 +787,70 @@ export function useSupabaseData(user: any) {
       const { admission: admSnap, student: stuSnap } = snap;
 
       // 1. Restore Admission if snapshot present
-      if (admSnap) {
+      const admRecord = admSnap || (stuSnap?.admission_id ? { id: stuSnap.admission_id } : null);
+      if (admRecord) {
         await supabase.from('admissions').upsert({
-          id: admSnap.id,
-          student_id: admSnap.student_id || admSnap.studentId,
-          date: admSnap.date || new Date().toISOString().split('T')[0],
-          full_name: admSnap.full_name || admSnap.fullName,
-          father_name: admSnap.father_name || admSnap.fatherName,
-          category: admSnap.category || 'N/A',
-          group: admSnap.group || 'N/A',
-          section: admSnap.section || 'A',
-          subjects: admSnap.subjects || [],
-          address: admSnap.address || '',
-          admission_fee: admSnap.admission_fee || admSnap.admissionFee || 0,
-          total_fee_finalized: admSnap.total_fee_finalized || admSnap.totalFeeFinalized || 0,
-          total_package: admSnap.total_package || admSnap.totalPackage || 0,
-          fee_received: admSnap.fee_received || admSnap.feeReceived || 0,
-          payment_plan: admSnap.payment_plan || 'Monthly',
-          contact_number: admSnap.contact_number || admSnap.contactNumber || '',
-          father_contact: admSnap.father_contact || admSnap.fatherContact || '',
-          gender: admSnap.gender || 'Male',
-          status: admSnap.status || 'Admitted/Confirmed',
-          is_admitted: admSnap.is_admitted ?? true,
-          session: admSnap.session || '2026-28',
-          fee_history: admSnap.fee_history || [],
-          fee_ledger: admSnap.fee_ledger || {}
+          id: admRecord.id,
+          student_id: admRecord.student_id || admRecord.studentId || item.originalId || item.studentId,
+          date: admRecord.date || new Date().toISOString().split('T')[0],
+          full_name: admRecord.full_name || admRecord.fullName || item.fullName,
+          father_name: admRecord.father_name || admRecord.fatherName || item.fatherName,
+          category: admRecord.category || item.category || 'N/A',
+          group: admRecord.group || item.group || 'N/A',
+          section: admRecord.section || item.section || 'A',
+          subjects: admRecord.subjects || [],
+          address: admRecord.address || '',
+          admission_fee: admRecord.admission_fee || admRecord.admissionFee || 0,
+          total_fee_finalized: admRecord.total_fee_finalized || admRecord.totalFeeFinalized || item.totalPackage || 0,
+          total_package: admRecord.total_package || admRecord.totalPackage || item.totalPackage || 0,
+          fee_received: admRecord.fee_received || admRecord.feeReceived || item.feeReceived || 0,
+          payment_plan: admRecord.payment_plan || 'Installments',
+          contact_number: admRecord.contact_number || admRecord.contactNumber || item.contact || '',
+          father_contact: admRecord.father_contact || admRecord.fatherContact || '',
+          gender: admRecord.gender || 'Male',
+          status: 'Admitted/Confirmed',
+          is_admitted: true,
+          session: admRecord.session || item.session || '2026-28',
+          fee_history: admRecord.fee_history || [],
+          fee_ledger: item.snapshot?.feeLedger || admRecord.fee_ledger || {}
         });
       }
 
       // 2. Restore Student if snapshot present
       if (stuSnap) {
         await supabase.from('students').upsert({
-          id: stuSnap.id,
-          admission_id: stuSnap.admission_id || admSnap?.id,
-          full_name: stuSnap.full_name || stuSnap.fullName,
-          father_name: stuSnap.father_name || stuSnap.fatherName,
-          category: stuSnap.category || 'N/A',
-          group: stuSnap.group || 'N/A',
-          section: stuSnap.section || 'A',
+          id: stuSnap.id || item.originalId || item.studentId,
+          admission_id: stuSnap.admission_id || admRecord?.id,
+          full_name: stuSnap.full_name || stuSnap.fullName || item.fullName,
+          father_name: stuSnap.father_name || stuSnap.fatherName || item.fatherName,
+          category: stuSnap.category || item.category || 'N/A',
+          group: stuSnap.group || item.group || 'N/A',
+          section: stuSnap.section || item.section || 'A',
+          college_no: stuSnap.college_no || stuSnap.collegeNo || null,
+          bay_form_no: stuSnap.bay_form_no || stuSnap.bayFormNo || null,
+          dob: stuSnap.dob || null,
+          previous_class: stuSnap.previous_class || stuSnap.previousClass || null,
+          board_roll_no: stuSnap.board_roll_no || stuSnap.boardRollNo || null,
+          previous_marks: stuSnap.previous_marks ?? stuSnap.previousMarks ?? 0,
           subjects: stuSnap.subjects || [],
-          contact: stuSnap.contact || '',
+          contact: stuSnap.contact || item.contact || '',
+          father_contact: stuSnap.father_contact || stuSnap.fatherContact || '',
           address: stuSnap.address || '',
           gender: stuSnap.gender || 'Male',
           admission_fee: stuSnap.admission_fee || stuSnap.admissionFee || 0,
-          total_package: stuSnap.total_package || stuSnap.totalPackage || 0,
-          fee_received: stuSnap.fee_received || stuSnap.feeReceived || 0,
-          fee_ledger: stuSnap.fee_ledger || {},
+          misc_funds: stuSnap.misc_funds || stuSnap.miscFunds || 0,
+          total_fee_finalized: stuSnap.total_fee_finalized || stuSnap.totalFeeFinalized || item.totalPackage || 0,
+          total_package: stuSnap.total_package || stuSnap.totalPackage || item.totalPackage || 0,
+          fee_received: stuSnap.fee_received || stuSnap.feeReceived || item.feeReceived || 0,
+          total_installments: stuSnap.total_installments || stuSnap.totalInstallments || 12,
+          monthly_fee: stuSnap.monthly_fee || stuSnap.monthlyFee || 0,
+          fee_ledger: item.snapshot?.feeLedger || stuSnap.fee_ledger || {},
           fee_history: stuSnap.fee_history || [],
-          session: stuSnap.session || '2026-28'
+          session: stuSnap.session || item.session || '2026-28',
+          academic_part: stuSnap.academic_part || stuSnap.academicPart || 'Part-1',
+          current_semester: stuSnap.current_semester || stuSnap.currentSemester || 1,
+          fingerprint_template: stuSnap.fingerprint_template || (stuSnap as any).fingerprintTemplate || null,
+          fingerprint_finger: stuSnap.fingerprint_finger || (stuSnap as any).fingerprintFinger || null
         });
       }
 
