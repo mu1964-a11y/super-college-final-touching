@@ -278,10 +278,10 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
     const searchClean = (debouncedSearch || '').trim().toLowerCase();
     return rawStudents.filter((s: any) => {
       let matchesGender = true;
-      if (genderFilter !== 'all') matchesGender = s.gender === genderFilter;
+      if (!searchClean && genderFilter !== 'all') matchesGender = s.gender === genderFilter;
       
       let matchesProgram = true;
-      // When searching by text, allow cross-program match so student isn't hidden by active group tab
+      // When searching by text, allow cross-program and cross-campus match so student isn't hidden by active group tab
       if (!searchClean && programFilter !== 'all') {
         const sGroup = (s.group || '').toLowerCase();
         const sCategory = (s.category || '').toLowerCase();
