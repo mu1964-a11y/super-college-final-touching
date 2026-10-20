@@ -228,14 +228,19 @@ export function useSupabaseData(user: any) {
       if (studentsData) {
         const deletedArchiveList = (settingsData?.config?.deletedArchive || []) as any[];
         const archivedIds = new Set<string>();
+        const archivedNames = new Set<string>();
         deletedArchiveList.forEach((arch: any) => {
           if (arch.originalId) archivedIds.add(arch.originalId);
           if (arch.studentId) archivedIds.add(arch.studentId);
+          if (arch.fullName && arch.fatherName) {
+            archivedNames.add(`${arch.fullName.trim().toLowerCase()}::${arch.fatherName.trim().toLowerCase()}`);
+          }
         });
 
         const activeStudentsData = studentsData.filter(s => {
           if ((s as any).status === 'archived' || (s as any).status === 'Deleted') return false;
           if (archivedIds.has(s.id) || (s.admission_id && archivedIds.has(s.admission_id))) return false;
+          if (s.full_name && s.father_name && archivedNames.has(`${s.full_name.trim().toLowerCase()}::${s.father_name.trim().toLowerCase()}`)) return false;
           return true;
         });
 
@@ -316,13 +321,18 @@ export function useSupabaseData(user: any) {
           admissionsData.forEach(a => {
             const isArchived = a.status === "Archived" || 
                                a.status === "Deleted" || 
+                               a.is_admitted === false ||
                                archivedIds.has(a.id) || 
-                               (a.student_id && archivedIds.has(a.student_id));
-            const isConfirmed = (a.is_admitted === true || 
-                                a.status === "Admitted/Confirmed" || 
-                                a.status === "Admitted" || 
-                                a.status === "Confirmed" || 
-                                Number(a.fee_received) > 0) && !isArchived;
+                               (a.student_id && archivedIds.has(a.student_id)) ||
+                               (a.full_name && a.father_name && archivedNames.has(`${a.full_name.trim().toLowerCase()}::${a.father_name.trim().toLowerCase()}`));
+            const isConfirmed = !isArchived && (
+                                  a.is_admitted === true || 
+                                  a.status === "Admitted/Confirmed" || 
+                                  a.status === "Admitted" || 
+                                  a.status === "Confirmed" ||
+                                  a.status === "Full Paid" ||
+                                  a.status === "Partial Paid"
+                                );
             if (isConfirmed && !existingAdmIds.has(a.id) && !existingStudentIds.has(a.student_id)) {
               let derivedGender = a.gender;
               if (!derivedGender) {
@@ -755,7 +765,17 @@ export function useSupabaseData(user: any) {
   // Archive Operations
   const archiveRecords = async (records: ArchivedRecord[]) => {
     if (!records.length) return;
-    const updated = [...records, ...deletedArchive.filter(existing => !records.some(r => r.originalId === existing.originalId))];
+    const updated = [
+      ...records,
+      ...deletedArchive.filter(existing => !records.some(r => 
+        r.originalId === existing.originalId || 
+        r.studentId === existing.studentId || 
+        (r.originalId && existing.studentId && r.originalId === existing.studentId) ||
+        (r.studentId && existing.originalId && r.studentId === existing.originalId) ||
+        (Boolean(r.fullName && existing.fullName && r.fullName.trim().toLowerCase() === existing.fullName.trim().toLowerCase()) &&
+         Boolean(r.fatherName && existing.fatherName && r.fatherName.trim().toLowerCase() === existing.fatherName.trim().toLowerCase()))
+      ))
+    ];
     setDeletedArchive(updated);
     try {
       if ((settings as any)?.id) {
@@ -769,10 +789,20 @@ export function useSupabaseData(user: any) {
           },
           updated_at: new Date().toISOString()
         }).eq('id', (settings as any).id);
+
+        setSettings(prev => prev ? {
+          ...prev,
+          config: {
+            ...((prev as any).config || {}),
+            predefinedSections: safeSections,
+            deletedArchive: updated
+          }
+        } as any : null);
       }
     } catch (e) {
       console.warn("Could not sync archive to settings:", e);
     }
+    return updated;
   };
 
   const restoreFromArchive = async (archiveId: string) => {
@@ -786,93 +816,116 @@ export function useSupabaseData(user: any) {
       const snap = item.snapshot || {};
       const { admission: admSnap, student: stuSnap } = snap;
 
-      // 1. Restore Admission if snapshot present
-      const admRecord = admSnap || (stuSnap?.admission_id ? { id: stuSnap.admission_id } : null);
-      if (admRecord) {
-        await supabase.from('admissions').upsert({
-          id: admRecord.id,
-          student_id: admRecord.student_id || admRecord.studentId || item.originalId || item.studentId,
-          date: admRecord.date || new Date().toISOString().split('T')[0],
-          full_name: admRecord.full_name || admRecord.fullName || item.fullName,
-          father_name: admRecord.father_name || admRecord.fatherName || item.fatherName,
-          category: admRecord.category || item.category || 'N/A',
-          group: admRecord.group || item.group || 'N/A',
-          section: admRecord.section || item.section || 'A',
-          subjects: admRecord.subjects || [],
-          address: admRecord.address || '',
-          admission_fee: admRecord.admission_fee || admRecord.admissionFee || 0,
-          total_fee_finalized: admRecord.total_fee_finalized || admRecord.totalFeeFinalized || item.totalPackage || 0,
-          total_package: admRecord.total_package || admRecord.totalPackage || item.totalPackage || 0,
-          fee_received: admRecord.fee_received || admRecord.feeReceived || item.feeReceived || 0,
-          payment_plan: admRecord.payment_plan || 'Installments',
-          contact_number: admRecord.contact_number || admRecord.contactNumber || item.contact || '',
-          father_contact: admRecord.father_contact || admRecord.fatherContact || '',
-          gender: admRecord.gender || 'Male',
-          status: 'Admitted/Confirmed',
-          is_admitted: true,
-          session: admRecord.session || item.session || '2026-28',
-          fee_history: admRecord.fee_history || [],
-          fee_ledger: item.snapshot?.feeLedger || admRecord.fee_ledger || {}
-        });
-      }
+      const resolvedStudentId = stuSnap?.id || admSnap?.student_id || admSnap?.studentId || item.studentId || item.originalId;
+      const resolvedAdmId = admSnap?.id || stuSnap?.admission_id || stuSnap?.admissionId || `adm-res-${Date.now()}`;
+      const feePkg = Number(item.totalPackage || stuSnap?.totalPackage || stuSnap?.total_package || admSnap?.total_package || admSnap?.totalPackage || 0);
+      const feeRec = Number(item.feeReceived || stuSnap?.feeReceived || stuSnap?.fee_received || admSnap?.fee_received || admSnap?.feeReceived || 0);
+      const feeRem = Math.max(0, feePkg - feeRec);
 
-      // 2. Restore Student if snapshot present
-      if (stuSnap) {
-        await supabase.from('students').upsert({
-          id: stuSnap.id || item.originalId || item.studentId,
-          admission_id: stuSnap.admission_id || admRecord?.id,
-          full_name: stuSnap.full_name || stuSnap.fullName || item.fullName,
-          father_name: stuSnap.father_name || stuSnap.fatherName || item.fatherName,
-          category: stuSnap.category || item.category || 'N/A',
-          group: stuSnap.group || item.group || 'N/A',
-          section: stuSnap.section || item.section || 'A',
-          college_no: stuSnap.college_no || stuSnap.collegeNo || null,
-          bay_form_no: stuSnap.bay_form_no || stuSnap.bayFormNo || null,
-          dob: stuSnap.dob || null,
-          previous_class: stuSnap.previous_class || stuSnap.previousClass || null,
-          board_roll_no: stuSnap.board_roll_no || stuSnap.boardRollNo || null,
-          previous_marks: stuSnap.previous_marks ?? stuSnap.previousMarks ?? 0,
-          subjects: stuSnap.subjects || [],
-          contact: stuSnap.contact || item.contact || '',
-          father_contact: stuSnap.father_contact || stuSnap.fatherContact || '',
-          address: stuSnap.address || '',
-          gender: stuSnap.gender || 'Male',
-          admission_fee: stuSnap.admission_fee || stuSnap.admissionFee || 0,
-          misc_funds: stuSnap.misc_funds || stuSnap.miscFunds || 0,
-          total_fee_finalized: stuSnap.total_fee_finalized || stuSnap.totalFeeFinalized || item.totalPackage || 0,
-          total_package: stuSnap.total_package || stuSnap.totalPackage || item.totalPackage || 0,
-          fee_received: stuSnap.fee_received || stuSnap.feeReceived || item.feeReceived || 0,
-          total_installments: stuSnap.total_installments || stuSnap.totalInstallments || 12,
-          monthly_fee: stuSnap.monthly_fee || stuSnap.monthlyFee || 0,
-          fee_ledger: item.snapshot?.feeLedger || stuSnap.fee_ledger || {},
-          fee_history: stuSnap.fee_history || [],
-          session: stuSnap.session || item.session || '2026-28',
-          academic_part: stuSnap.academic_part || stuSnap.academicPart || 'Part-1',
-          current_semester: stuSnap.current_semester || stuSnap.currentSemester || 1,
-          fingerprint_template: stuSnap.fingerprint_template || (stuSnap as any).fingerprintTemplate || null,
-          fingerprint_finger: stuSnap.fingerprint_finger || (stuSnap as any).fingerprintFinger || null
-        });
-      }
+      const resolvedFeeLedger = item.snapshot?.feeLedger || stuSnap?.feeLedger || stuSnap?.fee_ledger || admSnap?.fee_ledger || {
+        totalPackage: feePkg,
+        totalReceived: feeRec,
+        remainingBalance: feeRem,
+        installments: [],
+        transactions: feeRec > 0 ? [{
+          id: `tx-res-${Date.now()}`,
+          date: new Date().toISOString().split('T')[0],
+          amount: feeRec,
+          description: 'Initial Payment / Restored Ledger',
+          paymentMethod: 'Cash',
+          receiptId: `REC-${String(resolvedStudentId).slice(-6)}`
+        }] : []
+      };
+
+      // 1. Restore Admission in Supabase
+      await supabase.from('admissions').upsert({
+        id: resolvedAdmId,
+        student_id: resolvedStudentId,
+        date: admSnap?.date || new Date().toISOString().split('T')[0],
+        full_name: admSnap?.full_name || admSnap?.fullName || stuSnap?.fullName || stuSnap?.full_name || item.fullName,
+        father_name: admSnap?.father_name || admSnap?.fatherName || stuSnap?.fatherName || stuSnap?.father_name || item.fatherName,
+        category: admSnap?.category || stuSnap?.category || item.category || 'N/A',
+        group: admSnap?.group || stuSnap?.group || item.group || 'N/A',
+        section: admSnap?.section || stuSnap?.section || item.section || 'A',
+        subjects: admSnap?.subjects || stuSnap?.subjects || [],
+        address: admSnap?.address || stuSnap?.address || '',
+        admission_fee: admSnap?.admission_fee ?? stuSnap?.admission_fee ?? 0,
+        misc_funds: admSnap?.misc_funds ?? stuSnap?.misc_funds ?? 0,
+        total_fee_finalized: feePkg,
+        total_package: feePkg,
+        fee_received: feeRec,
+        payment_plan: admSnap?.payment_plan || 'Semester',
+        contact_number: admSnap?.contact_number || stuSnap?.contact || item.contact || '',
+        father_contact: admSnap?.father_contact || stuSnap?.fatherContact || '',
+        gender: admSnap?.gender || stuSnap?.gender || 'Female',
+        status: 'Admitted/Confirmed',
+        is_admitted: true,
+        session: admSnap?.session || stuSnap?.session || item.session || '2026-28',
+        fee_history: admSnap?.fee_history || stuSnap?.fee_history || [],
+        fee_ledger: resolvedFeeLedger
+      });
+
+      // 2. Restore Student in Supabase students table
+      await supabase.from('students').upsert({
+        id: resolvedStudentId,
+        admission_id: resolvedAdmId,
+        full_name: stuSnap?.full_name || stuSnap?.fullName || admSnap?.full_name || item.fullName,
+        father_name: stuSnap?.father_name || stuSnap?.fatherName || admSnap?.father_name || item.fatherName,
+        category: stuSnap?.category || admSnap?.category || item.category || 'N/A',
+        group: stuSnap?.group || admSnap?.group || item.group || 'N/A',
+        section: stuSnap?.section || admSnap?.section || item.section || 'A',
+        college_no: stuSnap?.college_no || stuSnap?.collegeNo || admSnap?.college_no || null,
+        bay_form_no: stuSnap?.bay_form_no || stuSnap?.bayFormNo || admSnap?.bay_form_no || null,
+        dob: stuSnap?.dob || admSnap?.dob || null,
+        previous_class: stuSnap?.previous_class || stuSnap?.previousClass || admSnap?.previous_class || null,
+        board_roll_no: stuSnap?.board_roll_no || stuSnap?.boardRollNo || admSnap?.board_roll_no || null,
+        previous_marks: stuSnap?.previous_marks ?? stuSnap?.previousMarks ?? admSnap?.previous_marks ?? 0,
+        subjects: stuSnap?.subjects || admSnap?.subjects || [],
+        contact: stuSnap?.contact || admSnap?.contact_number || item.contact || '',
+        father_contact: stuSnap?.father_contact || admSnap?.father_contact || '',
+        address: stuSnap?.address || admSnap?.address || '',
+        gender: stuSnap?.gender || admSnap?.gender || 'Female',
+        admission_fee: stuSnap?.admission_fee ?? admSnap?.admission_fee ?? 0,
+        misc_funds: stuSnap?.misc_funds ?? admSnap?.misc_funds ?? 0,
+        total_fee_finalized: feePkg,
+        total_package: feePkg,
+        fee_received: feeRec,
+        total_installments: stuSnap?.total_installments || stuSnap?.totalInstallments || 12,
+        monthly_fee: stuSnap?.monthly_fee || stuSnap?.monthlyFee || 0,
+        fee_ledger: resolvedFeeLedger,
+        fee_history: stuSnap?.fee_history || admSnap?.fee_history || [],
+        session: stuSnap?.session || admSnap?.session || item.session || '2026-28',
+        academic_part: stuSnap?.academic_part || stuSnap?.academicPart || admSnap?.academic_part || 'Part-1',
+        current_semester: stuSnap?.current_semester || stuSnap?.currentSemester || admSnap?.current_semester || 8
+      });
 
       // 3. Restore income entry if fee_received > 0
-      const feeAmount = Number(item.feeReceived || admSnap?.fee_received || stuSnap?.fee_received) || 0;
-      if (feeAmount > 0) {
-        await supabase.from('income').insert({
-          student_id: item.studentId || item.originalId,
-          student_name: item.fullName,
-          fee_type: 'Admission Fee / Initial Payment',
-          amount: feeAmount,
-          month: new Date().toLocaleString('default', { month: 'long' }),
-          year: new Date().getFullYear(),
-          date: new Date().toISOString().split('T')[0],
-          status: 'Paid',
-          payment_method: 'Cash',
-          recorded_by: user?.email || 'System'
-        });
+      if (feeRec > 0) {
+        try {
+          await supabase.from('income').insert({
+            student_id: resolvedStudentId,
+            student_name: item.fullName,
+            fee_type: 'Admission Fee / Initial Payment',
+            amount: feeRec,
+            month: new Date().toLocaleString('default', { month: 'long' }),
+            year: new Date().getFullYear(),
+            date: new Date().toISOString().split('T')[0],
+            status: 'Paid',
+            payment_method: 'Cash',
+            recorded_by: user?.email || 'System'
+          });
+        } catch (incErr) {
+          console.warn("Could not insert income on restore:", incErr);
+        }
       }
 
       // 4. Remove from archive
-      const newArchive = deletedArchive.filter(a => a.id !== archiveId);
+      const newArchive = deletedArchive.filter(a => 
+        a.id !== archiveId && 
+        a.originalId !== item.originalId && 
+        a.studentId !== item.studentId &&
+        !(a.fullName === item.fullName && a.fatherName === item.fatherName)
+      );
       setDeletedArchive(newArchive);
 
       if ((settings as any)?.id) {
@@ -883,10 +936,18 @@ export function useSupabaseData(user: any) {
           },
           updated_at: new Date().toISOString()
         }).eq('id', (settings as any).id);
+
+        setSettings(prev => prev ? {
+          ...prev,
+          config: {
+            ...((prev as any).config || {}),
+            deletedArchive: newArchive
+          }
+        } as any : null);
       }
 
-      toast.success(`${item.fullName} restored successfully!`, { id: toastId });
-      fetchData(true);
+      await fetchData(true);
+      toast.success(`${item.fullName} restored successfully with fees intact!`, { id: toastId });
     } catch (e: any) {
       console.error("Restore Error:", e);
       toast.error(`Restore failed: ${e.message}`, { id: toastId });

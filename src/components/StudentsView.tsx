@@ -148,37 +148,62 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
 
   const mergedStudents = React.useMemo(() => {
     console.log("Students data preview:", data.students.slice(0, 3).map((s: any) => ({ name: s.fullName, subjects: s.subjects })));
-    const rawStudents = [...data.students].map(s => {
-      let derivedGender = s.gender;
-      if (!derivedGender) {
-        const identifier = (`${s.category || ''} ${s.group || ''}`).toLowerCase();
-        if (identifier.includes('girl') || identifier.includes('female')) {
-          derivedGender = 'Female';
-        } else {
-          derivedGender = 'Male';
-        }
+    const deletedArchiveList = (data.deletedArchive || []) as any[];
+    const archivedIds = new Set<string>();
+    const archivedNames = new Set<string>();
+    deletedArchiveList.forEach((arch: any) => {
+      if (arch.originalId) archivedIds.add(arch.originalId);
+      if (arch.studentId) archivedIds.add(arch.studentId);
+      if (arch.fullName && arch.fatherName) {
+        archivedNames.add(`${arch.fullName.trim().toLowerCase()}::${arch.fatherName.trim().toLowerCase()}`);
       }
-      const linkedAdm = data.admissions?.find((a: any) => a.id === s.admissionId || a.studentId === s.id || (s.collegeNo && a.collegeNo === s.collegeNo));
-      const resolvedPhoto = s.photo || s.photo_url || linkedAdm?.photo_url || linkedAdm?.photo || '';
-      return { 
-        ...s, 
-        gender: derivedGender, 
-        photo: resolvedPhoto,
-        createdAt: s.createdAt || s.created_at || linkedAdm?.createdAt || linkedAdm?.created_at,
-        created_at: s.created_at || s.createdAt || linkedAdm?.created_at || linkedAdm?.createdAt,
-      };
     });
+
+    const rawStudents = [...data.students]
+      .filter((s: any) => {
+        if (s.status === 'archived' || s.status === 'Deleted') return false;
+        if (archivedIds.has(s.id) || (s.admissionId && archivedIds.has(s.admissionId))) return false;
+        if (s.fullName && s.fatherName && archivedNames.has(`${s.fullName.trim().toLowerCase()}::${s.fatherName.trim().toLowerCase()}`)) return false;
+        return true;
+      })
+      .map(s => {
+        let derivedGender = s.gender;
+        if (!derivedGender) {
+          const identifier = (`${s.category || ''} ${s.group || ''}`).toLowerCase();
+          if (identifier.includes('girl') || identifier.includes('female')) {
+            derivedGender = 'Female';
+          } else {
+            derivedGender = 'Male';
+          }
+        }
+        const linkedAdm = data.admissions?.find((a: any) => a.id === s.admissionId || a.studentId === s.id || (s.collegeNo && a.collegeNo === s.collegeNo));
+        const resolvedPhoto = s.photo || s.photo_url || linkedAdm?.photo_url || linkedAdm?.photo || '';
+        return { 
+          ...s, 
+          gender: derivedGender, 
+          photo: resolvedPhoto,
+          createdAt: s.createdAt || s.created_at || linkedAdm?.createdAt || linkedAdm?.created_at,
+          created_at: s.created_at || s.createdAt || linkedAdm?.created_at || linkedAdm?.createdAt,
+        };
+      });
     
     // Add all admissions that don't have a matching student record yet but are confirmed
     data.admissions.forEach((a: any) => {
+      const isArchived = a.status === 'Archived' || 
+                         a.status === 'Deleted' || 
+                         a.isAdmitted === false ||
+                         archivedIds.has(a.id) || 
+                         (a.studentId && archivedIds.has(a.studentId)) ||
+                         (a.fullName && a.fatherName && archivedNames.has(`${a.fullName.trim().toLowerCase()}::${a.fatherName.trim().toLowerCase()}`));
+      if (isArchived) return;
+
       const existsInStudents = rawStudents.some((s: any) => s.admissionId === a.id || s.id === a.studentId);
-      const isConfirmed = a.isAdmitted === true || 
+      const isConfirmed = (a.isAdmitted === true || 
                           a.status === "Admitted/Confirmed" || 
                           a.status === "Admitted" || 
                           a.status === "Confirmed" || 
                           a.status === "Full Paid" || 
-                          a.status === "Partial Paid" || 
-                          Number(a.feeReceived) > 0;
+                          a.status === "Partial Paid") && a.status !== 'Pending' && a.status !== 'Rejected';
       
       if (!existsInStudents && isConfirmed) {
         let derivedGender = a.gender;
@@ -301,7 +326,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
 
       return matchesGender && matchesProgram && matchesStage;
     });
-  }, [data.students, data.admissions, genderFilter, programFilter, debouncedSearch, academicStageFilter]);
+  }, [data.students, data.admissions, data.deletedArchive, genderFilter, programFilter, debouncedSearch, academicStageFilter]);
 
   const sectionOptions = React.useMemo(() => {
     let sections = data?.settings?.predefinedSections || [];
@@ -2011,11 +2036,11 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           </div>
           <DialogFooter className="gap-3">
             <Button variant="ghost" onClick={() => setDialogType(null)} className="rounded-xl h-12 px-6 font-bold">Cancel</Button>
-            <Button variant="destructive" className="rounded-xl h-12 px-8 font-black uppercase tracking-widest text-xs" onClick={() => {
+            <Button variant="destructive" className="rounded-xl h-12 px-8 font-black uppercase tracking-widest text-xs" onClick={async () => {
               if (selectedStudent) {
-                data.deleteStudent(selectedStudent.id);
+                const s = selectedStudent;
                 setDialogType(null);
-                toast.success("Student record deleted successfully!");
+                await data.deleteStudent(s.id);
               }
             }}>Confirm Delete</Button>
           </DialogFooter>

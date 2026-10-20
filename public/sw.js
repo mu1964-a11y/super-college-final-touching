@@ -1,5 +1,5 @@
 // Superior College Jahanian - Lightweight PWA Service Worker
-const CACHE_NAME = 'scj-gate-kiosk-cache-v5';
+const CACHE_NAME = 'scj-gate-kiosk-cache-v6';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',

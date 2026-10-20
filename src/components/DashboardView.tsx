@@ -124,19 +124,28 @@ export default function DashboardView({
     [data.admissions],
   );
   const confirmedAdmissions = useMemo(() => {
+    const deletedArchiveList = (data.deletedArchive || []) as any[];
+    const archivedIds = new Set<string>();
+    deletedArchiveList.forEach((arch: any) => {
+      if (arch.originalId) archivedIds.add(arch.originalId);
+      if (arch.studentId) archivedIds.add(arch.studentId);
+    });
+
     return data.admissions.filter((a: any) => {
+      if (a.status === 'Archived' || a.status === 'Deleted' || a.isAdmitted === false) return false;
+      if (archivedIds.has(a.id) || (a.studentId && archivedIds.has(a.studentId))) return false;
+
       const isConfirmedStatus =
-        a.isAdmitted === true ||
-        a.status === "Admitted/Confirmed" ||
-        a.status === "Admitted" ||
-        a.status === "Confirmed" ||
-        a.status === "Full Paid" ||
-        a.status === "Partial Paid" ||
-        Number(a.feeReceived) > 0;
+        (a.isAdmitted === true ||
+        a.status === 'Admitted/Confirmed' ||
+        a.status === 'Admitted' ||
+        a.status === 'Confirmed' ||
+        a.status === 'Full Paid' ||
+        a.status === 'Partial Paid') && a.status !== 'Pending' && a.status !== 'Rejected';
 
       return isConfirmedStatus;
     });
-  }, [data.admissions]);
+  }, [data.admissions, data.deletedArchive]);
 
   const [selectedMonth, setSelectedMonth] = React.useState<string>(
     new Date().toLocaleString("default", { month: "long" }),

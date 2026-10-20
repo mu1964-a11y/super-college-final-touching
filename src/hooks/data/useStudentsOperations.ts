@@ -4,7 +4,7 @@ import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPerm
 import { diffObjects, STUDENT_FIELD_LABELS } from '../../utils/changeTracker';
 
 export function useStudentsOperations(ctx: any) {
-  const { user, generateStudentId, admissions, students, setStudents, isBulkOperatingRef, logActivity, fetchData, archiveRecords } = ctx;
+  const { user, generateStudentId, admissions, setAdmissions, students, setStudents, isBulkOperatingRef, logActivity, fetchData, archiveRecords, deletedArchive, setDeletedArchive } = ctx;
   const addStudent = async (student: Omit<Student, 'id'>) => {
     const id = (student as any).id || generateStudentId(student.group);
     const optimisticStudent: Student = { ...student, id } as Student;
@@ -108,38 +108,59 @@ export function useStudentsOperations(ctx: any) {
     };
 
   const deleteStudent = async (id: string) => {
+    // Check if target is already archived
+    const isAlreadyArchived = (deletedArchive || []).some((a: any) => 
+      a.originalId === id || a.studentId === id
+    );
+    if (isAlreadyArchived) {
+      toast.error("This student record is already in the Deleted Archive.");
+      return;
+    }
+
     const backupStudents = [...students];
-    const targetStudent = students.find((s: any) => s.id === id);
-    setStudents(prev => prev.filter(s => s.id !== id));
+    const targetStudent = students.find((s: any) => s.id === id || s.admissionId === id);
+    
+    // Optimistically remove from state
+    setStudents(prev => prev.filter(s => s.id !== id && (!targetStudent?.admissionId || s.admissionId !== targetStudent.admissionId)));
 
     try {
-      // 0. Save full snapshot to Deleted Archive before deletion
-      if (targetStudent && typeof archiveRecords === 'function') {
+      // 0. Find linked admission snapshot
+      let admSnapshot = null;
+      if (targetStudent?.admissionId) {
+        admSnapshot = (admissions || []).find((a: any) => a.id === targetStudent.admissionId);
+      }
+      if (!admSnapshot) {
+        admSnapshot = (admissions || []).find((a: any) => a.studentId === id || a.student_id === id);
+      }
+
+      // 1. Save full snapshot to Deleted Archive before deletion and AWAIT commit
+      if (typeof archiveRecords === 'function') {
         const archiveItem: ArchivedRecord = {
           id: `arch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          originalId: targetStudent.id,
-          studentId: targetStudent.id,
+          originalId: targetStudent?.id || id,
+          studentId: targetStudent?.id || id,
           entityType: 'student',
-          fullName: targetStudent.fullName,
-          fatherName: targetStudent.fatherName,
-          category: targetStudent.category,
-          group: targetStudent.group,
-          section: targetStudent.section,
-          session: targetStudent.session,
-          contact: targetStudent.contact,
-          totalPackage: targetStudent.totalPackage,
-          feeReceived: targetStudent.feeReceived,
+          fullName: targetStudent?.fullName || admSnapshot?.fullName || admSnapshot?.full_name || 'Student',
+          fatherName: targetStudent?.fatherName || admSnapshot?.fatherName || admSnapshot?.father_name || '',
+          category: targetStudent?.category || admSnapshot?.category || 'N/A',
+          group: targetStudent?.group || admSnapshot?.group || 'N/A',
+          section: targetStudent?.section || admSnapshot?.section || 'A',
+          session: targetStudent?.session || admSnapshot?.session || '2026-28',
+          contact: targetStudent?.contact || admSnapshot?.contactNumber || admSnapshot?.contact_number || '',
+          totalPackage: targetStudent?.totalPackage ?? admSnapshot?.totalPackage ?? admSnapshot?.total_package ?? 0,
+          feeReceived: targetStudent?.feeReceived ?? admSnapshot?.feeReceived ?? admSnapshot?.fee_received ?? 0,
           snapshot: { 
-            student: targetStudent,
-            feeLedger: targetStudent.feeLedger || null
+            student: targetStudent || null,
+            admission: admSnapshot || null,
+            feeLedger: targetStudent?.feeLedger || admSnapshot?.feeLedger || null
           },
           deletedAt: new Date().toISOString(),
           deletedBy: user?.email || 'System'
         };
-        archiveRecords([archiveItem]);
+        await archiveRecords([archiveItem]);
       }
 
-      // 0.5. Soft-archive linked admission record to prevent auto-resurrection on reload
+      // 2. Soft-archive linked admission records to prevent auto-resurrection on reload
       try {
         if (targetStudent?.admissionId) {
           await supabase.from('admissions').update({
@@ -151,11 +172,19 @@ export function useStudentsOperations(ctx: any) {
           status: 'Archived',
           is_admitted: false
         }).eq('student_id', id);
+
+        // Also soft-archive any duplicate admissions with matching fullName & fatherName
+        if (targetStudent?.fullName && targetStudent?.fatherName) {
+          await supabase.from('admissions').update({
+            status: 'Archived',
+            is_admitted: false
+          }).ilike('full_name', targetStudent.fullName.trim()).ilike('father_name', targetStudent.fatherName.trim());
+        }
       } catch (admArchErr) {
         console.warn("Could not archive linked admission:", admArchErr);
       }
 
-      // 1. Delete associated child records first to ensure no foreign key violation
+      // 3. Delete associated child records first to ensure no foreign key violation
       try {
         await supabase.from('academic_records').delete().eq('student_id', id);
         await supabase.from('fee_transactions').delete().eq('student_id', id);
@@ -172,7 +201,7 @@ export function useStudentsOperations(ctx: any) {
           await supabase.from('income').delete().in('student_id', idsToClean);
           if (targetStudent?.fullName) {
             await supabase.from('income').delete()
-              .eq('student_name', targetStudent.fullName)
+              .ilike('student_name', targetStudent.fullName.trim())
               .in('fee_type', ['Admission / Initial Fee', 'Admission Fee / Initial Payment']);
           }
         } catch (delIncErr) {
@@ -182,18 +211,31 @@ export function useStudentsOperations(ctx: any) {
         console.warn("Child records cleanup warning:", childErr);
       }
 
-      // 2. Delete student record
-      const { error } = await supabase.from('students').delete().eq('id', id);
-      if (error) throw error;
-      fetchData(true);
+      // 4. Delete student record from students table
+      await supabase.from('students').delete().eq('id', id);
+      if (targetStudent?.admissionId) {
+        await supabase.from('students').delete().eq('admission_id', targetStudent.admissionId);
+      }
+
+      // 5. Update local state
+      if (typeof setAdmissions === 'function') {
+        setAdmissions((prev: any[]) => prev.map(a => {
+          if (a.id === targetStudent?.admissionId || a.studentId === id || (targetStudent?.fullName && a.fullName === targetStudent.fullName && a.fatherName === targetStudent.fatherName)) {
+            return { ...a, status: 'Archived', isAdmitted: false };
+          }
+          return a;
+        }));
+      }
+
+      await fetchData(true);
       logActivity("Student Deleted", {
-        summary: `Student ${targetStudent?.fullName || id} record removed`,
+        summary: `Student ${targetStudent?.fullName || id} record removed to archive`,
         action: "delete",
         module: "Student",
         targetName: targetStudent?.fullName || id,
         deletedRecord: targetStudent || { id }
       }, 'alert');
-      toast.success("Student removed");
+      toast.success("Student moved to Deleted Archive");
     } catch (e: any) {
       setStudents(backupStudents);
       console.error("Delete Student Error:", e);
@@ -233,7 +275,7 @@ export function useStudentsOperations(ctx: any) {
             deletedAt: new Date().toISOString(),
             deletedBy: user?.email || 'System'
           }));
-          archiveRecords(archiveItems);
+          await archiveRecords(archiveItems);
         }
 
         // 0.5. Soft-archive linked admissions in bulk
@@ -293,6 +335,15 @@ export function useStudentsOperations(ctx: any) {
           }
         }
 
+        if (typeof setAdmissions === 'function') {
+          setAdmissions((prev: any[]) => prev.map(a => {
+            if (ids.includes(a.studentId) || admIdsToArchive.includes(a.id)) {
+              return { ...a, status: 'Archived', isAdmitted: false };
+            }
+            return a;
+          }));
+        }
+
         logActivity("Bulk Delete", `Removed ${ids.length} student records`, 'alert');
         toast.success(`${ids.length} students removed`, { id: toastId });
       } catch (e: any) {
@@ -300,7 +351,7 @@ export function useStudentsOperations(ctx: any) {
         toast.error(`Deletion failed: ${e.message}`, { id: toastId });
       } finally {
         isBulkOperatingRef.current = false;
-        fetchData(true);
+        await fetchData(true);
       }
     };
 
