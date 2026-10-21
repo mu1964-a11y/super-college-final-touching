@@ -819,72 +819,184 @@ export function useAdmissionsOperations(ctx: any) {
       }
     };
 
-  const importAdmissions = async (admissionsToImport: Admission[]) => {
-    if (!admissionsToImport.length) return;
+  const importAdmissions = async (admissionsToImport: any[]) => {
+    if (!admissionsToImport.length) return { totalImported: 0, totalFailed: 0, report: [] };
 
     isBulkOperatingRef.current = true;
-    const toastId = toast.loading(`Importing ${admissionsToImport.length} admissions...`);
+    const toastId = toast.loading(`Committing ${admissionsToImport.length} students & ledgers...`);
+
+    const report: Array<{
+      rowNum: number;
+      name: string;
+      studentId: string;
+      status: 'Success' | 'Failed';
+      reason: string;
+    }> = [];
+
+    let totalImported = 0;
+    let totalFailed = 0;
 
     try {
-      const batchSize = 50;
-      let totalImported = 0;
-
+      const batchSize = 25;
       for (let i = 0; i < admissionsToImport.length; i += batchSize) {
         const chunk = admissionsToImport.slice(i, i + batchSize);
-        const mappedChunk = chunk.map(admission => ({
-          full_name: admission.fullName,
-          father_name: admission.fatherName,
-          previous_marks: admission.previousMarks || 0,
-          previous_institute: admission.previousInstitute || '',
-          college_no: admission.collegeNo || '',
-          bay_form_no: admission.bayFormNo || '',
-          dob: admission.dob || null,
-          previous_class: admission.previousClass || '10th',
-          board_roll_no: admission.boardRollNo || '',
-          category: admission.category,
-          group: admission.group,
-          section: admission.section || '',
-          subjects: admission.subjects || [],
-          address: admission.address || '',
-          admission_fee: admission.admissionFee || 0,
-          misc_funds: admission.miscFunds || 0,
-          total_fee_finalized: admission.totalFeeFinalized || 0,
-          total_package: admission.totalPackage || 0,
-          fee_received: admission.feeReceived || 0,
-          payment_plan: admission.paymentPlan || 'Installments',
-          contact_number: admission.contactNumber || '',
-          father_contact: admission.fatherContact || '',
-          secondary_contact: admission.secondaryContact || '',
-          email: admission.email || '',
-          blood_group: admission.bloodGroup || '',
-          reference: admission.reference || 'Bulk Import',
-          gender: admission.gender,
-          photo_url: admission.photo || '',
-          student_id: admission.studentId || null,
-          status: admission.status || 'Prospective',
-          is_admitted: admission.isAdmitted || false,
-          session: admission.session || settings?.academicSession,
-          academic_part: admission.academicPart || 'Part-1'
-        }));
 
-        const { error } = await supabase.from('admissions').insert(mappedChunk);
-        if (error) throw error;
-        
-        totalImported += chunk.length;
-        
+        for (let j = 0; j < chunk.length; j++) {
+          const adm = chunk[j];
+          const rowNum = i + j + 1;
+          const studentId = adm.studentId || adm.student_id;
+          const admissionId = adm.id || `adm-imp-${Date.now()}-${i}-${j}`;
+
+          try {
+            // 1. Insert into admissions table
+            const admPayload: any = {
+              id: admissionId,
+              student_id: studentId,
+              full_name: adm.fullName || adm.full_name,
+              father_name: adm.fatherName || adm.father_name || '',
+              gender: adm.gender || 'Male',
+              category: adm.category || 'N/A',
+              group: adm.group || 'N/A',
+              section: adm.section || 'A',
+              session: adm.session || settings?.academicSession || '2026-28',
+              current_semester: adm.currentSemester ?? adm.current_semester ?? 1,
+              academic_part: adm.academicPart || adm.academic_part || 'Part-1',
+              program_type: adm.programType || adm.program_type || 'Yearly',
+              total_package: Number(adm.totalPackage ?? adm.total_package ?? 0),
+              fee_received: Number(adm.feeReceived ?? adm.fee_received ?? 0),
+              admission_fee: Number(adm.admissionFee ?? adm.admission_fee ?? 0),
+              misc_funds: Number(adm.miscFunds ?? adm.misc_funds ?? 0),
+              total_fee_finalized: Number(adm.totalFeeFinalized ?? adm.total_fee_finalized ?? (adm.totalPackage || 0)),
+              payment_plan: adm.paymentPlan || 'Installments',
+              contact_number: adm.contactNumber || adm.contact_number || '',
+              father_contact: adm.fatherContact || adm.father_contact || '',
+              bay_form_no: adm.bayFormNo || adm.bay_form_no || '',
+              dob: adm.dob || null,
+              previous_class: adm.previousClass || adm.previous_class || '10th',
+              board_roll_no: adm.boardRollNo || adm.board_roll_no || '',
+              previous_marks: Number(adm.previousMarks ?? adm.previous_marks ?? 0),
+              address: adm.address || '',
+              subjects: adm.subjects || [],
+              date: adm.date || new Date().toISOString().split('T')[0],
+              date_applied: adm.dateApplied || new Date().toISOString().split('T')[0],
+              status: Number(adm.feeReceived ?? adm.fee_received ?? 0) >= Number(adm.totalPackage ?? adm.total_package ?? 0) && Number(adm.totalPackage ?? adm.total_package ?? 0) > 0 ? 'Full Paid' : Number(adm.feeReceived ?? adm.fee_received ?? 0) > 0 ? 'Partial Paid' : 'Admitted/Confirmed',
+              is_admitted: true
+            };
+
+            const { error: admErr } = await supabase.from('admissions').upsert(admPayload, { onConflict: 'id' });
+            if (admErr) throw admErr;
+
+            // 2. Insert into students table with complete fee ledger
+            const feePkg = Number(adm.totalPackage ?? adm.total_package ?? 0);
+            const feeRec = Number(adm.feeReceived ?? adm.fee_received ?? 0);
+            const feeRem = Math.max(0, feePkg - feeRec);
+
+            const initialLedger = adm.feeLedger || {
+              totalPackage: feePkg,
+              totalReceived: feeRec,
+              remainingBalance: feeRem,
+              installments: [],
+              transactions: feeRec > 0 ? [{
+                id: `tx-imp-${Date.now()}-${i}-${j}`,
+                date: new Date().toISOString().split('T')[0],
+                amount: feeRec,
+                description: 'Initial Payment via Import',
+                paymentMethod: 'Cash',
+                receiptId: `REC-IMP-${Math.floor(Date.now() / 1000).toString().slice(-6)}`
+              }] : []
+            };
+
+            const stuPayload: any = {
+              id: studentId,
+              admission_id: admissionId,
+              full_name: admPayload.full_name,
+              father_name: admPayload.father_name,
+              category: admPayload.category,
+              group: admPayload.group,
+              section: admPayload.section,
+              session: admPayload.session,
+              academic_part: admPayload.academic_part,
+              current_semester: admPayload.current_semester,
+              gender: admPayload.gender,
+              contact: admPayload.contact_number,
+              father_contact: admPayload.father_contact,
+              bay_form_no: admPayload.bay_form_no,
+              dob: admPayload.dob,
+              previous_class: admPayload.previous_class,
+              board_roll_no: admPayload.board_roll_no,
+              previous_marks: admPayload.previous_marks,
+              address: admPayload.address,
+              subjects: admPayload.subjects,
+              total_package: feePkg,
+              fee_received: feeRec,
+              monthly_fee: Math.ceil(feeRem / 12),
+              fee_ledger: initialLedger
+            };
+
+            const { error: stuErr } = await supabase.from('students').upsert(stuPayload, { onConflict: 'id' });
+            if (stuErr) throw stuErr;
+
+            // 3. Insert into income table if fee was received
+            if (feeRec > 0) {
+              try {
+                await supabase.from('income').insert({
+                  student_id: studentId,
+                  student_name: admPayload.full_name,
+                  fee_type: 'Admission / Initial Fee',
+                  amount: feeRec,
+                  month: new Date().toLocaleString('default', { month: 'long' }),
+                  year: new Date().getFullYear(),
+                  date: new Date().toISOString().split('T')[0],
+                  payment_method: 'Cash',
+                  receipt_id: `REC-IMP-${Math.floor(Date.now() / 1000).toString().slice(-6)}`
+                });
+              } catch (incErr) {
+                console.warn("Income insert warning on bulk import:", incErr);
+              }
+            }
+
+            totalImported++;
+            report.push({
+              rowNum,
+              name: admPayload.full_name,
+              studentId,
+              status: 'Success',
+              reason: 'Admitted, Student Created & Ledger Synchronized'
+            });
+          } catch (rowErr: any) {
+            console.error(`Error importing row ${rowNum}:`, rowErr);
+            totalFailed++;
+            report.push({
+              rowNum,
+              name: adm.fullName || adm.full_name || 'Unknown',
+              studentId: studentId || 'N/A',
+              status: 'Failed',
+              reason: rowErr?.message || 'Database insert error'
+            });
+          }
+        }
+
         if (i + batchSize < admissionsToImport.length) {
-          await new Promise(resolve => setTimeout(resolve, 200));
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
 
-      logActivity("Bulk Import", `Imported ${totalImported} admissions via Excel`, 'success');
-      toast.success(`${totalImported} admissions imported successfully`, { id: toastId });
+      logActivity("Bulk Import", `Imported ${totalImported} students atomically (Failed: ${totalFailed})`, 'success');
+      toast.dismiss(toastId);
+      if (totalFailed === 0) {
+        toast.success(`Successfully committed ${totalImported} students to database!`);
+      } else {
+        toast.warning(`Committed ${totalImported} students, ${totalFailed} rows failed. See report.`);
+      }
+      return { totalImported, totalFailed, report };
     } catch (e: any) {
       console.error("Bulk Import Admissions Error:", e);
-      toast.error(`Import Failed: ${e.message}`, { id: toastId });
+      toast.dismiss(toastId);
+      toast.error(`Import Failed: ${e.message}`);
+      return { totalImported, totalFailed, report };
     } finally {
       isBulkOperatingRef.current = false;
-      fetchData(true);
+      await fetchData(true);
     }
   };
 

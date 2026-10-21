@@ -50,7 +50,7 @@ export const MASTER_PROGRAMS: Record<'inter' | 'bs' | 'dit' | 'ukl3', MasterProg
     durationYears: 2,
     type: 'Yearly',
     defaultSession: '2026-28',
-    validSessions: ['2026-28', '2025-2027', '2024-2026', '2023-2025'],
+    validSessions: ['2026-28', '2025-27', '2024-26', '2023-25'],
     boardOrUniversity: 'BISE Multan Board',
     highlights: ['2-Year Higher Secondary Certificate', 'Tailored for Matric (10th) graduates', 'Board subjects & monthly installments']
   },
@@ -103,7 +103,7 @@ export const MASTER_ACADEMIC_GROUPS: MasterAcademicGroup[] = [
     programId: 'inter',
     type: 'Intermediate',
     subjects: ['Biology', 'Physics', 'Chemistry'],
-    aliases: ['fsc premedical', 'premedical', 'pre-medical', 'premed', 'fsc pre medical', 'fsc (premedical)', 'medical', 'f.sc pre medical', 'fsc medical']
+    aliases: ['fsc premedical', 'premedical', 'pre-medical', 'premed', 'fsc pre medical', 'fsc (premedical)', 'medical', 'f.sc pre medical', 'fsc medical', 'me super', 'me plus', 'me puls', 'meplus']
   },
   {
     id: 'fsc-eng',
@@ -111,7 +111,7 @@ export const MASTER_ACADEMIC_GROUPS: MasterAcademicGroup[] = [
     programId: 'inter',
     type: 'Intermediate',
     subjects: ['Math', 'Physics', 'Chemistry'],
-    aliases: ['fsc pre engineering', 'pre engineering', 'pre-engineering', 'preeng', 'engineering', 'fsc (pre engineering)', 'f.sc pre engineering', 'fsc engineering', 'pre-eng']
+    aliases: ['fsc pre engineering', 'pre engineering', 'pre-engineering', 'preeng', 'engineering', 'fsc (pre engineering)', 'f.sc pre engineering', 'fsc engineering', 'pre-eng', 'non medical', 'non-medical']
   },
   {
     id: 'ics-phy',
@@ -119,7 +119,7 @@ export const MASTER_ACADEMIC_GROUPS: MasterAcademicGroup[] = [
     programId: 'inter',
     type: 'Intermediate',
     subjects: ['Physics', 'Math', 'Computer Science'],
-    aliases: ['ics physics', 'ics phy', 'ics', 'general science (phy, math, cs)', 'ics (phy)', 'ics computer', 'ics physics math']
+    aliases: ['ics physics', 'ics phy', 'ics', 'general science (phy, math, cs)', 'ics (phy)', 'ics computer', 'ics physics math', 'ics1', 'ics2', 'ics3']
   },
   {
     id: 'ics-eco',
@@ -317,6 +317,68 @@ export const MASTER_COMPULSORY_SUBJECTS: Record<'inter' | 'bs' | 'dit' | 'ukl3',
  */
 export function normalizeKey(str: string): string {
   return String(str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+export const CANONICAL_SESSIONS = [
+  '2026-30',
+  '2025-29',
+  '2024-28',
+  '2023-27',
+  '2026-28',
+  '2025-27',
+  '2024-26',
+  '2023-25',
+  '2026-27',
+  '2025-26',
+  '2024-25'
+];
+
+/**
+ * Maps raw group variants to canonical master group names.
+ * Never leaves group as undefined or dirty variant.
+ */
+export function getCanonicalGroupName(groupRaw?: string | null): string {
+  if (!groupRaw || !String(groupRaw).trim() || groupRaw === 'N/A' || groupRaw === 'Pending') {
+    return 'Unassigned';
+  }
+  const resolved = resolveAcademicGroup(groupRaw);
+  return resolved ? resolved.name : String(groupRaw).trim();
+}
+
+/**
+ * Assigns college's real sections based on group and gender.
+ * Matches official inter2_section_mapping.csv rules for Inter Part-2:
+ * Boys: PMC2B (Ics1), EIC2B (Ics2), MEP2B (Medical, ME plus, Non-Medical)
+ * Girls: PMC2G, EIC2G, ICS2G, MEP2G
+ */
+export function resolveTargetSection(
+  sheetGroup: string | null | undefined,
+  gender: string | null | undefined,
+  categoryOrPart: string | null | undefined
+): string {
+  const isInter2 = Boolean(
+    categoryOrPart && 
+    (categoryOrPart.includes('Part-2') || categoryOrPart.includes('2nd') || categoryOrPart.includes('12th') || categoryOrPart.includes('2025-27'))
+  );
+  
+  const isMale = !gender || gender.toLowerCase().includes('male') || gender.toLowerCase().includes('boy');
+  const grp = (sheetGroup || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  if (isInter2) {
+    if (isMale) {
+      if (grp.includes('ics1') || grp.includes('pmc')) return 'PMC2B';
+      if (grp.includes('ics2') || grp.includes('eic')) return 'EIC2B';
+      return 'MEP2B'; // Medical, ME Plus, Non-Medical, ME Super
+    } else {
+      if (grp.includes('pmc') || grp.includes('ics1')) return 'PMC2G';
+      if (grp.includes('eic') || grp.includes('ics2')) return 'EIC2G';
+      if (grp.includes('ics') || grp.includes('computer')) return 'ICS2G';
+      return 'MEP2G'; // Medical, ME Plus, etc.
+    }
+  }
+
+  // Fallback / standard default sections
+  return isMale ? 'A' : 'Girls Section';
 }
 
 /**

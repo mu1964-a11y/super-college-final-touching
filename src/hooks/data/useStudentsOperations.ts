@@ -91,7 +91,26 @@ export function useStudentsOperations(ctx: any) {
         const { error } = await supabase.from('students').update(updatePayload).eq('id', id);
         
         if (error) throw error;
-        fetchData(true);
+
+        // Keep linked admission in sync atomically (One Source of Truth)
+        const admId = oldStudent?.admissionId || (updates as any).admissionId;
+        if (admId) {
+          const admUpdates: any = {};
+          if (updates.fullName !== undefined) admUpdates.full_name = updates.fullName;
+          if (updates.fatherName !== undefined) admUpdates.father_name = updates.fatherName;
+          if (updates.group !== undefined) admUpdates.group = updates.group;
+          if (updates.session !== undefined) admUpdates.session = updates.session;
+          if (updates.section !== undefined) admUpdates.section = updates.section;
+          if (updates.totalPackage !== undefined) admUpdates.total_package = updates.totalPackage;
+          if (updates.feeReceived !== undefined) admUpdates.fee_received = updates.feeReceived;
+          if (updates.academicPart !== undefined) admUpdates.academic_part = updates.academicPart;
+          if (updates.currentSemester !== undefined) admUpdates.current_semester = updates.currentSemester;
+          if (updates.subjects !== undefined) admUpdates.subjects = updates.subjects;
+          if (Object.keys(admUpdates).length > 0) {
+            await supabase.from('admissions').update(admUpdates).eq('id', admId);
+          }
+        }
+        await fetchData(true);
         
         logActivity("Student Updated", {
           summary: `Student ${updates.fullName || oldStudent?.fullName || id} details changed`,
@@ -245,14 +264,21 @@ export function useStudentsOperations(ctx: any) {
 
   const bulkDeleteStudents = async (ids: string[]) => {
       if (!ids.length) return;
+
+      const archivedIdsSet = new Set((deletedArchive || []).map((a: any) => a.originalId || a.studentId));
+      const validIdsToDelete = ids.filter(id => !archivedIdsSet.has(id));
+      if (validIdsToDelete.length === 0) {
+        toast.error("Selected student(s) are already in the Deleted Archive.");
+        return;
+      }
       
       isBulkOperatingRef.current = true;
-      setStudents(prev => prev.filter(s => !ids.includes(s.id)));
-      const toastId = toast.loading(`Deleting ${ids.length} students...`);
+      setStudents(prev => prev.filter(s => !validIdsToDelete.includes(s.id)));
+      const toastId = toast.loading(`Deleting ${validIdsToDelete.length} students...`);
 
       try {
         // 0. Save snapshots to Deleted Archive before bulk deletion
-        const targetStudents = students.filter((s: any) => ids.includes(s.id));
+        const targetStudents = students.filter((s: any) => validIdsToDelete.includes(s.id));
         if (targetStudents.length > 0 && typeof archiveRecords === 'function') {
           const archiveItems: ArchivedRecord[] = targetStudents.map((s: any) => ({
             id: `arch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -290,14 +316,14 @@ export function useStudentsOperations(ctx: any) {
           await supabase.from('admissions').update({
             status: 'Archived',
             is_admitted: false
-          }).in('student_id', ids);
+          }).in('student_id', validIdsToDelete);
         } catch (admArchErr) {
           console.warn("Could not bulk archive linked admissions:", admArchErr);
         }
 
         const batchSize = 100;
-        for (let i = 0; i < ids.length; i += batchSize) {
-          const chunk = ids.slice(i, i + batchSize);
+        for (let i = 0; i < validIdsToDelete.length; i += batchSize) {
+          const chunk = validIdsToDelete.slice(i, i + batchSize);
 
           try {
             await supabase.from('academic_records').delete().in('student_id', chunk);
@@ -330,22 +356,22 @@ export function useStudentsOperations(ctx: any) {
           const { error } = await supabase.from('students').delete().in('id', chunk);
           if (error) throw error;
 
-          if (i + batchSize < ids.length) {
+          if (i + batchSize < validIdsToDelete.length) {
             await new Promise(resolve => setTimeout(resolve, 100));
           }
         }
 
         if (typeof setAdmissions === 'function') {
           setAdmissions((prev: any[]) => prev.map(a => {
-            if (ids.includes(a.studentId) || admIdsToArchive.includes(a.id)) {
+            if (validIdsToDelete.includes(a.studentId) || admIdsToArchive.includes(a.id)) {
               return { ...a, status: 'Archived', isAdmitted: false };
             }
             return a;
           }));
         }
 
-        logActivity("Bulk Delete", `Removed ${ids.length} student records`, 'alert');
-        toast.success(`${ids.length} students removed`, { id: toastId });
+        logActivity("Bulk Delete", `Removed ${validIdsToDelete.length} student records`, 'alert');
+        toast.success(`Successfully deleted and archived ${validIdsToDelete.length} student(s)!`, { id: toastId });
       } catch (e: any) {
         console.error("Bulk Delete Students Error:", e);
         toast.error(`Deletion failed: ${e.message}`, { id: toastId });

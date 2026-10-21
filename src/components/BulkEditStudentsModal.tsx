@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { Student } from '../types';
 import {
   MASTER_ACADEMIC_GROUPS,
+  CANONICAL_SESSIONS,
   normalizeSessionString
 } from '../lib/academicMasterData';
 import { supabase } from '../lib/supabase';
@@ -103,17 +104,28 @@ export default function BulkEditStudentsModal({
       }
 
       const ids = selectedStudents.map(s => s.id);
-      const admIds = selectedStudents.map(s => s.admissionId).filter(Boolean);
+      const explicitAdmIds = selectedStudents
+        .map(s => s.admissionId || (s.id && s.id.startsWith('adm-') ? s.id : null))
+        .filter(Boolean) as string[];
 
-      // 1. Update students table
+      // 1. Update students table by primary key id
       const { error: stuErr } = await supabase.from('students').update(studentUpdates).in('id', ids);
       if (stuErr) throw stuErr;
 
-      // 2. Update admissions table
-      if (admIds.length > 0) {
-        await supabase.from('admissions').update(admissionUpdates).in('id', admIds);
+      // 2. Update admissions table strictly by immutable admission ID or student's own unique PK
+      if (explicitAdmIds.length > 0) {
+        await supabase.from('admissions').update(admissionUpdates).in('id', explicitAdmIds);
       }
-      await supabase.from('admissions').update(admissionUpdates).in('student_id', ids);
+      
+      // For any student whose admissionId wasn't stored, update admission specifically by student_id and full_name
+      const remainingStudents = selectedStudents.filter(s => !s.admissionId);
+      for (const st of remainingStudents) {
+        if (st.id && !st.id.startsWith('adm-')) {
+          await supabase.from('admissions').update(admissionUpdates)
+            .eq('student_id', st.id)
+            .eq('full_name', st.fullName);
+        }
+      }
 
       // 3. Log audit activity
       const updatedFieldsList: string[] = [];
@@ -230,13 +242,11 @@ export default function BulkEditStudentsModal({
                 <Select value={newSession} onValueChange={setNewSession} disabled={!applySession}>
                   <SelectTrigger className="h-10 bg-white dark:bg-slate-900 font-mono font-bold"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="2024-26">2024-26 (BS Lateral)</SelectItem>
-                    <SelectItem value="2026-28">2026-28 (Inter / Diploma)</SelectItem>
-                    <SelectItem value="2026-30">2026-30 (BS 4-Year Intake)</SelectItem>
-                    <SelectItem value="2025-2027">2025-2027</SelectItem>
-                    <SelectItem value="2024-2026">2024-2026</SelectItem>
-                    <SelectItem value="2025-29">2025-29</SelectItem>
-                    <SelectItem value="2024-28">2024-28</SelectItem>
+                    {CANONICAL_SESSIONS.map((sess) => (
+                      <SelectItem key={sess} value={sess} className="font-mono font-bold">
+                        {sess}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -290,6 +300,13 @@ export default function BulkEditStudentsModal({
                     <SelectItem value="BS-B">BS-B</SelectItem>
                     <SelectItem value="A">Section A</SelectItem>
                     <SelectItem value="B">Section B</SelectItem>
+                    <SelectItem value="PMC2B">PMC2B (Inter-2 Boys ICS-1 / Medical)</SelectItem>
+                    <SelectItem value="EIC2B">EIC2B (Inter-2 Boys ICS-2)</SelectItem>
+                    <SelectItem value="MEP2B">MEP2B (Inter-2 Boys Pre-Med / Engineering / ME Plus)</SelectItem>
+                    <SelectItem value="PMC2G">PMC2G (Inter-2 Girls Medical / Pre-Med)</SelectItem>
+                    <SelectItem value="EIC2G">EIC2G (Inter-2 Girls Pre-Eng)</SelectItem>
+                    <SelectItem value="ICS2G">ICS2G (Inter-2 Girls ICS)</SelectItem>
+                    <SelectItem value="MEP2G">MEP2G (Inter-2 Girls Plus / Medical)</SelectItem>
                     <SelectItem value="Girls Section">Girls Campus Section</SelectItem>
                   </SelectContent>
                 </Select>

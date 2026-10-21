@@ -1,3 +1,21 @@
+export function parseDateSafe(dateVal: any): Date {
+  if (!dateVal) return new Date();
+  if (dateVal instanceof Date) return isNaN(dateVal.getTime()) ? new Date() : dateVal;
+  const str = String(dateVal).trim();
+  // Check for DD-MM-YYYY or DD-MM-YY (e.g. 25-9-26 or 25-09-2026)
+  if (/^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}/.test(str)) {
+    const parts = str.split(/[-/]/);
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    let year = parseInt(parts[2], 10);
+    if (year < 100) year += 2000;
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) return d;
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+
 export const getUnifiedTransactions = (student: any) => {
   if (!student) return [];
   const transactions = student.feeLedger?.transactions || [];
@@ -5,14 +23,14 @@ export const getUnifiedTransactions = (student: any) => {
 
   const txReceipts = new Set(transactions.map((tx: any) => tx.receiptId).filter(Boolean));
   // Fallback signature for when receiptId is missing but we want to avoid exact dupes matching legacy
-  const txSignatures = new Set(transactions.map((tx: any) => `${tx.amount}-${new Date(tx.date).getTime()}`));
+  const txSignatures = new Set(transactions.map((tx: any) => `${tx.amount}-${parseDateSafe(tx.date).getTime()}`));
   
   const uniqueHistory = history.filter((h: any) => {
      if (!h.amountPaid || !h.datePaid) return false;
      if (h.receiptId && txReceipts.has(h.receiptId)) return false;
      
      // Legacy signature check (only if receiptId wasn't present)
-     const sig = `${h.amountPaid}-${new Date(h.datePaid).getTime()}`;
+     const sig = `${h.amountPaid}-${parseDateSafe(h.datePaid).getTime()}`;
      if (txSignatures.has(sig)) return false;
 
      return true;
@@ -47,5 +65,5 @@ export const getUnifiedTransactions = (student: any) => {
     });
   }
 
-  return allTx.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  return allTx.sort((a: any, b: any) => parseDateSafe(b.date).getTime() - parseDateSafe(a.date).getTime());
 };

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useState, useMemo } from "react";
 import { useDebounce } from "../hooks/useDebounce";
+import { CANONICAL_SESSIONS } from "../lib/academicMasterData";
 import {
   Search,
   Filter,
@@ -4812,9 +4813,7 @@ function AdmissionForm({
                   <SelectValue placeholder="Session" />
                 </SelectTrigger>
                 <SelectContent className="rounded-xl shadow-2xl">
-                  {(data.availableSessions || [
-                    "2026-30", "2026-28", "2024-26", "2025-29", "2025-27", "2024-28", "2023-27"
-                  ]).map((sess: string) => (
+                  {CANONICAL_SESSIONS.map((sess: string) => (
                     <SelectItem key={sess} value={sess} className="font-bold text-xs">
                       Session {sess}
                     </SelectItem>
@@ -4876,9 +4875,9 @@ function AdmissionForm({
                         />
                       </FormFieldWrapper>
 
-                      <FormFieldWrapper label="Father's Full Name" required>
+                      <FormFieldWrapper label="Father's Full Name (Optional)">
                         <Input
-                          placeholder="Father's Name"
+                          placeholder="Father's Name (Optional with warning)"
                           className="h-10 border-slate-200 rounded-xl bg-white dark:bg-slate-900 font-bold text-xs"
                           value={formData.fatherName || ""}
                           onChange={(e) => setFormData(prev => ({ ...prev, fatherName: e.target.value }))}

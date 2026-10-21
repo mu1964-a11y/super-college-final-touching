@@ -101,7 +101,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 import { useDebounce } from '../hooks/useDebounce';
-import { getUnifiedTransactions } from '../utils/fee';
+import { getUnifiedTransactions, parseDateSafe } from '../utils/fee';
+import { CANONICAL_SESSIONS } from '../lib/academicMasterData';
 import PhotoEditorModal from './PhotoEditorModal';
 
 export default function StudentsView({ data, gender, program }: { data: any, gender?: Gender, program?: string }) {
@@ -379,16 +380,10 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
 
   const filteredStudents = React.useMemo(() => {
     const searchClean = (debouncedSearch || '').trim().toLowerCase();
+    const searchTokens = searchClean.split(/\s+/).filter(Boolean);
     return mergedStudents.filter((s: any) => {
-      const matchesSearch =
-        !searchClean ||
-        (s.fullName || '').toLowerCase().includes(searchClean) || 
-        (s.id || '').toLowerCase().includes(searchClean) ||
-        (s.fatherName || '').toLowerCase().includes(searchClean) ||
-        String(s.collegeNo || s.college_no || '').toLowerCase().includes(searchClean) ||
-        String(s.contact || s.contactNumber || '').includes(searchClean) ||
-        String(s.fatherContact || '').includes(searchClean) ||
-        String(s.bayFormNo || '').includes(searchClean);
+      const searchableText = `${s.fullName || ''} ${s.fatherName || ''} ${s.id || ''} ${s.studentId || ''} ${s.collegeNo || s.college_no || ''} ${s.contact || s.contactNumber || ''} ${s.fatherContact || ''} ${s.bayFormNo || (s as any).bay_form_no || ''} ${s.group || ''} ${s.category || ''} ${s.section || ''}`.toLowerCase();
+      const matchesSearch = searchTokens.length === 0 || searchTokens.every(tok => searchableText.includes(tok));
       
       // Monthly fee status for current month (March 2026 for demo)
       const currentMonthPayment = s.feeHistory.find((f: any) => f.month === 'March' && f.year === 2026);
@@ -636,7 +631,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           String(idx + 1),
           s.id || s.studentId || '-',
           s.collegeNo || (s as any).college_no || '-',
-          isNewStudent(s) ? `${s.fullName} [NEW]` : (s.fullName || '-'),
+          s.fullName || '-',
           s.fatherName || '-',
           s.gender || '-',
           s.group || '-',
@@ -711,7 +706,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           return [
             String(idx + 1),
             s.id || s.studentId || '-',
-            isNewStudent(s) ? `${s.fullName} [NEW]` : (s.fullName || '-'),
+            s.fullName || '-',
             s.fatherName || '-',
             `${s.group || ''} ${s.category ? `(${s.category})` : ''}`.trim() || '-',
             s.section && s.section !== '-' ? s.section : '-',
@@ -820,7 +815,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
         "Sr #": idx + 1,
         "Student ID / Roll No": s.id || s.studentId || "",
         "College Roll No": s.collegeNo || (s as any).college_no || "",
-        "Student Full Name": isNewStudent(s) ? `${s.fullName} [NEW]` : (s.fullName || ""),
+        "Student Full Name": s.fullName || "",
         "Father Name": s.fatherName || "",
         "Gender": s.gender || "",
         "Academic Stream": s.program || s.programType || "",
@@ -882,7 +877,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
         "Sr #": idx + 1,
         "Student ID / Roll No": s.id || s.studentId || "",
         "College Roll No": s.collegeNo || (s as any).college_no || "",
-        "Student Full Name": isNewStudent(s) ? `${s.fullName} [NEW]` : (s.fullName || ""),
+        "Student Full Name": s.fullName || "",
         "Father Name": s.fatherName || "",
         "Gender": s.gender || "",
         "Academic Stream": s.program || s.programType || "",
@@ -2093,6 +2088,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
       <Dialog open={dialogType === 'edit'} onOpenChange={(open) => !open && setDialogType(null)}>
         {selectedStudent && (
           <EditStudentDialog 
+            key={selectedStudent.id}
             student={selectedStudent} 
             data={data} 
             onClose={() => setDialogType(null)} 
@@ -2500,7 +2496,18 @@ function StudentProfile({ student, data, initialTab = 'overview', onEdit, onDown
                     <div>
                       <p className="text-[10px] uppercase font-black tracking-widest text-white/50">Installments Tracking (کستوں کا ریکارڈ)</p>
                       <h4 className="text-xl font-bold">
-                        {Math.floor((student.feeLedger?.totalReceived || student.feeReceived || 0) / (student.monthlyFee || 1))} / {student.totalInstallments || 12} Paid
+                        {(() => {
+                          const ledgerInstallments = student.feeLedger?.installments || [];
+                          if (ledgerInstallments.length > 0) {
+                            const paidCount = ledgerInstallments.filter((ins: any) => ins.status === 'Paid' || (Number(ins.paidAmount) >= Number(ins.amount) && Number(ins.amount) > 0)).length;
+                            return `${paidCount} / ${student.totalInstallments || ledgerInstallments.length} Paid`;
+                          }
+                          const totalInst = student.totalInstallments || 12;
+                          const monthly = student.monthlyFee || Math.round((student.totalPackage || 1) / totalInst);
+                          const totalRec = student.feeLedger?.totalReceived || student.feeReceived || 0;
+                          const paidInst = Math.min(totalInst, Math.floor(totalRec / Math.max(1, monthly)));
+                          return `${paidInst} / ${totalInst} Paid`;
+                        })()}
                       </h4>
                     </div>
                   </div>
@@ -2646,12 +2653,18 @@ function StudentProfile({ student, data, initialTab = 'overview', onEdit, onDown
                       </TableCell>
                       <TableCell className="text-right font-black text-superior-teal">Rs. {(tx.amount || 0).toLocaleString()}</TableCell>
                       <TableCell className="text-sm text-slate-500">
-                        {new Date(tx.date).toLocaleDateString()}
-                        {' • '}
-                        <span className="text-[10px]">{new Date(tx.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        {parseDateSafe(tx.date).toLocaleDateString()}
+                        {String(tx.date || '').includes('T') && (
+                          <>
+                            {' • '}
+                            <span className="text-[10px]">{parseDateSafe(tx.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                          </>
+                        )}
                       </TableCell>
                       <TableCell>
-                        <Badge className="bg-superior-gold/20 text-superior-teal border-none text-[9px]">{tx.receiptId || 'TRANS'}</Badge>
+                        <Badge className="bg-superior-gold/20 text-superior-teal border-none text-[9px] font-mono">
+                          {tx.receiptId || (tx.id ? `REC-${String(tx.id).replace(/\D/g, '').slice(-6) || String(tx.id).slice(-6)}` : 'REC-OFFICIAL')}
+                        </Badge>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -2785,6 +2798,47 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
     fingerprintFinger: student.fingerprintFinger || 'Right Thumb (دایاں انگوٹھا)',
     fingerprintEnrolledAt: student.fingerprintEnrolledAt || '',
   });
+
+  React.useEffect(() => {
+    setFormData({
+      fullName: student.fullName || '',
+      fatherName: student.fatherName || '',
+      collegeNo: student.collegeNo || '',
+      bayFormNo: student.bayFormNo || '',
+      dob: student.dob || '',
+      previousClass: student.previousClass || (initialStream === 'bs' ? '12th' : '10th'),
+      boardRollNo: student.boardRollNo || '',
+      previousMarks: student.previousMarks !== undefined ? String(student.previousMarks) : '',
+      contact: student.contact || '',
+      fatherContact: student.fatherContact || (student as any).parentContact || '',
+      email: student.email || '',
+      bloodGroup: student.bloodGroup || '',
+      gender: student.gender || 'Male',
+      address: student.address || '',
+      admissionFee: student.admissionFee || 0,
+      miscFunds: student.miscFunds || 0,
+      totalFeeFinalized: student.totalFeeFinalized || 0,
+      previousArrears: (student as any).previousArrears ? Number((student as any).previousArrears) : 0,
+      totalInstallments: student.totalInstallments || (initialStream === 'bs' ? 2 : 12),
+      monthlyFee: student.monthlyFee || 0,
+      subjects: [...(student.subjects || [])],
+      category: student.category || (initialStream === 'bs' ? 'BS Semester 1st (Fresh Intake)' : 'Inter Part-1 Boys'),
+      group: student.group || '',
+      section: student.section || '',
+      photo: student.photo || '',
+      session: student.session || (initialStream === 'bs' ? '2026-30' : '2026-28'),
+      sessionStartDate: student.sessionStartDate || '',
+      sessionEndDate: student.sessionEndDate || '',
+      academicPart: student.academicPart || 'Part-1',
+      programType: student.programType || (initialStream === 'bs' ? 'Semester' : 'Yearly'),
+      currentSemester: student.currentSemester || (initialStream === 'bs' ? 1 : 1),
+      totalSemesters: student.totalSemesters || (initialStream === 'bs' ? 8 : 0),
+      fingerprintTemplate: student.fingerprintTemplate || '',
+      fingerprintFinger: student.fingerprintFinger || 'Right Thumb (دایاں انگوٹھا)',
+      fingerprintEnrolledAt: student.fingerprintEnrolledAt || '',
+    });
+    setActiveStream(initialStream);
+  }, [student, initialStream]);
 
   const isBS = activeStream === 'bs';
 
@@ -3574,13 +3628,11 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
                   <Select value={formData.session} onValueChange={v => setFormData({ ...formData, session: v })}>
                     <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 font-semibold"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="2026-28">2026-28 (Inter / Diploma)</SelectItem>
-                      <SelectItem value="2025-2027">2025-2027</SelectItem>
-                      <SelectItem value="2024-2026">2024-2026</SelectItem>
-                      <SelectItem value="2023-2025">2023-2025</SelectItem>
-                      <SelectItem value="2026-30">2026-30 (BS 4-Year Intake)</SelectItem>
-                      <SelectItem value="2024-28">2024-28 (BS Existing)</SelectItem>
-                      <SelectItem value="2025-29">2025-29 (BS Existing)</SelectItem>
+                      {CANONICAL_SESSIONS.map((sess) => (
+                        <SelectItem key={sess} value={sess} className="font-mono font-bold">
+                          {sess}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

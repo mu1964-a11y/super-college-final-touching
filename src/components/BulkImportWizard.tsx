@@ -28,7 +28,9 @@ import { cn } from '@/lib/utils';
 import {
   MASTER_PROGRAMS,
   MASTER_ACADEMIC_GROUPS,
+  CANONICAL_SESSIONS,
   resolveAcademicGroup,
+  resolveTargetSection,
   deriveSemesterAndPart,
   normalizeSessionString,
   buildDuplicateKey,
@@ -65,6 +67,9 @@ export interface BulkImportCandidate {
   remainingBalance: number;
   isValid: boolean;
   errors: string[];
+  warnings: string[];
+  isFatherNameMissing?: boolean;
+  isGroupUnassigned?: boolean;
   isDuplicate: boolean;
   duplicateReason?: string;
   dupKey: string;
@@ -97,7 +102,22 @@ export default function BulkImportWizard({
   const [parsedRows, setParsedRows] = useState<BulkImportCandidate[]>([]);
   const [filterMode, setFilterMode] = useState<'all' | 'valid' | 'invalid' | 'duplicate'>('all');
   const [isCommitting, setIsCommitting] = useState(false);
+  const [importReport, setImportReport] = useState<any[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Reset wizard state on close / open so previous files and reports are not retained
+  React.useEffect(() => {
+    if (!isOpen) {
+      setStep('upload');
+      setFileName('');
+      setFileHash('');
+      setParsedRows([]);
+      setFilterMode('all');
+      setIsCommitting(false);
+      setImportReport(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }, [isOpen]);
 
   // Update target session default when program changes
   const handleProgramSelect = (prog: 'inter' | 'bs' | 'dit' | 'ukl3') => {
@@ -284,9 +304,15 @@ export default function BulkImportWizard({
           const fatherName = String(rawFather).trim();
 
           const errors: string[] = [];
+          const warnings: string[] = [];
+          let isFatherNameMissing = false;
+          let isGroupUnassigned = false;
 
           if (!fullName) errors.push("Missing Full Name");
-          if (!fatherName) errors.push("Missing Father Name");
+          if (!fatherName) {
+            warnings.push("Father name missing");
+            isFatherNameMissing = true;
+          }
 
           // Gender
           const rawGender = String(row["Gender"] || row["Sex"] || "").trim().toLowerCase();
@@ -298,16 +324,19 @@ export default function BulkImportWizard({
           // Academic Group matching
           const rawGroup = String(row["Academic Group"] || row["Program/Group"] || row["Group"] || row["Subject"] || row["subjects"] || "").trim();
           const resolvedGroup = resolveAcademicGroup(rawGroup, selectedProgram);
+          let finalGroupName = resolvedGroup?.name || rawGroup;
 
-          if (!rawGroup) {
-            errors.push("Missing Academic Group");
+          if (!rawGroup || !finalGroupName) {
+            finalGroupName = "Unassigned";
+            warnings.push("Academic Group unassigned");
+            isGroupUnassigned = true;
           } else if (!resolvedGroup) {
-            errors.push(`Unknown Academic Group "${rawGroup}". Valid options: BS Zoology, BS English, BSCS, Pre-Medical, etc.`);
+            warnings.push(`Group "${rawGroup}" not in master catalog`);
           }
 
           // Category & Semester derivation
           const rawCategory = String(row["Category"] || row["Class"] || row["Semester"] || "").trim();
-          const derived = deriveSemesterAndPart(rawCategory, rawGroup, row["Previous Class"]);
+          const derived = deriveSemesterAndPart(rawCategory, rawGroup || finalGroupName, row["Previous Class"]);
 
           // Check if explicit Current Semester column provided
           let currentSemester = derived.currentSemester;
@@ -330,9 +359,14 @@ export default function BulkImportWizard({
           const rowSession = normalizeSessionString(row["Session"] || targetSession, targetSession);
 
           // Section
-          const rowSection = targetSection !== 'Auto' 
-            ? targetSection 
-            : String(row["Section"] || row["Sec"] || (gender === 'Female' ? 'Girls Section' : 'A')).trim();
+          let rowSection = String(row["Section"] || row["Sec"] || "").trim();
+          if (!rowSection) {
+            if (targetSection !== 'Auto') {
+              rowSection = targetSection;
+            } else {
+              rowSection = resolveTargetSection(rawGroup || finalGroupName, gender, rawCategory || rowSession);
+            }
+          }
 
           // Duplicate key check
           const dupKey = buildDuplicateKey(fullName, fatherName, rowSession, selectedProgram);
@@ -377,6 +411,9 @@ export default function BulkImportWizard({
             remainingBalance,
             isValid: errors.length === 0,
             errors,
+            warnings,
+            isFatherNameMissing,
+            isGroupUnassigned,
             isDuplicate,
             duplicateReason,
             dupKey
@@ -411,7 +448,7 @@ export default function BulkImportWizard({
       const admissionsPayload: any[] = [];
 
       validRows.forEach((row, i) => {
-        const studentId = data.generateStudentId(row.resolvedGroup?.name || selectedProgram);
+        const studentId = data.generateStudentId(row.resolvedGroup?.name || row.rawGroup || selectedProgram);
         const initialTransactions = row.feeReceived > 0 ? [{
           id: `tx-imp-${Date.now()}-${i}`,
           date: new Date().toISOString().split('T')[0],
@@ -431,7 +468,7 @@ export default function BulkImportWizard({
 
         admissionsPayload.push({
           id: `adm-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
-          studentId: row.feeReceived > 0 ? studentId : undefined,
+          studentId: studentId,
           fullName: row.fullName,
           fatherName: row.fatherName,
           gender: row.gender,
@@ -443,7 +480,7 @@ export default function BulkImportWizard({
           boardRollNo: row.boardRollNo,
           previousMarks: row.previousMarks,
           previousSchool: row.previousSchool,
-          group: row.resolvedGroup?.name || row.rawGroup,
+          group: row.resolvedGroup?.name || (row.rawGroup ? row.rawGroup : 'Unassigned'),
           category: row.category,
           section: row.section,
           session: row.session,
@@ -461,8 +498,8 @@ export default function BulkImportWizard({
           subjects: row.resolvedGroup?.subjects || [],
           date: new Date().toISOString().split('T')[0],
           dateApplied: new Date().toISOString().split('T')[0],
-          status: row.feeReceived > 0 ? 'Admitted/Confirmed' : 'Prospective',
-          isAdmitted: row.feeReceived > 0,
+          status: row.feeReceived >= row.totalPackage && row.totalPackage > 0 ? 'Full Paid' : row.feeReceived > 0 ? 'Partial Paid' : 'Admitted/Confirmed',
+          isAdmitted: true,
           feeLedger: initialFeeLedger,
           feeHistory: row.feeReceived > 0 ? [{
             id: `fee-imp-${Date.now()}-${i}`,
@@ -478,7 +515,7 @@ export default function BulkImportWizard({
       });
 
       // Commit to admissions via centralized handler
-      await data.importAdmissions(admissionsPayload);
+      const commitRes = await data.importAdmissions(admissionsPayload);
 
       // Save imported file hash to settings to prevent duplicate uploads
       try {
@@ -486,15 +523,20 @@ export default function BulkImportWizard({
         await data.updateSettings?.({
           config: {
             ...(data.settings?.config || {}),
-            importHistory: [...existingHashes, { hash: fileHash, name: fileName, count: validRows.length, date: new Date().toISOString() }]
+            importHistory: [...existingHashes, { hash: fileHash, name: fileName, count: commitRes?.totalImported ?? validRows.length, date: new Date().toISOString() }]
           }
         });
       } catch (e) {}
 
       toast.dismiss(toastId);
-      toast.success(`Successfully imported ${validRows.length} students! Database and ledgers refreshed.`);
+      if (commitRes?.report && commitRes.report.length > 0) {
+        setImportReport(commitRes.report);
+      }
+      toast.success(`Successfully committed ${commitRes?.totalImported ?? validRows.length} of ${validRows.length} students! Database and ledgers refreshed.`);
       if (onImportComplete) onImportComplete();
-      onClose();
+      if (!commitRes?.totalFailed) {
+        onClose();
+      }
     } catch (err: any) {
       console.error("Confirm Import Error:", err);
       toast.dismiss(toastId);
@@ -502,6 +544,21 @@ export default function BulkImportWizard({
     } finally {
       setIsCommitting(false);
     }
+  };
+
+  const handleDownloadReport = (rep = importReport) => {
+    if (!rep || !rep.length) return;
+    const ws = XLSX.utils.json_to_sheet(rep.map((r: any) => ({
+      "Row": r.rowNum,
+      "Student Name": r.name,
+      "Student ID": r.studentId,
+      "Commit Status": r.status,
+      "Details / Reason": r.reason
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Import Report");
+    XLSX.writeFile(wb, `SCJ_Bulk_Import_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success("Detailed bulk import report downloaded!");
   };
 
   // Preview Aggregates
@@ -539,6 +596,11 @@ export default function BulkImportWizard({
                 <Badge className="bg-amber-400 text-slate-950 font-black text-xs px-2.5 py-0.5">
                   Three-Stage Verification Flow
                 </Badge>
+                {fileName && (
+                  <Badge variant="outline" className="bg-white/10 text-white border-white/20 text-xs font-mono font-bold">
+                    File: {fileName} ({parsedRows.length} rows loaded)
+                  </Badge>
+                )}
               </div>
               <p className="text-xs text-teal-100/80 mt-0.5">
                 Upload → Zero-Write Validation Preview → Verified Database Commit
@@ -624,14 +686,11 @@ export default function BulkImportWizard({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="2024-26">2024-26 (BS Lateral ADP Session)</SelectItem>
-                    <SelectItem value="2026-28">2026-28 (Inter / Diploma Default)</SelectItem>
-                    <SelectItem value="2026-30">2026-30 (BS 4-Year Intake)</SelectItem>
-                    <SelectItem value="2025-2027">2025-2027</SelectItem>
-                    <SelectItem value="2024-2026">2024-2026</SelectItem>
-                    <SelectItem value="2023-2025">2023-2025</SelectItem>
-                    <SelectItem value="2025-29">2025-29</SelectItem>
-                    <SelectItem value="2024-28">2024-28</SelectItem>
+                    {CANONICAL_SESSIONS.map((sess) => (
+                      <SelectItem key={sess} value={sess} className="font-mono font-bold">
+                        {sess}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <p className="text-[11px] text-slate-400">
@@ -648,16 +707,23 @@ export default function BulkImportWizard({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Auto">Auto-detect from file (or by Gender)</SelectItem>
+                    <SelectItem value="Auto">Auto-detect from file (or by Group & Gender)</SelectItem>
                     <SelectItem value="BS-A">BS-A (Lateral)</SelectItem>
                     <SelectItem value="BS-B">BS-B</SelectItem>
                     <SelectItem value="A">Section A</SelectItem>
                     <SelectItem value="B">Section B</SelectItem>
+                    <SelectItem value="PMC2B">PMC2B (Inter-2 Boys ICS-1 / Medical)</SelectItem>
+                    <SelectItem value="EIC2B">EIC2B (Inter-2 Boys ICS-2)</SelectItem>
+                    <SelectItem value="MEP2B">MEP2B (Inter-2 Boys Pre-Med / Engineering / ME Plus)</SelectItem>
+                    <SelectItem value="PMC2G">PMC2G (Inter-2 Girls Medical / Pre-Med)</SelectItem>
+                    <SelectItem value="EIC2G">EIC2G (Inter-2 Girls Pre-Eng)</SelectItem>
+                    <SelectItem value="ICS2G">ICS2G (Inter-2 Girls ICS)</SelectItem>
+                    <SelectItem value="MEP2G">MEP2G (Inter-2 Girls Medical / Plus)</SelectItem>
                     <SelectItem value="Girls Section">Girls Campus Section</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-[11px] text-slate-400">
-                  Auto-detect reads the "Section" column from Excel or assigns based on gender.
+                  Auto-detect reads the "Section" column from Excel or assigns based on official college group-to-section rules.
                 </p>
               </div>
             </div>
@@ -730,6 +796,7 @@ export default function BulkImportWizard({
               <div className="bg-white dark:bg-slate-800 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xs">
                 <span className="text-[10px] font-bold uppercase text-amber-600">Balance Sum</span>
                 <p className="text-lg font-black font-mono text-amber-700 dark:text-amber-400">Rs. {totalBalanceSum.toLocaleString()}</p>
+                <p className="text-[9px] text-slate-400 mt-0.5 leading-tight">Clamped at 0 (overpayments do not offset deficits)</p>
               </div>
             </div>
 
@@ -826,15 +893,32 @@ export default function BulkImportWizard({
                             <AlertTriangle size={10} /> Duplicate
                           </Badge>
                         ) : (
-                          <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] gap-1">
-                            <CheckCircle2 size={10} /> Valid Ready
-                          </Badge>
+                          <div className="flex flex-col gap-1 items-start">
+                            <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] gap-1">
+                              <CheckCircle2 size={10} /> Valid Ready
+                            </Badge>
+                            {row.warnings && row.warnings.length > 0 && (
+                              <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200 text-[9px]">
+                                Warning ({row.warnings.length})
+                              </Badge>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="py-2 px-3 font-bold text-slate-900 dark:text-white">{row.fullName}</td>
-                      <td className="py-2 px-3 text-slate-600 dark:text-slate-300">{row.fatherName}</td>
+                      <td className="py-2 px-3 text-slate-600 dark:text-slate-300">
+                        {row.fatherName ? (
+                          row.fatherName
+                        ) : (
+                          <span className="text-amber-600 dark:text-amber-400 font-bold italic text-[11px] bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded">
+                            Father name missing (Warning)
+                          </span>
+                        )}
+                      </td>
                       <td className="py-2 px-3 font-bold text-superior-teal dark:text-emerald-400 font-mono">
-                        {row.resolvedGroup?.name || row.rawGroup}
+                        {row.resolvedGroup?.name || row.rawGroup || (
+                          <span className="text-amber-600 italic">Unassigned</span>
+                        )}
                       </td>
                       <td className="py-2 px-3 text-slate-600 dark:text-slate-400">{row.category}</td>
                       <td className="py-2 px-3 text-center font-bold font-mono text-superior-teal">
@@ -856,7 +940,14 @@ export default function BulkImportWizard({
                         ) : row.isDuplicate ? (
                           <span className="text-amber-600 dark:text-amber-400 font-semibold">{row.duplicateReason}</span>
                         ) : (
-                          <span className="text-emerald-600 font-bold">Passed · Target Session: {row.session}</span>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-emerald-600 font-bold">Passed · Target Session: {row.session}</span>
+                            {row.warnings && row.warnings.length > 0 && (
+                              <span className="text-amber-600 dark:text-amber-400 text-[10px] font-semibold">
+                                Note: {row.warnings.join(' · ')}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -888,6 +979,17 @@ export default function BulkImportWizard({
           )}
 
           <div className="flex items-center gap-3">
+            {importReport && importReport.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleDownloadReport(importReport)}
+                className="rounded-xl h-10 px-4 text-xs font-bold gap-1.5 border-emerald-500 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 cursor-pointer"
+              >
+                <Download size={14} /> Download Import Report ({importReport.length})
+              </Button>
+            )}
+
             <Button
               type="button"
               variant="outline"

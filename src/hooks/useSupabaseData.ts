@@ -321,7 +321,6 @@ export function useSupabaseData(user: any) {
           admissionsData.forEach(a => {
             const isArchived = a.status === "Archived" || 
                                a.status === "Deleted" || 
-                               a.is_admitted === false ||
                                archivedIds.has(a.id) || 
                                (a.student_id && archivedIds.has(a.student_id)) ||
                                (a.full_name && a.father_name && archivedNames.has(`${a.full_name.trim().toLowerCase()}::${a.father_name.trim().toLowerCase()}`));
@@ -331,7 +330,8 @@ export function useSupabaseData(user: any) {
                                   a.status === "Admitted" || 
                                   a.status === "Confirmed" ||
                                   a.status === "Full Paid" ||
-                                  a.status === "Partial Paid"
+                                  a.status === "Partial Paid" ||
+                                  Number(a.fee_received || 0) > 0
                                 );
             if (isConfirmed && !existingAdmIds.has(a.id) && !existingStudentIds.has(a.student_id)) {
               let derivedGender = a.gender;
@@ -758,8 +758,71 @@ export function useSupabaseData(user: any) {
       else prefix = 'SGC';
     }
 
-    const random = Math.floor(100 + Math.random() * 900);
-    return `${prefix}-${year}-${random}`;
+    const targetPattern = new RegExp(`^${prefix}-${year}-(\\d+)$`, 'i');
+    const existingNumbers: number[] = [];
+
+    // Scan all existing IDs in state (students, admissions, deletedArchive)
+    (students || []).forEach((s: any) => {
+      const m = String(s.id || '').match(targetPattern);
+      if (m) existingNumbers.push(parseInt(m[1], 10));
+      const m2 = String(s.studentId || '').match(targetPattern);
+      if (m2) existingNumbers.push(parseInt(m2[1], 10));
+    });
+
+    (admissions || []).forEach((a: any) => {
+      const m = String(a.studentId || a.student_id || '').match(targetPattern);
+      if (m) existingNumbers.push(parseInt(m[1], 10));
+    });
+
+    (deletedArchive || []).forEach((d: any) => {
+      const m = String(d.studentId || d.originalId || '').match(targetPattern);
+      if (m) existingNumbers.push(parseInt(m[1], 10));
+    });
+
+    const maxExisting = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 1000;
+    const nextSeq = Math.max(maxExisting + 1, 1001);
+    return `${prefix}-${year}-${nextSeq}`;
+  };
+
+  const generateBatchStudentIds = (program: string | undefined, count: number): string[] => {
+    const year = new Date().getFullYear().toString().slice(-2);
+    let prefix = 'SGC';
+    
+    if (program) {
+      const p = program.toLowerCase();
+      if (p.includes('dit')) prefix = 'DIT';
+      else if (p.includes('uk') || p.includes('level 3')) prefix = 'UKL';
+      else if (p.includes('bs')) prefix = 'BSP';
+      else prefix = 'SGC';
+    }
+
+    const targetPattern = new RegExp(`^${prefix}-${year}-(\\d+)$`, 'i');
+    const existingNumbers: number[] = [];
+
+    (students || []).forEach((s: any) => {
+      const m = String(s.id || '').match(targetPattern);
+      if (m) existingNumbers.push(parseInt(m[1], 10));
+      const m2 = String(s.studentId || '').match(targetPattern);
+      if (m2) existingNumbers.push(parseInt(m2[1], 10));
+    });
+
+    (admissions || []).forEach((a: any) => {
+      const m = String(a.studentId || a.student_id || '').match(targetPattern);
+      if (m) existingNumbers.push(parseInt(m[1], 10));
+    });
+
+    (deletedArchive || []).forEach((d: any) => {
+      const m = String(d.studentId || d.originalId || '').match(targetPattern);
+      if (m) existingNumbers.push(parseInt(m[1], 10));
+    });
+
+    let current = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 1000;
+    const result: string[] = [];
+    for (let i = 0; i < count; i++) {
+      current++;
+      result.push(`${prefix}-${year}-${current}`);
+    }
+    return result;
   };
 
   // Archive Operations
@@ -1032,7 +1095,7 @@ export function useSupabaseData(user: any) {
     }
   }, []);
 
-  const ctx = { user, generateStudentId, leads, setLeads, admissions, setAdmissions, students, setStudents, staff, setStaff, staffAttendance, setStaffAttendance, staffTimetable, setStaffTimetable, staffAdvances, setStaffAdvances, expenses, setExpenses, incomes, setIncomes, academicRecords, setAcademicRecords, salaryPayments, setSalaryPayments, studentAttendance, setStudentAttendance, settings, setSettings, permissions, setPermissions, notifications, setNotifications, isBulkOperatingRef, logActivity, fetchData, archiveRecords, deletedArchive, setDeletedArchive };
+  const ctx = { user, generateStudentId, generateBatchStudentIds, leads, setLeads, admissions, setAdmissions, students, setStudents, staff, setStaff, staffAttendance, setStaffAttendance, staffTimetable, setStaffTimetable, staffAdvances, setStaffAdvances, expenses, setExpenses, incomes, setIncomes, academicRecords, setAcademicRecords, salaryPayments, setSalaryPayments, studentAttendance, setStudentAttendance, settings, setSettings, permissions, setPermissions, notifications, setNotifications, isBulkOperatingRef, logActivity, fetchData, archiveRecords, deletedArchive, setDeletedArchive };
   const leadsOps = useLeadsOperations(ctx);
   const admissionsOps = useAdmissionsOperations(ctx);
   const studentsOps = useStudentsOperations(ctx);
@@ -1075,6 +1138,7 @@ export function useSupabaseData(user: any) {
     academicRecords,
     salaryPayments,
     generateStudentId,
+    generateBatchStudentIds,
     fetchData,
     updateFingerprintRecord,
     setStaff,
