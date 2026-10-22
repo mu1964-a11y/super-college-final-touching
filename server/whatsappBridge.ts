@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import crypto from "crypto";
+import { jsPDF } from "jspdf";
 
 const makeWASocket = (baileys.default || baileys.makeWASocket) as any;
 const { useMultiFileAuthState, DisconnectReason } = baileys;
@@ -1274,20 +1275,20 @@ Return STRICT JSON ONLY:
   public getFacultyMenuText(user: VerifiedUser): string {
     const isLeader = user.role === "Principal" || user.role === "Admin" || user.role === "Director" || !!user.email;
     return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
-🎓 *Faculty & Administrative Helpdesk*
+🎓 *Faculty & Staff Personal Portal*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 *Verified User:* ${user.name}
-🏷️ *Role / Designation:* ${user.designation || user.role} ${user.staffId ? `(${user.staffId})` : ""}
+👤 *Verified Member:* ${user.name}
+🏷️ *Designation:* ${user.designation || user.role} ${user.staffId ? `(${user.staffId})` : ""}
 📱 *Linked WhatsApp:* ${user.phone}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Matlooba sahulat ke liye number ya sawal likhein:
+Matlooba sahulat ke liye number ya lafz likh kar reply karein:
 
-📅 *1. Mera Timetable* (Aaj ya kisi bhi din ka lecture schedule)
-🔍 *2. Student Inquiry* (Kisi bhi student ka Name ya Roll No likhein)
-${isLeader ? `📊 *3. Institutional Overview* (Total strength, collection, staff attendance)\n` : `📋 *3. Meri Attendance & Salary Advance*\n`}
-🚪 *4. Logout / Unlink* (Is device ko unlink karne ke liye)
+📅 *1. Mera Timetable* (Official class timetable schedule PDF)
+💵 *2. Meri Salary Slip* (Current month salary & advance slip PDF)
+📋 *3. Meri Attendance* (Monthly attendance summary)
+${isLeader ? `📊 *5. Institutional Flash Report* (Collection & student metrics)\n` : ""}🚪 *4. Logout / Unlink* (Is WhatsApp device ko disconnect karne ke liye)
 
-_Tip: Aap seedha pooch sakte hain: "Mera Monday ka lecture kab hai?" ya "Student SGC-26-419 ka record dikhao"._`;
+_Tip: Aap seedha pooch sakte hain: "Mera timetable bhej do" ya "Meri salary slip chahiye"._`;
   }
 
   public async getTeacherTimetable(supabase: any, staffId: string, staffName: string, queryDay?: string): Promise<string> {
@@ -1351,22 +1352,42 @@ _Tip: Aap seedha pooch sakte hain: "Mera Monday ka lecture kab hai?" ya "Student
     
     if (!students || students.length === 0) return null;
 
-    const qLower = clean.toLowerCase();
+    const qLower = clean.toLowerCase().trim();
+    // Do not match if the search term is too generic, conversational, or a long sentence
+    const conversationalStopWords = ["jee", "jee sir", "jee madam", "ok", "okay", "theek", "theek hai", "thik hai", "accha", "acha", "salam", "aoa", "hello", "hi", "shukriya", "thanks", "kya", "kia"];
+    if (qLower.length < 3 || conversationalStopWords.includes(qLower) || qLower.startsWith("jee ") || qLower.startsWith("ok ") || qLower.length > 30) {
+      return null;
+    }
+
     const matched = students.filter((s: any) => {
-      const sId = (s.id || "").toLowerCase();
-      const sRoll = (s.board_roll_no || s.college_no || "").toLowerCase();
-      const sName = (s.full_name || "").toLowerCase();
-      const sFather = (s.father_name || "").toLowerCase();
+      const sId = (s.id || "").toLowerCase().trim();
+      const sRoll = (s.board_roll_no || s.college_no || "").toLowerCase().trim();
+      const sName = (s.full_name || "").toLowerCase().trim();
+      const sFather = (s.father_name || "").toLowerCase().trim();
       const sPhone = (s.contact || "").replace(/\D/g, "");
       const qDigits = qLower.replace(/\D/g, "");
 
-      return sId === qLower || 
-             sRoll === qLower || 
-             sId.endsWith(qLower) || 
-             sName === qLower ||
-             (qLower.length >= 3 && (sName.includes(qLower) || qLower.includes(sName))) ||
-             (qLower.length >= 4 && (sFather.includes(qLower) || qLower.includes(sFather))) ||
-             (qDigits.length >= 7 && sPhone.includes(qDigits));
+      const hasValidName = sName.length >= 3;
+      const hasValidFather = sFather.length >= 3;
+
+      // Exact ID or exact Roll match
+      if (sId && sId === qLower) return true;
+      if (sRoll && sRoll === qLower) return true;
+      if (sId && qLower.length >= 3 && sId.endsWith(qLower)) return true;
+
+      // Phone match
+      if (qDigits.length >= 7 && sPhone.includes(qDigits)) return true;
+
+      // Exact Name match
+      if (hasValidName && sName === qLower) return true;
+
+      // Substring match only for short, targeted query tokens
+      if (qLower.length <= 20) {
+        if (hasValidName && (sName.includes(qLower) || (qLower.length <= 15 && qLower.includes(sName)))) return true;
+        if (hasValidFather && qLower.length >= 4 && (sFather.includes(qLower) || (qLower.length <= 15 && qLower.includes(sFather)))) return true;
+      }
+
+      return false;
     });
 
     if (matched.length === 0) return null;
@@ -1508,6 +1529,569 @@ _Realtime College Management System (LMS)_`;
 • Remaining Balance: *Rs. ${remainingAdvance.toLocaleString()}*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 _Superior College Staff Portal_`;
+  }
+
+  /**
+   * Generates a lightweight, professional vector PDF salary slip (~25-35 KB)
+   */
+  public generateStaffSalarySlipPdf(staffRecord: any, advanceRecord?: any, monthYear?: string): Buffer {
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    // Top Header Banner (Superior Teal #064e43)
+    doc.setFillColor(6, 78, 67);
+    doc.rect(0, 0, pageWidth, 75, "F");
+
+    // Gold Ribbon (#d4af37)
+    doc.setFillColor(212, 175, 55);
+    doc.rect(0, 75, pageWidth, 3, "F");
+
+    // College Title
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(255, 255, 255);
+    doc.text("SUPERIOR GROUP OF COLLEGES JAHANIAN", 28, 30);
+
+    doc.setFontSize(9);
+    doc.setTextColor(212, 175, 55);
+    doc.text("OFFICIAL STAFF SALARY & PAYROLL STATEMENT", 28, 48);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(203, 213, 225);
+    const dateFormatted = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    doc.text(`Campus: Jahanian Campus  |  Issued: ${dateFormatted}  |  Accounts Confidential`, 28, 62);
+
+    const period = monthYear || new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
+
+    // Employee Particulars Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(28, 92, pageWidth - 56, 76, 6, 6, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text("FACULTY / EMPLOYEE PARTICULARS", 40, 108);
+
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    doc.text("Employee Name:", 40, 126);
+    doc.text("Staff ID:", 40, 142);
+    doc.text("Designation / Role:", 40, 158);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(15, 23, 42);
+    doc.text(staffRecord.full_name || "Staff Member", 140, 126);
+    doc.text(staffRecord.id || "N/A", 140, 142);
+    doc.text(staffRecord.designation || staffRecord.role || "Faculty Member", 140, 158);
+
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    doc.text("Pay Period:", 320, 126);
+    doc.text("Registered Contact:", 320, 142);
+    doc.text("Verification Status:", 320, 158);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(15, 23, 42);
+    doc.text(period, 420, 126);
+    doc.text(staffRecord.contact || staffRecord.phone || "N/A", 420, 142);
+    doc.setTextColor(16, 185, 129);
+    doc.text("VERIFIED VIA HR DESK", 420, 158);
+
+    // Financial Breakdown
+    const baseSalary = Number(staffRecord.salary || staffRecord.base_salary || 0);
+    const advanceDeduction = Number(advanceRecord?.monthlyDeduction || advanceRecord?.monthly_deduction || 0);
+    const advanceBalance = Number(advanceRecord?.remainingBalance || advanceRecord?.remaining_balance || 0);
+    const netSalary = Math.max(0, baseSalary - advanceDeduction);
+
+    doc.setFillColor(6, 78, 67);
+    doc.roundedRect(28, 180, pageWidth - 56, 22, 4, 4, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text("PARTICULARS", 40, 194);
+    doc.text("AMOUNT (PKR)", pageWidth - 140, 194);
+
+    const rows = [
+      { label: "1. Base Monthly Remuneration / Salary", amount: `Rs. ${baseSalary.toLocaleString()}`, bold: true },
+      { label: "2. Academic Allowance / Special Allowance", amount: "Rs. 0", bold: false },
+      { label: "3. Salary Advance Monthly Recovery Deduction", amount: `Rs. ${advanceDeduction.toLocaleString()}`, bold: false, deduct: true },
+      { label: "4. Late / Absenteeism Deductions", amount: "Rs. 0", bold: false, deduct: true },
+      { label: "5. Remaining Advance Loan Balance", amount: `Rs. ${advanceBalance.toLocaleString()}`, bold: false, info: true },
+    ];
+
+    let curY = 216;
+    rows.forEach((r, idx) => {
+      doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 252);
+      doc.rect(28, curY - 11, pageWidth - 56, 18, "F");
+
+      doc.setFont("helvetica", r.bold ? "bold" : "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(r.info ? 100 : 30, r.info ? 116 : 41, r.info ? 139 : 59);
+      doc.text(r.label, 40, curY);
+
+      if (r.deduct) doc.setTextColor(225, 29, 72);
+      else if (r.bold) doc.setTextColor(6, 78, 67);
+      doc.text(r.amount, pageWidth - 140, curY);
+
+      curY += 18;
+    });
+
+    // Net Disbursed Box
+    doc.setFillColor(240, 253, 250);
+    doc.setDrawColor(13, 148, 136);
+    doc.setLineWidth(1.2);
+    doc.roundedRect(28, curY + 6, pageWidth - 56, 36, 6, 6, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(6, 78, 67);
+    doc.text("NET DISBURSED / PAYABLE SALARY:", 40, curY + 28);
+    doc.setFontSize(12);
+    doc.text(`Rs. ${netSalary.toLocaleString()}/-`, pageWidth - 160, curY + 28);
+
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(148, 163, 184);
+    doc.text("This is an electronically verified HR & Accounts payroll statement issued by Superior College Jahanian LMS.", 28, pageHeight - 32);
+    doc.text("Generated securely via Superior Nexus WhatsApp Gateway.", 28, pageHeight - 20);
+
+    return Buffer.from(doc.output("arraybuffer"));
+  }
+
+  /**
+   * Generates a lightweight vector PDF class timetable (~20-25 KB)
+   */
+  public generateStaffTimetablePdf(staffName: string, staffId: string, rows: any[], queryDay?: string): Buffer {
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    // Top Header Banner
+    doc.setFillColor(6, 78, 67);
+    doc.rect(0, 0, pageWidth, 75, "F");
+
+    doc.setFillColor(212, 175, 55);
+    doc.rect(0, 75, pageWidth, 3, "F");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(255, 255, 255);
+    doc.text("SUPERIOR GROUP OF COLLEGES JAHANIAN", 28, 30);
+
+    doc.setFontSize(9);
+    doc.setTextColor(212, 175, 55);
+    doc.text("OFFICIAL FACULTY LECTURE SCHEDULE", 28, 48);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(203, 213, 225);
+    const dateFormatted = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    doc.text(`Faculty: ${staffName} (ID: ${staffId})  |  Day: ${queryDay || "Weekly Roster"}  |  Issued: ${dateFormatted}`, 28, 62);
+
+    doc.setFillColor(6, 78, 67);
+    doc.roundedRect(28, 92, pageWidth - 56, 22, 4, 4, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.text("#", 38, 106);
+    doc.text("TIMINGS", 65, 106);
+    doc.text("SUBJECT", 165, 106);
+    doc.text("ROOM / VENUE", 320, 106);
+    doc.text("SECTION / CLASS", 440, 106);
+
+    let curY = 126;
+    if (!rows || rows.length === 0) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("No scheduled class lectures registered for this day/slot.", 40, curY);
+    } else {
+      const formatTime = (t: string) => {
+        if (!t) return "--:--";
+        const [hStr, mStr] = t.split(":");
+        let h = parseInt(hStr, 10);
+        const m = mStr ? mStr.slice(0, 2) : "00";
+        const ampm = h >= 12 ? "PM" : "AM";
+        h = h % 12 || 12;
+        return `${h}:${m} ${ampm}`;
+      };
+
+      rows.forEach((r: any, idx: number) => {
+        doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 252);
+        doc.rect(28, curY - 11, pageWidth - 56, 18, "F");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(6, 78, 67);
+        doc.text(String(idx + 1), 38, curY);
+
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(15, 23, 42);
+        doc.text(`${formatTime(r.start_time)} - ${formatTime(r.end_time)}`, 65, curY);
+        doc.text(r.subject || "Lecture", 165, curY);
+        doc.text(r.class_room || "Lecture Hall", 320, curY);
+        doc.text(r.section || "Assigned", 440, curY);
+
+        curY += 20;
+      });
+    }
+
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(148, 163, 184);
+    doc.text("Academic Coordination Desk · Superior College Jahanian.", 28, pageHeight - 25);
+
+    return Buffer.from(doc.output("arraybuffer"));
+  }
+
+  /**
+   * Generates a lightweight vector PDF student fee ledger voucher (~28-35 KB)
+   */
+  public generateStudentFeeVoucherPdf(student: any): Buffer {
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    // Top Header Banner
+    doc.setFillColor(6, 78, 67);
+    doc.rect(0, 0, pageWidth, 75, "F");
+
+    doc.setFillColor(212, 175, 55);
+    doc.rect(0, 75, pageWidth, 3, "F");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(255, 255, 255);
+    doc.text("SUPERIOR GROUP OF COLLEGES JAHANIAN", 28, 30);
+
+    doc.setFontSize(9);
+    doc.setTextColor(212, 175, 55);
+    doc.text("OFFICIAL STUDENT FEE LEDGER & RECOVERY VOUCHER", 28, 48);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(203, 213, 225);
+    const dateFormatted = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    doc.text(`Campus: Jahanian Campus  |  Session: ${student.session || "2026-28"}  |  Issued: ${dateFormatted}`, 28, 62);
+
+    // Student Particulars Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(28, 92, pageWidth - 56, 76, 6, 6, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text("STUDENT ENROLLMENT PARTICULARS", 40, 108);
+
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    doc.text("Student Name:", 40, 126);
+    doc.text("Father Name:", 40, 142);
+    doc.text("Student ID / Roll:", 40, 158);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(15, 23, 42);
+    doc.text(student.full_name || "Student", 140, 126);
+    doc.text(student.father_name || "N/A", 140, 142);
+    doc.text(student.id || "N/A", 140, 158);
+
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    doc.text("Class / Group:", 320, 126);
+    doc.text("Section:", 320, 142);
+    doc.text("Registered Contact:", 320, 158);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(15, 23, 42);
+    doc.text(student.category || student.group || "Intermediate", 420, 126);
+    doc.text(student.section || "A", 420, 142);
+    doc.text(student.contact || student.father_contact || "N/A", 420, 158);
+
+    // Financial Breakdown
+    const totalPkg = Number(student.total_package || student.total_fee_finalized || 0);
+    const paid = Number(student.fee_received || 0);
+    const dues = Math.max(0, totalPkg - paid);
+
+    doc.setFillColor(6, 78, 67);
+    doc.roundedRect(28, 180, pageWidth - 56, 22, 4, 4, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text("FEE COMPONENT", 40, 194);
+    doc.text("AMOUNT (PKR)", pageWidth - 140, 194);
+
+    const fRows = [
+      { label: "1. Total Agreed Academic Fee Package", amount: `Rs. ${totalPkg.toLocaleString()}`, bold: true },
+      { label: "2. Total Deposited / Fee Received", amount: `Rs. ${paid.toLocaleString()}`, green: true },
+      { label: "3. Net Outstanding Dues / Balance Payable", amount: `Rs. ${dues.toLocaleString()}`, dues: dues > 0 },
+    ];
+
+    let curY = 216;
+    fRows.forEach((r, idx) => {
+      doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 252);
+      doc.rect(28, curY - 11, pageWidth - 56, 18, "F");
+
+      doc.setFont("helvetica", r.bold ? "bold" : "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      doc.text(r.label, 40, curY);
+
+      if (r.green) doc.setTextColor(16, 185, 129);
+      else if (r.dues) doc.setTextColor(225, 29, 72);
+      else doc.setTextColor(6, 78, 67);
+
+      doc.setFont("helvetica", "bold");
+      doc.text(r.amount, pageWidth - 140, curY);
+      curY += 20;
+    });
+
+    // Balance Callout Box
+    doc.setFillColor(dues > 0 ? 254 : 240, dues > 0 ? 242 : 253, dues > 0 ? 242 : 250);
+    doc.setDrawColor(dues > 0 ? 244 : 16, dues > 0 ? 63 : 185, dues > 0 ? 94 : 129);
+    doc.setLineWidth(1.2);
+    doc.roundedRect(28, curY + 6, pageWidth - 56, 36, 6, 6, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(dues > 0 ? 159 : 6, dues > 0 ? 18 : 78, dues > 0 ? 57 : 67);
+    doc.text(dues > 0 ? "FEE STATUS: PAYMENT PENDING" : "FEE STATUS: ALL DUES CLEARED", 40, curY + 28);
+    doc.setFontSize(11);
+    doc.text(dues > 0 ? `Remaining: Rs. ${dues.toLocaleString()}/-` : "Balance: Rs. 0/-", pageWidth - 160, curY + 28);
+
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(148, 163, 184);
+    doc.text("Official Fee Voucher · Accounts & Finance Department, Superior College Jahanian.", 28, pageHeight - 25);
+
+    return Buffer.from(doc.output("arraybuffer"));
+  }
+
+  /**
+   * Generates a lightweight vector PDF daily flash summary (~30-40 KB)
+   */
+  public generateDailyFlashPdf(metrics: {
+    totalStudents: number;
+    boysCount: number;
+    girlsCount: number;
+    todayCollection: number;
+    monthCollection: number;
+    presentStaff: number;
+    absentStaff: number;
+  }): Buffer {
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    doc.setFillColor(6, 78, 67);
+    doc.rect(0, 0, pageWidth, 75, "F");
+
+    doc.setFillColor(212, 175, 55);
+    doc.rect(0, 75, pageWidth, 3, "F");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(255, 255, 255);
+    doc.text("SUPERIOR GROUP OF COLLEGES JAHANIAN", 28, 30);
+
+    doc.setFontSize(9);
+    doc.setTextColor(212, 175, 55);
+    doc.text("DAILY EXECUTIVE FLASH & COLLECTION DIGEST", 28, 48);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(203, 213, 225);
+    const dateFormatted = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    doc.text(`Executive Leadership Desk  |  Issued: ${dateFormatted}  |  Strictly Confidential`, 28, 62);
+
+    // Financial Highlights Box
+    doc.setFillColor(240, 253, 250);
+    doc.setDrawColor(13, 148, 136);
+    doc.roundedRect(28, 92, pageWidth - 56, 60, 6, 6, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(6, 78, 67);
+    doc.text("INSTITUTIONAL FEE RECOVERY HIGHLIGHTS", 40, 110);
+
+    doc.setFontSize(8.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    doc.text("Today's Total Fee Inflow:", 40, 128);
+    doc.text("Current Month Cumulative Collection:", 40, 144);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(15, 23, 42);
+    doc.text(`Rs. ${metrics.todayCollection.toLocaleString()}/-`, 260, 128);
+    doc.text(`Rs. ${metrics.monthCollection.toLocaleString()}/-`, 260, 144);
+
+    // Faculty Attendance Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(28, 162, pageWidth - 56, 60, 6, 6, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text("STAFF ATTENDANCE & PUNCTUALITY", 40, 180);
+
+    doc.setFontSize(8.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    doc.text("Staff Present Today:", 40, 198);
+    doc.text("Staff Absent / On Leave:", 40, 214);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(16, 185, 129);
+    doc.text(`${metrics.presentStaff} Members`, 260, 198);
+    doc.setTextColor(225, 29, 72);
+    doc.text(`${metrics.absentStaff} Members`, 260, 214);
+
+    // Student Enrollment Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(28, 232, pageWidth - 56, 60, 6, 6, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text("STUDENT ENROLLMENT ROSTER", 40, 250);
+
+    doc.setFontSize(8.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    doc.text("Total Active Enrolled Students:", 40, 268);
+    doc.text("Campus Breakdown:", 40, 284);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(15, 23, 42);
+    doc.text(`${metrics.totalStudents} Students`, 260, 268);
+    doc.text(`${metrics.boysCount} Boys  |  ${metrics.girlsCount} Girls`, 260, 284);
+
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(148, 163, 184);
+    doc.text("Executive Flash Briefing · Superior College Jahanian LMS.", 28, pageHeight - 25);
+
+    return Buffer.from(doc.output("arraybuffer"));
+  }
+
+  /**
+   * Helper to retrieve high-level metrics for the executive daily flash PDF
+   */
+  public async getDailyFlashMetrics(supabase: any): Promise<{
+    totalStudents: number;
+    boysCount: number;
+    girlsCount: number;
+    todayCollection: number;
+    monthCollection: number;
+    presentStaff: number;
+    absentStaff: number;
+  }> {
+    const pkt = this.getPktDate();
+    const dateStr = pkt.dateStr;
+    const monthStart = dateStr.slice(0, 7) + "-01";
+
+    let totalStudents = 0;
+    let boysCount = 0;
+    let girlsCount = 0;
+    try {
+      const { data: students } = await supabase.from("students").select("gender, status");
+      const active = (students || []).filter((s: any) => s.status !== "Withdrawn" && s.status !== "Struck Off");
+      totalStudents = active.length;
+      for (const st of active) {
+        const g = (st.gender || "").toLowerCase();
+        if (g.includes("female") || g.includes("girl") || g.includes("f")) {
+          girlsCount++;
+        } else {
+          boysCount++;
+        }
+      }
+    } catch (e) {}
+
+    let todayCollection = 0;
+    let monthCollection = 0;
+    try {
+      const { data: todayTx } = await supabase.from("fee_transactions").select("amount").eq("date", dateStr);
+      for (const t of (todayTx || [])) todayCollection += Number(t.amount || 0);
+      const { data: todayInc } = await supabase.from("incomes").select("amount").eq("date", dateStr);
+      for (const i of (todayInc || [])) todayCollection += Number(i.amount || 0);
+
+      const { data: monthTx } = await supabase.from("fee_transactions").select("amount").gte("date", monthStart).lte("date", dateStr);
+      for (const t of (monthTx || [])) monthCollection += Number(t.amount || 0);
+      const { data: monthInc } = await supabase.from("incomes").select("amount").gte("date", monthStart).lte("date", dateStr);
+      for (const i of (monthInc || [])) monthCollection += Number(i.amount || 0);
+    } catch (e) {}
+
+    let presentStaff = 0;
+    let absentStaff = 0;
+    try {
+      const { data: staffList } = await supabase.from("staff").select("id");
+      const { data: staffAtt } = await supabase.from("staff_attendance").select("staff_id, status").eq("date", dateStr);
+      const attMap = new Map();
+      for (const a of (staffAtt || [])) attMap.set(a.staff_id, a.status);
+      for (const st of (staffList || [])) {
+        const stat = attMap.get(st.id);
+        if (!stat || stat === "Absent") {
+          absentStaff++;
+        } else {
+          presentStaff++;
+        }
+      }
+    } catch (e) {}
+
+    return {
+      totalStudents,
+      boysCount,
+      girlsCount,
+      todayCollection,
+      monthCollection,
+      presentStaff,
+      absentStaff,
+    };
+  }
+
+  /**
+   * Safe student lookup returning exactly one matched student or null
+   */
+  public async findSingleStudentByQuery(supabase: any, query: string): Promise<any | null> {
+    const clean = (query || "").trim();
+    if (!clean) return null;
+    const { data: students } = await supabase.from("students").select("*");
+    if (!students || students.length === 0) return null;
+    const qLower = clean.toLowerCase().trim();
+    const conversationalStopWords = ["jee", "jee sir", "jee madam", "ok", "okay", "theek", "theek hai", "thik hai", "accha", "acha", "salam", "aoa", "hello", "hi", "shukriya", "thanks", "kya", "kia"];
+    if (qLower.length < 3 || conversationalStopWords.includes(qLower) || qLower.startsWith("jee ") || qLower.startsWith("ok ") || qLower.length > 30) {
+      return null;
+    }
+    const matched = students.filter((s: any) => {
+      const sId = (s.id || "").toLowerCase().trim();
+      const sRoll = (s.board_roll_no || s.college_no || "").toLowerCase().trim();
+      const sName = (s.full_name || "").toLowerCase().trim();
+      const sFather = (s.father_name || "").toLowerCase().trim();
+      const sPhone = (s.contact || "").replace(/\D/g, "");
+      const qDigits = qLower.replace(/\D/g, "");
+
+      const hasValidName = sName.length >= 3;
+      const hasValidFather = sFather.length >= 3;
+
+      if (sId && sId === qLower) return true;
+      if (sRoll && sRoll === qLower) return true;
+      if (sId && qLower.length >= 3 && sId.endsWith(qLower)) return true;
+      if (qDigits.length >= 7 && sPhone.includes(qDigits)) return true;
+      if (hasValidName && sName === qLower) return true;
+      if (qLower.length <= 20) {
+        if (hasValidName && (sName.includes(qLower) || (qLower.length <= 15 && qLower.includes(sName)))) return true;
+        if (hasValidFather && qLower.length >= 4 && (sFather.includes(qLower) || (qLower.length <= 15 && qLower.includes(sFather)))) return true;
+      }
+      return false;
+    });
+    return matched.length === 1 ? matched[0] : null;
   }
 
   // Helper to obtain current Pakistan Standard Time (PKT / UTC+5)
@@ -2253,15 +2837,27 @@ _Directorate of Audit & Accounts — Superior Group of Colleges Jahanian_`;
     }
 
     let reportText = "";
+    let reportDoc: { buffer: Buffer; fileName: string; caption?: string } | undefined;
     if (reportType === "daily") {
       reportText = await this.generateDailyFlashReport(supabase, config.daily);
+      try {
+        const metrics = await this.getDailyFlashMetrics(supabase);
+        const pdfBuf = this.generateDailyFlashPdf(metrics);
+        reportDoc = {
+          buffer: pdfBuf,
+          fileName: `SGC_DailyFlash_${new Date().toISOString().slice(0, 10)}.pdf`,
+          caption: `🏛️ *SUPERIOR COLLEGE JAHANIAN*\nAssalam-o-Alaikum Respected Principal Sir! Aaj ki official institutional flash report PDF sath attach kar di gayi hai.`
+        };
+      } catch (e) {
+        console.warn("[Scheduled Reports] Could not generate flash PDF:", e);
+      }
     } else if (reportType === "weekly") {
       reportText = await this.generateWeeklyExecutiveSummary(supabase, config.weekly);
     } else if (reportType === "monthly") {
       reportText = await this.generateMonthlyAuditBrief(supabase, config.monthly);
     }
 
-    const sendRes = await this.sendMessage(targetPhone, reportText);
+    const sendRes = await this.sendMessage(targetPhone, reportText, reportDoc);
     if (!sendRes.success) {
       return { success: false, messageText: reportText, error: sendRes.error };
     }
@@ -4353,8 +4949,13 @@ College Key Info:
     if (!session.history) session.history = [];
     session.lastActive = now;
 
-    // Helper to send and log a reply
-    const sendReply = async (replyText: string, logType: string, verifiedStudentName?: string) => {
+    // Helper to send and log a reply (supporting optional lightweight PDF attachment)
+    const sendReply = async (
+      replyText: string, 
+      logType: string, 
+      verifiedStudentName?: string,
+      docAttachment?: { buffer: Buffer; fileName: string; caption?: string }
+    ) => {
       let finalReply = replyText;
 
       if (options?.isVoice && !finalReply.startsWith("🎤")) {
@@ -4386,14 +4987,31 @@ College Key Info:
         session!.history = session!.history.slice(-10);
       }
 
+      const logText = docAttachment ? `📄 [PDF: ${docAttachment.fileName}]\n${finalReply}` : finalReply;
+
       this.saveChatLog({
         phone: rawNumber,
         direction: "outgoing",
-        text: finalReply,
+        text: logText,
         verifiedStudent: verifiedStudentName || (session!.verifiedStudent ? session!.verifiedStudent.full_name : undefined),
       });
+
       if (this.sock) {
-        await this.sock.sendMessage(senderJid, { text: finalReply });
+        if (docAttachment) {
+          try {
+            await this.sock.sendMessage(senderJid, {
+              document: docAttachment.buffer,
+              mimetype: "application/pdf",
+              fileName: docAttachment.fileName,
+              caption: docAttachment.caption || finalReply,
+            });
+          } catch (docErr) {
+            console.warn("[WhatsApp Bridge] Failed to send document attachment, falling back to text:", docErr);
+            await this.sock.sendMessage(senderJid, { text: finalReply });
+          }
+        } else {
+          await this.sock.sendMessage(senderJid, { text: finalReply });
+        }
       }
       return finalReply;
     };
@@ -4516,7 +5134,22 @@ _Tip: Aap Roman Urdu ya English mein koi bhi sawal pooch sakte hain ya direct co
         cleanQuery.includes("aaj ki report")
       ) {
         const flashReport = await this.generateDailyFlashReport(supabase, automatedConfig.daily);
-        return await sendReply(flashReport, "Principal Flash Report", principalInfo.name);
+        let flashPdf: Buffer | undefined;
+        try {
+          const metrics = await this.getDailyFlashMetrics(supabase);
+          flashPdf = this.generateDailyFlashPdf(metrics);
+        } catch (e) {
+          console.warn("[WhatsApp Bridge] Error generating daily flash PDF:", e);
+        }
+        const shortMsg = flashPdf
+          ? `🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*\nAssalam-o-Alaikum Respected Principal Sir! Aaj ki official institutional recovery, faculty attendance, aur student strength flash report PDF sath attach kar di gayi hai.`
+          : flashReport;
+        return await sendReply(
+          shortMsg, 
+          "Principal Flash Report", 
+          principalInfo.name,
+          flashPdf ? { buffer: flashPdf, fileName: `SGC_DailyFlash_${new Date().toISOString().slice(0, 10)}.pdf`, caption: shortMsg } : undefined
+        );
       }
 
       // Option 2: Staff Attendance
@@ -4667,7 +5300,21 @@ Staff member ko WhatsApp par invitation deliver ho chuka hai.`;
       // Option 4 / Student Dossier for Principal
       const dossier = await this.getTeacherStudentDossier(supabase, text);
       if (dossier) {
-        return await sendReply(dossier, "Principal Student Dossier", principalInfo.name);
+        let voucherPdf: Buffer | undefined;
+        try {
+          const singleSt = await this.findSingleStudentByQuery(supabase, text);
+          if (singleSt) {
+            voucherPdf = this.generateStudentFeeVoucherPdf(singleSt);
+          }
+        } catch (e) {
+          console.warn("[WhatsApp Bridge] Error generating voucher PDF for principal lookup:", e);
+        }
+        return await sendReply(
+          dossier, 
+          "Principal Student Dossier", 
+          principalInfo.name,
+          voucherPdf ? { buffer: voucherPdf, fileName: `SGC_StudentDossier.pdf` } : undefined
+        );
       }
 
       // Conversational AI for Principal
@@ -5309,13 +5956,22 @@ Staff member ko WhatsApp par invitation deliver ho chuka hai.`;
             this.pendingOTPs.delete(standardPhone);
 
             const detailsMsg = await this.buildStudentReply(supabase, pendingOtp.candidate, session.pendingIntent || "general");
-            const welcomeMsg = 
-`✅ *TASDEEQ KAMYAB (SECURITY OTP VERIFIED)*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Student *${pendingOtp.candidate.full_name}* (Roll: *${pendingOtp.candidate.college_no || pendingOtp.candidate.id || "N/A"}*) ka official record verify ho chuka hai:
+            let voucherPdf: Buffer | undefined;
+            if (session.pendingIntent === "fee") {
+              try {
+                voucherPdf = this.generateStudentFeeVoucherPdf(pendingOtp.candidate);
+              } catch (err) {}
+            }
+            const shortMsg = session.pendingIntent === "fee" && voucherPdf
+              ? `✅ *TASDEEQ KAMYAB (SECURITY OTP VERIFIED)*\n━━━━━━━━━━━━━━━━━━━━━━━━━\nStudent *${pendingOtp.candidate.full_name}* (Roll: *${pendingOtp.candidate.college_no || pendingOtp.candidate.id || "N/A"}*) ka official fee voucher PDF sath attach kar diya gaya hai.`
+              : `✅ *TASDEEQ KAMYAB (SECURITY OTP VERIFIED)*\n━━━━━━━━━━━━━━━━━━━━━━━━━\nStudent *${pendingOtp.candidate.full_name}* (Roll: *${pendingOtp.candidate.college_no || pendingOtp.candidate.id || "N/A"}*) ka official record verify ho chuka hai:\n\n${detailsMsg}`;
 
-${detailsMsg}`;
-            return await sendReply(welcomeMsg, "Student OTP Verified Succeeded", pendingOtp.candidate.full_name);
+            return await sendReply(
+              shortMsg, 
+              "Student OTP Verified Succeeded", 
+              pendingOtp.candidate.full_name,
+              voucherPdf ? { buffer: voucherPdf, fileName: `SGC_FeeVoucher_${pendingOtp.candidate.college_no || pendingOtp.candidate.id}.pdf`, caption: shortMsg } : undefined
+            );
           } else {
             // Faculty / Staff OTP Verified successfully!
             const verified: VerifiedUser = {
@@ -5392,7 +6048,83 @@ _Tip: Aap seedha likh sakte hain: "Mera aaj ka timetable kya hai?" ya "Student S
         return await sendReply(menuMsg, "Faculty Menu Displayed", verifiedUser.name);
       }
 
-      // 3. Timetable / Lecture Schedule (Strict word boundary check, avoid 'lecturer')
+      // 2b. Conversational Acknowledgment Handler (Fast polite response with zero DB queries)
+      const isConversationalAck = 
+        cleanQuery === "jee" ||
+        cleanQuery === "jee sir" ||
+        cleanQuery === "jee madam" ||
+        cleanQuery === "jee maam" ||
+        cleanQuery === "ok" ||
+        cleanQuery === "okay" ||
+        cleanQuery === "theek" ||
+        cleanQuery === "theek hai" ||
+        cleanQuery === "thik hai" ||
+        cleanQuery === "accha" ||
+        cleanQuery === "acha" ||
+        cleanQuery === "shukriya" ||
+        cleanQuery === "thanks" ||
+        cleanQuery === "thank you" ||
+        cleanQuery === "salam" ||
+        cleanQuery === "assalam o alaikum" ||
+        cleanQuery === "aoa";
+
+      if (isConversationalAck) {
+        const ackReply = `Jee Mohtaram *${verifiedUser.name}*! 🌸 Superior Faculty Portal aapki khidmat ke liye active hai.\n\nAap apna Timetable (*TIMETABLE*) ya Salary Slip (*SALARY*) foran check kar sakte hain.`;
+        return await sendReply(ackReply, "Faculty Conversational Acknowledgment", verifiedUser.name);
+      }
+
+      // 3. Salary & Payroll Inquiry (Option 2) -> Dispatches Vector PDF Salary Slip
+      const isSalaryQuery = 
+        cleanQuery === "2" || 
+        cleanQuery.startsWith("2.") ||
+        /\b(salary|sallery|tankhwah|tankhwaha|pay|payslip|payslips|advance|advance salary)\b/i.test(cleanQuery) ||
+        cleanQuery.includes("meri salary") ||
+        cleanQuery.includes("apni salary") ||
+        cleanQuery.includes("kitni salary") ||
+        cleanQuery.includes("meri pay") ||
+        cleanQuery.includes("salary slip");
+
+      if (isSalaryQuery && verifiedUser.staffId) {
+        let staffRecord: any = null;
+        try {
+          const { data: st } = await supabase
+            .from("staff")
+            .select("*")
+            .eq("id", verifiedUser.staffId)
+            .maybeSingle();
+          staffRecord = st;
+        } catch (e) {}
+
+        let advanceRecord: any = null;
+        try {
+          const { data: advs } = await supabase
+            .from("staff_advances")
+            .select("*")
+            .eq("staff_id", verifiedUser.staffId)
+            .order("date", { ascending: false })
+            .limit(1);
+          if (advs && advs.length > 0) advanceRecord = advs[0];
+        } catch (e) {}
+
+        const currentMonthYear = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
+        let salaryPdf: Buffer | undefined;
+        try {
+          salaryPdf = this.generateStaffSalarySlipPdf(staffRecord || verifiedUser, advanceRecord, currentMonthYear);
+        } catch (pdfErr) {
+          console.warn("[WhatsApp Bridge] Error generating staff salary slip PDF:", pdfErr);
+        }
+
+        const shortText = `📄 *SALARY STATEMENT (${currentMonthYear.toUpperCase()})*\nMohtaram *${verifiedUser.name}*, aapki official computerized salary slip PDF sath attach kar di gayi hai.\n\n_Kisi bhi inquiry ke liye Accounts Office se rabta karein._`;
+
+        return await sendReply(
+          shortText,
+          "Staff Salary Slip PDF",
+          verifiedUser.name,
+          salaryPdf ? { buffer: salaryPdf, fileName: `SGC_SalarySlip_${verifiedUser.staffId}.pdf`, caption: shortText } : undefined
+        );
+      }
+
+      // 4. Timetable / Lecture Schedule (Option 1) -> Dispatches Vector PDF Class Schedule
       const isTimetableQuery = 
         cleanQuery === "1" || 
         cleanQuery.startsWith("1.") || 
@@ -5430,23 +6162,45 @@ _Tip: Aap seedha likh sakte hain: "Mera aaj ka timetable kya hai?" ya "Student S
           }
         }
 
-        const timetableText = await this.getTeacherTimetable(supabase, verifiedUser.staffId, verifiedUser.name, queryDay);
-        return await sendReply(timetableText, "Teacher Timetable Reply", verifiedUser.name);
+        let ttRows: any[] = [];
+        try {
+          let ttQuery = supabase
+            .from("staff_timetable")
+            .select("*")
+            .eq("staff_id", verifiedUser.staffId);
+          if (queryDay) {
+            ttQuery = ttQuery.ilike("day", `%${queryDay}%`);
+          }
+          const { data } = await ttQuery.order("start_time", { ascending: true });
+          ttRows = data || [];
+        } catch (e) {}
+
+        let timetablePdf: Buffer | undefined;
+        try {
+          timetablePdf = this.generateStaffTimetablePdf(verifiedUser.name, verifiedUser.staffId, ttRows, queryDay);
+        } catch (pdfErr) {
+          console.warn("[WhatsApp Bridge] Error generating staff timetable PDF:", pdfErr);
+        }
+
+        const shortText = `📅 *ACADEMIC LECTURE TIMETABLE*\nMohtaram *${verifiedUser.name}*, aapka ${queryDay ? `${queryDay} ka ` : ""}official class timetable schedule PDF document sath attach kar diya gaya hai.`;
+
+        return await sendReply(
+          shortText,
+          "Teacher Timetable PDF",
+          verifiedUser.name,
+          timetablePdf ? { buffer: timetablePdf, fileName: `SGC_Timetable_${verifiedUser.staffId}${queryDay ? `_${queryDay}` : ""}.pdf`, caption: shortText } : undefined
+        );
       }
 
-      // 4. Institutional Overview (for Principal / Admin) or Personal Summary (for Teacher)
+      // 5. Staff Attendance & Punctuality Summary (Option 3)
       const isLeader = verifiedUser.role === "Principal" || verifiedUser.role === "Admin" || verifiedUser.role === "Director" || !!verifiedUser.email;
       const isInstQuery = 
         cleanQuery === "3" || 
         cleanQuery.startsWith("3.") ||
-        cleanQuery.includes("total student") || 
-        cleanQuery.includes("strength") || 
-        cleanQuery.includes("collection") || 
-        cleanQuery.includes("fee collection") || 
-        cleanQuery.includes("defaulter") || 
-        cleanQuery.includes("staff attendance") ||
         cleanQuery.includes("meri attendance") ||
-        cleanQuery.includes("advance");
+        cleanQuery.includes("hazri") ||
+        cleanQuery.includes("chutti") ||
+        cleanQuery.includes("leave");
 
       if (isInstQuery) {
         if (isLeader) {
@@ -5458,10 +6212,24 @@ _Tip: Aap seedha likh sakte hain: "Mera aaj ka timetable kya hai?" ya "Student S
         }
       }
 
-      // 5. Student Query by Teacher / Principal (Look up student dossier)
-      const dossier = await this.getTeacherStudentDossier(supabase, text);
-      if (dossier) {
-        return await sendReply(dossier, "Faculty Student Dossier", verifiedUser.name);
+      // 5b. Air-Gap Security Firewall: Regular Faculty / Staff are STRICTLY PROHIBITED from accessing student confidential fee ledgers or dossiers
+      const isRestrictedStudentQuery = 
+        cleanQuery.includes("student") ||
+        cleanQuery.includes("roll no") ||
+        cleanQuery.includes("rollno") ||
+        cleanQuery.includes("dossier") ||
+        cleanQuery.includes("fees") ||
+        cleanQuery.includes("fee") ||
+        cleanQuery.includes("ledger") ||
+        cleanQuery.includes("defaulter") ||
+        cleanQuery.includes("dues") ||
+        cleanQuery.includes("balance") ||
+        cleanQuery.includes("bache") ||
+        cleanQuery.includes("bacha");
+
+      if (isRestrictedStudentQuery) {
+        const airGapRefusal = `🔒 *SECURITY & PRIVACY POLICY NOTICE*\n━━━━━━━━━━━━━━━━━━━━━━━━━\nMohtaram *${verifiedUser.name}*, College Data Governance & Air-Gap Security Policy ke tehat student fee ledgers aur confidential records sirf Principal Office aur Accounts Desk ke liye makhsoos hain.\n\nAap apna Timetable (*TIMETABLE*) ya Salary Slip (*SALARY*) foran check kar sakte hain.`;
+        return await sendReply(airGapRefusal, "Faculty Student Access Refused (Air-Gap)", verifiedUser.name);
       }
 
       // 5b. Admission Creation Action Trigger (Staff Initiated)
@@ -5689,11 +6457,50 @@ AIR-GAP PRIVACY & DATA LEAKAGE PREVENTION (STRICT):
 
       const isLeader = verified.role === "Principal" || verified.role === "Admin" || verified.role === "Director" || !!verified.email;
       const isTimetable = cleanQuery === "1" || cleanQuery.startsWith("1.") || /\b(timetable|time\s*table|schedule)\b/i.test(cleanQuery) || (/\b(lecture|lectures|classes)\b/i.test(cleanQuery) && !/\b(lecturer)\b/i.test(cleanQuery));
+      const isSalary = cleanQuery === "2" || cleanQuery.startsWith("2.") || /\b(salary|sallery|tankhwah|pay|payslip|advance)\b/i.test(cleanQuery) || cleanQuery.includes("salary");
       const isOverview = cleanQuery.includes("strength") || cleanQuery.includes("overview") || cleanQuery.includes("attendance") || cleanQuery === "3" || cleanQuery.startsWith("3.");
 
-      if (isTimetable && verified.staffId) {
-        const timetableText = await this.getTeacherTimetable(supabase, verified.staffId, verified.name);
-        return await sendReply(timetableText, "Teacher Timetable Auto-Reply", verified.name);
+      if (isSalary && verified.staffId) {
+        let staffRecord: any = null;
+        try {
+          const { data: st } = await supabase.from("staff").select("*").eq("id", verified.staffId).maybeSingle();
+          staffRecord = st;
+        } catch (e) {}
+
+        let advanceRecord: any = null;
+        try {
+          const { data: advs } = await supabase.from("staff_advances").select("*").eq("staff_id", verified.staffId).order("date", { ascending: false }).limit(1);
+          if (advs && advs.length > 0) advanceRecord = advs[0];
+        } catch (e) {}
+
+        const currentMonthYear = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
+        let salaryPdf: Buffer | undefined;
+        try {
+          salaryPdf = this.generateStaffSalarySlipPdf(staffRecord || verified, advanceRecord, currentMonthYear);
+        } catch (pdfErr) {
+          console.warn("[WhatsApp Bridge] Error generating staff salary slip PDF:", pdfErr);
+        }
+
+        const shortText = `📄 *SALARY STATEMENT (${currentMonthYear.toUpperCase()})*\nMohtaram *${verified.name}*, aapki official salary slip PDF sath attach kar di gayi hai.`;
+        return await sendReply(
+          shortText,
+          "Staff Salary Slip PDF",
+          verified.name,
+          salaryPdf ? { buffer: salaryPdf, fileName: `SGC_SalarySlip_${verified.staffId}.pdf`, caption: shortText } : undefined
+        );
+      } else if (isTimetable && verified.staffId) {
+        let timetablePdf: Buffer | undefined;
+        try {
+          const { data: ttRows } = await supabase.from("staff_timetable").select("*").eq("staff_id", verified.staffId).order("start_time", { ascending: true });
+          timetablePdf = this.generateStaffTimetablePdf(verified.name, verified.staffId, ttRows || []);
+        } catch (pdfErr) {}
+        const shortText = `📅 *ACADEMIC LECTURE TIMETABLE*\nMohtaram *${verified.name}*, aapka official class timetable PDF sath attach kar diya gaya hai.`;
+        return await sendReply(
+          shortText,
+          "Teacher Timetable PDF",
+          verified.name,
+          timetablePdf ? { buffer: timetablePdf, fileName: `SGC_Timetable_${verified.staffId}.pdf`, caption: shortText } : undefined
+        );
       } else if (isOverview) {
         if (isLeader) {
           const reportText = await this.getInstitutionalReport(supabase, verified.name);
@@ -5888,7 +6695,24 @@ Helpline: 📞 *${this.collegeHelpline || "0331-2211147"}*`;
         if (isFee || isMarks || isAtt || isAll) {
           const currentIntent = isFee ? "fee" : isMarks ? "marks" : isAtt ? "attendance" : "general";
           const detailsMsg = await this.buildStudentReply(supabase, student, currentIntent);
-          return await sendReply(detailsMsg, `Registered Student Direct Query (${currentIntent})`, student.full_name);
+          let voucherPdf: Buffer | undefined;
+          if (isFee || isAll) {
+            try {
+              voucherPdf = this.generateStudentFeeVoucherPdf(student);
+            } catch (err) {
+              console.warn("[WhatsApp Bridge] Error generating student fee voucher PDF:", err);
+            }
+          }
+          const shortMsg = (isFee || isAll) && voucherPdf
+            ? `🏛️ *SUPERIOR COLLEGE JAHANIAN*\nAssalam-o-Alaikum! *${student.full_name}* (${student.college_no || student.id}) ka official fee voucher PDF sath attach kar diya gaya hai.`
+            : detailsMsg;
+
+          return await sendReply(
+            shortMsg, 
+            `Registered Student Direct Query (${currentIntent})`, 
+            student.full_name,
+            voucherPdf ? { buffer: voucherPdf, fileName: `SGC_FeeVoucher_${student.college_no || student.id}.pdf`, caption: shortMsg } : undefined
+          );
         }
 
         // If user sent a strict greeting or menu request:
@@ -6040,7 +6864,21 @@ CONVERSATIONAL RULES & PARENTAL EMPATHY:
           const isAtt = cleanQuery.includes("attend") || cleanQuery.includes("hazir") || cleanQuery.includes("absent");
           const currentIntent = isFee ? "fee" : isMarks ? "marks" : isAtt ? "attendance" : "general";
           const detailsMsg = await this.buildStudentReply(supabase, pickedSibling, currentIntent);
-          return await sendReply(detailsMsg, `Registered Sibling Selected (${currentIntent})`, pickedSibling.full_name);
+          let voucherPdf: Buffer | undefined;
+          if (isFee) {
+            try {
+              voucherPdf = this.generateStudentFeeVoucherPdf(pickedSibling);
+            } catch (err) {}
+          }
+          const shortMsg = isFee && voucherPdf
+            ? `🏛️ *SUPERIOR COLLEGE JAHANIAN*\nAssalam-o-Alaikum! *${pickedSibling.full_name}* (${pickedSibling.college_no || pickedSibling.id}) ka official fee voucher PDF sath attach kar diya gaya hai.`
+            : detailsMsg;
+          return await sendReply(
+            shortMsg, 
+            `Registered Sibling Selected (${currentIntent})`, 
+            pickedSibling.full_name,
+            voucherPdf ? { buffer: voucherPdf, fileName: `SGC_FeeVoucher_${pickedSibling.college_no || pickedSibling.id}.pdf`, caption: shortMsg } : undefined
+          );
         }
 
         session.candidateStudents = registeredStudents;
@@ -6380,7 +7218,21 @@ _Directorate of Admissions, SGC Jahanian_`;
     if (session.stage === "VERIFIED" && session.verifiedStudent) {
       const currentIntent = isFeeQuery ? "fee" : isMarksQuery ? "marks" : isAttendanceQuery ? "attendance" : (session.pendingIntent || "general");
       const detailsMsg = await this.buildStudentReply(supabase, session.verifiedStudent, currentIntent);
-      return await sendReply(detailsMsg, `Verified Query (${currentIntent})`, session.verifiedStudent.full_name);
+      let voucherPdf: Buffer | undefined;
+      if (currentIntent === "fee") {
+        try {
+          voucherPdf = this.generateStudentFeeVoucherPdf(session.verifiedStudent);
+        } catch (err) {}
+      }
+      const shortMsg = currentIntent === "fee" && voucherPdf
+        ? `🏛️ *SUPERIOR COLLEGE JAHANIAN*\nAssalam-o-Alaikum! *${session.verifiedStudent.full_name}* (${session.verifiedStudent.college_no || session.verifiedStudent.id}) ka official fee voucher PDF sath attach kar diya gaya hai.`
+        : detailsMsg;
+      return await sendReply(
+        shortMsg, 
+        `Verified Query (${currentIntent})`, 
+        session.verifiedStudent.full_name,
+        voucherPdf ? { buffer: voucherPdf, fileName: `SGC_FeeVoucher_${session.verifiedStudent.college_no || session.verifiedStudent.id}.pdf`, caption: shortMsg } : undefined
+      );
     }
 
     // 11. VERIFICATION STAGE (AWAITING_VERIFICATION):
@@ -6404,8 +7256,21 @@ _Directorate of Admissions, SGC Jahanian_`;
 Hum *${session.verifiedStudent.full_name}* (Walid: ${session.verifiedStudent.father_name}, Sec: ${session.verifiedStudent.section || "A"}) ka official record share kar rahe hain:`;
 
           const detailsMsg = await this.buildStudentReply(supabase, session.verifiedStudent, session.pendingIntent || "general");
-          const combined = `${successGreeting}\n\n${detailsMsg}`;
-          return await sendReply(combined, `Verified Reply (${session.pendingIntent || "general"})`, session.verifiedStudent.full_name);
+          let voucherPdf: Buffer | undefined;
+          if (session.pendingIntent === "fee") {
+            try {
+              voucherPdf = this.generateStudentFeeVoucherPdf(session.verifiedStudent);
+            } catch (err) {}
+          }
+          const shortMsg = session.pendingIntent === "fee" && voucherPdf
+            ? `${successGreeting}\n\n🏛️ *SUPERIOR COLLEGE JAHANIAN*\n*${session.verifiedStudent.full_name}* (${session.verifiedStudent.college_no || session.verifiedStudent.id}) ka official fee voucher PDF sath attach kar diya gaya hai.`
+            : `${successGreeting}\n\n${detailsMsg}`;
+          return await sendReply(
+            shortMsg, 
+            `Verified Reply (${session.pendingIntent || "general"})`, 
+            session.verifiedStudent.full_name,
+            voucherPdf ? { buffer: voucherPdf, fileName: `SGC_FeeVoucher_${session.verifiedStudent.college_no || session.verifiedStudent.id}.pdf`, caption: shortMsg } : undefined
+          );
         } else if (narrowed.length > 1) {
           session.candidateStudents = narrowed;
           const multiplePrompt = 
@@ -6484,8 +7349,21 @@ Baraye meherbani student ke Walid ka Naam (Father Name) ya Class Section (maslan
 Hum *${session.verifiedStudent.full_name}* (Walid: ${session.verifiedStudent.father_name}, Sec: ${session.verifiedStudent.section || "A"}) ka official record share kar rahe hain:`;
 
           const detailsMsg = await this.buildStudentReply(supabase, session.verifiedStudent, session.pendingIntent || "general");
-          const combined = `${successGreeting}\n\n${detailsMsg}`;
-          return await sendReply(combined, `Verified Reply (${session.pendingIntent || "general"})`, session.verifiedStudent.full_name);
+          let voucherPdf: Buffer | undefined;
+          if (session.pendingIntent === "fee") {
+            try {
+              voucherPdf = this.generateStudentFeeVoucherPdf(session.verifiedStudent);
+            } catch (err) {}
+          }
+          const shortMsg = session.pendingIntent === "fee" && voucherPdf
+            ? `${successGreeting}\n\n🏛️ *SUPERIOR COLLEGE JAHANIAN*\n*${session.verifiedStudent.full_name}* (${session.verifiedStudent.college_no || session.verifiedStudent.id}) ka official fee voucher PDF sath attach kar diya gaya hai.`
+            : `${successGreeting}\n\n${detailsMsg}`;
+          return await sendReply(
+            shortMsg, 
+            `Verified Reply (${session.pendingIntent || "general"})`, 
+            session.verifiedStudent.full_name,
+            voucherPdf ? { buffer: voucherPdf, fileName: `SGC_FeeVoucher_${session.verifiedStudent.college_no || session.verifiedStudent.id}.pdf`, caption: shortMsg } : undefined
+          );
         } else {
           // Verification did NOT match the candidate student!
           session.failedVerificationAttempts = (session.failedVerificationAttempts || 0) + 1;
@@ -6612,8 +7490,21 @@ Baraye meherbani wo 4-digit OTP code yahan reply karein taake record share kiya 
 Hum *${candidate.full_name}* (Walid: ${candidate.father_name || "N/A"}, Sec: ${candidate.section || "A"}) ka official record share kar rahe hain:`;
 
           const detailsMsg = await this.buildStudentReply(supabase, candidate, session.pendingIntent || "general");
-          const combined = `${successGreeting}\n\n${detailsMsg}`;
-          return await sendReply(combined, `Direct Verified Reply`, candidate.full_name);
+          let voucherPdf: Buffer | undefined;
+          if (session.pendingIntent === "fee") {
+            try {
+              voucherPdf = this.generateStudentFeeVoucherPdf(candidate);
+            } catch (err) {}
+          }
+          const shortMsg = session.pendingIntent === "fee" && voucherPdf
+            ? `${successGreeting}\n\n🏛️ *SUPERIOR COLLEGE JAHANIAN*\n*${candidate.full_name}* (${candidate.college_no || candidate.id}) ka official fee voucher PDF sath attach kar diya gaya hai.`
+            : `${successGreeting}\n\n${detailsMsg}`;
+          return await sendReply(
+            shortMsg, 
+            `Direct Verified Reply`, 
+            candidate.full_name,
+            voucherPdf ? { buffer: voucherPdf, fileName: `SGC_FeeVoucher_${candidate.college_no || candidate.id}.pdf`, caption: shortMsg } : undefined
+          );
         }
 
         session.candidateStudent = candidate;
@@ -6969,7 +7860,8 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
 
   public async sendMessage(
     phone: string,
-    message: string
+    message: string,
+    docAttachment?: { buffer: Buffer; fileName: string; caption?: string }
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     if (!this.sock || this.status !== "connected") {
       return {
@@ -6992,11 +7884,21 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
     }
 
     try {
-      const sentMsg = await this.sock.sendMessage(jid, { text: message });
+      let sentMsg: any;
+      if (docAttachment) {
+        sentMsg = await this.sock.sendMessage(jid, {
+          document: docAttachment.buffer,
+          mimetype: "application/pdf",
+          fileName: docAttachment.fileName,
+          caption: docAttachment.caption || message,
+        });
+      } else {
+        sentMsg = await this.sock.sendMessage(jid, { text: message });
+      }
       this.saveChatLog({
         phone: normalized,
         direction: "outgoing",
-        text: message,
+        text: docAttachment ? `📄 [PDF: ${docAttachment.fileName}]\n${message}` : message,
       });
       return {
         success: true,
@@ -7006,11 +7908,21 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
       if (jid.endsWith("@lid")) {
         try {
           const fallbackJid = `${normalized}@s.whatsapp.net`;
-          const sentMsg = await this.sock.sendMessage(fallbackJid, { text: message });
+          let sentMsg: any;
+          if (docAttachment) {
+            sentMsg = await this.sock.sendMessage(fallbackJid, {
+              document: docAttachment.buffer,
+              mimetype: "application/pdf",
+              fileName: docAttachment.fileName,
+              caption: docAttachment.caption || message,
+            });
+          } else {
+            sentMsg = await this.sock.sendMessage(fallbackJid, { text: message });
+          }
           this.saveChatLog({
             phone: normalized,
             direction: "outgoing",
-            text: message,
+            text: docAttachment ? `📄 [PDF: ${docAttachment.fileName}]\n${message}` : message,
           });
           return {
             success: true,
