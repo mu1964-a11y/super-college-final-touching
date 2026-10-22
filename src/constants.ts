@@ -28,7 +28,12 @@ export const ACADEMIC_GROUPS = [
   { name: 'BS Botany', subjects: ['Plant Diversity', 'Cell Biology & Genetics', 'Plant Physiology', 'Ecology', 'Plant Anatomy'], type: 'Degree' },
   { name: 'BS Zoology', subjects: ['Animal Diversity', 'Cell & Molecular Biology', 'Genetics', 'Animal Physiology', 'Evolution & Ecology'], type: 'Degree' },
   { name: 'BBA (Bachelor of Business Admin)', subjects: ['Principles of Management', 'Financial Accounting', 'Marketing Management', 'Business Economics', 'Organizational Behavior'], type: 'Degree' },
-  { name: 'BS Program', subjects: ['Core BS Electives', 'Research Methodology'], type: 'Degree' }
+  { name: 'BS Program', subjects: ['Core BS Electives', 'Research Methodology'], type: 'Degree' },
+  { name: 'ADS (Double Math, Physics)', subjects: ['Calculus & Math', 'Physics', 'English Language', 'Islamic Studies / Ethics'], type: 'Degree' },
+  { name: 'ADS (Double Math, Statistics)', subjects: ['Calculus & Math', 'Statistics', 'English Language', 'Islamic Studies / Ethics'], type: 'Degree' },
+  { name: 'ADS (Botany, Zoology, Chemistry)', subjects: ['Botany', 'Zoology', 'Chemistry', 'English Language'], type: 'Degree' },
+  { name: 'ADS (Computer Science / IT)', subjects: ['Programming Fundamentals', 'Database Systems', 'Applied Mathematics', 'English Language'], type: 'Degree' },
+  { name: 'ADA (Arts / Humanities)', subjects: ['Elective Subject 1', 'Elective Subject 2', 'English Language', 'Islamic Studies / Ethics'], type: 'Degree' }
 ];
 
 export const COMPULSORY_SUBJECTS = ['English', 'Urdu', 'Islamic Studies', 'Pakistan Studies'];

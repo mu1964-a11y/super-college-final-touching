@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useState, useMemo } from "react";
 import { useDebounce } from "../hooks/useDebounce";
-import { CANONICAL_SESSIONS } from "../lib/academicMasterData";
+import { CANONICAL_SESSIONS, getProgramSessions, normalizeSessionString } from "../lib/academicMasterData";
 import {
   Search,
   Filter,
@@ -46,6 +46,9 @@ import {
   Laptop,
   RefreshCw,
   ExternalLink,
+  Award,
+  X,
+  BookOpen,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
@@ -141,6 +144,9 @@ export default function AdmissionsView({
   >(null);
 
   const [localProgram, setLocalProgram] = useState<string | undefined>(program);
+  const [activeStreamFilter, setActiveStreamFilter] = useState<string>(program && program !== "all" ? program : "all");
+  const [activeStageFilter, setActiveStageFilter] = useState<string>("all");
+  const [activeSessionFilter, setActiveSessionFilter] = useState<string>("all");
 
   // Sync with initialFilter if it changes from sidebar
   React.useEffect(() => {
@@ -158,149 +164,191 @@ export default function AdmissionsView({
 
   React.useEffect(() => {
     setLocalProgram(program);
+    if (program && program !== "all") {
+      setActiveStreamFilter(program);
+      setActiveStageFilter("all");
+    }
   }, [program]);
 
-  const programAdmissions = useMemo(() => {
-    return (data.admissions || []).filter((a: any) => {
-      let matchesProgram = true;
-      if (localProgram && localProgram !== "all") {
-        const groupLower = (a.group || "").toLowerCase();
-        const categoryLower = (a.category || "").toLowerCase();
-        
-        const isDIT = groupLower.includes("dit") || groupLower.includes("diploma") || categoryLower.includes("dit") || categoryLower.includes("diploma");
-        const isBS = groupLower.includes("bs") || groupLower.includes("b.s") || categoryLower.includes("bs") || groupLower.includes("bba") || groupLower.includes("bachelor") || groupLower.includes("bscs") || groupLower.includes("bsit") || groupLower.includes("ads") || categoryLower.includes("ads") || groupLower.includes("adp") || categoryLower.includes("adp");
-        const isUKL3 = groupLower.includes("uk") || groupLower.includes("level 3") || groupLower.includes("l3") || categoryLower.includes("uk");
+  // Real-time comprehensive cohort counters across the entire database
+  const quickStats = useMemo(() => {
+    const list = data.admissions || [];
+    let interTotal = 0, bsTotal = 0, adsTotal = 0, ditTotal = 0, ukl3Total = 0;
+    let p1Boys = 0, p1Girls = 0, p2Boys = 0, p2Girls = 0;
+    let interSess26_28 = 0, interSess25_27 = 0;
 
-        if (localProgram === "fsc")
-          matchesProgram = !isDIT && !isBS && !isUKL3;
-        else if (localProgram === "dit")
-          matchesProgram = isDIT;
-        else if (localProgram === "ukl3")
-          matchesProgram = isUKL3;
-        else if (localProgram === "bs")
-          matchesProgram = isBS;
+    let bsBoys = 0, bsGirls = 0;
+    let bsSem1 = 0, bsSem5 = 0, bsSem7_8 = 0;
+    let bsSess26_30 = 0, bsSess25_29 = 0, bsSess24_28 = 0, bsSess23_27 = 0, bsSess24_26 = 0;
+
+    let adsBoys = 0, adsGirls = 0;
+    let adsPart1 = 0, adsPart2 = 0;
+    let adsSess26_28 = 0, adsSess25_27 = 0;
+
+    for (const a of list) {
+      const g = (a.group || '').toLowerCase();
+      const c = (a.category || '').toLowerCase();
+      const s = normalizeSessionString(a.session);
+      const isMale = a.gender === 'Male';
+      const isFemale = a.gender === 'Female';
+
+      const isADS = g.includes('ads') || c.includes('ads') || g.includes('adp') || c.includes('adp') || g.includes('ada') || c.includes('ada');
+      const isDIT = g.includes('dit') || g.includes('diploma') || c.includes('dit');
+      const isUK = g.includes('uk') || g.includes('level 3') || c.includes('uk');
+      const isBS = !isADS && (g.includes('bs') || g.includes('b.s') || c.includes('bs') || g.includes('bba') || g.includes('bachelor') || g.includes('bscs') || g.includes('bsit'));
+      const isInter = !isADS && !isDIT && !isUK && !isBS;
+
+      const sem = Number(a.currentSemester || 0);
+      const part = (a.academicPart || '').toLowerCase();
+      const isPart2 = part.includes('part-2') || part.includes('2nd') || c.includes('part-2') || c.includes('part 2') || s === '2025-27';
+
+      if (isInter) {
+        interTotal++;
+        if (!isPart2 && isMale) p1Boys++;
+        if (!isPart2 && isFemale) p1Girls++;
+        if (isPart2 && isMale) p2Boys++;
+        if (isPart2 && isFemale) p2Girls++;
+        if (s === '2026-28') interSess26_28++;
+        if (s === '2025-27') interSess25_27++;
+      } else if (isBS) {
+        bsTotal++;
+        if (isMale) bsBoys++;
+        if (isFemale) bsGirls++;
+        if (sem === 1 || c.includes('1st') || c.includes('fresh')) bsSem1++;
+        if (sem === 5 || c.includes('5th') || c.includes('lateral')) bsSem5++;
+        if (sem === 7 || sem === 8 || c.includes('7th') || c.includes('8th') || c.includes('final')) bsSem7_8++;
+        if (s === '2026-30') bsSess26_30++;
+        if (s === '2025-29') bsSess25_29++;
+        if (s === '2024-28') bsSess24_28++;
+        if (s === '2023-27') bsSess23_27++;
+        if (s === '2024-26') bsSess24_26++;
+      } else if (isADS) {
+        adsTotal++;
+        if (isMale) adsBoys++;
+        if (isFemale) adsGirls++;
+        if (sem <= 2 || !part.includes('part-2')) adsPart1++;
+        else adsPart2++;
+        if (s === '2026-28') adsSess26_28++;
+        if (s === '2025-27') adsSess25_27++;
+      } else if (isDIT) {
+        ditTotal++;
+      } else if (isUK) {
+        ukl3Total++;
       }
-      return matchesProgram;
-    });
-  }, [data.admissions, localProgram]);
-
-  const summaryStats = useMemo(() => {
-    return programAdmissions.reduce(
-      (acc: any, a: any) => {
-        const received = Number(a.feeReceived ?? a.fee_received ?? 0);
-        const total = Number(a.totalPackage ?? a.total_package ?? a.totalFeeFinalized ?? 0);
-
-        if (received >= total && total > 0) {
-          acc.fullPaid++;
-        } else if (received > 0) {
-          acc.partialPaid++;
-        } else {
-          acc.unpaid++;
-        }
-
-        return acc;
-      },
-      { total: programAdmissions.length, fullPaid: 0, partialPaid: 0, unpaid: 0 },
-    );
-  }, [programAdmissions]);
-
-  const photoStats = useMemo(() => {
-    let withPhoto = 0;
-    let missingPhoto = 0;
-    for (const a of programAdmissions) {
-      const hasP = Boolean(
-        (a.photo && a.photo.trim().length > 10) ||
-        ((a as any).photoUrl && (a as any).photoUrl.trim().length > 10) ||
-        ((a as any).photo_url && (a as any).photo_url.trim().length > 10)
-      );
-      if (hasP) withPhoto++;
-      else missingPhoto++;
     }
-    return { withPhoto, missingPhoto, total: programAdmissions.length };
-  }, [programAdmissions]);
+
+    return {
+      all: list.length,
+      inter: { total: interTotal, p1Boys, p1Girls, p2Boys, p2Girls, sess26_28: interSess26_28, sess25_27: interSess25_27 },
+      bs: { total: bsTotal, bsBoys, bsGirls, sem1: bsSem1, sem5: bsSem5, sem7_8: bsSem7_8, sess26_30: bsSess26_30, sess25_29: bsSess25_29, sess24_28: bsSess24_28, sess23_27: bsSess23_27, sess24_26: bsSess24_26 },
+      ads: { total: adsTotal, adsBoys, adsGirls, part1: adsPart1, part2: adsPart2, sess26_28: adsSess26_28, sess25_27: adsSess25_27 },
+      dit: { total: ditTotal },
+      ukl3: { total: ukl3Total }
+    };
+  }, [data.admissions]);
 
   const filteredAdmissions = useMemo(() => {
-    const baseList = debouncedSearch.trim() ? (data.admissions || []) : programAdmissions;
-    return baseList
+    return (data.admissions || [])
       .filter((a: Admission) => {
-        const searchClean = (debouncedSearch || "").trim().toLowerCase();
-        const matchesSearch =
-          !searchClean ||
-          (a.fullName || "").toLowerCase().includes(searchClean) ||
-          (a.fatherName || "").toLowerCase().includes(searchClean) ||
-          (a.studentId && a.studentId.toLowerCase().includes(searchClean)) ||
-          (String(a.collegeNo || (a as any).college_no || "").toLowerCase().includes(searchClean)) ||
-          (String(a.contactNumber || (a as any).contact || "").includes(searchClean)) ||
-          (String(a.fatherContact || "").includes(searchClean)) ||
-          (String(a.bayFormNo || (a as any).bay_form_no || "").includes(searchClean));
+        const groupLower = (a.group || "").toLowerCase();
+        const categoryLower = (a.category || "").toLowerCase();
+        const sessNorm = normalizeSessionString(a.session);
 
+        const isADS = groupLower.includes("ads") || categoryLower.includes("ads") || groupLower.includes("adp") || categoryLower.includes("adp") || groupLower.includes("ada") || categoryLower.includes("ada");
+        const isDIT = groupLower.includes("dit") || groupLower.includes("diploma") || categoryLower.includes("dit") || categoryLower.includes("diploma");
+        const isUKL3 = groupLower.includes("uk") || groupLower.includes("level 3") || groupLower.includes("l3") || categoryLower.includes("uk");
+        const isBS = !isADS && (groupLower.includes("bs") || groupLower.includes("b.s") || categoryLower.includes("bs") || groupLower.includes("bba") || groupLower.includes("bachelor") || groupLower.includes("bscs") || groupLower.includes("bsit"));
+        const isInter = !isADS && !isDIT && !isUKL3 && !isBS;
+
+        const sem = Number(a.currentSemester || 0);
+        const part = (a.academicPart || "").toLowerCase();
+        const isPart2 = part.includes("part-2") || part.includes("2nd") || categoryLower.includes("part-2") || categoryLower.includes("part 2") || sessNorm === "2025-27";
+        const isMale = a.gender === "Male";
+        const isFemale = a.gender === "Female";
+
+        // 1. Educational Stream Filter
+        if (activeStreamFilter !== "all") {
+          if (activeStreamFilter === "fsc" || activeStreamFilter === "inter") {
+            if (!isInter) return false;
+          } else if (activeStreamFilter === "bs") {
+            if (!isBS) return false;
+          } else if (activeStreamFilter === "ads") {
+            if (!isADS) return false;
+          } else if (activeStreamFilter === "dit") {
+            if (!isDIT) return false;
+          } else if (activeStreamFilter === "ukl3") {
+            if (!isUKL3) return false;
+          }
+        }
+
+        // 2. Quick Cohort Sub-Filter
+        if (activeStageFilter !== "all") {
+          if (activeStageFilter === "p1-boys" && (!isInter || isPart2 || !isMale)) return false;
+          if (activeStageFilter === "p1-girls" && (!isInter || isPart2 || !isFemale)) return false;
+          if (activeStageFilter === "p2-boys" && (!isInter || !isPart2 || !isMale)) return false;
+          if (activeStageFilter === "p2-girls" && (!isInter || !isPart2 || !isFemale)) return false;
+          if (activeStageFilter === "inter-p1" && (!isInter || isPart2)) return false;
+          if (activeStageFilter === "inter-p2" && (!isInter || !isPart2)) return false;
+
+          if (activeStageFilter === "bs-boys" && (!isBS || !isMale)) return false;
+          if (activeStageFilter === "bs-girls" && (!isBS || !isFemale)) return false;
+          if (activeStageFilter === "bs-sem1" && (!isBS || (sem !== 1 && !categoryLower.includes("1st") && !categoryLower.includes("fresh")))) return false;
+          if (activeStageFilter === "bs-sem5" && (!isBS || (sem !== 5 && !categoryLower.includes("5th") && !categoryLower.includes("lateral")))) return false;
+          if (activeStageFilter === "bs-sem7-8" && (!isBS || (sem !== 7 && sem !== 8 && !categoryLower.includes("7th") && !categoryLower.includes("8th") && !categoryLower.includes("final")))) return false;
+
+          if (activeStageFilter === "ads-boys" && (!isADS || !isMale)) return false;
+          if (activeStageFilter === "ads-girls" && (!isADS || !isFemale)) return false;
+          if (activeStageFilter === "ads-p1" && (!isADS || (sem > 2 || part.includes("part-2")))) return false;
+          if (activeStageFilter === "ads-p2" && (!isADS || (sem <= 2 && !part.includes("part-2")))) return false;
+        }
+
+        // 3. Quick Session Filter
+        if (activeSessionFilter !== "all") {
+          if (sessNorm !== normalizeSessionString(activeSessionFilter)) return false;
+        }
+
+        // 4. Search Filter
+        const searchClean = (debouncedSearch || "").trim().toLowerCase();
+        if (searchClean) {
+          const searchableText = `${a.fullName || ""} ${a.fatherName || ""} ${a.studentId || ""} ${a.collegeNo || (a as any).college_no || ""} ${a.contactNumber || (a as any).contact || ""} ${a.fatherContact || ""} ${a.bayFormNo || (a as any).bay_form_no || ""}`.toLowerCase();
+          if (!searchableText.includes(searchClean)) return false;
+        }
+
+        // 5. Fee Filter
         const received = Number(a.feeReceived ?? (a as any).fee_received ?? 0);
         const total = Number(a.totalPackage ?? (a as any).total_package ?? (a as any).totalFeeFinalized ?? 0);
-        let calcFeeStatus = "";
-        if (received >= total && total > 0) {
-          calcFeeStatus = "Full Paid";
-        } else if (received > 0) {
-          calcFeeStatus = "Partial Paid";
-        } else {
-          calcFeeStatus = "Not Paid";
-        }
-        const matchesFee = feeFilter === "all" || calcFeeStatus === feeFilter;
-        const matchesGender =
-          genderFilter === "all" || a.gender === genderFilter;
+        let calcFeeStatus = "Not Paid";
+        if (received >= total && total > 0) calcFeeStatus = "Full Paid";
+        else if (received > 0) calcFeeStatus = "Partial Paid";
 
-        let matchesProgram = true;
-        // When searching by query across all admissions, apply program filter if active
-        if (debouncedSearch.trim() && localProgram && localProgram !== "all") {
-          const groupLower = (a.group || "").toLowerCase();
-          const categoryLower = (a.category || "").toLowerCase();
-          
-          const isDIT = groupLower.includes("dit") || groupLower.includes("diploma") || categoryLower.includes("dit") || categoryLower.includes("diploma");
-          const isBS = groupLower.includes("bs") || groupLower.includes("b.s") || categoryLower.includes("bs") || groupLower.includes("bba") || groupLower.includes("bachelor") || groupLower.includes("bscs") || groupLower.includes("bsit") || groupLower.includes("ads") || categoryLower.includes("ads") || groupLower.includes("adp") || categoryLower.includes("adp");
-          const isUKL3 = groupLower.includes("uk") || groupLower.includes("level 3") || groupLower.includes("l3") || categoryLower.includes("uk");
+        if (feeFilter !== "all" && calcFeeStatus !== feeFilter) return false;
 
-          if (localProgram === "fsc")
-            matchesProgram = !isDIT && !isBS && !isUKL3;
-          else if (localProgram === "dit")
-            matchesProgram = isDIT;
-          else if (localProgram === "ukl3")
-            matchesProgram = isUKL3;
-          else if (localProgram === "bs")
-            matchesProgram = isBS;
-        }
+        // 6. Gender Filter
+        if (genderFilter !== "all" && a.gender !== genderFilter) return false;
 
-        // Diversion Logic: Only show students who are NOT yet fully admitted (haven't paid initial fee)
+        // 7. Admitted Filter
         const statusStr = a.status as string;
         const isFullyEnrolled = a.isAdmitted === true ||
-        statusStr === "Admitted/Confirmed" ||
-        statusStr === "Admitted" ||
-        statusStr === "Confirmed" ||
-        statusStr === "Full Paid" ||
-        statusStr === "Partial Paid" ||
-        received > 0;
-        
-        const matchesAdmitted =
-          admittedFilter === "all" ||
-          (admittedFilter === "Admitted" && isFullyEnrolled) ||
-          (admittedFilter === "Prospective" && !isFullyEnrolled);
+          statusStr === "Admitted/Confirmed" ||
+          statusStr === "Admitted" ||
+          statusStr === "Confirmed" ||
+          statusStr === "Full Paid" ||
+          statusStr === "Partial Paid" ||
+          received > 0;
 
+        if (admittedFilter === "Admitted" && !isFullyEnrolled) return false;
+        if (admittedFilter === "Prospective" && isFullyEnrolled) return false;
+
+        // 8. Photo Filter
         const hasPhoto = Boolean(
           (a.photo && a.photo.trim().length > 10) ||
           ((a as any).photoUrl && (a as any).photoUrl.trim().length > 10) ||
           ((a as any).photo_url && (a as any).photo_url.trim().length > 10)
         );
-        const matchesPhoto =
-          photoFilter === "all" ||
-          (photoFilter === "with-photo" && hasPhoto) ||
-          (photoFilter === "missing-photo" && !hasPhoto);
+        if (photoFilter === "with-photo" && !hasPhoto) return false;
+        if (photoFilter === "missing-photo" && hasPhoto) return false;
 
-        return (
-          matchesSearch &&
-          matchesFee &&
-          matchesGender &&
-          matchesAdmitted &&
-          matchesProgram &&
-          matchesPhoto
-        );
+        return true;
       })
       .sort((a: Admission, b: Admission) => {
         if (sortBy === "date-new")
@@ -318,16 +366,54 @@ export default function AdmissionsView({
         return 0;
       });
   }, [
-    programAdmissions,
     data.admissions,
+    activeStreamFilter,
+    activeStageFilter,
+    activeSessionFilter,
     debouncedSearch,
     feeFilter,
     admittedFilter,
     genderFilter,
     photoFilter,
     sortBy,
-    localProgram,
   ]);
+
+  const programAdmissions = filteredAdmissions;
+
+  const summaryStats = useMemo(() => {
+    return filteredAdmissions.reduce(
+      (acc: any, a: any) => {
+        const received = Number(a.feeReceived ?? (a as any).fee_received ?? 0);
+        const total = Number(a.totalPackage ?? (a as any).total_package ?? (a as any).totalFeeFinalized ?? 0);
+
+        if (received >= total && total > 0) {
+          acc.fullPaid++;
+        } else if (received > 0) {
+          acc.partialPaid++;
+        } else {
+          acc.unpaid++;
+        }
+
+        return acc;
+      },
+      { total: filteredAdmissions.length, fullPaid: 0, partialPaid: 0, unpaid: 0 },
+    );
+  }, [filteredAdmissions]);
+
+  const photoStats = useMemo(() => {
+    let withPhoto = 0;
+    let missingPhoto = 0;
+    for (const a of filteredAdmissions) {
+      const hasP = Boolean(
+        (a.photo && a.photo.trim().length > 10) ||
+        ((a as any).photoUrl && (a as any).photoUrl.trim().length > 10) ||
+        ((a as any).photo_url && (a as any).photo_url.trim().length > 10)
+      );
+      if (hasP) withPhoto++;
+      else missingPhoto++;
+    }
+    return { withPhoto, missingPhoto, total: filteredAdmissions.length };
+  }, [filteredAdmissions]);
 
   const programStats = useMemo(() => {
     return programAdmissions.reduce(
@@ -1445,6 +1531,227 @@ export default function AdmissionsView({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ─── QUICK NAVIGATION & COHORT SHORTCUT RIBBON ─── */}
+      <div className="bg-white dark:bg-slate-900 p-2.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-2">
+        {/* Stream Pills Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
+              <Layers size={12} className="text-superior-teal" /> Streams:
+            </span>
+            {[
+              { id: "all", label: "All Streams", count: quickStats.all },
+              { id: "fsc", label: "Intermediate (HSSC)", count: quickStats.inter.total },
+              { id: "bs", label: "BS 4-Year Degrees", count: quickStats.bs.total },
+              { id: "ads", label: "Associate Degree (ADS)", count: quickStats.ads.total },
+              { id: "dit", label: "D.I.T. Diploma", count: quickStats.dit.total },
+              { id: "ukl3", label: "UK Level 3", count: quickStats.ukl3.total },
+            ].map((st) => (
+              <button
+                key={st.id}
+                type="button"
+                onClick={() => {
+                  setActiveStreamFilter(st.id);
+                  setActiveStageFilter("all");
+                  setActiveSessionFilter("all");
+                }}
+                className={cn(
+                  "px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs",
+                  activeStreamFilter === st.id
+                    ? "bg-superior-teal text-white shadow-xs"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70"
+                )}
+              >
+                <span>{st.label}</span>
+                <span className={cn(
+                  "text-[10px] font-mono font-black px-1.5 py-0.2 rounded-full",
+                  activeStreamFilter === st.id
+                    ? "bg-white/20 text-white"
+                    : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200"
+                )}>
+                  {st.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {(activeStageFilter !== "all" || activeSessionFilter !== "all" || activeStreamFilter !== "all") && (
+            <button
+              type="button"
+              onClick={() => {
+                setActiveStreamFilter("all");
+                setActiveStageFilter("all");
+                setActiveSessionFilter("all");
+              }}
+              className="text-[10px] font-black uppercase tracking-wider text-rose-600 hover:text-rose-700 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 px-2.5 py-1 rounded-xl border border-rose-200 dark:border-rose-800 transition-all cursor-pointer flex items-center gap-1 shrink-0"
+            >
+              <X size={12} /> Reset Quick Filter
+            </button>
+          )}
+        </div>
+
+        {/* Dynamic Contextual Sub-Cohort Pills */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800 text-xs">
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
+            <Filter size={11} className="text-superior-gold" /> Cohorts:
+          </span>
+
+          {(activeStreamFilter === "all" || activeStreamFilter === "fsc") && (
+            <>
+              {[
+                { id: "all", label: "All Inter", count: quickStats.inter.total, type: "stage" },
+                { id: "p1-boys", label: "Part-1 Boys", count: quickStats.inter.p1Boys, type: "stage", color: "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-200" },
+                { id: "p1-girls", label: "Part-1 Girls", count: quickStats.inter.p1Girls, type: "stage", color: "bg-pink-50 text-pink-800 border-pink-300 dark:bg-pink-950 dark:text-pink-200" },
+                { id: "p2-boys", label: "Part-2 Boys", count: quickStats.inter.p2Boys, type: "stage", color: "bg-teal-50 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-200" },
+                { id: "p2-girls", label: "Part-2 Girls", count: quickStats.inter.p2Girls, type: "stage", color: "bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-200" },
+                { id: "2026-28", label: "Session 2026-28 (P-1)", count: quickStats.inter.sess26_28, type: "session" },
+                { id: "2025-27", label: "Session 2025-27 (P-2)", count: quickStats.inter.sess25_27, type: "session" },
+              ].map((pill) => {
+                const isActive = pill.type === "session"
+                  ? activeSessionFilter === pill.id
+                  : activeStageFilter === pill.id;
+                return (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    onClick={() => {
+                      if (activeStreamFilter === "all") setActiveStreamFilter("fsc");
+                      if (pill.type === "session") {
+                        setActiveSessionFilter(activeSessionFilter === pill.id ? "all" : pill.id);
+                      } else {
+                        setActiveStageFilter(activeStageFilter === pill.id ? "all" : pill.id);
+                      }
+                    }}
+                    className={cn(
+                      "px-2.5 py-0.5 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer border",
+                      isActive
+                        ? "bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 shadow-xs"
+                        : pill.color || "bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
+                    )}
+                  >
+                    <span>{pill.label}</span>
+                    <span className={cn(
+                      "text-[9.5px] font-mono font-black px-1.5 py-0.1 rounded-full",
+                      isActive ? "bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-900" : "bg-black/5 dark:bg-white/10"
+                    )}>
+                      {pill.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+
+          {activeStreamFilter === "bs" && (
+            <>
+              {[
+                { id: "all", label: "All BS", count: quickStats.bs.total, type: "stage" },
+                { id: "bs-boys", label: "BS Boys Only", count: quickStats.bs.bsBoys, type: "stage", color: "bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-200" },
+                { id: "bs-girls", label: "BS Girls Only", count: quickStats.bs.bsGirls, type: "stage", color: "bg-purple-50 text-purple-800 border-purple-300 dark:bg-purple-950 dark:text-purple-200" },
+                { id: "bs-sem1", label: "1st Sem (Fresh)", count: quickStats.bs.sem1, type: "stage", color: "bg-indigo-50 text-indigo-800 border-indigo-300 dark:bg-indigo-950 dark:text-indigo-200" },
+                { id: "bs-sem5", label: "5th Sem (Lateral)", count: quickStats.bs.sem5, type: "stage", color: "bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-200" },
+                { id: "bs-sem7-8", label: "Final Sem (7th/8th)", count: quickStats.bs.sem7_8, type: "stage", color: "bg-teal-50 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-200" },
+                { id: "2026-30", label: "2026-30", count: quickStats.bs.sess26_30, type: "session" },
+                { id: "2025-29", label: "2025-29", count: quickStats.bs.sess25_29, type: "session" },
+                { id: "2024-28", label: "2024-28", count: quickStats.bs.sess24_28, type: "session" },
+                { id: "2023-27", label: "2023-27", count: quickStats.bs.sess23_27, type: "session" },
+                { id: "2024-26", label: "2024-26 (Lateral)", count: quickStats.bs.sess24_26, type: "session" },
+              ].map((pill) => {
+                const isActive = pill.type === "session"
+                  ? activeSessionFilter === pill.id
+                  : activeStageFilter === pill.id;
+                return (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    onClick={() => {
+                      if (pill.type === "session") {
+                        setActiveSessionFilter(activeSessionFilter === pill.id ? "all" : pill.id);
+                      } else {
+                        setActiveStageFilter(activeStageFilter === pill.id ? "all" : pill.id);
+                      }
+                    }}
+                    className={cn(
+                      "px-2.5 py-0.5 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer border",
+                      isActive
+                        ? "bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 shadow-xs"
+                        : pill.color || "bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
+                    )}
+                  >
+                    <span>{pill.label}</span>
+                    <span className={cn(
+                      "text-[9.5px] font-mono font-black px-1.5 py-0.1 rounded-full",
+                      isActive ? "bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-900" : "bg-black/5 dark:bg-white/10"
+                    )}>
+                      {pill.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+
+          {activeStreamFilter === "ads" && (
+            <>
+              {[
+                { id: "all", label: "All ADS", count: quickStats.ads.total, type: "stage" },
+                { id: "ads-boys", label: "ADS Boys Only", count: quickStats.ads.adsBoys, type: "stage", color: "bg-cyan-50 text-cyan-800 border-cyan-300 dark:bg-cyan-950 dark:text-cyan-200" },
+                { id: "ads-girls", label: "ADS Girls Only", count: quickStats.ads.adsGirls, type: "stage", color: "bg-teal-50 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-200" },
+                { id: "ads-p1", label: "Part-1 (Sem 1-2)", count: quickStats.ads.part1, type: "stage" },
+                { id: "ads-p2", label: "Part-2 (Sem 3-4)", count: quickStats.ads.part2, type: "stage" },
+                { id: "2026-28", label: "Session 2026-28", count: quickStats.ads.sess26_28, type: "session" },
+                { id: "2025-27", label: "Session 2025-27", count: quickStats.ads.sess25_27, type: "session" },
+              ].map((pill) => {
+                const isActive = pill.type === "session"
+                  ? activeSessionFilter === pill.id
+                  : activeStageFilter === pill.id;
+                return (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    onClick={() => {
+                      if (pill.type === "session") {
+                        setActiveSessionFilter(activeSessionFilter === pill.id ? "all" : pill.id);
+                      } else {
+                        setActiveStageFilter(activeStageFilter === pill.id ? "all" : pill.id);
+                      }
+                    }}
+                    className={cn(
+                      "px-2.5 py-0.5 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer border",
+                      isActive
+                        ? "bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 shadow-xs"
+                        : pill.color || "bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
+                    )}
+                  >
+                    <span>{pill.label}</span>
+                    <span className={cn(
+                      "text-[9.5px] font-mono font-black px-1.5 py-0.1 rounded-full",
+                      isActive ? "bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-900" : "bg-black/5 dark:bg-white/10"
+                    )}>
+                      {pill.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+
+          {activeStreamFilter === "dit" && (
+            <div className="flex items-center gap-1.5 text-xs text-sky-800 dark:text-sky-300 font-bold bg-sky-50 dark:bg-sky-950/40 px-3 py-1 rounded-xl border border-sky-200">
+              <Laptop size={13} />
+              <span>D.I.T. Technical Diploma Intake: {quickStats.dit.total} Total Registered Candidates</span>
+            </div>
+          )}
+
+          {activeStreamFilter === "ukl3" && (
+            <div className="flex items-center gap-1.5 text-xs text-amber-800 dark:text-amber-300 font-bold bg-amber-50 dark:bg-amber-950/40 px-3 py-1 rounded-xl border border-amber-200">
+              <Globe size={13} />
+              <span>U.K. Level 3 International Intake: {quickStats.ukl3.total} Total Registered Candidates</span>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* High-Density Quick Status Chips Ribbon */}
       <div className="flex flex-wrap items-center justify-between gap-2 bg-[#064e43] text-white px-3 py-1.5 rounded-2xl shadow-xs border border-emerald-500/20 text-xs">
@@ -3929,6 +4236,215 @@ function FormFieldWrapper({ label, children, required, className }: any) {
   );
 }
 
+interface GroupThemeConfig {
+  streamId: "fsc" | "bs" | "ads" | "dit" | "ukl3";
+  groupKey: string;
+  streamName: string;
+  groupLabel: string;
+  badgeLabel: string;
+  boardText: string;
+  gradient: string;
+  accentBg: string;
+  accentText: string;
+  accentBorder: string;
+  cardBorder: string;
+  iconBg: string;
+  iconColor: string;
+  icon: any;
+  tagline: string;
+}
+
+function getGroupThemeConfig(group: string = "", detectedProgram: string = "fsc"): GroupThemeConfig {
+  const g = (group || "").toLowerCase();
+
+  // ADS / ADA Program
+  if (detectedProgram === "ads" || g.includes("ads") || g.includes("adp") || g.includes("ada")) {
+    return {
+      streamId: "ads",
+      groupKey: "ads",
+      streamName: "Associate Degree Program",
+      groupLabel: group || "Associate Degree (ADS / ADA)",
+      badgeLabel: "🏛️ BZU Multan · Associate Degree (ADP / ADS)",
+      boardText: "Affiliated with Bahauddin Zakariya University Multan",
+      gradient: "from-[#083344] via-[#0e7490] to-[#042f2e]",
+      accentBg: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
+      accentText: "text-cyan-600 dark:text-cyan-400",
+      accentBorder: "border-cyan-500/40",
+      cardBorder: "border-cyan-500/30 hover:border-cyan-500/60",
+      iconBg: "bg-cyan-600/15 text-cyan-500",
+      iconColor: "text-cyan-400",
+      icon: Award,
+      tagline: "2-Year Associate Degree (4 Semesters) · Equivalent to 14-Year B.Sc / B.A. · Direct BS 5th Sem Eligibility",
+    };
+  }
+
+  // BS Degree Programs
+  if (detectedProgram === "bs" || g.includes("bs") || g.includes("b.s") || g.includes("bba")) {
+    return {
+      streamId: "bs",
+      groupKey: "bs",
+      streamName: "BS 4-Year Degree & ADP Lateral",
+      groupLabel: group || "BS 4-Year University Degree",
+      badgeLabel: "🎓 HEC Recognized · University Degree Program",
+      boardText: "Higher Education Commission (HEC) Recognized Degree Program",
+      gradient: "from-[#1e1035] via-[#4c1d95] to-[#0D5C58]",
+      accentBg: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+      accentText: "text-purple-600 dark:text-purple-400",
+      accentBorder: "border-purple-500/40",
+      cardBorder: "border-purple-500/30 hover:border-purple-500/60",
+      iconBg: "bg-purple-600/15 text-purple-500",
+      iconColor: "text-purple-300",
+      icon: GraduationCap,
+      tagline: "8 Semesters Standard Intake / Direct 5th Semester Lateral Entry for ADP & DAE Holders",
+    };
+  }
+
+  // D.I.T. Technical Diploma
+  if (detectedProgram === "dit" || g.includes("dit") || g.includes("diploma")) {
+    return {
+      streamId: "dit",
+      groupKey: "dit",
+      streamName: "D.I.T. Technical Diploma",
+      groupLabel: group || "Diploma in Information Technology",
+      badgeLabel: "⚙️ PBTE Lahore · Technical IT Diploma",
+      boardText: "Punjab Board of Technical Education (PBTE) Certified Examination",
+      gradient: "from-[#0f172a] via-[#0f766e] to-[#0D5C58]",
+      accentBg: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+      accentText: "text-sky-600 dark:text-sky-400",
+      accentBorder: "border-sky-500/40",
+      cardBorder: "border-sky-500/30 hover:border-sky-500/60",
+      iconBg: "bg-sky-600/15 text-sky-500",
+      iconColor: "text-sky-400",
+      icon: Laptop,
+      tagline: "Office Automation, Full-Stack Web Development, Hardware & Network Systems",
+    };
+  }
+
+  // UK Level 3 International
+  if (detectedProgram === "ukl3" || g.includes("uk") || g.includes("level 3")) {
+    return {
+      streamId: "ukl3",
+      groupKey: "ukl3",
+      streamName: "U.K. Level 3 International",
+      groupLabel: group || "UK Level 3 International Diploma",
+      badgeLabel: "🌐 Pearson / UK International Qualification",
+      boardText: "Globally Recognized International Diploma for Overseas Progression",
+      gradient: "from-[#3b0707] via-[#881337] to-[#0D5C58]",
+      accentBg: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+      accentText: "text-amber-600 dark:text-amber-400",
+      accentBorder: "border-amber-500/40",
+      cardBorder: "border-amber-500/30 hover:border-amber-500/60",
+      iconBg: "bg-amber-600/15 text-amber-500",
+      iconColor: "text-amber-400",
+      icon: Globe,
+      tagline: "International Foundation Pathway in Business Analysis & Computing",
+    };
+  }
+
+  // Pre-Medical
+  if (g.includes("premed") || g.includes("medical")) {
+    return {
+      streamId: "fsc",
+      groupKey: "premed",
+      streamName: "F.Sc Pre-Medical",
+      groupLabel: group || "FSC (Premedical)",
+      badgeLabel: "🏥 BISE Multan Board · Pre-Medical",
+      boardText: "Board of Intermediate and Secondary Education, Multan",
+      gradient: "from-[#064e3b] via-[#0D5C58] to-[#022c22]",
+      accentBg: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+      accentText: "text-emerald-600 dark:text-emerald-400",
+      accentBorder: "border-emerald-500/40",
+      cardBorder: "border-emerald-500/30 hover:border-emerald-500/60",
+      iconBg: "bg-emerald-600/15 text-emerald-500",
+      iconColor: "text-emerald-400",
+      icon: Droplet,
+      tagline: "Biology, Physics & Chemistry · Rigorous Preparation for MDCAT & MBBS/BDS Admissions",
+    };
+  }
+
+  // Pre-Engineering
+  if (g.includes("preeng") || g.includes("engineering")) {
+    return {
+      streamId: "fsc",
+      groupKey: "preeng",
+      streamName: "F.Sc Pre-Engineering",
+      groupLabel: group || "FSC (Pre Engineering)",
+      badgeLabel: "📐 BISE Multan Board · Pre-Engineering",
+      boardText: "Board of Intermediate and Secondary Education, Multan",
+      gradient: "from-[#0c2340] via-[#1e3a8a] to-[#0D5C58]",
+      accentBg: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+      accentText: "text-blue-600 dark:text-blue-400",
+      accentBorder: "border-blue-500/40",
+      cardBorder: "border-blue-500/30 hover:border-blue-500/60",
+      iconBg: "bg-blue-600/15 text-blue-500",
+      iconColor: "text-blue-400",
+      icon: TrendingUp,
+      tagline: "Mathematics, Physics & Chemistry · Pathway to UET, NUST & Engineering Excellence",
+    };
+  }
+
+  // General Science / ICS
+  if (g.includes("ics") || g.includes("cs") || g.includes("general science")) {
+    return {
+      streamId: "fsc",
+      groupKey: "ics",
+      streamName: "I.C.S (Computer Science)",
+      groupLabel: group || "General Science (Phy, Math, CS)",
+      badgeLabel: "💻 BISE Multan Board · Computer Science (ICS)",
+      boardText: "Board of Intermediate and Secondary Education, Multan",
+      gradient: "from-[#1e1b4b] via-[#3730a3] to-[#0D5C58]",
+      accentBg: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+      accentText: "text-indigo-600 dark:text-indigo-400",
+      accentBorder: "border-indigo-500/40",
+      cardBorder: "border-indigo-500/30 hover:border-indigo-500/60",
+      iconBg: "bg-indigo-600/15 text-indigo-500",
+      iconColor: "text-indigo-400",
+      icon: Laptop,
+      tagline: "Computer Programming, Mathematics & Physics · Software Engineering Foundation",
+    };
+  }
+
+  // I.Com
+  if (g.includes("icom") || g.includes("commerce")) {
+    return {
+      streamId: "fsc",
+      groupKey: "icom",
+      streamName: "I.Com (Commerce)",
+      groupLabel: group || "I. Com",
+      badgeLabel: "📊 BISE Multan Board · Commerce & Accounting",
+      boardText: "Board of Intermediate and Secondary Education, Multan",
+      gradient: "from-[#3b1a03] via-[#78350f] to-[#0D5C58]",
+      accentBg: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+      accentText: "text-amber-600 dark:text-amber-400",
+      accentBorder: "border-amber-500/40",
+      cardBorder: "border-amber-500/30 hover:border-amber-500/60",
+      iconBg: "bg-amber-600/15 text-amber-500",
+      iconColor: "text-amber-400",
+      icon: Receipt,
+      tagline: "Principles of Accounting, Commerce, Banking, Commercial Geography & Economics",
+    };
+  }
+
+  // Humanities / Arts Default
+  return {
+    streamId: "fsc",
+    groupKey: "humanities",
+    streamName: "Humanities & Arts (FA)",
+    groupLabel: group || "Humanities (FA)",
+    badgeLabel: "📚 BISE Multan Board · Humanities & Social Sciences",
+    boardText: "Board of Intermediate and Secondary Education, Multan",
+    gradient: "from-[#3f121d] via-[#881337] to-[#0D5C58]",
+    accentBg: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+    accentText: "text-rose-600 dark:text-rose-400",
+    accentBorder: "border-rose-500/40",
+    cardBorder: "border-rose-500/30 hover:border-rose-500/60",
+    iconBg: "bg-rose-600/15 text-rose-500",
+    iconColor: "text-rose-400",
+    icon: BookOpen,
+    tagline: "Economics, Islamic Studies, Education, Civics, Physical Education & Languages",
+  };
+}
+
 function AdmissionForm({
   data,
   onClose,
@@ -3950,12 +4466,14 @@ function AdmissionForm({
     if (admission) {
       const grp = (admission.group || "").toLowerCase();
       const cat = (admission.category || "").toLowerCase();
+      if (grp.includes("ads") || cat.includes("ads") || grp.includes("adp") || cat.includes("adp") || grp.includes("ada") || cat.includes("ada")) return "ads";
       if (grp.includes("bs") || grp.includes("b.s") || grp.includes("bba") || cat.includes("bs")) return "bs";
       if (grp.includes("dit") || cat.includes("dit")) return "dit";
       if (grp.includes("uk") || cat.includes("uk")) return "ukl3";
       return "fsc";
     }
     if (program && program !== "all") {
+      if (program === "ads" || program === "adp") return "ads";
       if (program === "bs") return "bs";
       if (program === "dit") return "dit";
       if (program === "ukl3") return "ukl3";
@@ -3964,7 +4482,7 @@ function AdmissionForm({
     return null;
   }, [admission, program]);
 
-  const [selectedStream, setSelectedStream] = useState<"fsc" | "bs" | "dit" | "ukl3" | null>(initialStream);
+  const [selectedStream, setSelectedStream] = useState<"fsc" | "bs" | "ads" | "dit" | "ukl3" | null>(initialStream);
   const [preSelectionComplete, setPreSelectionComplete] = useState<boolean>(Boolean(admission || initialStream));
 
   const [formData, setFormData] = useState({
@@ -3973,7 +4491,7 @@ function AdmissionForm({
     collegeNo: admission?.collegeNo || "",
     bayFormNo: admission?.bayFormNo || "",
     dob: admission?.dob || "",
-    previousClass: admission?.previousClass || (initialStream === "bs" ? "12th" : "10th"),
+    previousClass: admission?.previousClass || (initialStream === "bs" || initialStream === "ads" ? "12th" : "10th"),
     boardRollNo: admission?.boardRollNo || "",
     previousMarks: admission?.previousMarks ? String(admission.previousMarks) : "",
     previousInstitute: admission?.previousInstitute || "",
@@ -3985,12 +4503,12 @@ function AdmissionForm({
     previousArrears: (admission as any)?.previousArrears ? String((admission as any).previousArrears) : "0", // Previous Semester Arrears
     totalPackage: admission?.totalPackage || 0,
     feeReceived: admission?.feeReceived ? String(admission.feeReceived) : "",
-    paymentPlan: admission?.paymentPlan || (initialStream === "bs" ? "Semester" : "Installments"),
+    paymentPlan: admission?.paymentPlan || (initialStream === "bs" || initialStream === "ads" ? "Semester" : "Installments"),
     paidMonths: admission?.paidMonths || ([] as string[]),
     paidInstallments: admission?.paidInstallments || 0,
     totalInstallments: admission?.totalInstallments || (initialStream === "bs" ? 2 : 12),
     nextInstallmentDate: admission?.nextInstallmentDate || "",
-    totalSemesters: admission?.totalSemesters || (initialStream === "bs" ? 8 : 0),
+    totalSemesters: admission?.totalSemesters || (initialStream === "bs" ? 8 : initialStream === "ads" ? 4 : 0),
     feePerSemester: admission?.feePerSemester || 0,
     nextSemesterDueDate: admission?.nextSemesterDueDate || "",
     contactNumber: admission?.contactNumber || "",
@@ -4000,8 +4518,8 @@ function AdmissionForm({
     bloodGroup: admission?.bloodGroup || "",
     reference: admission?.reference || "",
     gender: admission?.gender || "Male",
-    category: admission?.category || (initialStream === "bs" ? "BS Semester 1st (Fresh Intake)" : "Inter Part-1 Boys"),
-    group: admission?.group || (initialStream === "bs" ? "BS Computer Science (BSCS)" : "FSC (Premedical)"),
+    category: admission?.category || (initialStream === "bs" ? "BS Semester 1st (Fresh Intake)" : initialStream === "ads" ? "ADS Semester 1st (Fresh Intake)" : "Inter Part-1 Boys"),
+    group: admission?.group || (initialStream === "bs" ? "BS Computer Science (BSCS)" : initialStream === "ads" ? "ADS (Double Math, Physics)" : "FSC (Premedical)"),
     section: admission?.section || "",
     photo: admission?.photo || "",
     studentId: admission?.studentId || "",
@@ -4010,8 +4528,8 @@ function AdmissionForm({
     sessionStartDate: admission?.sessionStartDate || "",
     sessionEndDate: admission?.sessionEndDate || "",
     academicPart: admission?.academicPart || "Part-1",
-    programType: admission?.programType || (initialStream === "bs" ? "Semester" : "Yearly"),
-    currentSemester: admission?.currentSemester || (initialStream === "bs" ? 1 : 0),
+    programType: admission?.programType || (initialStream === "bs" || initialStream === "ads" ? "Semester" : "Yearly"),
+    currentSemester: admission?.currentSemester || (initialStream === "bs" || initialStream === "ads" ? 1 : 0),
     concessionReason: admission?.concessionReason || "",
     fingerprintTemplate: admission?.fingerprintTemplate || "",
     fingerprintFinger: admission?.fingerprintFinger || "Right Thumb (دایاں انگوٹھا)",
@@ -4202,6 +4720,10 @@ function AdmissionForm({
     if (selectedStream) return selectedStream;
     const groupLower = (formData.group || "").toLowerCase();
     const categoryLower = (formData.category || "").toLowerCase();
+
+    if (groupLower.includes("ads") || categoryLower.includes("ads") || groupLower.includes("adp") || categoryLower.includes("adp") || groupLower.includes("ada") || categoryLower.includes("ada")) {
+      return "ads";
+    }
     if (groupLower.includes("dit") || groupLower.includes("diploma") || categoryLower.includes("dit")) {
       return "dit";
     }
@@ -4220,8 +4742,25 @@ function AdmissionForm({
     return "fsc";
   }, [selectedStream, formData.group, formData.category]);
 
+  // Program-Restricted Valid Sessions: BS gets ONLY BS sessions, FSC gets 2-yr, etc.
+  const programSessions = React.useMemo(() => {
+    return getProgramSessions(detectedProgram);
+  }, [detectedProgram]);
+
+  // Auto-sync session if current session is not valid for this program
+  React.useEffect(() => {
+    if (programSessions.length > 0 && !programSessions.includes(formData.session)) {
+      setFormData(prev => ({ ...prev, session: programSessions[0] }));
+    }
+  }, [programSessions, formData.session]);
+
+  // Specialized Group & Stream Theme Configuration
+  const groupTheme = React.useMemo(() => {
+    return getGroupThemeConfig(formData.group, detectedProgram);
+  }, [formData.group, detectedProgram]);
+
   // Handle stream selection from Step 0 Cards
-  const handleStreamSelect = (stream: "fsc" | "bs" | "dit" | "ukl3") => {
+  const handleStreamSelect = (stream: "fsc" | "bs" | "ads" | "dit" | "ukl3") => {
     setSelectedStream(stream);
     let defaultSession = "2026-28";
     let defaultGroup = "";
@@ -4246,6 +4785,19 @@ function AdmissionForm({
       defaultSubjects = bscsGroup 
         ? Array.from(new Set(['English / Communication', 'Pakistan Studies / Ideology', 'Islamic Studies / Ethics', ...bscsGroup.subjects]))
         : ['Programming Fundamentals', 'Calculus', 'English Composition'];
+    } else if (stream === "ads") {
+      defaultSession = "2026-28";
+      defaultGroup = "ADS (Double Math, Physics)";
+      defaultCategory = formData.gender === "Female" ? "ADS Girls Campus" : "ADS Semester 1st (Fresh Intake)";
+      paymentPlan = "Semester";
+      totalSemesters = 4;
+      programType = "Semester";
+      currentSemester = 1;
+      prevClass = "12th";
+      const adsGroup = ACADEMIC_GROUPS.find(g => g.name.includes("ADS (Double Math, Physics)"));
+      defaultSubjects = adsGroup 
+        ? [...adsGroup.subjects] 
+        : ['Calculus & Math', 'Physics', 'English Language', 'Islamic Studies / Ethics'];
     } else if (stream === "dit") {
       defaultSession = "2026-27";
       defaultGroup = "DIT";
@@ -4308,6 +4860,14 @@ function AdmissionForm({
         "BS Semester 8th",
         formData.gender === "Female" ? "BS Girls Campus" : "BS Boys Campus",
       ];
+    } else if (detectedProgram === "ads") {
+      result = [
+        "ADS Semester 1st (Fresh Intake)",
+        "ADS Semester 2nd",
+        "ADS Semester 3rd (2nd Year)",
+        "ADS Semester 4th (Final)",
+        formData.gender === "Female" ? "ADS Girls Campus" : "ADS Boys Campus",
+      ];
     } else if (detectedProgram === "dit") {
       result = [
         "DIT Part-1",
@@ -4347,6 +4907,9 @@ function AdmissionForm({
       if (detectedProgram === "fsc") {
         return sp === "inter" || sp === "fsc" || sp === "intermediate";
       }
+      if (detectedProgram === "ads") {
+        return sp.includes("ads") || sp.includes("adp") || sp.includes("degree");
+      }
       if (detectedProgram === "dit") {
         return sp.includes("dit") || sp.includes("diploma");
       }
@@ -4365,11 +4928,13 @@ function AdmissionForm({
   const filteredGroups = React.useMemo(() => {
     return ACADEMIC_GROUPS.filter((g) => {
       const name = g.name.toLowerCase();
+      const isADS = name.includes("ads") || name.includes("ada") || name.includes("adp");
       const isDIT = name.includes("dit") || name.includes("diploma") || g.type === "Diploma";
       const isUK = name.includes("uk") || name.includes("level 3") || g.type === "Vocational";
-      const isBS = name.includes("bs") || name.includes("b.s") || name.includes("bba") || name.includes("bachelor") || g.type === "Degree";
+      const isBS = !isADS && (name.includes("bs") || name.includes("b.s") || name.includes("bba") || name.includes("bachelor") || g.type === "Degree");
 
-      if (detectedProgram === "fsc") return !isDIT && !isUK && !isBS;
+      if (detectedProgram === "fsc") return !isDIT && !isUK && !isBS && !isADS;
+      if (detectedProgram === "ads") return isADS;
       if (detectedProgram === "dit") return isDIT;
       if (detectedProgram === "ukl3") return isUK;
       if (detectedProgram === "bs") return isBS;
@@ -4381,12 +4946,15 @@ function AdmissionForm({
     const group = ACADEMIC_GROUPS.find((g) => g.name === groupName);
     if (group) {
       const lowerGroupName = groupName.toLowerCase();
-      const isBS = lowerGroupName.includes("bs") || lowerGroupName.includes("b.s") || lowerGroupName.includes("bba") || lowerGroupName.includes("bachelor");
+      const isADS = lowerGroupName.includes("ads") || lowerGroupName.includes("adp") || lowerGroupName.includes("ada");
+      const isBS = !isADS && (lowerGroupName.includes("bs") || lowerGroupName.includes("b.s") || lowerGroupName.includes("bba") || lowerGroupName.includes("bachelor"));
       const isDIT = lowerGroupName.includes("dit") || lowerGroupName.includes("diploma");
       const isUK = lowerGroupName.includes("uk") || lowerGroupName.includes("level 3");
 
       const newSubjects = isBS
         ? Array.from(new Set(['English / Communication', 'Pakistan Studies / Ideology', 'Islamic Studies / Ethics', ...group.subjects]))
+        : isADS
+        ? Array.from(new Set(['English Language', 'Islamic Studies / Ethics', 'Pakistan Studies', ...group.subjects]))
         : isDIT
         ? Array.from(new Set(['English', ...group.subjects]))
         : Array.from(new Set([...COMPULSORY_SUBJECTS, ...group.subjects]));
@@ -4397,7 +4965,12 @@ function AdmissionForm({
       let currentSemester = formData.currentSemester || 1;
       let defaultCategory = formData.category;
 
-      if (isBS) {
+      if (isADS) {
+        paymentPlan = "Semester";
+        totalSemesters = 4;
+        programType = "Semester";
+        defaultCategory = formData.gender === "Female" ? "ADS Girls Campus" : "ADS Semester 1st (Fresh Intake)";
+      } else if (isBS) {
         paymentPlan = "Semester";
         totalSemesters = 8;
         programType = "Semester";
@@ -4614,7 +5187,7 @@ function AdmissionForm({
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 w-full">
             {/* 1. Intermediate (HSSC) */}
             <div
               onClick={() => handleStreamSelect("fsc")}
@@ -4693,7 +5266,46 @@ function AdmissionForm({
               </div>
             </div>
 
-            {/* 3. D.I.T. (Diploma in Information Technology) */}
+            {/* 3. Associate Degree Program (ADS / ADA / ADP) */}
+            <div
+              onClick={() => handleStreamSelect("ads")}
+              className="group p-5 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-cyan-600 hover:shadow-xl hover:shadow-cyan-500/10 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between"
+            >
+              <div className="absolute top-0 right-0 w-28 h-28 bg-cyan-500/5 rounded-full -mr-10 -mt-10 group-hover:scale-150 transition-transform duration-500" />
+              <div className="space-y-3.5 relative z-10">
+                <div className="flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-2xl bg-cyan-100 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-400 flex items-center justify-center text-xl shadow-sm group-hover:scale-110 transition-transform">
+                    <Award size={24} />
+                  </div>
+                  <Badge className="bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950 dark:text-cyan-300 text-[10px] font-black uppercase tracking-wider">
+                    BZU Multan
+                  </Badge>
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 group-hover:text-cyan-600 transition-colors leading-snug">
+                    Associate Degree (ADS / ADA)
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1 leading-relaxed">
+                    2-Year Post-Inter Semester Degree (4 Semesters). Equivalent to 14-Year B.Sc / B.A. Direct BS 5th Sem pathway.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {["Double Math & Phy", "Double Math & Stat", "CS / IT", "Botany & Chem", "ADA Arts"].map((badge) => (
+                    <span key={badge} className="px-2 py-0.5 rounded-lg bg-cyan-50/70 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 text-[9.5px] font-bold">
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="pt-4 mt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between relative z-10">
+                <span className="text-[10px] font-bold text-slate-400">Session: 2026-28</span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-black text-cyan-600 group-hover:translate-x-1 transition-transform">
+                  Apply ADS <ArrowRight size={13} />
+                </span>
+              </div>
+            </div>
+
+            {/* 4. D.I.T. (Diploma in Information Technology) */}
             <div
               onClick={() => handleStreamSelect("dit")}
               className="group p-5 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-sky-600 hover:shadow-xl hover:shadow-sky-500/10 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between"
@@ -4732,7 +5344,7 @@ function AdmissionForm({
               </div>
             </div>
 
-            {/* 4. U.K. Level 3 International */}
+            {/* 5. U.K. Level 3 International */}
             <div
               onClick={() => handleStreamSelect("ukl3")}
               className="group p-5 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-amber-600 hover:shadow-xl hover:shadow-amber-500/10 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between"
@@ -4774,59 +5386,71 @@ function AdmissionForm({
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Top Landscape Stream & Session Control Bar */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white flex flex-wrap items-center justify-between gap-4 border border-slate-700/60 shadow-lg">
-            <div className="flex items-center gap-3">
+          {/* Top Landscape Specialized Stream & Session Control Bar */}
+          <div className={cn(
+            "p-5 rounded-3xl text-white flex flex-wrap items-center justify-between gap-4 border shadow-xl relative overflow-hidden bg-gradient-to-r transition-all duration-300",
+            groupTheme.gradient,
+            groupTheme.accentBorder
+          )}>
+            {/* Subtle Institutional Watermark Badge */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-20 -mt-20 pointer-events-none" />
+
+            <div className="flex items-center gap-3.5 relative z-10">
               <div className={cn(
-                "w-11 h-11 rounded-xl flex items-center justify-center font-bold text-white shadow-md",
-                detectedProgram === "bs" ? "bg-indigo-600" :
-                detectedProgram === "dit" ? "bg-sky-600" :
-                detectedProgram === "ukl3" ? "bg-amber-600" : "bg-superior-teal"
+                "w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-white shadow-lg backdrop-blur-xs border border-white/20",
+                groupTheme.iconBg
               )}>
-                {detectedProgram === "bs" ? <Building2 size={22} /> :
-                 detectedProgram === "dit" ? <Laptop size={22} /> :
-                 detectedProgram === "ukl3" ? <Globe size={22} /> : <GraduationCap size={22} />}
+                <groupTheme.icon size={26} className={groupTheme.iconColor} />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-black uppercase tracking-wider text-white">
-                    {detectedProgram === "bs" ? "BS 4-Year University Degree & ADP Lateral" :
-                     detectedProgram === "dit" ? "D.I.T. Technical Diploma" :
-                     detectedProgram === "ukl3" ? "U.K. Level 3 International" : "Intermediate (HSSC BISE)"}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-base font-black uppercase tracking-wide text-white flex items-center gap-1.5">
+                    {groupTheme.streamName}
                   </span>
+                  <Badge variant="outline" className="text-[10px] font-black border-white/30 bg-white/10 text-superior-gold shadow-xs">
+                    {groupTheme.badgeLabel}
+                  </Badge>
                   <Badge variant="outline" className="text-[10px] font-bold border-white/20 text-white/90">
                     {formData.gender === "Female" ? "Girls Campus" : "Boys Campus"}
                   </Badge>
                 </div>
-                <p className="text-xs text-white/70 font-medium">
-                  Group: <span className="text-superior-gold font-bold">{formData.group || "Not Selected"}</span> · Session: <span className="font-bold text-white">{formData.session || "2026-28"}</span>
-                </p>
+                <div className="flex items-center gap-2 text-xs text-white/80 font-medium mt-1">
+                  <span>Group: <strong className="text-superior-gold font-bold">{formData.group || groupTheme.groupLabel}</strong></span>
+                  <span>·</span>
+                  <span className="text-white/60 hidden sm:inline">{groupTheme.boardText}</span>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5">
-              <Select
-                value={formData.session || ""}
-                onValueChange={(s) => setFormData(prev => ({ ...prev, session: s }))}
-              >
-                <SelectTrigger className="h-9 w-32 rounded-xl bg-white/10 border-white/20 text-white text-xs font-bold focus:ring-0">
-                  <SelectValue placeholder="Session" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl shadow-2xl">
-                  {CANONICAL_SESSIONS.map((sess: string) => (
-                    <SelectItem key={sess} value={sess} className="font-bold text-xs">
-                      Session {sess}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex items-center gap-2.5 relative z-10">
+              {/* Program-Restricted Session Selector */}
+              <div className="flex flex-col items-end">
+                <span className="text-[9.5px] font-black uppercase tracking-wider text-white/70 mb-0.5">
+                  Academic Session
+                </span>
+                <Select
+                  value={formData.session || programSessions[0] || ""}
+                  onValueChange={(s) => setFormData(prev => ({ ...prev, session: s }))}
+                >
+                  <SelectTrigger className="h-9 w-36 rounded-xl bg-white/10 border-white/25 text-white text-xs font-bold focus:ring-0 shadow-inner">
+                    <SelectValue placeholder="Session" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl shadow-2xl border-slate-200">
+                    {programSessions.map((sess: string) => (
+                      <SelectItem key={sess} value={sess} className="font-bold text-xs">
+                        Session {sess}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setPreSelectionComplete(false)}
-                className="h-9 px-3 rounded-xl border-white/20 bg-white/10 hover:bg-white/20 text-white text-xs font-bold gap-1.5 transition-all"
+                className="h-9 px-3 rounded-xl border-white/20 bg-white/10 hover:bg-white/20 text-white text-xs font-bold gap-1.5 transition-all mt-4"
               >
                 <RefreshCw size={13} />
                 <span>Switch Stream</span>

@@ -9,7 +9,7 @@
  */
 
 export interface MasterProgram {
-  id: 'inter' | 'bs' | 'dit' | 'ukl3';
+  id: 'inter' | 'bs' | 'ads' | 'dit' | 'ukl3';
   code: string;
   name: string;
   shortName: string;
@@ -25,7 +25,7 @@ export interface MasterProgram {
 export interface MasterAcademicGroup {
   id: string;
   name: string;
-  programId: 'inter' | 'bs' | 'dit' | 'ukl3';
+  programId: 'inter' | 'bs' | 'ads' | 'dit' | 'ukl3';
   type: 'Intermediate' | 'Degree' | 'Diploma' | 'Vocational';
   subjects: string[];
   aliases: string[];
@@ -34,14 +34,14 @@ export interface MasterAcademicGroup {
 export interface MasterCategory {
   id: string;
   name: string;
-  programId: 'inter' | 'bs' | 'dit' | 'ukl3';
+  programId: 'inter' | 'bs' | 'ads' | 'dit' | 'ukl3';
   academicPart: 'Part-1' | 'Part-2';
   semesterNumber: number;
   gender?: 'Male' | 'Female' | 'Co-ed';
   label: string;
 }
 
-export const MASTER_PROGRAMS: Record<'inter' | 'bs' | 'dit' | 'ukl3', MasterProgram> = {
+export const MASTER_PROGRAMS: Record<'inter' | 'bs' | 'ads' | 'dit' | 'ukl3', MasterProgram> = {
   inter: {
     id: 'inter',
     code: 'INTER',
@@ -63,9 +63,22 @@ export const MASTER_PROGRAMS: Record<'inter' | 'bs' | 'dit' | 'ukl3', MasterProg
     durationSemesters: 8,
     type: 'Semester',
     defaultSession: '2026-30',
-    validSessions: ['2026-30', '2025-29', '2024-28', '2024-26', '2023-27'],
+    validSessions: ['2026-30', '2025-29', '2024-28', '2023-27', '2024-26'],
     boardOrUniversity: 'HEC Recognized University Degree',
     highlights: ['Semester system (Semesters 1–8)', 'Direct 5th semester ADP Lateral entry', 'University syllabus & semester fee plans']
+  },
+  ads: {
+    id: 'ads',
+    code: 'ADS',
+    name: 'Associate Degree Program (ADS / ADA / ADP)',
+    shortName: 'Associate Degree (ADS)',
+    durationYears: 2,
+    durationSemesters: 4,
+    type: 'Semester',
+    defaultSession: '2026-28',
+    validSessions: ['2026-28', '2025-27', '2024-26', '2023-25'],
+    boardOrUniversity: 'BZU Multan / University Affiliated',
+    highlights: ['2-Year Post-Intermediate Degree (4 Semesters)', 'Equivalent to traditional 14-Year B.Sc / B.A.', 'Direct pathway to BS 5th Semester Lateral entry']
   },
   dit: {
     id: 'dit',
@@ -76,7 +89,7 @@ export const MASTER_PROGRAMS: Record<'inter' | 'bs' | 'dit' | 'ukl3', MasterProg
     durationSemesters: 4,
     type: 'Semester',
     defaultSession: '2026-27',
-    validSessions: ['2026-27', '2025-26', '2024-25'],
+    validSessions: ['2026-27', '2025-26', '2024-25', '2026-28'],
     boardOrUniversity: 'PBTE Technical Board Lahore',
     highlights: ['1 to 2 Years professional technical diploma', 'Office automation, web dev, graphics & networking', 'PBTE certified examinations']
   },
@@ -252,6 +265,48 @@ export const MASTER_ACADEMIC_GROUPS: MasterAcademicGroup[] = [
     aliases: ['bs program', 'bachelor program', 'bs general']
   },
 
+  // ASSOCIATE DEGREE PROGRAM (ADS / ADA / ADP - 2-Year Semester Degree)
+  {
+    id: 'ads-math-phy',
+    name: 'ADS (Double Math, Physics)',
+    programId: 'ads',
+    type: 'Degree',
+    subjects: ['Calculus & Math', 'Physics', 'English Language', 'Islamic Studies / Ethics'],
+    aliases: ['ads double math physics', 'ads math physics', 'ads math phy', 'adp math physics', 'ads (double math, physics)', 'adp double math']
+  },
+  {
+    id: 'ads-math-stat',
+    name: 'ADS (Double Math, Statistics)',
+    programId: 'ads',
+    type: 'Degree',
+    subjects: ['Calculus & Math', 'Statistics', 'English Language', 'Islamic Studies / Ethics'],
+    aliases: ['ads double math statistics', 'ads math stat', 'ads math stats', 'adp math stats', 'ads (double math, statistics)', 'adp stats']
+  },
+  {
+    id: 'ads-chem-bio',
+    name: 'ADS (Botany, Zoology, Chemistry)',
+    programId: 'ads',
+    type: 'Degree',
+    subjects: ['Botany', 'Zoology', 'Chemistry', 'English Language'],
+    aliases: ['ads bsc', 'ads botany zoology chemistry', 'ads science', 'ads pre medical', 'adp science', 'ads (botany, zoology, chemistry)', 'ads bio']
+  },
+  {
+    id: 'ads-cs',
+    name: 'ADS (Computer Science / IT)',
+    programId: 'ads',
+    type: 'Degree',
+    subjects: ['Programming Fundamentals', 'Database Systems', 'Applied Mathematics', 'English Language'],
+    aliases: ['ads cs', 'ads computer science', 'adp cs', 'ads it', 'ads (computer science / it)', 'adp computer science']
+  },
+  {
+    id: 'ada-arts',
+    name: 'ADA (Arts / Humanities)',
+    programId: 'ads',
+    type: 'Degree',
+    subjects: ['Elective Subject 1', 'Elective Subject 2', 'English Language', 'Islamic Studies / Ethics'],
+    aliases: ['ada', 'ada arts', 'associate degree in arts', 'adp arts', 'ada (arts / humanities)', 'ada (arts)']
+  },
+
   // D.I.T. DIPLOMA GROUPS
   {
     id: 'dit-core',
@@ -292,6 +347,14 @@ export const MASTER_CATEGORIES: MasterCategory[] = [
   { id: 'cat-bs-girls', name: 'BS Girls Campus', programId: 'bs', academicPart: 'Part-1', semesterNumber: 1, gender: 'Female', label: 'BS Girls Campus' },
   { id: 'cat-bs-boys', name: 'BS Boys Campus', programId: 'bs', academicPart: 'Part-1', semesterNumber: 1, gender: 'Male', label: 'BS Boys Campus' },
 
+  // ADS (Associate Degree - 2-Year / 4 Semesters)
+  { id: 'cat-ads-s1', name: 'ADS Semester 1st (Fresh Intake)', programId: 'ads', academicPart: 'Part-1', semesterNumber: 1, label: 'ADS Semester 1st (Fresh Intake)' },
+  { id: 'cat-ads-s2', name: 'ADS Semester 2nd', programId: 'ads', academicPart: 'Part-1', semesterNumber: 2, label: 'ADS Semester 2nd' },
+  { id: 'cat-ads-s3', name: 'ADS Semester 3rd (2nd Year)', programId: 'ads', academicPart: 'Part-2', semesterNumber: 3, label: 'ADS Semester 3rd (2nd Year)' },
+  { id: 'cat-ads-s4', name: 'ADS Semester 4th (Final)', programId: 'ads', academicPart: 'Part-2', semesterNumber: 4, label: 'ADS Semester 4th (Final)' },
+  { id: 'cat-ads-girls', name: 'ADS Girls Campus', programId: 'ads', academicPart: 'Part-1', semesterNumber: 1, gender: 'Female', label: 'ADS Girls Campus' },
+  { id: 'cat-ads-boys', name: 'ADS Boys Campus', programId: 'ads', academicPart: 'Part-1', semesterNumber: 1, gender: 'Male', label: 'ADS Boys Campus' },
+
   // DIT
   { id: 'cat-dit-p1', name: 'DIT Part-1', programId: 'dit', academicPart: 'Part-1', semesterNumber: 1, label: 'DIT Part-1' },
   { id: 'cat-dit-p2', name: 'DIT Part-2', programId: 'dit', academicPart: 'Part-2', semesterNumber: 2, label: 'DIT Part-2' },
@@ -305,9 +368,10 @@ export const MASTER_CATEGORIES: MasterCategory[] = [
   { id: 'cat-uk-girls', name: 'UK L3 Girls', programId: 'ukl3', academicPart: 'Part-1', semesterNumber: 1, gender: 'Female', label: 'UK L3 Girls' }
 ];
 
-export const MASTER_COMPULSORY_SUBJECTS: Record<'inter' | 'bs' | 'dit' | 'ukl3', string[]> = {
+export const MASTER_COMPULSORY_SUBJECTS: Record<'inter' | 'bs' | 'ads' | 'dit' | 'ukl3', string[]> = {
   inter: ['English', 'Urdu', 'Islamic Studies', 'Pakistan Studies', 'Tarjuma-tul-Quran'],
   bs: ['English / Communication', 'Pakistan Studies / Ideology', 'Islamic Studies / Ethics', 'Quran Translation'],
+  ads: ['English Language', 'Islamic Studies / Ethics', 'Pakistan Studies', 'Quran Translation'],
   dit: ['ICT Fundamentals', 'English Communication'],
   ukl3: ['Academic English', 'Applied Research']
 };
@@ -398,12 +462,21 @@ export function normalizeSessionString(session: string | null | undefined, fallb
   return s;
 }
 
+export function getProgramSessions(programId?: string | null): string[] {
+  const p = (programId || 'inter').toLowerCase();
+  if (p === 'bs') return MASTER_PROGRAMS.bs.validSessions;
+  if (p === 'ads' || p === 'adp' || p === 'ada') return MASTER_PROGRAMS.ads.validSessions;
+  if (p === 'dit') return MASTER_PROGRAMS.dit.validSessions;
+  if (p === 'ukl3' || p === 'uk') return MASTER_PROGRAMS.ukl3.validSessions;
+  return MASTER_PROGRAMS.inter.validSessions;
+}
+
 /**
  * Resolves an Academic Group from raw text (file header, user input, alias)
  * Strictly matches official group, aliases, or normalized alphanumeric tokens.
  * Returns exact MasterAcademicGroup or null if unknown. Never returns generic fallback unless explicitly given.
  */
-export function resolveAcademicGroup(rawInput: string | null | undefined, programHint?: 'inter' | 'bs' | 'dit' | 'ukl3'): MasterAcademicGroup | null {
+export function resolveAcademicGroup(rawInput: string | null | undefined, programHint?: 'inter' | 'bs' | 'ads' | 'dit' | 'ukl3'): MasterAcademicGroup | null {
   if (!rawInput) return null;
   const raw = String(rawInput).trim();
   if (!raw) return null;
@@ -428,7 +501,17 @@ export function resolveAcademicGroup(rawInput: string | null | undefined, progra
     ? MASTER_ACADEMIC_GROUPS.filter(g => g.programId === programHint)
     : MASTER_ACADEMIC_GROUPS;
 
-  // Check specific BS majors first
+  // Check specific ADS / ADP programs first to prevent collisions with BS
+  if (clean.includes('ads') || clean.includes('adp') || clean.includes('ada')) {
+    if (clean.includes('math') && clean.includes('phy')) return candidateList.find(g => g.id === 'ads-math-phy') || null;
+    if (clean.includes('math') && (clean.includes('stat') || clean.includes('stats'))) return candidateList.find(g => g.id === 'ads-math-stat') || null;
+    if (clean.includes('bio') || clean.includes('chem') || clean.includes('botany') || clean.includes('zoology') || clean.includes('science')) return candidateList.find(g => g.id === 'ads-chem-bio') || null;
+    if (clean.includes('cs') || clean.includes('computer') || clean.includes('it')) return candidateList.find(g => g.id === 'ads-cs') || null;
+    if (clean.includes('ada') || clean.includes('arts') || clean.includes('humanities')) return candidateList.find(g => g.id === 'ada-arts') || null;
+    return candidateList.find(g => g.programId === 'ads') || null;
+  }
+
+  // Check specific BS majors
   if (clean.includes('zoology')) return candidateList.find(g => g.id === 'bs-zoology') || null;
   if (clean.includes('botany')) return candidateList.find(g => g.id === 'bs-botany') || null;
   if (clean.includes('english') || clean.includes('literature')) return candidateList.find(g => g.id === 'bs-english') || null;
@@ -495,9 +578,25 @@ export function deriveSemesterAndPart(
 } {
   const combined = `${categoryRaw || ''} ${groupRaw || ''} ${classRaw || ''}`.toLowerCase();
   
-  const isBS = combined.includes('bs') || combined.includes('b.s') || combined.includes('bba') || combined.includes('degree') || combined.includes('semester');
+  const isADS = combined.includes('ads') || combined.includes('ada') || combined.includes('adp') || (combined.includes('associate') && combined.includes('degree'));
+  const isBS = !isADS && (combined.includes('bs') || combined.includes('b.s') || combined.includes('bba') || combined.includes('degree') || combined.includes('semester'));
   const isDIT = combined.includes('dit') || combined.includes('diploma');
   const isUK = combined.includes('uk') || combined.includes('level 3');
+
+  if (isADS) {
+    let sem = defaultSemester;
+    if (combined.includes('4th') || combined.includes('sem 4') || combined.includes('semester 4') || combined.includes('s4')) sem = 4;
+    else if (combined.includes('3rd') || combined.includes('sem 3') || combined.includes('semester 3') || combined.includes('s3') || combined.includes('part-2') || combined.includes('part 2')) sem = 3;
+    else if (combined.includes('2nd') || combined.includes('sem 2') || combined.includes('semester 2') || combined.includes('s2')) sem = 2;
+    else if (combined.includes('1st') || combined.includes('sem 1') || combined.includes('semester 1') || combined.includes('s1') || combined.includes('part-1') || combined.includes('part 1')) sem = 1;
+
+    return {
+      currentSemester: sem,
+      academicPart: sem >= 3 ? 'Part-2' : 'Part-1',
+      programType: 'Semester',
+      totalSemesters: 4
+    };
+  }
 
   if (isBS) {
     let sem = defaultSemester;

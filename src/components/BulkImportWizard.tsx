@@ -79,7 +79,7 @@ interface BulkImportWizardProps {
   isOpen: boolean;
   onClose: () => void;
   data: any;
-  defaultProgram?: 'inter' | 'bs' | 'dit' | 'ukl3';
+  defaultProgram?: 'inter' | 'bs' | 'ads' | 'dit' | 'ukl3';
   onImportComplete?: () => void;
 }
 
@@ -91,7 +91,7 @@ export default function BulkImportWizard({
   onImportComplete
 }: BulkImportWizardProps) {
   const [step, setStep] = useState<'upload' | 'preview'>('upload');
-  const [selectedProgram, setSelectedProgram] = useState<'inter' | 'bs' | 'dit' | 'ukl3'>(defaultProgram);
+  const [selectedProgram, setSelectedProgram] = useState<'inter' | 'bs' | 'ads' | 'dit' | 'ukl3'>(defaultProgram);
   const [targetSession, setTargetSession] = useState<string>(() => {
     return selectedProgram === 'bs' ? '2024-26' : MASTER_PROGRAMS[selectedProgram]?.defaultSession || '2026-28';
   });
@@ -120,14 +120,14 @@ export default function BulkImportWizard({
   }, [isOpen]);
 
   // Update target session default when program changes
-  const handleProgramSelect = (prog: 'inter' | 'bs' | 'dit' | 'ukl3') => {
+  const handleProgramSelect = (prog: 'inter' | 'bs' | 'ads' | 'dit' | 'ukl3') => {
     setSelectedProgram(prog);
     const defSession = prog === 'bs' ? '2024-26' : MASTER_PROGRAMS[prog].defaultSession;
     setTargetSession(defSession);
   };
 
   // 1. Download official standardized import template
-  const handleDownloadTemplate = (stream: 'inter' | 'bs' | 'dit' | 'ukl3' = selectedProgram) => {
+  const handleDownloadTemplate = (stream: 'inter' | 'bs' | 'ads' | 'dit' | 'ukl3' = selectedProgram) => {
     let sampleRows: any[] = [];
     if (stream === 'bs') {
       sampleRows = [
@@ -170,26 +170,29 @@ export default function BulkImportWizard({
           "DOB": "2003-08-20",
           "Previous Class": "ADP",
           "Board Roll No": "54202"
-        },
+        }
+      ];
+    } else if (stream === 'ads') {
+      sampleRows = [
         {
-          "Full Name": "Muhammad Bilal",
-          "Father Name": "Shahid Ali",
+          "Full Name": "Muhammad Hamza",
+          "Father Name": "Muhammad Tariq",
           "Gender": "Male",
-          "Academic Group": "BS Computer Science (BSCS)",
-          "Category": "BS Semester 5th (ADP Lateral Entry)",
-          "Current Semester": 5,
-          "Section": "BS-CS",
-          "Session": "2024-26",
-          "Tuition Fee": 52000,
-          "Admission Fee": 0,
-          "Misc Funds": 2000,
-          "Fee Received": 54000,
-          "Contact Number": "03023456789",
-          "Father Contact": "03029876543",
-          "CNIC": "36103-9876543-1",
-          "DOB": "2003-01-11",
-          "Previous Class": "ADP",
-          "Board Roll No": "54203"
+          "Academic Group": "ADS (Double Math, Physics)",
+          "Category": "ADS Semester 1st (Fresh Intake)",
+          "Current Semester": 1,
+          "Section": "ADS-A",
+          "Session": "2026-28",
+          "Tuition Fee": 35000,
+          "Admission Fee": 5000,
+          "Misc Funds": 1500,
+          "Fee Received": 20000,
+          "Contact Number": "03001234567",
+          "Father Contact": "03009876543",
+          "CNIC": "36103-1234567-1",
+          "DOB": "2005-04-12",
+          "Previous Class": "12th",
+          "Board Roll No": "61204"
         }
       ];
     } else {
@@ -639,8 +642,8 @@ export default function BulkImportWizard({
               <Label className="text-xs font-black uppercase text-slate-500 tracking-wider">
                 1. Select Target Educational Stream
               </Label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {(['inter', 'bs', 'dit', 'ukl3'] as const).map(progKey => {
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                {(['inter', 'bs', 'ads', 'dit', 'ukl3'] as const).map(progKey => {
                   const p = MASTER_PROGRAMS[progKey];
                   const isSelected = selectedProgram === progKey;
                   return (
