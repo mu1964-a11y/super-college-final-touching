@@ -3,7 +3,80 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Superior College Jahanian - Portal</title>
+    <title>SCJ Management System lms final</title>
+    <meta name="description" content="A comprehensive college management system for Superior Group of Colleges Jahanian, featuring admissions, student management, staff management, and financial tracking." />
+    <meta property="og:title" content="SCJ Management System lms final" />
+    <meta property="og:description" content="A comprehensive college management system for Superior Group of Colleges Jahanian, featuring admissions, student management, staff management, and financial tracking." />
+    <script>
+      // Prevent "TypeError: Cannot set property fetch of #<Window> which has only a getter"
+      // caused by browser extensions (e.g. request interceptors) attempting to overwrite window.fetch
+      (function() {
+        try {
+          var origDefineProperty = Object.defineProperty;
+          Object.defineProperty = function(obj, prop, descriptor) {
+            if ((obj === window || obj === Window.prototype || obj === globalThis) && prop === 'fetch' && descriptor && descriptor.get && !descriptor.set) {
+              var getter = descriptor.get;
+              var overrideFn = null;
+              return origDefineProperty.call(Object, obj, prop, {
+                configurable: true,
+                enumerable: descriptor.enumerable !== false,
+                get: function() {
+                  return overrideFn || getter.call(this);
+                },
+                set: function(fn) {
+                  if (typeof fn === 'function') {
+                    overrideFn = fn;
+                  }
+                }
+              });
+            }
+            return origDefineProperty.call(Object, obj, prop, descriptor);
+          };
+
+          var currentFetch = window.fetch ? window.fetch.bind(window) : undefined;
+          var desc = Object.getOwnPropertyDescriptor(window, 'fetch') || Object.getOwnPropertyDescriptor(Window.prototype, 'fetch');
+          if (!desc || desc.configurable !== false) {
+            origDefineProperty.call(Object, window, 'fetch', {
+              configurable: true,
+              enumerable: true,
+              get: function() { return currentFetch; },
+              set: function(fn) {
+                if (typeof fn === 'function') {
+                  currentFetch = fn;
+                }
+              }
+            });
+          }
+        } catch (_) {}
+
+        window.addEventListener('error', function(event) {
+          var msg = (event && event.message) ? String(event.message) : '';
+          var file = (event && event.filename) ? String(event.filename) : '';
+          if (
+            msg.indexOf('Cannot set property fetch') !== -1 ||
+            file.indexOf('chrome-extension://') !== -1 ||
+            file.indexOf('moz-extension://') !== -1
+          ) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return false;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event && event.reason ? String(event.reason.stack || event.reason.message || event.reason) : '';
+          if (
+            reason.indexOf('Cannot set property fetch') !== -1 ||
+            reason.indexOf('chrome-extension://') !== -1 ||
+            reason.indexOf('moz-extension://') !== -1
+          ) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return false;
+          }
+        }, true);
+      })();
+    </script>
     <link rel="icon" type="image/png" href="/superior-logo.png" />
     <link rel="shortcut icon" type="image/png" href="/superior-logo.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />

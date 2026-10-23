@@ -9,7 +9,13 @@ window.addEventListener('unhandledrejection', (event) => {
   const reason = event.reason;
   const reasonStr = reason ? String(reason) : '';
   const reasonMsg = reason && typeof reason === 'object' ? (reason.message || reason.error_description || reason.error || '') : '';
-  const combined = (reasonStr + ' ' + reasonMsg).toLowerCase();
+  const reasonStack = reason && typeof reason === 'object' && reason.stack ? String(reason.stack) : '';
+  const combined = (reasonStr + ' ' + reasonMsg + ' ' + reasonStack).toLowerCase();
+
+  if (combined.includes('cannot set property fetch') || combined.includes('chrome-extension://')) {
+    event.preventDefault();
+    return;
+  }
   
   if (combined.includes('refresh token') || combined.includes('refresh_token') || combined.includes('session_not_found') || combined.includes('invalid_grant')) {
     event.preventDefault(); // Suppress the console error
@@ -28,9 +34,15 @@ window.addEventListener('unhandledrejection', (event) => {
 
 window.addEventListener('error', (event) => {
   const errMsg = event.message ? String(event.message) : '';
+  const errFile = event.filename ? String(event.filename) : '';
   const errObj = event.error;
   const errObjMsg = errObj && typeof errObj === 'object' ? (errObj.message || errObj.error_description || '') : '';
-  const combined = (errMsg + ' ' + errObjMsg).toLowerCase();
+  const combined = (errMsg + ' ' + errObjMsg + ' ' + errFile).toLowerCase();
+
+  if (combined.includes('cannot set property fetch') || combined.includes('chrome-extension://')) {
+    event.preventDefault();
+    return;
+  }
   
   if (combined.includes('refresh token') || combined.includes('refresh_token') || combined.includes('session_not_found') || combined.includes('invalid_grant')) {
     event.preventDefault(); // Suppress the console error

@@ -14,6 +14,7 @@ import { safeLocalStorage } from '../utils/safeStorage';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import BiometricEnrollmentModal from './BiometricEnrollmentModal';
+import { sendAutoStaffAttendancePdfNotice } from '../lib/whatsappAutomation';
 
 interface StaffAttendanceProps {
   staffList: Staff[];
@@ -197,16 +198,30 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
         staffId: e.staffId!,
         date: e.date!,
         status: e.status as AttendanceStatus,
-        checkIn: entry.checkIn || '',
-        checkOut: entry.checkOut || '',
-        notes: entry.notes || '',
-        snapshotUrl: entry.snapshotUrl || entry.snapshot_url,
-        snapshot_url: entry.snapshotUrl || entry.snapshot_url,
-        verificationMethod: entry.verificationMethod || entry.verification_method,
-        checkInTime: entry.checkInTime || entry.check_in_time,
-        checkOutTime: entry.checkOutTime || entry.check_out_time,
+        checkIn: e.checkIn || '',
+        checkOut: e.checkOut || '',
+        notes: e.notes || '',
+        snapshotUrl: e.snapshotUrl || e.snapshot_url,
+        snapshot_url: e.snapshotUrl || e.snapshot_url,
+        verificationMethod: e.verificationMethod || e.verification_method,
+        checkInTime: e.checkInTime || e.check_in_time,
+        checkOutTime: e.checkOutTime || e.check_out_time,
       }));
       onSaveAttendance(batchForDate);
+
+      // Automatically dispatch updated Cumulative Day-by-Day Attendance PDFs on WhatsApp
+      const targetMonth = selectedDate.slice(0, 7);
+      setTimeout(() => {
+        batchForDate.forEach((rec, idx) => {
+          const staffObj = staffList.find(s => s.id === rec.staffId);
+          const phone = staffObj?.contact || (staffObj as any)?.phone;
+          if (phone) {
+            setTimeout(() => {
+              sendAutoStaffAttendancePdfNotice(rec.staffId, phone, targetMonth, { silent: true });
+            }, idx * 1200);
+          }
+        });
+      }, 1500);
     } else {
       toast.success(`Attendance saved locally for ${selectedDate}`);
     }
@@ -791,15 +806,26 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                           <TableCell className="text-center font-bold text-purple-600 bg-purple-50/30">{stats.collegeHoliday > 0 ? stats.collegeHoliday : '-'}</TableCell>
                           <TableCell className="text-center font-bold text-indigo-600 bg-indigo-50/30">{stats.publicHoliday > 0 ? stats.publicHoliday : '-'}</TableCell>
                           <TableCell className="text-right pr-8">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 rounded-lg text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100 font-bold text-xs gap-1 shadow-2xs cursor-pointer"
-                              onClick={() => setSelectedDossierStaff(staff)}
-                              title="Open 30-Day Biometric Attendance Dossier & Photo Audit"
-                            >
-                              <Eye size={13} /> Dossier 👁️
-                            </Button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 rounded-lg text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100 font-bold text-xs gap-1 shadow-2xs cursor-pointer"
+                                onClick={() => sendAutoStaffAttendancePdfNotice(staff.id, staff.contact, reportMonth)}
+                                title="Send Updated Day-by-Day Cumulative Attendance PDF on WhatsApp"
+                              >
+                                📄 WhatsApp PDF
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 rounded-lg text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100 font-bold text-xs gap-1 shadow-2xs cursor-pointer"
+                                onClick={() => setSelectedDossierStaff(staff)}
+                                title="Open 30-Day Biometric Attendance Dossier & Photo Audit"
+                              >
+                                <Eye size={13} /> Dossier 👁️
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );

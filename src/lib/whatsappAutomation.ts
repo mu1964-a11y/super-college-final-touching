@@ -1,1826 +1,548 @@
-import { toast } from "sonner";
+import { toast } from 'sonner';
 
-/**
- * Format Pakistani / International phone number to WhatsApp standard: 923XXXXXXXXX
- */
-export function formatWhatsAppPhone(rawPhone?: string): string | null {
-  if (!rawPhone) return null;
-  let clean = String(rawPhone).replace(/\D/g, "");
-  if (!clean) return null;
-
-  if (clean.startsWith("0092")) {
-    clean = clean.slice(2);
-  } else if (clean.startsWith("+92")) {
-    clean = clean.slice(1);
-  } else if (clean.startsWith("03") && clean.length === 11) {
-    clean = "92" + clean.slice(1);
-  } else if (clean.startsWith("3") && clean.length === 10) {
-    clean = "92" + clean;
-  } else if (!clean.startsWith("92") && clean.length === 10) {
-    clean = "92" + clean;
-  }
-
-  if (clean.length < 10) return null;
-  return clean;
+export function formatWhatsAppPhone(raw?: string | null): string {
+  if (!raw) return '';
+  let digits = String(raw).replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('0092')) digits = digits.slice(2);
+  else if (digits.startsWith('0') && digits.length === 11) digits = '92' + digits.slice(1);
+  else if (digits.length === 10 && digits.startsWith('3')) digits = '92' + digits;
+  return digits;
 }
 
-/**
- * Returns clean normalized college helpline, preventing accidental double-digit typos
- */
-export function getCleanHelpline(settings?: any): string {
-  let num = settings?.contactNumber || settings?.contact_number || "0331-2211147";
-  if (num.includes("22111447")) {
-    num = num.replace(/22111447/g, "2211147");
-  }
-  return num;
-}
-
-/**
- * Resolves the public base URL for short preview & download document links
- */
-export function getPublicBaseUrl(settings?: any): string {
-  // 1. Check explicit setting for public / portal URL if configured
-  const explicitUrl = 
-    settings?.portalUrl || 
-    settings?.appUrl || 
-    settings?.publicUrl || 
-    settings?.portal_url || 
-    settings?.app_url ||
-    settings?.config?.portalUrl || 
-    settings?.config?.appUrl;
-
-  if (explicitUrl && typeof explicitUrl === "string" && explicitUrl.trim()) {
-    return explicitUrl.trim().replace(/\/+$/, "");
-  }
-
-  // 2. Check window.location if running in a public browser environment (not localhost / LAN)
-  if (typeof window !== "undefined" && window.location?.origin) {
-    const origin = window.location.origin;
-    const hostname = window.location.hostname.toLowerCase();
-    const isLocal = 
-      hostname === "localhost" || 
-      hostname === "127.0.0.1" || 
-      hostname.startsWith("192.168.") || 
-      hostname.startsWith("10.") || 
-      hostname.endsWith(".local") ||
-      window.location.protocol === "file:";
-    if (!isLocal) {
-      return origin.replace(/\/+$/, "");
-    }
-  }
-
-  // 3. Fallback to college website configured in settings
-  if (settings?.website && typeof settings.website === "string" && settings.website.trim()) {
-    let site = settings.website.trim().toLowerCase();
-    // If site contains superiorjhn.com, the web app is hosted at portal.superiorjhn.com
-    if (site.includes("superiorjhn.com")) {
-      return "https://portal.superiorjhn.com";
-    }
-    if (!site.startsWith("http://") && !site.startsWith("https://")) {
-      site = `https://${site}`;
-    }
-    return site.replace(/\/+$/, "");
-  }
-
-  // 4. Default fallback: window.location.origin if available, else official college portal domain
-  if (typeof window !== "undefined" && window.location?.origin && window.location.protocol !== "file:") {
-    return window.location.origin.replace(/\/+$/, "");
-  }
-
-  return "https://portal.superiorjhn.com";
-}
-
-/**
- * Builds ultra-short, context-specific document preview & download link
- * Examples:
- * - Admission: /?v=admission&id=1015
- * - Fee Receipt: /?v=receipt&id=1015&rcp=REC-123456
- * - Fee Statement: /?v=statement&id=1015
- * - Result Card: /?v=result&id=1015&m=Sep-2026
- * - Attendance: /?v=attendance&id=1015
- */
 export function getDocumentLink(
-  docType: "receipt" | "statement" | "admission" | "result" | "attendance" | "student",
-  identifier: string,
-  extra?: { rcp?: string; m?: string },
+  type: 'admission' | 'receipt' | 'result' | string,
+  id: string,
+  params?: Record<string, string>,
   settings?: any
 ): string {
-  const base = getPublicBaseUrl(settings);
-  const cleanId = encodeURIComponent(String(identifier || "").trim());
-  let url = `${base}/?v=${docType}&id=${cleanId}`;
-  if (docType === "receipt" && extra?.rcp) {
-    url += `&rcp=${encodeURIComponent(String(extra.rcp).trim())}`;
+  const origin =
+    settings?.portalUrl ||
+    (typeof window !== 'undefined' ? window.location.origin : 'https://superiorcollegejahanian.edu.pk');
+  const search = new URLSearchParams({ verify: type, id: String(id || '') });
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null) search.set(k, String(v));
+    });
   }
-  if (docType === "result" && extra?.m) {
-    url += `&m=${encodeURIComponent(String(extra.m).trim())}`;
-  }
-  return url;
+  return `${origin}/?${search.toString()}`;
 }
 
-export interface AutoAdmissionOptions {
-  silent?: boolean;
-  manualTrigger?: boolean;
+async function dispatchWhatsAppMessage(
+  phone: string,
+  message: string,
+  options?: { silent?: boolean; manualTrigger?: boolean }
+): Promise<{ success: boolean; phone: string; error?: string }> {
+  const cleanPhone = formatWhatsAppPhone(phone);
+  if (!cleanPhone || cleanPhone.length < 10) {
+    if (!options?.silent) toast.error('Valid WhatsApp phone number not found.');
+    return { success: false, phone: cleanPhone, error: 'Invalid phone number' };
+  }
+
+  try {
+    const res = await fetch('/api/whatsapp/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: cleanPhone, message }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.success) {
+      if (!options?.silent) {
+        toast.success(`WhatsApp notice sent to +${cleanPhone}`);
+      }
+      return { success: true, phone: cleanPhone };
+    }
+    const errMsg = data?.error || 'WhatsApp server not connected';
+    if (options?.manualTrigger && !options?.silent) {
+      toast.error(errMsg);
+    }
+    return { success: false, phone: cleanPhone, error: errMsg };
+  } catch (err: any) {
+    const errMsg = err?.message || 'Network error';
+    if (options?.manualTrigger && !options?.silent) {
+      toast.error(`WhatsApp send failed: ${errMsg}`);
+    }
+    return { success: false, phone: cleanPhone, error: errMsg };
+  }
 }
 
 export function buildAdmissionNoticeMessage(admission: any, settings?: any): string {
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
-  const session = admission.session || settings?.academicSession || "2026-28";
-  const studentName = (admission.fullName || "Student").trim();
-  const fatherName = (admission.fatherName || "Sahib").trim();
-  const studentId = admission.studentId || admission.id || "Allotted on Portal";
-  const collegeNo = admission.collegeNo || admission.rollNo || "Allotted on Orientation";
-  const group = admission.group || admission.category || "Intermediate";
-  const section = admission.section ? `Section ${admission.section}` : "Section A";
+  const collegeName = settings?.collegeName || 'Superior College Jahanian';
+  const name = admission?.fullName || 'Student';
+  const father = admission?.fatherName ? ` S/D/O ${admission.fatherName}` : '';
+  const group = admission?.group || admission?.course || admission?.category || 'Academic Program';
+  const rollNo = admission?.collegeNo || admission?.studentId || admission?.rollNo || admission?.id || 'Assigned Soon';
+  const totalPkg = Number(admission?.totalPackage || admission?.total_package || 0);
+  const feePaid = Number(admission?.feeReceived || admission?.admissionFee || admission?.fee_received || 0);
+  const balance = Math.max(0, totalPkg - feePaid);
+  const hasPhoto = Boolean(admission?.photo || admission?.photoUrl || admission?.photo_url);
+  const verifyLink = getDocumentLink('admission', rollNo, { ref: admission?.id || '' }, settings);
 
-  // Format subjects list
-  let subjectsList = "Compulsory & Elective Subjects";
-  if (Array.isArray(admission.subjects) && admission.subjects.length > 0) {
-    subjectsList = admission.subjects.filter(Boolean).join(", ");
-  } else if (typeof admission.subjects === "string" && admission.subjects.trim()) {
-    subjectsList = admission.subjects.trim();
+  let msg = `*${collegeName.toUpperCase()}*\n*OFFICIAL ADMISSION CONFIRMATION*\n\nDear Parents / *${name}*${father},\nCongratulations! Your admission in *${group}* (Session ${admission?.session || '2026-28'}) is confirmed.\n\n*Roll / College ID:* ${rollNo}\n*Total Package:* Rs. ${totalPkg.toLocaleString()}\n*Fee Received:* Rs. ${feePaid.toLocaleString()}\n*Remaining Balance:* Rs. ${balance.toLocaleString()}\n\n*Digital Admission Slip:* ${verifyLink}`;
+
+  if (!hasPhoto) {
+    msg += `\n\n📸 *Profile Photo Required:* Please reply to this WhatsApp message with a clear passport-size photo of *${name}* along with Roll No *${rollNo}* so we can activate Smart Gate Face Attendance & Student ID Card.`;
   }
 
-  const totalPkgNum = Number(admission.totalPackage || 0);
-  const feeRcvNum = Number(admission.feeReceived || 0);
-  const totalPkg = totalPkgNum.toLocaleString();
-  const paid = feeRcvNum.toLocaleString();
-  const balance = Math.max(0, totalPkgNum - feeRcvNum).toLocaleString();
-
-  const concessionLine = admission.concessionReason 
-    ? `• *Scholarship / Category:* ${admission.concessionReason}\n` 
-    : "";
-
-  const address = settings?.address || "Superior College, Canal Road, Jahanian";
-  const helpline = getCleanHelpline(settings);
-
-  // Build Context-Specific Links (ONLY Admission Slip & Initial Fee Receipt if paid)
-  const primaryId = collegeNo !== "Allotted on Orientation" ? collegeNo : (studentId !== "Allotted on Portal" ? studentId : (admission.id || ""));
-  const admissionSlipUrl = getDocumentLink("admission", primaryId, undefined, settings);
-  
-  let docLinksSection = `\n📄 *Official Admission Slip:* ${admissionSlipUrl}`;
-  if (feeRcvNum > 0) {
-    const rcpNo = admission.receiptId || admission.receiptNo || `ADM-${Math.floor(100000 + Math.random() * 900000)}`;
-    const feeReceiptUrl = getDocumentLink("receipt", primaryId, { rcp: rcpNo }, settings);
-    docLinksSection += `\n🧾 *Admission Fee Receipt:* ${feeReceiptUrl}`;
-  }
-
-  const hasPhoto = Boolean(admission.photo_url || admission.photo);
-  const photoNoticeBlock = !hasPhoto
-    ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━\n📸 *ACTION REQUIRED: Profile Photo Upload*\nSmart Gate Face Attendance aur Digital Student Card ke liye aapki photo portal par darj nahi hai.\n👉 Baraye meherbani apne mobile se seedhi passport style photo (clear face) capture kar ke *ISI WHATSAPP NUMBER PAR BHEJEIN*. Humara AI bot aapki photo ko auto-verify kar ke profile ke sath link kar dega!`
-    : "";
-
-  return `🏛️ *${collegeName.toUpperCase()}*
-🎓 *OFFICIAL ADMISSION CONFIRMATION NOTICE*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Dear Parent/Guardian (${fatherName}),
-
-Mubarak ho! *${studentName.toUpperCase()}* ka dakhla Superior College Jahanian mein kamyabi se confirm ho chuka hai.
-
-📋 *Enrollment & Academic Details:*
-• *Student Name:* ${studentName}
-• *Father Name:* ${fatherName}
-• *Student ID:* ${studentId}
-• *College Roll No:* ${collegeNo}
-• *Class / Program:* ${group}
-• *Assigned Section:* ${section}
-• *Academic Session:* ${session}
-• *Enrolled Subjects:* ${subjectsList}
-${concessionLine}━━━━━━━━━━━━━━━━━━━━━━━━━
-💰 *Fee Ledger Details:*
-• *Agreed Package:* Rs. ${totalPkg}
-• *Fee Deposited:* Rs. ${paid}
-• *Remaining Balance:* Rs. ${balance}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-🔗 *Document Verification & Download:*${docLinksSection}${photoNoticeBlock}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📍 *Campus Address:* ${address}
-📞 *Helpline / Query:* ${helpline}
-_Office of the Principal, Superior College Jahanian_`;
+  msg += `\n\nRegards,\n*Administration Office*\n${collegeName}`;
+  return msg;
 }
 
-/**
- * Builds standalone message requesting student/parent to upload passport-size photo via WhatsApp
- */
-export function buildPhotoUploadRequestMessage(student: any, settings?: any): string {
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
-  const studentName = (student.fullName || student.name || "Student").trim();
-  const rollNo = student.collegeNo || student.rollNo || student.id || "N/A";
-  const group = student.group || student.section || "Intermediate";
-  const helpline = getCleanHelpline(settings);
-
-  return `🏛️ *${collegeName.toUpperCase()}*
-📸 *SMART FACE ATTENDANCE & PROFILE PHOTO UPDATE*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Assalam-o-Alaikum *${studentName}*!
-(Roll Number: *${rollNo}*, Class: *${group}*)
-
-College Smart Gate Face Attendance aur Digital ID Card ke liye aapki profile photo hamare system mein darj nahi hai.
-
-📱 *Kia Karna Hai?*
-1️⃣ Apne mobile camera se seedhi passport style photo (clear face, achi roshni) capture karein.
-2️⃣ Yeh photo *ISI WHATSAPP NUMBER PAR REPLY KAREIN*.
-
-✅ Hamara AI System aapki photo ko detect kar ke aapke student profile aur Gate Face Attendance system ke sath foran link kar dega!
-
-📞 Helpline: ${helpline}
-_Student Affairs & IT Department, Superior College Jahanian_`;
-}
-
-/**
- * Dispatches WhatsApp photo upload request to a single student
- */
-export async function sendAutoPhotoUploadRequestNotice(student: any, settings?: any): Promise<boolean> {
-  const rawPhone = student.phone || student.contactNumber || student.fatherContact || student.mobile || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-  if (!phone) {
-    toast.error(`No valid contact phone for ${student.fullName || "Student"}`);
-    return false;
-  }
-
-  const message = buildPhotoUploadRequestMessage(student, settings);
-  try {
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
-    });
-    if (res.ok) {
-      toast.success(`Photo request sent to ${student.fullName || "Student"}!`);
-      return true;
-    } else {
-      toast.error(`Failed to send WhatsApp to ${student.fullName || "Student"}`);
-      return false;
-    }
-  } catch (e: any) {
-    toast.error("Network error: " + (e?.message || "Failed"));
-    return false;
-  }
-}
-
-/**
- * Dispatches WhatsApp photo upload requests in bulk to students without photos
- */
-export async function dispatchBulkPhotoRequests(
-  studentsList: any[],
-  settings?: any,
-  onProgress?: (done: number, total: number) => void
-): Promise<{ sent: number; failed: number }> {
-  let sent = 0;
-  let failed = 0;
-  for (let i = 0; i < studentsList.length; i++) {
-    const st = studentsList[i];
-    const ok = await sendAutoPhotoUploadRequestNotice(st, settings);
-    if (ok) sent++;
-    else failed++;
-    if (onProgress) onProgress(i + 1, studentsList.length);
-    // 700ms throttle between WhatsApp messages
-    await new Promise((r) => setTimeout(r, 700));
-  }
-  return { sent, failed };
-}
-
-/**
- * Automatically dispatches official Admission Confirmation WhatsApp notice to parents
- * Includes: Student ID, Roll No, Class, Section, Subjects, Session, Fee details, and ONLY Admission Slip / Receipt links.
- */
 export async function sendAutoAdmissionNotice(
   admission: any,
   settings?: any,
-  options?: AutoAdmissionOptions
-): Promise<boolean> {
-  if (!admission) return false;
-
-  // Check setting toggle if present (defaults to true)
-  if (!options?.manualTrigger && settings?.autoWhatsAppAdmission === false) {
-    return false;
-  }
-
-  const rawPhone = admission.fatherContact || admission.contactNumber || admission.phone || admission.mobile || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-  const studentName = (admission.fullName || "Student").trim();
-  const message = buildAdmissionNoticeMessage(admission, settings);
-
-  if (!phone) {
-    if (!options?.silent) {
-      toast.warning(`No valid phone number registered for ${studentName}. Admission notice skipped.`);
-    }
-    return false;
-  }
-
-  try {
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
-    });
-
-    if (res.ok) {
-      toast.success(`Automatic WhatsApp Admission Notice sent to +${phone}!`, { id: "adm-wa" });
-      return true;
-    } else {
-      const err = await res.json().catch(() => ({}));
-      if (!options?.silent) {
-        toast.info(err.error || "WhatsApp Gateway offline. Click to open WhatsApp Web.", {
-          id: "adm-wa",
-          action: {
-            label: "Open WhatsApp",
-            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
-          },
-        });
-      }
-      return false;
-    }
-  } catch (error) {
-    console.warn("sendAutoAdmissionNotice network error:", error);
-    if (!options?.silent) {
-      toast.info("WhatsApp Gateway not reachable. Click to open WhatsApp Web.", {
-        id: "adm-wa",
-        action: {
-          label: "Open WhatsApp",
-          onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
-        },
-      });
-    }
-    return false;
-  }
-}
-
-export interface AutoFeePaymentDetails {
-  receiptId?: string;
-  amountPaid: number;
-  datePaid?: string;
-  feeType?: string;
-  remainingBalance?: number;
-  paymentMethod?: string;
-  collectedBy?: string;
-}
-
-export function buildFeeReceiptMessage(
-  studentOrAdmission: any,
-  paymentDetails: AutoFeePaymentDetails,
-  settings?: any
-): string {
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
-  const studentName = (studentOrAdmission.fullName || "Student").trim();
-  const fatherName = (studentOrAdmission.fatherName || "Sahib").trim();
-  const rollNo = studentOrAdmission.collegeNo || studentOrAdmission.studentId || studentOrAdmission.id || "N/A";
-  const group = studentOrAdmission.group || studentOrAdmission.category || "Intermediate";
-
-  const receiptNo = paymentDetails.receiptId || `REC-${Math.floor(100000 + Math.random() * 900000)}`;
-  const amountPaid = Number(paymentDetails.amountPaid || 0).toLocaleString();
-  const payDate = paymentDetails.datePaid 
-    ? new Date(paymentDetails.datePaid).toLocaleDateString("en-GB") 
-    : new Date().toLocaleDateString("en-GB");
-  const feeType = paymentDetails.feeType || "College Fee Deposit";
-
-  let remainingBal = 0;
-  if (typeof paymentDetails.remainingBalance === "number") {
-    remainingBal = Math.max(0, paymentDetails.remainingBalance);
-  } else {
-    const totalPkg = Number(studentOrAdmission.totalPackage || 0);
-    const existingReceived = Number(studentOrAdmission.feeReceived || 0);
-    remainingBal = Math.max(0, totalPkg - (existingReceived + Number(paymentDetails.amountPaid || 0)));
-  }
-
-  const helpline = getCleanHelpline(settings);
-
-  // Context-specific links: ONLY Fee Receipt & Fee Statement
-  const receiptUrl = getDocumentLink("receipt", rollNo, { rcp: receiptNo }, settings);
-  const statementUrl = getDocumentLink("statement", rollNo, undefined, settings);
-
-  return `🏛️ *${collegeName.toUpperCase()}*
-🧾 *OFFICIAL FEE PAYMENT RECEIPT*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Dear Parent/Guardian (${fatherName}),
-
-Aapke bache ki fee payment kamyabi se record ho chuki hai.
-
-• *Student Name:* ${studentName}
-• *Roll Number:* ${rollNo}
-• *Class / Group:* ${group}
-• *Receipt No:* ${receiptNo}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-• *Amount Received:* *Rs. ${amountPaid}*
-• *Payment Date:* ${payDate}
-• *Payment Head:* ${feeType}
-• *Remaining Balance:* Rs. ${remainingBal.toLocaleString()}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-🧾 *Computerized Fee Receipt:*
-${receiptUrl}
-
-📊 *Complete Fee Statement / Ledger:*
-${statementUrl}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ Payment verified & registered in official accounts ledger.
-📞 Accounts Desk: ${helpline}
-_Accounts & Finance Department, Superior College Jahanian_`;
-}
-
-/**
- * Automatically dispatches official Computerized Fee Payment Receipt WhatsApp notice to parents
- * Triggered on any fee collection or installment submission.
- * Includes ONLY Fee Receipt link & Fee Statement link.
- */
-export async function sendAutoFeeReceiptNotice(
-  studentOrAdmission: any,
-  paymentDetails: AutoFeePaymentDetails,
-  settings?: any,
   options?: { silent?: boolean; manualTrigger?: boolean }
 ): Promise<boolean> {
-  if (!studentOrAdmission || !paymentDetails) return false;
-
-  // Check setting toggle if present (defaults to true)
-  if (!options?.manualTrigger && settings?.autoWhatsAppFeePayment === false) {
-    return false;
-  }
-
-  const rawPhone = studentOrAdmission.fatherContact || 
-    studentOrAdmission.contact || 
-    studentOrAdmission.contactNumber || 
-    studentOrAdmission.phone || 
-    studentOrAdmission.mobile || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-  const studentName = (studentOrAdmission.fullName || "Student").trim();
-  const message = buildFeeReceiptMessage(studentOrAdmission, paymentDetails, settings);
-
-  if (!phone) {
-    if (!options?.silent) {
-      toast.warning(`No valid phone number registered for ${studentName}. Receipt notice skipped.`);
-    }
+  const phone =
+    admission?.whatsappNumber ||
+    admission?.fatherContact ||
+    admission?.contact ||
+    admission?.guardianPhone ||
+    '';
+  const cleanPhone = formatWhatsAppPhone(phone);
+  if (!cleanPhone || cleanPhone.length < 10) {
+    if (!options?.silent) toast.error('Valid WhatsApp phone number not found.');
     return false;
   }
 
   try {
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
-    });
-
-    if (res.ok) {
-      toast.success(`Official WhatsApp Fee Receipt dispatched to +${phone}!`, { id: "fee-wa-receipt" });
-      return true;
-    } else {
-      const err = await res.json().catch(() => ({}));
-      if (!options?.silent) {
-        toast.info(err.error || "WhatsApp Gateway offline. Click to share receipt.", {
-          id: "fee-wa-receipt",
-          action: {
-            label: "Share Receipt",
-            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
-          },
-        });
-      }
-      return false;
-    }
-  } catch (error) {
-    console.warn("sendAutoFeeReceiptNotice network error:", error);
-    if (!options?.silent) {
-      toast.info("WhatsApp Gateway not reachable. Click to share receipt.", {
-        id: "fee-wa-receipt",
-        action: {
-          label: "Share Receipt",
-          onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
+    const pdfRes = await fetch('/api/whatsapp/send-official-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'admission_slip',
+        phone: cleanPhone,
+        admissionData: {
+          studentName: admission?.fullName || 'Student',
+          fatherName: admission?.fatherName || 'N/A',
+          rollNo: admission?.collegeNo || admission?.studentId || admission?.rollNo || admission?.id || 'N/A',
+          className: admission?.group || admission?.course || admission?.category || 'Intermediate',
+          section: admission?.section || 'A',
+          session: admission?.session || '2026-28',
+          contact: cleanPhone,
+          bForm: admission?.bayFormNo || admission?.bForm || 'N/A',
+          totalPackage: Number(admission?.totalPackage || admission?.total_package || 0),
+          paidAmount: Number(admission?.feeReceived || admission?.admissionFee || admission?.fee_received || 0),
+          admissionDate: admission?.admissionDate || new Date().toISOString(),
         },
-      });
+      }),
+    });
+    const pdfData = await pdfRes.json().catch(() => ({}));
+    if (pdfRes.ok && pdfData?.success) {
+      if (!options?.silent) {
+        toast.success(`Official Admission Slip PDF sent to +${cleanPhone}`);
+      }
+      const hasPhoto = Boolean(admission?.photo || admission?.photoUrl || admission?.photo_url);
+      if (!hasPhoto) {
+        const name = admission?.fullName || 'Student';
+        const rollNo = admission?.collegeNo || admission?.studentId || admission?.rollNo || admission?.id || 'N/A';
+        const photoPrompt = `📸 *PROFILE PHOTO REQUIRED — SUPERIOR COLLEGE JAHANIAN*\n━━━━━━━━━━━━━━━━━━━━━━━━━\nBaraye meherbani *${name}* (Roll No: *${rollNo}*) ki passport-size photo isi WhatsApp par reply karein taake Smart Gate Face Attendance aur Student ID Card active kiya ja sake.`;
+        await dispatchWhatsAppMessage(cleanPhone, photoPrompt, { silent: true });
+      }
+      return true;
     }
-    return false;
+  } catch (e) {
+    console.warn('Admission PDF send fallback to text:', e);
   }
+
+  const msg = buildAdmissionNoticeMessage(admission, settings);
+  const res = await dispatchWhatsAppMessage(phone, msg, options);
+  return res.success;
 }
 
-export function buildFeeReminderMessage(
+export function buildDailyAttendanceMessage(
   student: any,
-  balanceAmount?: number,
+  attendance: {
+    date: string;
+    status: string;
+    notes?: string;
+    monthlyAbsents?: number;
+    monthlyLeaves?: number;
+    monthlyPresents?: number;
+    monthName?: string;
+  },
   settings?: any
 ): string {
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
-  const studentName = (student.fullName || "Student").trim();
-  const fatherName = (student.fatherName || "Sahib").trim();
-  const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
-  const group = student.group || student.category || "Intermediate";
-  const totalPkg = Number(student.totalPackage || 0);
-  const feeReceived = Number(student.feeReceived || 0);
-  const balance = typeof balanceAmount === "number" ? balanceAmount : Math.max(0, totalPkg - feeReceived);
-  const helpline = getCleanHelpline(settings);
+  const collegeName = 'Superior College Jahanian';
+  const name = student?.fullName || 'Student';
+  const rollNo = student?.studentId || student?.collegeNo || student?.id || 'N/A';
+  const cls = student?.currentClass || student?.group || student?.groupName || 'Class';
+  const status = attendance.status || 'Present';
+  const statusIcon =
+    status === 'Present'
+      ? '✅ PRESENT'
+      : status === 'Absent'
+      ? '🚨 ABSENT'
+      : status === 'Late'
+      ? '⏰ LATE ARRIVAL'
+      : '📋 ON LEAVE';
 
-  // Context-specific link: ONLY Fee Statement / Ledger
-  const statementUrl = getDocumentLink("statement", rollNo, undefined, settings);
+  let msg = `🏛️ *${collegeName.toUpperCase()}*\n📋 *DAILY ATTENDANCE ALERT*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 *Student:* *${name}*\n🆔 *Roll No:* *${rollNo}* (${cls})\n📅 *Date:* *${attendance.date}*\n📌 *Status:* *${statusIcon}*`;
 
-  return `🏛️ *${collegeName.toUpperCase()}*
-📄 *OFFICIAL FEE REMINDER & ACCOUNT STATEMENT*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Dear Parent/Guardian (${fatherName}),
-
-Aapke bache ka fee ledger baqaya darj zail hai:
-
-• *Student Name:* ${studentName}
-• *Roll Number:* ${rollNo}
-• *Class / Group:* ${group}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-• *Agreed Package:* Rs. ${totalPkg.toLocaleString()}
-• *Fee Deposited:* Rs. ${feeReceived.toLocaleString()}
-• *Outstanding Balance:* *Rs. ${balance.toLocaleString()}*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 *Online Fee Statement / Ledger:*
-${statementUrl}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ *Instruction:* Baraye meherbani aakhri tareekh se qabal accounts desk par baqaya fee jama karwa kar computerised receipt hasil karein.
-📞 Accounts Desk: ${helpline}
-_Accounts & Finance Department, Superior College Jahanian_`;
-}
-
-/**
- * Automatically dispatches official Fee Dues Reminder WhatsApp notice to parents
- * Includes ONLY Fee Statement link.
- */
-export async function sendAutoFeeReminderNotice(
-  student: any,
-  settings?: any,
-  options?: { silent?: boolean; manualTrigger?: boolean; balance?: number }
-): Promise<boolean> {
-  if (!student) return false;
-
-  const rawPhone = student.fatherContact || 
-    student.contact || 
-    student.contactNumber || 
-    student.phone || 
-    student.mobile || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-  const studentName = (student.fullName || "Student").trim();
-  const message = buildFeeReminderMessage(student, options?.balance, settings);
-
-  if (!phone) {
-    if (!options?.silent) {
-      toast.warning(`No valid phone number registered for ${studentName}. Reminder skipped.`);
-    }
-    return false;
+  if (attendance.notes) {
+    msg += `\n📝 *Remarks:* ${attendance.notes}`;
   }
-
-  try {
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
-    });
-
-    if (res.ok) {
-      toast.success(`Fee reminder dispatched via WhatsApp to +${phone}!`, { id: "fee-reminder-wa" });
-      return true;
-    } else {
-      const err = await res.json().catch(() => ({}));
-      if (!options?.silent) {
-        toast.info(err.error || "WhatsApp Gateway offline. Click to share reminder.", {
-          id: "fee-reminder-wa",
-          action: {
-            label: "Share Reminder",
-            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
-          },
-        });
-      }
-      return false;
-    }
-  } catch (error) {
-    console.warn("sendAutoFeeReminderNotice network error:", error);
-    if (!options?.silent) {
-      toast.info("WhatsApp Gateway not reachable. Click to share reminder.", {
-        id: "fee-reminder-wa",
-        action: {
-          label: "Share Reminder",
-          onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
-        },
-      });
-    }
-    return false;
+  if (typeof attendance.monthlyAbsents === 'number') {
+    msg += `\n\n📊 *${attendance.monthName || 'Monthly'} Summary:* Present: *${attendance.monthlyPresents ?? 0}* | Absent: *${attendance.monthlyAbsents}* | Leave: *${attendance.monthlyLeaves ?? 0}*`;
   }
-}
-
-export interface AutoResultDetails {
-  month?: string;
-  testTitle?: string;
-  marksListText?: string;
-  totalObtained?: number;
-  totalMax?: number;
-  percentage?: number;
-  statusText?: string;
-}
-
-/**
- * Automatically dispatches official Academic Result Card WhatsApp notice to parents
- * Includes ONLY Academic Result Card link.
- */
-export async function sendAutoResultNotice(
-  student: any,
-  details: AutoResultDetails,
-  settings?: any,
-  options?: { silent?: boolean; manualTrigger?: boolean }
-): Promise<boolean> {
-  if (!student) return false;
-
-  const rawPhone = student.fatherContact || 
-    student.contact || 
-    student.contactNumber || 
-    student.phone || 
-    student.mobile || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
-  const studentName = (student.fullName || "Student").trim();
-  const fatherName = (student.fatherName || "Sahib").trim();
-  const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
-  const group = student.group || student.category || "Intermediate";
-  const section = student.section ? ` (Sec: ${student.section})` : "";
-  const month = details.month || "Current Term";
-  const helpline = getCleanHelpline(settings);
-
-  // Context-specific link: ONLY Academic Result Card
-  const resultUrl = getDocumentLink("result", rollNo, { m: month }, settings);
-
-  const message = 
-`🏛️ *${collegeName.toUpperCase()}*
-📊 *OFFICIAL ACADEMIC ASSESSMENT REPORT*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Dear Parent/Guardian (${fatherName}),
-
-• *Student Name:* ${studentName}
-• *Roll Number:* ${rollNo}
-• *Class & Section:* ${group}${section}
-• *Assessment Term:* ${month}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📝 *Subject-wise Examination Scores:*
-${details.marksListText || "• Assessment scores registered on portal."}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-• *Grand Total:* ${details.totalObtained ?? "-"} / ${details.totalMax ?? "-"} (${details.percentage ?? 0}%)
-• *Result Status:* ${details.statusText || "Evaluated"}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📈 *Official Academic Result Card:*
-${resultUrl}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 *Instruction:* Board imtehanat mein aala position ke liye rozana revision aur regular attendance yaqeeni banayein.
-📞 Academic Helpdesk: ${helpline}
-_Office of the Controller of Examinations, Superior College Jahanian_`;
-
-  if (!phone) {
-    if (!options?.silent) {
-      toast.warning(`No valid phone number registered for ${studentName}. Result card skipped.`);
-    }
-    return false;
-  }
-
-  try {
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
-    });
-
-    if (res.ok) {
-      toast.success(`Academic Result Card dispatched to +${phone}!`, { id: "result-wa" });
-      return true;
-    } else {
-      const err = await res.json().catch(() => ({}));
-      if (!options?.silent) {
-        toast.info(err.error || "WhatsApp Gateway offline. Click to share result.", {
-          id: "result-wa",
-          action: {
-            label: "Share Result",
-            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
-          },
-        });
-      }
-      return false;
-    }
-  } catch (error) {
-    console.warn("sendAutoResultNotice network error:", error);
-    if (!options?.silent) {
-      toast.info("WhatsApp Gateway not reachable. Click to share result.", {
-        id: "result-wa",
-        action: {
-          label: "Share Result",
-          onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
-        },
-      });
-    }
-    return false;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DAILY ATTENDANCE NOTIFICATION
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface AutoDailyAttendanceDetails {
-  date: string;
-  status: 'Present' | 'Absent' | 'Late' | 'Leave' | 'Holiday' | string;
-  notes?: string;
-  monthlyAbsents?: number;
-  monthlyLeaves?: number;
-  monthlyPresents?: number;
-  monthName?: string;
-}
-
-export function buildDailyAttendanceMessage(student: any, details: AutoDailyAttendanceDetails, settings?: any): string {
-  const collegeName = settings?.collegeName || "Superior Group of Colleges Jahanian";
-  const studentName = (student.fullName || "Student").trim();
-  const fatherName = (student.fatherName || "Sahib").trim();
-  const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
-  const group = student.group || student.category || "Intermediate";
-  const section = student.section ? ` (Sec: ${student.section})` : "";
-  const dateStr = details.date || new Date().toISOString().split('T')[0];
-  const helpline = getCleanHelpline(settings);
-
-  const statusBadge = details.status === 'Present' 
-    ? '✅ HAZIR (Present)' 
-    : details.status === 'Absent' 
-      ? '🚨 GHAIR HAZIR (Absent)' 
-      : details.status === 'Late' 
-        ? '⏰ LATE (Tawkheer)' 
-        : details.status === 'Leave' 
-          ? '📝 RUKHSAT (On Leave)' 
-          : `${String(details.status).toUpperCase()}`;
-
-  const attendanceUrl = getDocumentLink("attendance", rollNo, undefined, settings);
-
-  let remarkText = "";
-  if (details.status === 'Absent') {
-    remarkText = "\n⚠️ *Tawajjah Farmaiye:* Aapka bacha aaj baghair kisi ittela ke college se ghair hazir raha hai. Baraye meherbani foran college administration ya class teacher se rabta karein.";
-  } else if (details.status === 'Late') {
-    remarkText = "\n⚠️ *Hidayat:* Bacha aaj college auqat se dair se pohancha hai. Regular timing ki pabandi yaqeeni banayein.";
-  } else if (details.notes) {
-    remarkText = `\n📝 *Notes:* ${details.notes}`;
-  }
-
-  let monthlySummarySection = "";
-  if (details.monthlyAbsents !== undefined) {
-    const periodLabel = details.monthName || "Iss Maheene";
-    monthlySummarySection = `\n━━━━━━━━━━━━━━━━━━━━━━━━━\n📊 *Monthly Hazri Khulasa (${periodLabel}):*\n• Iss Maah Total Chutian (Absents): *${details.monthlyAbsents}*\n• Iss Maah Total Rukhsat (Leaves): *${details.monthlyLeaves ?? 0}*\n• Iss Maah Hazri (Presents): *${details.monthlyPresents ?? 0}*`;
-  }
-
-  return `🏛️ *${collegeName.toUpperCase()}*
-📋 *DAILY STUDENT ATTENDANCE NOTIFICATION*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Dear Parent/Guardian (${fatherName}),
-
-Aapke bache ki aaj ki rozana hazri status darj zail hai:
-
-• *Student Name:* ${studentName}
-• *Roll Number:* ${rollNo}
-• *Class & Section:* ${group}${section}
-• *Date:* ${dateStr}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-• *Daily Attendance Status:* *${statusBadge}*${remarkText}${monthlySummarySection}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 *Online Attendance Dossier & History:*
-${attendanceUrl}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📞 College Helpline: ${helpline}
-_Student Affairs & Attendance Desk, SCJ_`;
-}
-
-export interface DailyAttendanceSendResult {
-  success: boolean;
-  phone?: string;
-  error?: string;
+  msg += `\n━━━━━━━━━━━━━━━━━━━━━━━━━\n_Attendance Cell — ${collegeName}_`;
+  return msg;
 }
 
 export async function sendAutoDailyAttendanceNoticeDetailed(
   student: any,
-  details: AutoDailyAttendanceDetails,
+  attendance: {
+    date: string;
+    status: string;
+    notes?: string;
+    monthlyAbsents?: number;
+    monthlyLeaves?: number;
+    monthlyPresents?: number;
+    monthName?: string;
+  },
   settings?: any,
   options?: { silent?: boolean; manualTrigger?: boolean }
-): Promise<DailyAttendanceSendResult> {
-  if (!student) return { success: false, error: "Student not found" };
-
-  const rawPhone = student.fatherContact || 
-    student.contact || 
-    student.contactNumber || 
-    student.phone || 
-    student.mobile || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-  const message = buildDailyAttendanceMessage(student, details, settings);
-
-  if (!phone) {
-    if (!options?.silent) {
-      toast.warning(`No phone number for ${(student.fullName || 'Student')}. Alert skipped.`, { id: `att-wa-${student.id}` });
-    }
-    return { success: false, error: "No Phone Number" };
-  }
-
-  try {
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
-    });
-
-    if (res.ok) {
-      toast.success(`Attendance alert sent for ${(student.fullName || 'Student')}!`, { id: `att-wa-${student.id}` });
-      return { success: true, phone };
-    } else {
-      const err = await res.json().catch(() => ({}));
-      const reason = err.error || "WhatsApp Gateway offline";
-      if (!options?.silent) {
-        toast.info(reason, {
-          id: `att-wa-${student.id}`,
-          action: {
-            label: "Open WhatsApp",
-            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
-          },
-        });
-      }
-      return { success: false, phone, error: reason };
-    }
-  } catch (error: any) {
-    console.warn("sendAutoDailyAttendanceNotice network error:", error);
-    const reason = error?.message || "Network error";
-    if (!options?.silent) {
-      toast.info("WhatsApp Gateway not reachable. Click to open WhatsApp.", {
-        id: `att-wa-${student.id}`,
-        action: {
-          label: "Open WhatsApp",
-          onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
-        },
-      });
-    }
-    return { success: false, phone, error: reason };
-  }
+): Promise<{ success: boolean; phone: string; error?: string }> {
+  const phone =
+    student?.fatherContact ||
+    student?.guardianPhone ||
+    student?.whatsapp ||
+    student?.contact ||
+    student?.phone ||
+    '';
+  const msg = buildDailyAttendanceMessage(student, attendance, settings);
+  return dispatchWhatsAppMessage(phone, msg, options);
 }
 
 export async function sendAutoDailyAttendanceNotice(
   student: any,
-  details: AutoDailyAttendanceDetails,
-  settings?: any,
-  options?: { silent?: boolean; manualTrigger?: boolean }
+  attendance: { date: string; status: string; notes?: string },
+  settings?: any
 ): Promise<boolean> {
-  const result = await sendAutoDailyAttendanceNoticeDetailed(student, details, settings, options);
-  return result.success;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PERIODIC (WEEKLY / MONTHLY) ATTENDANCE REPORT
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface AutoPeriodicAttendanceDetails {
-  period: 'weekly' | 'monthly';
-  periodLabel: string;
-  present: number;
-  absent: number;
-  late: number;
-  leave: number;
-  holiday?: number;
-  totalWorkingDays: number;
-  percentage?: number;
+  const res = await sendAutoDailyAttendanceNoticeDetailed(student, attendance, settings, {
+    manualTrigger: true,
+  });
+  return res.success;
 }
 
 export function buildPeriodicAttendanceMessage(
-  student: any, 
-  details: AutoPeriodicAttendanceDetails, 
+  student: any,
+  stats: {
+    period: string;
+    periodLabel: string;
+    present: number;
+    absent: number;
+    late: number;
+    leave: number;
+    holiday?: number;
+    totalWorkingDays: number;
+  },
   settings?: any
 ): string {
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
-  const studentName = (student.fullName || "Student").trim();
-  const fatherName = (student.fatherName || "Sahib").trim();
-  const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
-  const group = student.group || student.category || "Intermediate";
-  const section = student.section ? ` (Sec: ${student.section})` : "";
-  const helpline = getCleanHelpline(settings);
+  const collegeName = 'Superior College Jahanian';
+  const name = student?.fullName || 'Student';
+  const rollNo = student?.studentId || student?.collegeNo || student?.id || 'N/A';
+  const pct =
+    stats.totalWorkingDays > 0
+      ? Math.round(((stats.present + stats.late) / stats.totalWorkingDays) * 100)
+      : 100;
 
-  const totalDays = details.totalWorkingDays || (details.present + details.absent + details.late + details.leave) || 1;
-  const pct = details.percentage !== undefined 
-    ? details.percentage 
-    : Math.round(((details.present + details.late) / Math.max(1, totalDays)) * 100);
-
-  const evalRemark = pct >= 85 
-    ? "🌟 *Excellent Attendance Track Record!*" 
-    : pct >= 75 
-      ? "👍 *Satisfactory (Regular revision required)*" 
-      : "🚨 *CRITICAL SHORTAGE:* Board exams eligibility ke liye minimum 75% hazri lazmi hai.";
-
-  const attendanceUrl = getDocumentLink("attendance", rollNo, undefined, settings);
-
-  return `🏛️ *${collegeName.toUpperCase()}*
-📊 *${details.period.toUpperCase()} ATTENDANCE SUMMARY REPORT*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Dear Parent/Guardian (${fatherName}),
-
-• *Student Name:* ${studentName}
-• *Roll Number:* ${rollNo}
-• *Class & Section:* ${group}${section}
-• *Report Period:* ${details.periodLabel}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📈 *Attendance Performance Overview:*
-• *Total Working Days:* ${totalDays}
-• *Days Present:* ${details.present} ✅
-• *Days Late:* ${details.late} ⏰
-• *Days Absent:* ${details.absent} 🚨
-• *Approved Leaves:* ${details.leave} 📝
-━━━━━━━━━━━━━━━━━━━━━━━━━
-• *Net Attendance Ratio:* *${pct}%*
-• *Performance Status:* ${evalRemark}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 *Detailed Attendance Verification Ledger:*
-${attendanceUrl}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 *Zaroori Hidayat:* Board imtehanat mein admission bhejne ke liye 75% hazri qanoonan lazmi hai.
-📞 Attendance Office: ${helpline}
-_Academic Administration, Superior College Jahanian_`;
+  return `🏛️ *${collegeName.toUpperCase()}*\n📊 *MONTHLY ATTENDANCE REPORT (${stats.periodLabel})*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 *Student:* *${name}*\n🆔 *Roll No:* *${rollNo}*\n\n• *Total Working Days:* ${stats.totalWorkingDays}\n• *Present:* *${stats.present}*\n• *Absent:* *${stats.absent}*\n• *Late:* *${stats.late}*\n• *Leave:* *${stats.leave}*\n• *Attendance Percentage:* *${pct}%*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n_Academic Office — ${collegeName}_`;
 }
 
 export async function sendAutoPeriodicAttendanceReport(
   student: any,
-  details: AutoPeriodicAttendanceDetails,
-  settings?: any,
-  options?: { silent?: boolean; manualTrigger?: boolean }
+  stats: {
+    period: string;
+    periodLabel: string;
+    present: number;
+    absent: number;
+    late: number;
+    leave: number;
+    holiday?: number;
+    totalWorkingDays: number;
+  },
+  settings?: any
 ): Promise<boolean> {
-  if (!student) return false;
-
-  const rawPhone = student.fatherContact || 
-    student.contact || 
-    student.contactNumber || 
-    student.phone || 
-    student.mobile || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-  const message = buildPeriodicAttendanceMessage(student, details, settings);
-
-  if (!phone) {
-    if (!options?.silent) {
-      toast.warning(`No valid phone number for ${student.fullName || 'Student'}. Summary skipped.`);
-    }
-    return false;
-  }
-
-  try {
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
-    });
-
-    if (res.ok) {
-      toast.success(`Monthly attendance summary dispatched to +${phone}!`, { id: `att-m-${student.id}` });
-      return true;
-    } else {
-      const err = await res.json().catch(() => ({}));
-      if (!options?.silent) {
-        toast.info(err.error || "WhatsApp Gateway offline. Click to share.", {
-          id: `att-m-${student.id}`,
-          action: {
-            label: "Open WhatsApp",
-            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
-          },
-        });
-      }
-      return false;
-    }
-  } catch (error) {
-    console.warn("sendAutoPeriodicAttendanceReport network error:", error);
-    return false;
-  }
+  const phone =
+    student?.fatherContact ||
+    student?.guardianPhone ||
+    student?.whatsapp ||
+    student?.contact ||
+    '';
+  const msg = buildPeriodicAttendanceMessage(student, stats, settings);
+  const res = await dispatchWhatsAppMessage(phone, msg, { manualTrigger: true });
+  return res.success;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SINGLE TEST / BATCH MARKS NOTIFICATION
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface AutoTestMarksDetails {
-  subject: string;
-  testType: string;
-  date: string;
-  totalMarks: number;
-  obtainedMarks: number | string;
-  percentage?: number;
-  grade?: string;
-  rank?: number;
-  remarks?: string;
+export function buildPhotoUploadRequestMessage(student: any, settings?: any): string {
+  const collegeName = 'Superior College Jahanian';
+  const name = student?.fullName || 'Student';
+  const rollNo = student?.studentId || student?.collegeNo || student?.id || 'N/A';
+  return `🏛️ *${collegeName.toUpperCase()}*\n📸 *URGENT: STUDENT PHOTOGRAPH REQUIRED*\n━━━━━━━━━━━━━━━━━━━━━━━━━\nDear Parents / *${name}* (Roll No: *${rollNo}*),\nOur records indicate that your official passport photograph is missing in the College ERP.\n\n📸 *Easy Upload:* Simply reply to this WhatsApp message with a clear front-facing photo of *${name}* so our AI system can automatically attach it to your Smart Gate Attendance & ID Card profile.\n\n_IT & Records Cell — ${collegeName}_`;
 }
 
-export function buildTestMarksMessage(student: any, details: AutoTestMarksDetails, settings?: any): string {
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
-  const studentName = (student.fullName || "Student").trim();
-  const fatherName = (student.fatherName || "Sahib").trim();
-  const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
-  const group = student.group || student.category || "Intermediate";
-  const section = student.section ? ` (Sec: ${student.section})` : "";
-  const helpline = getCleanHelpline(settings);
-
-  const numObtained = Number(details.obtainedMarks) || 0;
-  const total = Number(details.totalMarks) || 50;
-  const pct = details.percentage ?? Math.round((numObtained / Math.max(1, total)) * 100);
-  const grade = details.grade || (pct >= 80 ? 'A+' : pct >= 70 ? 'A' : pct >= 60 ? 'B' : pct >= 50 ? 'C' : 'F');
-  const rankStr = details.rank === 1 ? '🥇 1st Position' : details.rank === 2 ? '🥈 2nd Position' : details.rank === 3 ? '🥉 3rd Position' : details.rank ? `Position #${details.rank}` : '';
-  const status = pct >= 50 ? 'PASSED (Kamyab) ✅' : 'NEEDS ATTENTION (Mehnat Darkar) ⚠️';
-
-  const resultUrl = getDocumentLink("result", rollNo, { m: details.date }, settings);
-
-  const posLine = rankStr ? `• *Class Position:* ${rankStr}\n` : '';
-  const remLine = details.remarks ? `• *Teacher Remarks:* ${details.remarks}\n` : '';
-
-  return `🏛️ *${collegeName.toUpperCase()}*
-📝 *OFFICIAL TEST ASSESSMENT REPORT*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Dear Parent/Guardian (${fatherName}),
-
-Aapke bache ke haaliyah test ke nataij darj zail hain:
-
-• *Student Name:* ${studentName}
-• *Roll Number:* ${rollNo}
-• *Class & Section:* ${group}${section}
-• *Subject:* ${details.subject}
-• *Test Type:* ${details.testType} (${details.date})
-━━━━━━━━━━━━━━━━━━━━━━━━━
-• *Obtained Marks:* *${details.obtainedMarks} / ${total}* (${pct}%)
-• *Assigned Grade:* *${grade}*
-${posLine}${remLine}• *Result Status:* ${status}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📈 *Official Online Result Card:*
-${resultUrl}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 *Hidayat:* Kam marks ki soorat mein revision aur teacher guidance session attend karein.
-📞 Academic Helpdesk: ${helpline}
-_Office of the Controller of Examinations, SCJ_`;
-}
-
-export async function sendAutoTestMarksNotice(
+export async function sendAutoPhotoUploadRequestNotice(
   student: any,
-  details: AutoTestMarksDetails,
-  settings?: any,
-  options?: { silent?: boolean; manualTrigger?: boolean }
+  settings?: any
 ): Promise<boolean> {
-  if (!student) return false;
-
-  const rawPhone = student.fatherContact || 
-    student.contact || 
-    student.contactNumber || 
-    student.phone || 
-    student.mobile || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-  const message = buildTestMarksMessage(student, details, settings);
-
-  if (!phone) {
-    if (!options?.silent) {
-      toast.warning(`No valid phone number for ${student.fullName || 'Student'}. Result skipped.`);
-    }
-    return false;
-  }
-
-  try {
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
-    });
-
-    if (res.ok) {
-      toast.success(`Result dispatched to parent of ${student.fullName}!`, { id: `res-t-${student.id}` });
-      return true;
-    } else {
-      const err = await res.json().catch(() => ({}));
-      if (!options?.silent) {
-        toast.info(err.error || "WhatsApp Gateway offline. Click to share.", {
-          id: `res-t-${student.id}`,
-          action: {
-            label: "Open WhatsApp",
-            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
-          },
-        });
-      }
-      return false;
-    }
-  } catch (error) {
-    console.warn("sendAutoTestMarksNotice error:", error);
-    return false;
-  }
+  const phone =
+    student?.fatherContact ||
+    student?.guardianPhone ||
+    student?.whatsapp ||
+    student?.contact ||
+    '';
+  const msg = buildPhotoUploadRequestMessage(student, settings);
+  const res = await dispatchWhatsAppMessage(phone, msg, { manualTrigger: true });
+  return res.success;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CLASS MERIT LIST & POSITION NOTIFICATION
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface AutoMeritPositionDetails {
-  month: string;
-  rank: number;
-  totalScore: number;
-  maxScore: number;
-  percentage: number;
-  grade: string;
-  testsTaken: number;
-  subject?: string;
-}
-
-export function buildMeritPositionMessage(student: any, details: AutoMeritPositionDetails, settings?: any): string {
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
-  const studentName = (student.fullName || "Student").trim();
-  const fatherName = (student.fatherName || "Sahib").trim();
-  const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
-  const group = student.group || student.category || "Intermediate";
-  const section = student.section ? ` (Sec: ${student.section})` : "";
-  const helpline = getCleanHelpline(settings);
-
-  const posMedal = details.rank === 1 ? '🥇 FIRST POSITION (1st)' : details.rank === 2 ? '🥈 SECOND POSITION (2nd)' : details.rank === 3 ? '🥉 THIRD POSITION (3rd)' : `Class Position #${details.rank}`;
-
-  const resultUrl = getDocumentLink("result", rollNo, { m: details.month }, settings);
-
-  return `🏛️ *${collegeName.toUpperCase()}*
-🏆 *OFFICIAL CLASS MERIT & POSITION NOTICE*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Dear Parent/Guardian (${fatherName}),
-
-🌟 *Mubarakbaad!* Superior College Jahanian academic evaluation ke tehat aapke bache ka merit position report:
-
-• *Student Name:* *${studentName.toUpperCase()}*
-• *Roll Number:* ${rollNo}
-• *Class & Section:* ${group}${section}
-• *Assessment Term:* ${details.month}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-🏆 *ACHIEVED CLASS POSITION:* *${posMedal}*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-• *Aggregate Score:* ${details.totalScore} / ${details.maxScore}
-• *Percentage:* *${details.percentage.toFixed(1)}%*
-• *Aggregate Grade:* *${details.grade}*
-• *Tests Evaluated:* ${details.testsTaken} Tests
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📈 *Complete Verified Result Card:*
-${resultUrl}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-🎉 Administration and Faculty Superior College Jahanian wish congratulations on this academic performance!
-📞 Academic Helpdesk: ${helpline}
-_Office of the Principal, Superior College Jahanian_`;
-}
-
-export async function sendAutoMeritPositionNotice(
-  student: any,
-  details: AutoMeritPositionDetails,
+export async function dispatchBulkPhotoRequests(
+  students: any[],
   settings?: any,
-  options?: { silent?: boolean; manualTrigger?: boolean }
-): Promise<boolean> {
-  if (!student) return false;
-
-  const rawPhone = student.fatherContact || 
-    student.contact || 
-    student.contactNumber || 
-    student.phone || 
-    student.mobile || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-  const message = buildMeritPositionMessage(student, details, settings);
-
-  if (!phone) {
-    if (!options?.silent) {
-      toast.warning(`No valid phone number for ${student.fullName || 'Student'}. Merit alert skipped.`);
-    }
-    return false;
-  }
-
-  try {
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
-    });
-
-    if (res.ok) {
-      toast.success(`Merit Position card sent for ${student.fullName}!`, { id: `merit-${student.id}` });
-      return true;
-    } else {
-      const err = await res.json().catch(() => ({}));
-      if (!options?.silent) {
-        toast.info(err.error || "WhatsApp Gateway offline. Click to share.", {
-          id: `merit-${student.id}`,
-          action: {
-            label: "Open WhatsApp",
-            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
-          },
-        });
-      }
-      return false;
-    }
-  } catch (error) {
-    console.warn("sendAutoMeritPositionNotice error:", error);
-    return false;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// UNIVERSAL BULK WHATSAPP DISPATCHER QUEUE
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface BulkDispatchItem {
-  id: string;
-  name: string;
-  phone: string;
-  message: string;
-  subtitle?: string;
-}
-
-export interface BulkDispatchOptions {
-  items: BulkDispatchItem[];
-  delaySeconds?: number;
-  onProgress?: (progress: {
-    total: number;
-    sent: number;
-    failed: number;
-    currentIndex: number;
-    currentItem?: BulkDispatchItem;
-    status: 'running' | 'paused' | 'completed' | 'cancelled';
-  }) => void;
-  signal?: AbortSignal;
-}
-
-export async function dispatchBulkWhatsAppQueue(options: BulkDispatchOptions): Promise<{
-  total: number;
-  sent: number;
-  failed: number;
-}> {
-  const { items, delaySeconds = 2.5, onProgress, signal } = options;
+  onProgress?: (sent: number, total: number) => void
+): Promise<{ sent: number; failed: number }> {
   let sent = 0;
   let failed = 0;
-
-  for (let i = 0; i < items.length; i++) {
-    if (signal?.aborted) {
-      onProgress?.({ total: items.length, sent, failed, currentIndex: i, status: 'cancelled' });
-      break;
-    }
-
-    const item = items[i];
-    onProgress?.({
-      total: items.length,
-      sent,
-      failed,
-      currentIndex: i,
-      currentItem: item,
-      status: 'running'
-    });
-
-    const cleanPhone = formatWhatsAppPhone(item.phone);
-    if (!cleanPhone) {
-      failed++;
-      continue;
-    }
-
-    try {
-      const res = await fetch("/api/whatsapp/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: cleanPhone, message: item.message }),
-      });
-
-      if (res.ok) {
-        sent++;
-      } else {
-        failed++;
-      }
-    } catch {
-      failed++;
-    }
-
-    // Delay between items to avoid rate limiting
-    if (i < items.length - 1 && !signal?.aborted) {
-      await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
-    }
+  for (let i = 0; i < students.length; i++) {
+    const ok = await sendAutoPhotoUploadRequestNotice(students[i], settings);
+    if (ok) sent++;
+    else failed++;
+    onProgress?.(i + 1, students.length);
   }
-
-  onProgress?.({
-    total: items.length,
-    sent,
-    failed,
-    currentIndex: items.length,
-    status: 'completed'
-  });
-
-  return { total: items.length, sent, failed };
+  return { sent, failed };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LEADS FOLLOW-UP & ADMISSION INQUIRY NOTICES
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function buildLeadFollowUpMessage(lead: any, settings?: any, customNote?: string): string {
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
-  const studentName = (lead.studentName || "Student").trim();
-  const fatherName = lead.fatherName ? `Mr. ${lead.fatherName}` : "Respected Parent";
-  const currentClass = lead.currentClass || "College Admission";
-  const previousSchool = lead.previousSchool ? `\n• *Previous School:* ${lead.previousSchool}` : "";
-  const feeLine = lead.finalizedFee ? `\n• *Agreed Package Fee:* Rs. ${Number(lead.finalizedFee).toLocaleString()}` : "";
-  const address = settings?.address || "Canal Road, Jahanian";
-  const helpline = getCleanHelpline(settings);
-
-  let noteSection = "";
-  if (customNote && customNote.trim()) {
-    noteSection = `\n📢 *Special Notice:* ${customNote.trim()}\n`;
-  }
-
-  return `🏛️ *${collegeName.toUpperCase()}*
-🎓 *ADMISSION INQUIRY & INFORMATION DESK*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Assalam-o-Alaikum ${fatherName} sb,
-
-Yeh rasmi rabta *Superior College Jahanian* ki janib se *${studentName}* ke dakhlay (*${currentClass}*) ke silsilay mein hai.${previousSchool}${feeLine}
-
-• *Academic Programs:* FSc (Pre-Medical / Pre-Engineering), ICS, I.Com, FA IT, BS Degrees
-• *Campuses:* Dedicated Separate Boys & Girls Campuses with Modern AC Classrooms & Labs
-• *Scholarships:* Special fee concessions available on matric marks and high performance!
-${noteSection}━━━━━━━━━━━━━━━━━━━━━━━━━
-Prospectus aur admission guidance ke liye hamare admission office tashreef layen ya is helpline number par rabta karein.
-📍 *Campus Address:* ${address}
-📞 *Admission Helpline:* ${helpline}
-_Admissions Directorate, Superior College Jahanian_`;
+export function buildFeeReminderMessage(student: any, balance: number, settings?: any): string {
+  const collegeName = 'Superior College Jahanian';
+  const name = student?.fullName || 'Student';
+  const rollNo = student?.collegeNo || student?.studentId || student?.id || 'N/A';
+  const dueAmt = Number(balance ?? student?.balance ?? 0);
+  return `🏛️ *${collegeName.toUpperCase()}*\n💳 *FEE INSTALLMENT REMINDER*\n━━━━━━━━━━━━━━━━━━━━━━━━━\nDear Parents / *${name}* (Roll No: *${rollNo}*),\nThis is a gentle reminder that your pending fee balance is *Rs. ${dueAmt.toLocaleString()}*.\n\nKindly clear your dues at the College Accounts Office at your earliest convenience. Ignore if already paid.\n\n_Accounts Department — ${collegeName}_`;
 }
 
-export async function sendAutoLeadFollowUpNotice(
-  lead: any,
-  settings?: any,
-  options?: { customNote?: string; silent?: boolean }
-): Promise<boolean> {
-  if (!lead) return false;
-  const rawPhone = lead.fatherPhone || lead.phone || lead.contact || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-  const message = buildLeadFollowUpMessage(lead, settings, options?.customNote);
-
-  if (!phone) {
-    if (!options?.silent) {
-      toast.warning(`No valid phone number for ${lead.studentName || 'Lead'}.`);
-    }
-    return false;
-  }
-
-  try {
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
-    });
-
-    if (res.ok) {
-      toast.success(`WhatsApp message sent to ${lead.studentName || 'Lead'}!`, { id: `lead-${lead.id}` });
-      return true;
-    } else {
-      const err = await res.json().catch(() => ({}));
-      if (!options?.silent) {
-        toast.info(err.error || "Gateway offline. Opening WhatsApp Web...", {
-          id: `lead-${lead.id}`,
-          action: {
-            label: "Open WhatsApp",
-            onClick: () => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank"),
-          },
-        });
-      }
-      return false;
-    }
-  } catch {
-    window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
-    return false;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STUDENT GENERAL CIRCULARS & NOTICES
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function buildStudentNoticeMessage(
+export async function sendAutoFeeReceiptNotice(
   student: any,
-  notice: { title: string; content: string },
+  payment: {
+    receiptId: string;
+    amountPaid: number;
+    datePaid?: string;
+    feeType?: string;
+    remainingBalance: number;
+    collectedBy?: string;
+    paymentMode?: string;
+  },
   settings?: any
-): string {
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
-  const studentName = (student.fullName || "Student").trim();
-  const fatherName = (student.fatherName || "Sahib").trim();
-  const rollNo = student.collegeNo || student.studentId || student.id || "N/A";
-  const group = student.group || student.category || "Intermediate";
-  const section = student.section ? ` (Sec: ${student.section})` : "";
-  const address = settings?.address || "Canal Road, Jahanian";
-  const helpline = getCleanHelpline(settings);
+): Promise<boolean> {
+  const collegeName = 'Superior College Jahanian';
+  const name = student?.fullName || 'Student';
+  const rollNo = student?.collegeNo || student?.studentId || student?.id || 'N/A';
+  const phone =
+    student?.fatherContact ||
+    student?.guardianPhone ||
+    student?.whatsappNumber ||
+    student?.contact ||
+    '';
+  const cleanPhone = formatWhatsAppPhone(phone);
 
-  const studentPortalUrl = getDocumentLink("student", rollNo, undefined, settings);
+  if (cleanPhone && cleanPhone.length >= 10) {
+    try {
+      const totalPkg = Number(student?.totalPackage || student?.total_package || 0);
+      const remBal = Number(payment.remainingBalance || 0);
+      const totalPaidSoFar = totalPkg > 0 ? Math.max(Number(payment.amountPaid || 0), totalPkg - remBal) : Number(student?.feeReceived || student?.fee_received || payment.amountPaid || 0);
 
-  return `🏛️ *${collegeName.toUpperCase()}*
-📢 *OFFICIAL STUDENT CIRCULAR & ANNOUNCEMENT*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Dear Parent/Guardian (${fatherName}),
+      const pdfRes = await fetch('/api/whatsapp/send-official-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'fee_receipt_statement',
+          phone: cleanPhone,
+          studentId: student?.id || rollNo,
+          paymentData: {
+            studentId: student?.id || rollNo,
+            studentName: name,
+            fatherName: student?.fatherName || student?.father_name || 'N/A',
+            rollNo,
+            className: student?.group || student?.currentClass || 'Intermediate',
+            section: student?.section || 'A',
+            session: student?.session || '2026-28',
+            receiptNo: payment.receiptId,
+            paidAmount: Number(payment.amountPaid || 0),
+            paymentDate: payment.datePaid || new Date().toISOString(),
+            paymentMode: payment.paymentMode || 'Cash Counter',
+            feeMonth: payment.feeType || 'Tuition Fee Installment',
+            totalPackage: totalPkg,
+            totalPaidSoFar,
+            remainingBalance: remBal,
+          },
+        }),
+      });
+      const pdfData = await pdfRes.json().catch(() => ({}));
+      if (pdfRes.ok && pdfData?.success) {
+        return true;
+      }
+    } catch (e) {
+      console.warn('Fee Receipt & Statement PDF fallback to text:', e);
+    }
+  }
 
-• *Student Name:* ${studentName}
-• *Roll Number:* ${rollNo}
-• *Class & Section:* ${group}${section}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📌 *Subject: ${notice.title}*
+  const receiptUrl = getDocumentLink('receipt', payment.receiptId, { roll: rollNo }, settings);
+  const msg = `🏛️ *${collegeName.toUpperCase()}*\n🧾 *OFFICIAL FEE RECEIPT CONFIRMATION*\n━━━━━━━━━━━━━━━━━━━━━━━━━\nDear Parents / *${name}* (Roll No: *${rollNo}*),\nWe have received your fee payment with thanks.\n\n• *Receipt No:* *${payment.receiptId}*\n• *Amount Paid:* *Rs. ${Number(payment.amountPaid || 0).toLocaleString()}*\n• *Fee Head:* ${payment.feeType || 'Tuition Fee'}\n• *Date:* ${payment.datePaid || new Date().toISOString().split('T')[0]}\n• *Remaining Balance:* *Rs. ${Number(payment.remainingBalance || 0).toLocaleString()}*\n\n*Digital Receipt:* ${receiptUrl}\n\n_Accounts Office — ${collegeName}_`;
 
-${notice.content}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-🌐 *Online Student Portal Dossier:*
-${studentPortalUrl}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📍 *Campus Address:* ${address}
-📞 *Helpline / Desk:* ${helpline}
-_Administration Office, Superior College Jahanian_`;
+  const res = await dispatchWhatsAppMessage(phone, msg, { silent: true });
+  return res.success;
 }
 
-export async function sendAutoStudentNotice(
-  student: any,
-  notice: { title: string; content: string },
-  settings?: any,
+export async function sendAutoStaffAttendancePdfNotice(
+  staffId: string,
+  phone?: string,
+  monthStr?: string,
   options?: { silent?: boolean }
 ): Promise<boolean> {
-  if (!student) return false;
-  const rawPhone = student.fatherContact || student.contact || student.phone || student.mobile || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-  const message = buildStudentNoticeMessage(student, notice, settings);
-
-  if (!phone) {
-    if (!options?.silent) toast.warning(`No phone number for ${student.fullName || 'Student'}`);
-    return false;
-  }
-
   try {
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
+    const res = await fetch('/api/whatsapp/send-official-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'staff_attendance',
+        staffId,
+        phone: phone ? formatWhatsAppPhone(phone) : undefined,
+        monthStr,
+      }),
     });
-    if (res.ok) {
-      toast.success(`Circular notice sent to ${student.fullName}!`, { id: `stu-${student.id}` });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.success) {
+      if (!options?.silent) {
+        toast.success(`Cumulative Attendance PDF sent (${data.fileName || 'PDF'})`);
+      }
       return true;
-    } else {
-      window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
-      return false;
     }
-  } catch {
-    window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
+    if (!options?.silent && data?.error) {
+      toast.error(data.error);
+    }
+    return false;
+  } catch (err: any) {
+    if (!options?.silent) {
+      toast.error(err?.message || 'Failed to send Staff Attendance PDF');
+    }
     return false;
   }
 }
 
-// ============================================================================
-// 10. STAFF ENROLLMENT & BIOMETRIC GATE ATTENDANCE NOTICES
-// ============================================================================
-
-export function buildStaffEnrollmentMessage(staff: any, settings?: any): string {
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
-  const name = staff.fullName || staff.full_name || "Faculty Member";
-  const role = staff.role || "Faculty Member";
-  const staffId = staff.id;
-  const joinDate = staff.joinDate || staff.join_date || new Date().toISOString().slice(0, 10);
-  const helpline = getCleanHelpline(settings);
-  const address = settings?.address || "Canal Road, Jahanian";
-
-  const hasPhoto = Boolean(staff.photo || staff.photo_url);
-  const photoBlock = !hasPhoto
-    ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━\n📸 *ACTION REQUIRED: Profile Photo Upload*\nSmart Gate Face Attendance aur Faculty ID Card ke liye aapki photo record mein moojood nahi hai.\n👉 Baraye meherbani apne mobile se seedhi passport style photo ya selfie *ISI WHATSAPP NUMBER PAR BHEJEIN*. Hamara automated AI system foran aapka chehra Gate Face Attendance Kiosk mein activate kar dega!`
-    : `\n• Gate Face Attendance: *Biometric Photo Active ✅*`;
-
-  return `🏛️ *${collegeName.toUpperCase()}*
-👔 *OFFICIAL FACULTY & STAFF ENROLLMENT NOTIFICATION*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Assalam-o-Alaikum, *${name}*!
-
-Aapko Superior Group of Colleges Jahanian ke digital portal aur faculty roster mein kamyabi se shamil kar liya gaya hai.
-
-• *Faculty / Staff Name:* ${name}
-• *Designation / Role:* ${role}
-• *Staff ID:* ${staffId}
-• *Joining Date:* ${joinDate}
-• *Campus:* ${address}
-${photoBlock}
-
-• *Biometric Gate Attendance:*
-College aamad aur rawangi par Main Gate par nasab Smart Tablet Kiosk ke samne dekh kar aapki hazri automatically record hogi aur confirmation WhatsApp par bhej di jaye gi.
-
-📞 *Admin Helpline:* ${helpline}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-_Office of the Principal & College Administration_`;
-}
-
-export async function sendStaffEnrollmentNotice(staff: any, settings?: any): Promise<boolean> {
-  const rawPhone = staff.contact || staff.phone || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-  if (!phone) return false;
-
-  const message = buildStaffEnrollmentMessage(staff, settings);
+export async function sendAutoStaffSalaryPdfNotice(
+  staffId: string,
+  phone?: string,
+  monthStr?: string,
+  options?: { silent?: boolean }
+): Promise<boolean> {
   try {
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
+    const res = await fetch('/api/whatsapp/send-official-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'staff_salary',
+        staffId,
+        phone: phone ? formatWhatsAppPhone(phone) : undefined,
+        monthStr,
+      }),
     });
-    const json = await res.json();
-    return Boolean(json.success);
-  } catch (err) {
-    console.warn("Failed to dispatch staff enrollment WhatsApp notice:", err);
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.success) {
+      if (!options?.silent) {
+        toast.success(`Official Salary Slip PDF sent (${data.fileName || 'PDF'})`);
+      }
+      return true;
+    }
+    if (!options?.silent && data?.error) {
+      toast.error(data.error);
+    }
+    return false;
+  } catch (err: any) {
+    if (!options?.silent) {
+      toast.error(err?.message || 'Failed to send Staff Salary PDF');
+    }
     return false;
   }
+}
+
+export function buildLeadFollowUpMessage(lead: any, settings?: any): string {
+  const collegeName = settings?.collegeName || 'Superior College Jahanian';
+  const name = lead?.studentName || lead?.fullName || 'Student';
+  const course = lead?.interestedCourse || lead?.group || 'F.Sc / ICS / BS Programs';
+  return `*${collegeName.toUpperCase()}*\n*ADMISSIONS SESSION 2026-28*\n\nAssalam-o-Alaikum *${name}*,\nThank you for visiting ${collegeName} regarding admission in *${course}*.\n\nMerit scholarships and early-bird seat reservations are currently open. Visit our Admission Desk or reply to this message for complete fee & scholarship guidance.\n\nRegards,\n*Admission Counseling Cell - ${collegeName}*`;
+}
+
+export async function sendAutoLeadFollowUpNotice(lead: any, settings?: any): Promise<boolean> {
+  const phone = lead?.contactNumber || lead?.whatsappNumber || lead?.fatherContact || lead?.phone || '';
+  const msg = buildLeadFollowUpMessage(lead, settings);
+  const res = await dispatchWhatsAppMessage(phone, msg, { manualTrigger: true });
+  return res.success;
 }
 
 export function buildStaffPhotoRequestMessage(staff: any, settings?: any): string {
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
-  const name = staff.fullName || staff.full_name || "Faculty Member";
-  const role = staff.role || "Faculty Member";
-  const staffId = staff.id;
-  const helpline = getCleanHelpline(settings);
-
-  return `🏛️ *${collegeName.toUpperCase()}*
-📸 *FACULTY PROFILE PHOTO REQUEST (GATE ATTENDANCE)*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Assalam-o-Alaikum, *${name}* (${role})!
-
-Staff ID: *${staffId}*
-
-College Gate par Automated Biometric Face Attendance aur Official Faculty Identity Card ke liye aapki passport-size tasveer portal par darj nahi hai.
-
-👉 Baraye meherbani apne mobile se seedhi passport style photo ya selfie *ISI WHATSAPP NUMBER PAR BHEJEIN*. 
-
-Hamara AI Bot aapki picture ko verify kar ke automatically aapki profile aur Gate Tablet Kiosk mein enroll kar dega.
-
-📞 *Administration Desk:* ${helpline}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-_Office of the Principal & HR Administration_`;
+  const collegeName = settings?.collegeName || 'Superior College Jahanian';
+  const name = staff?.fullName || 'Faculty Member';
+  return `*${collegeName.toUpperCase()}*\n*FACULTY PROFILE PHOTOGRAPH REQUEST*\n\nRespected *${name}*,\nKindly reply to this message with your formal passport-size photograph so we can update your Executive Faculty ID Card and ERP Dossier.\n\nRegards,\n*HR & Administration - ${collegeName}*`;
 }
 
-export async function sendStaffPhotoRequestNotice(staff: any, settings?: any, options?: { silent?: boolean }): Promise<boolean> {
-  const rawPhone = staff.contact || staff.phone || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-  if (!phone) {
-    if (!options?.silent) toast.warning(`No phone number for ${staff.fullName || 'Staff'}`);
-    return false;
-  }
-
-  const message = buildStaffPhotoRequestMessage(staff, settings);
-  try {
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
-    });
-    const json = await res.json();
-    if (json.success) {
-      if (!options?.silent) toast.success(`Photo request sent to ${staff.fullName || staff.full_name}!`);
-      return true;
-    } else {
-      window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
-      return false;
-    }
-  } catch {
-    window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
-    return false;
-  }
+export async function sendStaffPhotoRequestNotice(staff: any, settings?: any): Promise<boolean> {
+  const phone = staff?.contact || staff?.phone || staff?.whatsapp || '';
+  const msg = buildStaffPhotoRequestMessage(staff, settings);
+  const res = await dispatchWhatsAppMessage(phone, msg, { manualTrigger: true });
+  return res.success;
 }
 
 export async function dispatchBulkStaffPhotoRequests(
   staffList: any[],
-  settings?: any,
-  onProgress?: (sent: number, total: number) => void
-): Promise<{ total: number; sent: number; failed: number }> {
-  const missing = staffList.filter(s => {
-    const p = s.photo || s.photo_url || "";
-    return !p || String(p).trim().length <= 10;
-  });
-
+  settings?: any
+): Promise<{ sent: number; failed: number }> {
   let sent = 0;
   let failed = 0;
-
-  for (let i = 0; i < missing.length; i++) {
-    const st = missing[i];
-    const ok = await sendStaffPhotoRequestNotice(st, settings, { silent: true });
+  for (const s of staffList) {
+    const ok = await sendStaffPhotoRequestNotice(s, settings);
     if (ok) sent++;
     else failed++;
-    onProgress?.(i + 1, missing.length);
-    // Anti-ban delay
-    await new Promise(r => setTimeout(r, 1200));
   }
-
-  return { total: missing.length, sent, failed };
+  return { sent, failed };
 }
 
-export function buildStaffGateAttendanceMessage(
-  staff: any,
-  scanDetails: { time: string; date?: string; type: 'check_in' | 'check_out' },
+export async function sendStaffEnrollmentNotice(staff: any, settings?: any): Promise<boolean> {
+  const collegeName = settings?.collegeName || 'Superior College Jahanian';
+  const name = staff?.fullName || 'Faculty Member';
+  const role = staff?.role || staff?.designation || 'Faculty';
+  const phone = staff?.contact || staff?.phone || '';
+  const msg = `*${collegeName.toUpperCase()}*\n*WELCOME TO SUPERIOR FACULTY*\n\nRespected *${name}*,\nWelcome aboard as *${role}* at ${collegeName}. Your faculty profile and payroll ledger have been initialized in the SCJ ERP.\n\nRegards,\n*Principal & Administration - ${collegeName}*`;
+  const res = await dispatchWhatsAppMessage(phone, msg, { silent: true });
+  return res.success;
+}
+
+export function buildStudentNoticeMessage(
+  student: any,
+  notice: { title?: string; content?: string },
   settings?: any
 ): string {
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
-  const name = staff.fullName || staff.full_name || "Faculty Member";
-  const role = staff.role || "Faculty Member";
-  const staffId = staff.id;
-  const time = scanDetails.time;
-  const date = scanDetails.date || new Date().toISOString().slice(0, 10);
-  const isExit = scanDetails.type === 'check_out';
-
-  return `🏛️ *${collegeName.toUpperCase()}*
-👔 *STAFF GATE BIOMETRIC ATTENDANCE RECORDED*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Assalam-o-Alaikum, *${name}*!
-Designation: *${role}*
-Staff ID: *${staffId}*
-
-• Status: *Present ✅*
-• Action: *${isExit ? "GATE EXIT (Departure / Chhutti)" : "GATE ENTRY (Arrival / Dakhla)"}*
-• Time: *${time}*
-• Date: *${date}*
-• Method: *Biometric Face Scan Verified*
-• Scanned Face Record: *Logged in Central Security Server*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-_Office of the Principal & College Administration_`;
+  const collegeName = settings?.collegeName || 'Superior College Jahanian';
+  const name = student?.fullName || 'Student';
+  const rollNo = student?.collegeNo || student?.studentId || student?.id || 'N/A';
+  const title = notice?.title || 'OFFICIAL CAMPUS NOTICE';
+  const body =
+    notice?.content ||
+    'Please stay updated with your academic schedule and maintain regular attendance.';
+  return `*${collegeName.toUpperCase()}*\n*${title.toUpperCase()}*\n\nDear Parents / *${name}* (Roll No: *${rollNo}*),\n${body}\n\nRegards,\n*Administration - ${collegeName}*`;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DAILY ATTENDANCE CLOSEOUT & PRINCIPAL EXECUTIVE FLASH REPORT
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface DailyAttendanceSummaryData {
-  date: string;
-  totalStudents: number;
-  presentStudents: number;
-  lateStudents: number;
-  absentStudents: number;
-  leaveStudents: number;
-  totalStaff: number;
-  presentStaff: number;
-  lateStaff: number;
-  absentStaff: number;
-  leaveStaff: number;
-  absentStudentNames?: string[];
-  absentStaffNames?: string[];
-  lateStudentNames?: string[];
-}
-
-export function buildDailyPrincipalAttendanceSummary(
-  summary: DailyAttendanceSummaryData,
+export async function sendAutoStudentNotice(
+  student: any,
+  notice: { title?: string; content?: string },
   settings?: any
-): string {
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
-  const campusName = settings?.campusName || "Main Campus";
-  const stuPct = summary.totalStudents > 0 
-    ? Math.round(((summary.presentStudents + summary.lateStudents) / summary.totalStudents) * 100) 
-    : 0;
-  const staffPct = summary.totalStaff > 0 
-    ? Math.round(((summary.presentStaff + summary.lateStaff) / summary.totalStaff) * 100) 
-    : 0;
-
-  const absentStaffBlock = (summary.absentStaffNames && summary.absentStaffNames.length > 0)
-    ? `\n🚨 *ABSENT FACULTY MEMBERS (${summary.absentStaffNames.length}):*\n${summary.absentStaffNames.slice(0, 10).map(n => `• ${n}`).join("\n")}\n`
-    : "";
-
-  const absentStudentBlock = (summary.absentStudentNames && summary.absentStudentNames.length > 0)
-    ? `\n⚠️ *ABSENT STUDENTS SAMPLE (Total: ${summary.absentStudents}):*\n${summary.absentStudentNames.slice(0, 8).map(n => `• ${n}`).join("\n")}${summary.absentStudentNames.length > 8 ? `\n...aur ${summary.absentStudentNames.length - 8} mazeed students.` : ""}\n`
-    : "";
-
-  return `🏛️ *${collegeName.toUpperCase()}* (${campusName})
-⚡ *DAILY ATTENDANCE EXECUTIVE FLASH REPORT*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Assalam-o-Alaikum Respected Principal Sahib!
-Aaj *${summary.date}* ki Gate Biometric Attendance Closeout Report darj zail hai:
-
-👥 *STUDENTS ATTENDANCE OVERVIEW:*
-• Total Enrolled: *${summary.totalStudents}*
-• Present at Gate: *${summary.presentStudents}* (${stuPct}%)
-• Late Arrivals: *${summary.lateStudents}* ⏰
-• Absent / Missing: *${summary.absentStudents}* 🚨
-• On Approved Leave: *${summary.leaveStudents}* 📝
-${absentStudentBlock}
-👔 *FACULTY & STAFF ATTENDANCE OVERVIEW:*
-• Total Faculty: *${summary.totalStaff}*
-• Present at Gate: *${summary.presentStaff}* (${staffPct}%)
-• Late Arrivals: *${summary.lateStaff}* ⏰
-• Absent: *${summary.absentStaff}* 🚨
-• On Approved Leave: *${summary.leaveStaff}* 📝
-${absentStaffBlock}━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ Attendance Closeout verified & recorded on Central LMS Server.
-_Smart Gate Biometric Automation System • SCJ_`;
-}
-
-export async function sendDailyPrincipalAttendanceSummary(
-  summary: DailyAttendanceSummaryData,
-  settings?: any,
-  options?: { silent?: boolean; targetPhone?: string }
 ): Promise<boolean> {
-  const rawPhone = options?.targetPhone || 
-    settings?.principalPhone || 
-    settings?.contactNumber || 
-    settings?.contact_number || 
-    "0331-2211147";
-  const phone = formatWhatsAppPhone(rawPhone);
-  const message = buildDailyPrincipalAttendanceSummary(summary, settings);
-
-  if (!phone) {
-    if (!options?.silent) toast.warning("Principal phone number not configured.");
-    return false;
-  }
-
-  try {
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
-    });
-    const json = await res.json();
-    if (json.success) {
-      if (!options?.silent) toast.success(`Flash Attendance Summary dispatched to Principal (+${phone})!`);
-      return true;
-    } else {
-      window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
-      return false;
-    }
-  } catch {
-    window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
-    return false;
-  }
-}
-
-export function buildStaffAbsentMessage(staff: any, date: string, settings?: any): string {
-  const collegeName = settings?.collegeName || "Superior College Jahanian";
-  const name = staff.fullName || staff.full_name || "Faculty Member";
-  const role = staff.role || "Faculty Member";
-  const staffId = staff.id;
-  const helpline = getCleanHelpline(settings);
-
-  return `🏛️ *${collegeName.toUpperCase()}*
-⚠️ *FACULTY ABSENTEE NOTIFICATION*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Assalam-o-Alaikum, *${name}* (${role})!
-Staff ID: *${staffId}*
-
-Aap aaj *${date}* ko College Gate Biometric Attendance System par ghair hazir (Absent) mark hue hain.
-
-Agar aap pehle se rukhast (Leave) par hain ya kisi zaroori assignment par hain to baraye meherbani foran Administration Office ko muttala farmaiyein ta k record update kiya ja sake.
-
-📞 *Administration Desk:* ${helpline}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-_Office of the Principal & HR Administration, SCJ_`;
-}
-
-export async function sendStaffAbsentNotice(
-  staff: any,
-  date: string,
-  settings?: any,
-  options?: { silent?: boolean }
-): Promise<boolean> {
-  const rawPhone = staff.contact || staff.phone || "";
-  const phone = formatWhatsAppPhone(rawPhone);
-  if (!phone) {
-    if (!options?.silent) toast.warning(`No phone number registered for ${staff.fullName || 'Staff'}`);
-    return false;
-  }
-
-  const message = buildStaffAbsentMessage(staff, date, settings);
-  try {
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
-    });
-    const json = await res.json();
-    if (json.success) {
-      if (!options?.silent) toast.success(`Absent notice sent to ${staff.fullName || staff.full_name}!`);
-      return true;
-    } else {
-      window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
-      return false;
-    }
-  } catch {
-    window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, "_blank");
-    return false;
-  }
-}
-
-export async function dispatchBulkStaffAbsentNotices(
-  absentStaffList: any[],
-  date: string,
-  settings?: any,
-  onProgress?: (sent: number, total: number) => void
-): Promise<{ total: number; sent: number; failed: number }> {
-  let sent = 0;
-  let failed = 0;
-
-  for (let i = 0; i < absentStaffList.length; i++) {
-    const st = absentStaffList[i];
-    const ok = await sendStaffAbsentNotice(st, date, settings, { silent: true });
-    if (ok) sent++;
-    else failed++;
-    onProgress?.(i + 1, absentStaffList.length);
-    // Anti-ban delay
-    await new Promise((r) => setTimeout(r, 1200));
-  }
-
-  return { total: absentStaffList.length, sent, failed };
-}
-
-export async function dispatchBulkStudentAbsentNotices(
-  absentStudentsList: any[],
-  date: string,
-  settings?: any,
-  onProgress?: (sent: number, total: number) => void
-): Promise<{ total: number; sent: number; failed: number }> {
-  let sent = 0;
-  let failed = 0;
-
-  for (let i = 0; i < absentStudentsList.length; i++) {
-    const stu = absentStudentsList[i];
-    const ok = await sendAutoDailyAttendanceNotice(
-      stu,
-      { date, status: "Absent" },
-      settings,
-      { silent: true, manualTrigger: true }
-    );
-    if (ok) sent++;
-    else failed++;
-    onProgress?.(i + 1, absentStudentsList.length);
-    // Anti-ban delay
-    await new Promise((r) => setTimeout(r, 1200));
-  }
-
-  return { total: absentStudentsList.length, sent, failed };
+  const phone =
+    student?.fatherContact ||
+    student?.guardianPhone ||
+    student?.whatsapp ||
+    student?.contact ||
+    '';
+  const msg = buildStudentNoticeMessage(student, notice, settings);
+  const res = await dispatchWhatsAppMessage(phone, msg, { manualTrigger: true });
+  return res.success;
 }

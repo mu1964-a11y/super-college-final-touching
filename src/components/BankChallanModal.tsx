@@ -1,67 +1,13 @@
-import React, { useState, useRef } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Printer, Download, Building2, Calendar, FileText, CheckCircle2, Filter } from "lucide-react";
-import { toast } from "sonner";
-import { calculateStudentFeeBreakdown } from "../lib/feeCalculations";
-import { exportElementToPdf } from "../utils/documentExporter";
-import QRCode from "qrcode";
+import React, { useRef } from 'react';
+import { X, Download, Building2 } from 'lucide-react';
+import { exportElementToPdf } from '../utils/documentExporter';
 
 interface BankChallanModalProps {
   isOpen: boolean;
   onClose: () => void;
-  students: any[]; // single student or array for batch printing
+  students: any[] | null;
   settings?: any;
 }
-
-const BANK_PRESETS = [
-  {
-    id: "meezan",
-    name: "Meezan Bank Limited",
-    branch: "Jahanian Branch (Code: 0412)",
-    accountTitle: "SUPERIOR COLLEGE JAHANIAN",
-    accountNo: "0102-0104882190",
-    iban: "PK56MEZN0001020104882190",
-  },
-  {
-    id: "hbl",
-    name: "Habib Bank Limited (HBL)",
-    branch: "Main Branch Jahanian",
-    accountTitle: "SUPERIOR COLLEGE JAHANIAN",
-    accountNo: "1892-79018442-03",
-    iban: "PK44HABB0018927901844203",
-  },
-  {
-    id: "bop",
-    name: "The Bank of Punjab (BOP)",
-    branch: "Quaid-e-Azam Road, Jahanian",
-    accountTitle: "SUPERIOR COLLEGE JAHANIAN",
-    accountNo: "6510-1849204-001",
-    iban: "PK19BPUN65101849204001",
-  },
-  {
-    id: "nbp",
-    name: "National Bank of Pakistan (NBP)",
-    branch: "Tehsil Complex Jahanian",
-    accountTitle: "SUPERIOR COLLEGE JAHANIAN",
-    accountNo: "0194-2849102-8",
-    iban: "PK72NBPA019428491028",
-  },
-];
 
 export default function BankChallanModal({
   isOpen,
@@ -69,429 +15,80 @@ export default function BankChallanModal({
   students,
   settings,
 }: BankChallanModalProps) {
-  const [selectedBankId, setSelectedBankId] = useState("meezan");
-  const [selectedSection, setSelectedSection] = useState<string>("all");
-  const [dueDate, setDueDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 10);
-    return d.toISOString().split("T")[0];
-  });
-  const [lateFeeFine, setLateFeeFine] = useState("500");
-  const [qrMap, setQrMap] = useState<Record<string, string>>({});
-  const printRef = useRef<HTMLDivElement>(null);
-
-  const uniqueSections = React.useMemo(() => {
-    const set = new Set<string>();
-    (students || []).forEach((s) => {
-      if (s.section && s.section.trim() !== '') set.add(s.section.trim());
-    });
-    return Array.from(set).sort();
-  }, [students]);
-
-  const visibleStudents = React.useMemo(() => {
-    if (!students || students.length === 0) return [];
-    if (selectedSection === "all") return students;
-    return students.filter((s) => (s.section || '').trim().toLowerCase() === selectedSection.toLowerCase());
-  }, [students, selectedSection]);
-
-  // Generate Online Verification QR Codes for visible students
-  React.useEffect(() => {
-    visibleStudents.forEach(async (s) => {
-      if (qrMap[s.id]) return;
-      const verifyUrl = `${window.location.origin}/?verify=challan&id=${encodeURIComponent(s.id)}&roll=${encodeURIComponent(s.rollNo || s.id)}&sec=${encodeURIComponent(s.section || '')}`;
-      try {
-        const url = await QRCode.toDataURL(verifyUrl, { width: 90, margin: 1 });
-        setQrMap(prev => ({ ...prev, [s.id]: url }));
-      } catch (err) {
-        console.error("QR Code generation error:", err);
-      }
-    });
-  }, [visibleStudents]);
+  const challanRef = useRef<HTMLDivElement>(null);
 
   if (!isOpen || !students || students.length === 0) return null;
 
-  const activeBank =
-    BANK_PRESETS.find((b) => b.id === selectedBankId) || BANK_PRESETS[0];
-
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const handleDownloadPDF = async () => {
-    if (!printRef.current) return;
-    const toastId = toast.loading("Generating Official Bank Challans PDF...");
-    try {
-      await exportElementToPdf(printRef.current, {
-        filename: `Bank_Challans_${activeBank.id}_${new Date().toISOString().split('T')[0]}`,
-        format: 'a4',
-        orientation: 'landscape',
-        pixelRatio: 2.5,
-        backgroundColor: '#ffffff',
-        marginMm: 6,
-      });
-      toast.dismiss(toastId);
-      toast.success("Bank Challans PDF downloaded successfully!");
-    } catch (err) {
-      console.error(err);
-      toast.dismiss(toastId);
-      toast.error("Failed to generate Challan PDF");
-    }
-  };
-
-  const getChallanNo = (student: any, idx: number) => {
-    const year = new Date().getFullYear();
-    const cleanId = String(student.collegeNo || student.id || "0000").replace(
-      /\D/g,
-      ""
-    );
-    return `SCJ-${year}-${cleanId.slice(-4) || String(idx + 1).padStart(4, "0")}`;
-  };
-
-  const numberToWords = (num: number): string => {
-    if (!num || isNaN(num)) return "Zero Rupees Only";
-    return `Rupees ${num.toLocaleString()} Only`;
-  };
+  const collegeName = settings?.collegeName || 'Superior College Jahanian';
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[95vh] flex flex-col p-0 overflow-hidden bg-slate-100 border-0 shadow-2xl">
-        {/* Header / Controls */}
-        <div className="bg-white border-b border-slate-200 px-6 py-4 flex flex-wrap items-center justify-between gap-4 shrink-0">
-          <div>
-            <DialogTitle className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2">
-              <Building2 className="text-emerald-600" size={20} />
-              3-Copy Official Bank Challan Generator
-              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                {students.length} {students.length === 1 ? "Challan" : "Challans (Batch)"}
-              </span>
-            </DialogTitle>
-            <p className="text-xs text-slate-500 font-medium">
-              Standard 3-Part Layout (Bank Copy | College Copy | Student Copy)
-            </p>
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-3xl w-full overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="p-5 bg-gradient-to-r from-[#064e43] to-[#085a4e] text-white flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Building2 size={18} className="text-emerald-300" />
+            <h3 className="text-sm font-black uppercase tracking-wider">Official Fee Bank Challan</h3>
           </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Label className="text-xs font-bold text-slate-600 whitespace-nowrap">
-                Bank:
-              </Label>
-              <Select value={selectedBankId} onValueChange={setSelectedBankId}>
-                <SelectTrigger className="h-8 w-44 text-xs font-bold bg-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {BANK_PRESETS.map((b) => (
-                    <SelectItem key={b.id} value={b.id} className="text-xs font-semibold">
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Label className="text-xs font-bold text-slate-600 whitespace-nowrap">
-                Due Date:
-              </Label>
-              <Input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="h-8 w-36 text-xs font-bold bg-white"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Label className="text-xs font-bold text-slate-600 whitespace-nowrap">
-                Late Fine:
-              </Label>
-              <Input
-                type="number"
-                value={lateFeeFine}
-                onChange={(e) => setLateFeeFine(e.target.value)}
-                className="h-8 w-20 text-xs font-bold bg-white"
-                placeholder="500"
-              />
-            </div>
-
-            {uniqueSections.length > 0 && (
-              <div className="flex items-center gap-1.5">
-                <Filter size={13} className="text-slate-400" />
-                <Label className="text-xs font-bold text-slate-600 whitespace-nowrap">
-                  Section:
-                </Label>
-                <Select value={selectedSection} onValueChange={setSelectedSection}>
-                  <SelectTrigger className="h-8 w-32 text-xs font-bold bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all" className="text-xs font-bold">
-                      All ({students.length})
-                    </SelectItem>
-                    {uniqueSections.map((sec) => (
-                      <SelectItem key={sec} value={sec} className="text-xs font-semibold">
-                        {sec}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <Button
-              onClick={handleDownloadPDF}
-              variant="outline"
-              className="h-8 px-3 border-slate-300 text-slate-800 bg-white hover:bg-slate-50 font-black text-xs flex items-center gap-1.5 shadow-xs"
-              title="Download Challans as high-resolution PDF file"
-            >
-              <Download size={13} />
-              Download PDF
-            </Button>
-            <Button
-              onClick={handlePrint}
-              className="h-8 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-2 shadow-sm"
-            >
-              <Printer size={14} />
-              Print Challans ({visibleStudents.length})
-            </Button>
-          </div>
+          <button onClick={onClose} className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer">
+            <X size={16} />
+          </button>
         </div>
 
-        {/* Scrollable Printable Challan Canvas */}
-        <div className="flex-1 overflow-y-auto p-6 bg-slate-200/70">
-          {/* Global Print Styles for 3-Copy Bank Challan */}
-          <style dangerouslySetInnerHTML={{ __html: `
-            @media print {
-              body * {
-                visibility: hidden;
-              }
-              #challan-print-canvas, #challan-print-canvas * {
-                visibility: visible;
-              }
-              #challan-print-canvas {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                margin: 0;
-                padding: 0;
-              }
-              .challan-page-card {
-                page-break-after: always;
-                break-after: page;
-                margin-bottom: 0 !important;
-                border: none !important;
-                box-shadow: none !important;
-                padding: 4mm !important;
-                width: 100% !important;
-                max-width: 100% !important;
-              }
-              @page {
-                size: A4 landscape;
-                margin: 6mm;
-              }
-            }
-          `}} />
-
-          <div id="challan-print-canvas" ref={printRef} className="space-y-8 print:space-y-0 print:m-0">
-            {visibleStudents.map((student, sIdx) => {
-              const breakdown = calculateStudentFeeBreakdown(student, new Date(dueDate));
-              const challanNo = getChallanNo(student, sIdx);
-              const lateFine = Number(lateFeeFine) || 0;
-              const payable = breakdown.totalPayableBeforeDue;
-              const totalAfterDue = breakdown.totalPayableAfterDue || (payable + lateFine);
-              const copies = [
-                { label: "BANK COPY", bg: "bg-emerald-50", border: "border-emerald-600" },
-                { label: "COLLEGE COPY", bg: "bg-blue-50", border: "border-blue-600" },
-                { label: "STUDENT COPY", bg: "bg-purple-50", border: "border-purple-600" },
-              ];
-
-              return (
-                <div
-                  key={student.id || sIdx}
-                  className="challan-page-card bg-white rounded-2xl shadow-md border border-slate-300 p-5 mx-auto max-w-[1050px] print:rounded-none print:shadow-none print:border-0 print:p-2"
-                  style={{ backgroundColor: '#ffffff', maxWidth: '1050px' }}
-                >
-                  {/* 3 Columns for 3 Copies */}
-                  <div className="print-challan-container grid grid-cols-3 gap-3 divide-x divide-dashed divide-slate-300" style={{ width: '100%' }}>
-                    {copies.map((copy, cIdx) => (
-                      <div
-                        key={cIdx}
-                        className={`text-[11px] leading-tight flex flex-col justify-between ${cIdx > 0 ? "pl-3" : ""}`}
-                      >
-                        {/* Copy Header */}
-                        <div>
-                          <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
-                            <div>
-                              <p className="font-black text-[12px] tracking-tight text-emerald-950 uppercase">
-                                SUPERIOR COLLEGE
-                              </p>
-                              <p className="text-[9px] font-bold text-slate-600 uppercase">
-                                Jahanian Campus
-                              </p>
-                            </div>
-                            <span
-                              className={`text-[8px] font-black uppercase px-2 py-0.5 rounded border ${copy.bg} ${copy.border}`}
-                            >
-                              {copy.label}
-                            </span>
-                          </div>
-
-                          {/* Bank Information Block */}
-                          <div className="bg-slate-50 border border-slate-200 rounded p-1.5 mb-2">
-                            <p className="font-black text-[10px] text-slate-800">{activeBank.name}</p>
-                            <p className="text-[9px] text-slate-500 font-semibold">{activeBank.branch}</p>
-                            <div className="flex justify-between items-center text-[9px] mt-0.5 font-bold">
-                              <span>A/C: <span className="font-mono text-slate-800">{activeBank.accountNo}</span></span>
-                            </div>
-                          </div>
-
-                          {/* Challan Metadata */}
-                          <div className="grid grid-cols-2 gap-1 text-[9px] border-b border-slate-200 pb-1.5 mb-2">
-                            <div>
-                              <span className="text-slate-400 font-semibold block">Challan No:</span>
-                              <span className="font-mono font-black text-slate-800">{challanNo}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 font-semibold block">Due Date:</span>
-                              <span className="font-bold text-rose-600">{dueDate}</span>
-                            </div>
-                          </div>
-
-                          {/* Student Particulars */}
-                          <div className="space-y-1 border-b border-slate-200 pb-2 mb-2 text-[9.5px]">
-                            <div className="flex justify-between">
-                              <span className="text-slate-500 font-medium">Student Name:</span>
-                              <span className="font-black text-slate-800 truncate max-w-[130px]">
-                                {student.fullName}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-500 font-medium">Father Name:</span>
-                              <span className="font-bold text-slate-700 truncate max-w-[130px]">
-                                {student.fatherName || "N/A"}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-500 font-medium">Roll / Reg No:</span>
-                              <span className="font-mono font-black text-emerald-800">
-                                {student.collegeNo || student.id}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-500 font-medium">Class / Section:</span>
-                              <span className="font-bold text-slate-700">
-                                {student.group || student.category || "Inter"} ({student.section || "A"})
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Itemized Fee Breakdown Table with Auto-Arrears */}
-                          <div className="border border-slate-300 rounded overflow-hidden mb-2">
-                            <table className="w-full text-[9px]">
-                              <thead className="bg-slate-100 text-slate-700 font-black border-b border-slate-300">
-                                <tr>
-                                  <th className="py-1 px-1.5 text-left">Particulars</th>
-                                  <th className="py-1 px-1.5 text-right">Amount (Rs.)</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-200 font-semibold">
-                                <tr>
-                                  <td className="py-1 px-1.5 text-slate-700">Tuition / Installment</td>
-                                  <td className="py-1 px-1.5 text-right font-mono font-bold">Rs. {breakdown.currentInstallmentDue.toLocaleString()}</td>
-                                </tr>
-                                {breakdown.previousArrears > 0 && (
-                                  <tr className="bg-rose-50/50">
-                                    <td className="py-1 px-1.5 text-rose-700 font-bold">
-                                      ★ Previous Arrears (پچھلا بقایا)
-                                    </td>
-                                    <td className="py-1 px-1.5 text-right font-mono font-bold text-rose-700">
-                                      + Rs. {breakdown.previousArrears.toLocaleString()}
-                                    </td>
-                                  </tr>
-                                )}
-                                {breakdown.advanceBalance > 0 && (
-                                  <tr className="bg-emerald-50/50">
-                                    <td className="py-1 px-1.5 text-emerald-700 font-bold">Advance Credit</td>
-                                    <td className="py-1 px-1.5 text-right font-mono font-bold text-emerald-700">
-                                      - Rs. {breakdown.advanceBalance.toLocaleString()}
-                                    </td>
-                                  </tr>
-                                )}
-                                <tr className="bg-slate-100 font-black text-[9.5px]">
-                                  <td className="py-1.5 px-1.5 text-slate-900 uppercase">Within Due Date:</td>
-                                  <td className="py-1.5 px-1.5 text-right font-mono text-emerald-800 font-black">
-                                    Rs. {payable.toLocaleString()}
-                                  </td>
-                                </tr>
-                                <tr className="text-rose-600 font-medium text-[8.5px]">
-                                  <td className="py-0.5 px-1.5">Late Fee Surcharge:</td>
-                                  <td className="py-0.5 px-1.5 text-right font-mono">+ {lateFine}</td>
-                                </tr>
-                                <tr className="bg-rose-50 font-black text-[9.5px] border-t border-rose-200">
-                                  <td className="py-1 px-1.5 text-rose-900">After Due Date:</td>
-                                  <td className="py-1 px-1.5 text-right font-mono text-rose-700 font-black">
-                                    Rs. {totalAfterDue.toLocaleString()}
-                                  </td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-
-                          <p className="text-[8px] text-slate-500 italic mb-2">
-                            In Words: <span className="font-semibold">{numberToWords(payable)}</span>
-                          </p>
-                        </div>
-
-                        {/* Footer & Signature Boxes */}
-                        <div className="pt-2 border-t border-slate-200">
-                          {/* Verification QR Code Box */}
-                          <div className="flex items-center justify-between gap-1.5 mb-2 bg-slate-50 p-1 rounded border border-slate-200">
-                            <div className="flex items-center gap-1.5">
-                              {qrMap[student.id] ? (
-                                <img
-                                  src={qrMap[student.id]}
-                                  alt="Verify QR"
-                                  className="w-10 h-10 border border-slate-300 rounded bg-white p-0.5 shrink-0"
-                                  style={{ width: '40px', height: '40px', objectFit: 'contain' }}
-                                  width={40}
-                                  height={40}
-                                />
-                              ) : (
-                                <div className="w-10 h-10 bg-slate-200 rounded animate-pulse shrink-0" style={{ width: '40px', height: '40px' }} />
-                              )}
-                              <div className="text-[7.5px] leading-tight text-slate-600">
-                                <span className="font-black text-slate-900 block uppercase">Scan to Verify 🛡️</span>
-                                <span className="text-slate-500 font-medium">Official Online Portal</span>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-[7px] text-slate-400 block uppercase font-bold">Challan Ref</span>
-                              <span className="font-mono font-black text-[8px] text-slate-700">{challanNo}</span>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2 text-center text-[8px] text-slate-500 mb-1">
-                            <div className="border-t border-dashed border-slate-400 pt-1">
-                              Depositor Signature
-                            </div>
-                            <div className="border-t border-dashed border-slate-400 pt-1">
-                              Bank Cashier / Stamp
-                            </div>
-                          </div>
-                          <p className="text-[7.5px] text-slate-400 text-center uppercase tracking-tighter">
-                            Fee once paid is non-refundable • Bank copy must be forwarded
-                          </p>
-                        </div>
-                      </div>
-                    ))}
+        <div className="p-6 overflow-y-auto flex-1" ref={challanRef}>
+          {students.map((s: any) => {
+            const totalPkg = Number(s.totalPackage || 0);
+            const paid = Number(s.feeReceived || 0);
+            const due = Math.max(0, totalPkg - paid);
+            return (
+              <div key={s.id} className="p-5 rounded-2xl border border-slate-300 mb-4 space-y-3">
+                <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900">{collegeName}</h4>
+                    <p className="text-[11px] text-slate-500">Student Copy / Bank Fee Voucher</p>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-slate-700">
+                    Roll: {s.collegeNo || s.studentId || s.id}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-slate-500">Student Name:</span>{' '}
+                    <strong className="text-slate-900">{s.fullName}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Father Name:</span>{' '}
+                    <strong className="text-slate-900">{s.fatherName || 'N/A'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Program:</span>{' '}
+                    <strong className="text-slate-900">{s.group || s.course || 'F.Sc'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Payable Dues:</span>{' '}
+                    <strong className="text-emerald-700">Rs. {due.toLocaleString()}</strong>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
-      </DialogContent>
-    </Dialog>
+
+        <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
+          >
+            Close
+          </button>
+          <button
+            onClick={() => exportElementToPdf(challanRef.current, { filename: 'SCJ_Fee_Challan' })}
+            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
+          >
+            <Download size={14} />
+            <span>Export Challan PDF</span>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

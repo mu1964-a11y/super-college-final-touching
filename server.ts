@@ -2,7 +2,6 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import "dotenv/config";
 import { whatsappBridge } from "./server/whatsappBridge.ts";
@@ -231,7 +230,7 @@ async function startServer() {
           `🏛️ *Campus:* Canal Road, Jahanian\n` +
           `📞 *Admissions Helpline:* 0331-2211147\n\n` +
           `Superior College Jahanian ki Admissions Directorate jald hi aap se rabta karegi.\n` +
-          `_Superior Group of Colleges — Jahanian Campus_`;
+          `_Superior College Jahanian_`;
 
         whatsappBridge.sendMessage(resolvedPhone, welcomeText).then((sendRes) => {
           if (sendRes.success) {
@@ -1431,6 +1430,17 @@ Return strictly the raw JSON without markdown code fences.`;
     }
   });
 
+  // Official Vector PDF + Formatted WhatsApp Card Dispatch Endpoint (Admissions, Fee Receipts & Statements, Staff Attendance, Staff Salary)
+  app.post("/api/whatsapp/send-official-pdf", async (req, res) => {
+    try {
+      const result = await whatsappBridge.dispatchOfficialPortalPdf(req.body || {});
+      res.json(result);
+    } catch (err: any) {
+      console.error("[WhatsApp Official PDF Dispatch Error]:", err);
+      res.status(500).json({ success: false, error: err?.message || "Failed to dispatch official PDF." });
+    }
+  });
+
   // Static uploads directory for student photos & documents
   const uploadsDir = path.join(process.cwd(), "public", "uploads");
   const studentPhotosDir = path.join(uploadsDir, "student-photos");
@@ -1513,6 +1523,7 @@ Return strictly the raw JSON without markdown code fences.`;
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: {
         middlewareMode: true,

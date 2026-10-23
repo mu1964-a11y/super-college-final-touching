@@ -1,30 +1,10 @@
-import React, { useState } from "react";
-import { motion } from "motion/react";
-import {
-  GraduationCap,
-  Users,
-  Shield,
-  ArrowRight,
-  ArrowLeft,
-  School,
-  Lock,
-  FileText,
-  Calendar,
-  Signal,
-  Check,
-  Award,
-  CreditCard,
-} from "lucide-react";
-import AcademicCanvasBackground from "./AcademicCanvasBackground";
-import { SpatialCard } from "./SpatialCanvasCard";
+import React from 'react';
+import { Shield, Briefcase, GraduationCap, ArrowLeft, ArrowRight } from 'lucide-react';
 
 interface PortalGatewayViewProps {
-  brandingSettings: {
-    name: string;
-    logo: string | null;
-  };
-  onSelectPortal: (portal: "student" | "staff" | "admin") => void;
-  onBackToWelcome?: () => void;
+  brandingSettings: any;
+  onSelectPortal: (portal: 'admin' | 'staff' | 'student') => void;
+  onBackToWelcome: () => void;
 }
 
 export default function PortalGatewayView({
@@ -32,308 +12,97 @@ export default function PortalGatewayView({
   onSelectPortal,
   onBackToWelcome,
 }: PortalGatewayViewProps) {
-  const [selectedRole, setSelectedRole] = useState<"student" | "staff" | "admin">("student");
+  const collegeName = brandingSettings?.name || 'Superior College Jahanian';
+  const logo = brandingSettings?.logo || '/superior-logo.png';
 
-  const roleCards = [
+  const portals = [
     {
-      id: "student" as const,
-      title: "Student",
-      description: "Access your records, timetables, results and more.",
-      icon: GraduationCap,
-      highlights: ["3-Copy Bank Fee Challans", "Terminal Marksheets", "Class Presence Logs"],
-    },
-    {
-      id: "staff" as const,
-      title: "Faculty",
-      description: "Manage classes, view schedules and academic tools.",
-      icon: Users,
-      highlights: ["Assigned Period Rosters", "Biometric Duty Punch", "Verified Salary Slips"],
-    },
-    {
-      id: "admin" as const,
-      title: "Admin",
-      description: "Administrative control and system management.",
+      id: 'admin' as const,
+      title: 'Administration & Accounts ERP',
+      subtitle: 'Executive Dashboard, Admissions, Fee Ledger & Biometrics',
       icon: Shield,
-      highlights: ["Admissions & Inquiries", "Double-Entry Cashbook", "Staff Payroll Control"],
+      badge: 'Executive Access',
+      accent: 'from-emerald-600 to-teal-700',
+    },
+    {
+      id: 'staff' as const,
+      title: 'Faculty & Staff Portal',
+      subtitle: 'Timetable, Class Attendance, Marks Entry & Salary Slips',
+      icon: Briefcase,
+      badge: 'Faculty Access',
+      accent: 'from-amber-600 to-orange-700',
+    },
+    {
+      id: 'student' as const,
+      title: 'Student & Parent Portal',
+      subtitle: 'Academic Results, Attendance Log, Fee Receipts & Digital ID',
+      icon: GraduationCap,
+      badge: 'Student Access',
+      accent: 'from-sky-600 to-indigo-700',
     },
   ];
 
-  const getCtaLabel = () => {
-    switch (selectedRole) {
-      case "student":
-        return "Continue to Student Portal";
-      case "staff":
-        return "Continue to Faculty Portal";
-      case "admin":
-        return "Continue to Admin Console";
-      default:
-        return "Access Digital Campus";
-    }
-  };
-
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-3 sm:p-5 lg:p-7 font-sans select-none relative overflow-hidden text-slate-800">
-      {/* Real Campus Photo Background + Reduced Wave & Top Slogan */}
-      <AcademicCanvasBackground logo={brandingSettings.logo} />
-
-      {/* VISIONOS SPATIAL 3D MASTER GATEWAY CARD */}
-      <SpatialCard>
-        {/* LEFT COLUMN (approx 38-40%): Deep Superior Emerald Brand Panel */}
-        <div 
-          style={{ transform: "translateZ(12px)" }}
-          className="lg:col-span-5 bg-gradient-to-br from-[#064e43] via-[#053e35] to-[#022822] p-7 sm:p-9 lg:p-10 flex flex-col justify-between text-white relative overflow-hidden"
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-between p-6 sm:p-10 relative overflow-hidden">
+      <div className="max-w-5xl w-full mx-auto flex items-center justify-between">
+        <button
+          onClick={onBackToWelcome}
+          className="inline-flex items-center gap-2 text-xs font-bold text-slate-300 hover:text-white px-3 py-2 rounded-xl bg-white/5 border border-white/10 cursor-pointer"
         >
-          {/* Subtle Background Watermark */}
-          <div className="absolute inset-0 [background-image:radial-gradient(rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none" />
-          <div className="absolute top-1/4 right-0 w-80 h-80 opacity-[0.08] pointer-events-none text-white flex items-center justify-center">
-            <GraduationCap size={320} className="stroke-[1]" />
-          </div>
-          <div className="absolute -top-16 -left-16 w-60 h-60 rounded-full bg-emerald-400/15 blur-3xl pointer-events-none" />
+          <ArrowLeft size={14} />
+          <span>Back</span>
+        </button>
+        <div className="flex items-center gap-2.5">
+          <img src={logo} alt={collegeName} className="w-8 h-8 object-contain" />
+          <span className="text-sm font-black">{collegeName}</span>
+        </div>
+      </div>
 
-          {/* Top Branding Section */}
-          <div className="relative z-10">
-            {/* Return to Welcome & TLS Badge */}
-            <div className="flex items-center justify-between mb-5">
-              {onBackToWelcome && (
-                <button
-                  type="button"
-                  onClick={onBackToWelcome}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white text-xs font-bold transition-all cursor-pointer group shadow-sm backdrop-blur-md"
-                >
-                  <ArrowLeft size={13} className="transition-transform group-hover:-translate-x-0.5" />
-                  <span>Return to Welcome</span>
-                </button>
-              )}
-
-              <span className="text-[10px] font-mono text-emerald-200 tracking-wider">
-                GATEWAY SECURE
-              </span>
-            </div>
-
-            {/* Brand Identity Lockup */}
-            <div className="flex items-center gap-3.5 mb-6">
-              <div className="w-12 h-12 rounded-full p-0.5 bg-gradient-to-tr from-[#c9a84c] via-[#f7e096] to-[#b89437] shadow-lg flex items-center justify-center shrink-0">
-                <div className="w-full h-full rounded-full bg-white overflow-hidden flex items-center justify-center" style={{ clipPath: 'circle(49.5% at 50% 50%)' }}>
-                  {brandingSettings.logo ? (
-                    <img
-                      src={brandingSettings.logo}
-                      alt="Logo"
-                      className="w-full h-full object-contain rounded-full select-none"
-                    />
-                  ) : (
-                    <School size={22} className="text-[#053229]" />
-                  )}
-                </div>
-              </div>
-              <div>
-                <h2 className="text-xs sm:text-[13px] font-black text-white uppercase tracking-wider leading-snug">
-                  {brandingSettings.name || "SUPERIOR COLLEGE JAHANIAN"}
-                </h2>
-                <p className="text-[10px] sm:text-[11px] font-semibold text-amber-200/90 tracking-wide">
-                  Jahanian Main Campus &bull; Digital Gateway
-                </p>
-              </div>
-            </div>
-
-            {/* Main Title & Supporting Copy */}
-            <div className="mb-7">
-              <h1 className="text-2xl sm:text-3xl lg:text-[32px] font-black tracking-tight text-white leading-tight">
-                Select Your{" "}
-                <span className="text-[#f5d47a] block sm:inline">
-                  Workspace.
-                </span>
-              </h1>
-              <p className="text-xs sm:text-[13px] text-emerald-100/85 mt-2.5 leading-relaxed max-w-md">
-                Dedicated gateways for scholars, faculty educators, and campus administrators with authenticated single sign-on.
-              </p>
-            </div>
-
-            {/* 3 Benefit Feature Pillars */}
-            <div className="grid grid-cols-3 gap-3 pt-1">
-              <div className="flex flex-col items-center text-center">
-                <div className="w-10 h-10 rounded-full bg-emerald-800/60 border border-emerald-500/30 flex items-center justify-center text-emerald-200 mb-2 shadow-inner">
-                  <FileText size={18} />
-                </div>
-                <h4 className="text-[11px] sm:text-xs font-bold text-white leading-tight">
-                  Academic Records
-                </h4>
-                <p className="text-[9.5px] sm:text-[10px] text-emerald-200/70 mt-1 leading-snug">
-                  Transcripts, marksheets & fee ledgers.
-                </p>
-              </div>
-
-              <div className="flex flex-col items-center text-center">
-                <div className="w-10 h-10 rounded-full bg-emerald-800/60 border border-emerald-500/30 flex items-center justify-center text-emerald-200 mb-2 shadow-inner">
-                  <Calendar size={18} />
-                </div>
-                <h4 className="text-[11px] sm:text-xs font-bold text-white leading-tight">
-                  Timetables
-                </h4>
-                <p className="text-[9.5px] sm:text-[10px] text-emerald-200/70 mt-1 leading-snug">
-                  Weekly classes & attendance logs.
-                </p>
-              </div>
-
-              <div className="flex flex-col items-center text-center">
-                <div className="w-10 h-10 rounded-full bg-emerald-800/60 border border-emerald-500/30 flex items-center justify-center text-emerald-200 mb-2 shadow-inner">
-                  <Users size={18} />
-                </div>
-                <h4 className="text-[11px] sm:text-xs font-bold text-white leading-tight">
-                  Campus Services
-                </h4>
-                <p className="text-[9.5px] sm:text-[10px] text-emerald-200/70 mt-1 leading-snug">
-                  Official notices & institutional tools.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Slogan Line */}
-          <div className="relative z-10 pt-5 mt-5 border-t border-emerald-700/40 text-center">
-            <span className="text-[9px] sm:text-[10px] font-bold text-emerald-200/60 uppercase tracking-[0.25em]">
-              &mdash;&mdash; EMPOWERING BRIGHTER TOMORROWS &mdash;&mdash;
-            </span>
-          </div>
+      <div className="max-w-5xl w-full mx-auto my-auto py-10 space-y-8">
+        <div className="text-center space-y-2">
+          <h1 className="text-2xl sm:text-4xl font-black">Select Your Workspace Portal</h1>
+          <p className="text-xs sm:text-sm text-slate-400">
+            Choose your designated role to sign in to {collegeName}
+          </p>
         </div>
 
-        {/* RIGHT COLUMN (approx 60-62%): VisionOS Frosted Glass Workspace Selection */}
-        <div 
-          style={{ transform: "translateZ(18px)" }}
-          className="lg:col-span-7 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl p-7 sm:p-9 lg:p-11 flex flex-col justify-between relative"
-        >
-          {/* Top Status Indicators Row */}
-          <div className="w-full flex items-center justify-between pb-4 border-b border-slate-100">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/80 text-[11px] sm:text-xs font-semibold text-emerald-900 shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>All Academic Systems Operational</span>
-            </div>
-
-            <div className="flex items-center gap-3 text-slate-500 text-[11px] sm:text-xs font-medium">
-              <span className="inline-flex items-center gap-1 text-slate-600">
-                <Lock size={13} className="text-emerald-700" />
-                <span>Secure Login</span>
-              </span>
-              <span className="text-slate-300">|</span>
-              <span className="inline-flex items-center gap-1 font-mono text-[10.5px] text-slate-400">
-                <Signal size={12} className="text-emerald-700" />
-                <span>TLS 1.3 Encrypted</span>
-              </span>
-            </div>
-          </div>
-
-          {/* Main UX Functional Selection Block */}
-          <div className="my-auto py-4 flex flex-col items-center text-center">
-            <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.22em] text-[#085a4e] mb-1.5">
-              SUPERIOR COLLEGE JAHANIAN
-            </span>
-
-            <h2 className="text-2xl sm:text-3xl lg:text-[32px] font-black text-slate-900 tracking-tight">
-              Choose Your Portal
-            </h2>
-
-            <p className="text-xs sm:text-sm text-slate-500 mt-1.5 mb-6 max-w-md leading-relaxed">
-              Select your role to access personalised features, academic information, and campus services.
-            </p>
-
-            {/* 3 Interactive Selectable Role Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 w-full mb-6 text-left">
-              {roleCards.map((card) => {
-                const IconComponent = card.icon;
-                const isSelected = selectedRole === card.id;
-
-                return (
-                  <div
-                    key={card.id}
-                    onClick={() => setSelectedRole(card.id)}
-                    onDoubleClick={() => onSelectPortal(card.id)}
-                    className={`relative rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition-all cursor-pointer group ${
-                      isSelected
-                        ? "border-2 border-emerald-600 bg-emerald-50/45 shadow-md ring-2 ring-emerald-500/15"
-                        : "border border-slate-200/80 bg-white hover:border-emerald-300 hover:bg-slate-50/70 shadow-xs"
-                    }`}
-                  >
-                    {isSelected && (
-                      <div className="absolute top-2.5 right-2.5 w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center">
-                        <Check size={10} className="stroke-[3]" />
-                      </div>
-                    )}
-
-                    <div>
-                      <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-colors ${
-                          isSelected
-                            ? "bg-emerald-600 text-white shadow-xs"
-                            : "bg-emerald-50 text-emerald-800 group-hover:bg-emerald-100/70"
-                        }`}
-                      >
-                        <IconComponent size={20} />
-                      </div>
-
-                      <h3 className="text-sm sm:text-base font-black text-slate-900 mb-1">
-                        {card.title}
-                      </h3>
-
-                      <p className="text-[11px] sm:text-xs text-slate-500 leading-snug mb-3">
-                        {card.description}
-                      </p>
-
-                      {/* Micro-Features */}
-                      <div className="space-y-1 pt-1 border-t border-slate-100">
-                        {card.highlights.map((h, i) => (
-                          <div key={i} className="text-[9.5px] text-slate-600 flex items-center gap-1.5">
-                            <span className="w-1 h-1 rounded-full bg-emerald-600" />
-                            <span className="truncate">{h}</span>
-                          </div>
-                        ))}
-                      </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {portals.map((p) => {
+            const Icon = p.icon;
+            return (
+              <button
+                key={p.id}
+                onClick={() => onSelectPortal(p.id)}
+                className="p-6 rounded-3xl bg-slate-900/90 hover:bg-slate-900 border border-white/10 hover:border-emerald-500/40 text-left flex flex-col justify-between gap-6 transition-all group cursor-pointer shadow-xl"
+              >
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${p.accent} flex items-center justify-center shadow-lg`}>
+                      <Icon className="w-6 h-6 text-white" />
                     </div>
-
-                    <div className="pt-4 flex justify-center">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedRole(card.id);
-                          onSelectPortal(card.id);
-                        }}
-                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-                          isSelected
-                            ? "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
-                            : "bg-slate-100 text-slate-400 group-hover:bg-emerald-100 group-hover:text-emerald-800"
-                        }`}
-                      >
-                        <ArrowRight size={14} className="stroke-[2.5]" />
-                      </button>
-                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/10 text-slate-200">
+                      {p.badge}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
+                  <div>
+                    <h3 className="text-lg font-black text-white">{p.title}</h3>
+                    <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">{p.subtitle}</p>
+                  </div>
+                </div>
 
-            {/* Main Role-Specific CTA Button */}
-            <motion.button
-              whileHover={{ scale: 1.015, y: -1 }}
-              whileTap={{ scale: 0.985 }}
-              onClick={() => onSelectPortal(selectedRole)}
-              className="w-full h-12 sm:h-13 rounded-xl bg-[#0c6b5d] hover:bg-[#09574b] text-white font-bold text-sm sm:text-[15px] tracking-wide shadow-[0_10px_25px_rgba(12,107,93,0.35)] hover:shadow-[0_15px_35px_rgba(12,107,93,0.45)] transition-all flex items-center justify-center gap-2.5 cursor-pointer relative overflow-hidden group"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
-              <span>{getCtaLabel()}</span>
-              <ArrowRight size={16} className="stroke-[2.5] group-hover:translate-x-0.5 transition-transform" />
-            </motion.button>
-
-            <p className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-3.5">
-              &mdash;&mdash; A SMARTER CAMPUS FOR A BRIGHTER TOMORROW &mdash;&mdash;
-            </p>
-          </div>
-
-          {/* Bottom Card Footer */}
-          <div className="w-full pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 gap-2">
-            <span>&copy; 2026 Superior College Jahanian. All rights reserved.</span>
-            <span className="font-medium text-slate-500">Session 2026-28</span>
-          </div>
+                <div className="flex items-center justify-between pt-4 border-t border-white/10 text-xs font-bold text-emerald-400">
+                  <span>Continue to Sign In</span>
+                  <ArrowRight size={15} className="group-hover:translate-x-1 transition-transform" />
+                </div>
+              </button>
+            );
+          })}
         </div>
-      </SpatialCard>
+      </div>
+
+      <div className="text-center text-xs text-slate-500">
+        {collegeName} • Session 2026-28
+      </div>
     </div>
   );
 }
