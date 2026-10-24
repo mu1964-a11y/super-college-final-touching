@@ -321,7 +321,8 @@ export default function BiometricAttendanceDesk({
       try {
         const res = await secugenService.captureFingerprint({
           timeoutMs: isManualTrigger ? 9000 : 5000,
-          quality: 45,
+          quality: 40,
+          templateFormat: 'ISO',
         });
 
         if (!isMountedRef.current) return;
@@ -334,9 +335,17 @@ export default function BiometricAttendanceDesk({
           return;
         }
 
+        const thumbDataUrl =
+          res.bmpDataUrl ||
+          (res.bmpBase64
+            ? res.bmpBase64.startsWith('data:')
+              ? res.bmpBase64
+              : `data:image/bmp;base64,${res.bmpBase64}`
+            : undefined);
+
         setScannerStatus({ connected: true, deviceFound: true });
 
-        // 1:N Fast Template Matching against Enrolled Staff (30+ Faculty)
+        // 1:N Fast Template Matching against Enrolled Staff (31+ Faculty)
         let matchedStaff: any = null;
         let bestScore = 0;
 
@@ -347,7 +356,6 @@ export default function BiometricAttendanceDesk({
           if (m.matched && m.score > bestScore) {
             bestScore = m.score;
             matchedStaff = teacher;
-            if (m.score >= 140) break; // High-confidence early exit for ultra-fast response
           }
         }
 
@@ -361,7 +369,6 @@ export default function BiometricAttendanceDesk({
             if (m.matched && m.score > bestScore) {
               bestScore = m.score;
               matchedStudent = stu;
-              if (m.score >= 140) break;
             }
           }
         }
@@ -369,6 +376,7 @@ export default function BiometricAttendanceDesk({
         const now = new Date();
         const todayStr = getTodayDateStr();
         const hhmm = formatHHMM(now);
+        const hhmmss = `${hhmm}:${String(now.getSeconds()).padStart(2, '0')}`;
         const displayTime = formatTime12h(now);
         const cutoffTime = settings?.collegeStartTime || '07:54';
 
@@ -378,7 +386,7 @@ export default function BiometricAttendanceDesk({
           setVerifiedCard({
             type: 'unrecognized',
             message: 'Fingerprint Not Recognized — Please Place Enrolled Finger Flat on Sensor',
-            thumbBmp: res.bmpBase64,
+            thumbBmp: thumbDataUrl,
           });
           if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
           resetTimerRef.current = setTimeout(() => {
@@ -388,6 +396,10 @@ export default function BiometricAttendanceDesk({
         }
 
         if (matchedStaff) {
+          if (res.bmpBase64) {
+            secugenService.saveFingerprintThumbnail(matchedStaff.id, res.bmpBase64);
+          }
+
           const existingRec = todayAttendance.find(
             (r: any) => (r.staff_id || r.staffId) === matchedStaff.id && r.date === todayStr
           );
@@ -407,15 +419,16 @@ export default function BiometricAttendanceDesk({
             if (!existingCheckIn) {
               actionType = 'checkin';
             } else {
-              // Calculate minutes since check-in to prevent accidental double-scan within 10 mins
+              // Calculate minutes since check-in to prevent accidental double-scan within 5 mins
               let minsSinceCheckIn = 999;
-              if (existingRec?.check_in_time || existingRec?.checkInTime) {
-                const cinDate = new Date(existingRec.check_in_time || existingRec.checkInTime);
+              const isoIn = existingRec?.check_in_time || existingRec?.checkInTime || existingRec?.created_at;
+              if (isoIn) {
+                const cinDate = new Date(isoIn);
                 if (!isNaN(cinDate.getTime())) {
                   minsSinceCheckIn = (now.getTime() - cinDate.getTime()) / 60000;
                 }
               }
-              if (minsSinceCheckIn < 10 && !existingCheckOut) {
+              if (minsSinceCheckIn < 5 && !existingCheckOut) {
                 actionType = 'duplicate';
               } else {
                 actionType = 'checkout';
@@ -436,7 +449,7 @@ export default function BiometricAttendanceDesk({
               punchTime: existingCheckIn || displayTime,
               score: bestScore,
               message: `Already Checked In Today at ${existingCheckIn || displayTime}`,
-              thumbBmp: res.bmpBase64,
+              thumbBmp: thumbDataUrl,
             });
           } else if (actionType === 'checkin') {
             // Calculate Present vs Late based on collegeStartTime (default 07:54)
@@ -449,10 +462,14 @@ export default function BiometricAttendanceDesk({
               staff_id: matchedStaff.id,
               date: todayStr,
               status: computedStatus,
-              check_in: hhmm,
+              check_in: hhmmss,
               check_in_time: now.toISOString(),
               verification_method: 'secugen_fingerprint',
-              notes: `SecuGen Biometric Check-In (${matchedStaff.fingerprintFinger || 'Thumb'} • Score ${bestScore})`,
+              notes: JSON.stringify({
+                method: 'biometric_fingerprint',
+                check_in_time: hhmmss,
+                score: bestScore,
+              }),
             };
 
             if (isSupabaseConfigured) {
@@ -484,7 +501,7 @@ export default function BiometricAttendanceDesk({
                 computedStatus === 'Late'
                   ? `Check-In Recorded (Late Arrival after ${cutoffTime} AM)`
                   : 'On-Time Biometric Check-In Recorded!',
-              thumbBmp: res.bmpBase64,
+              thumbBmp: thumbDataUrl,
             });
 
             onAttendanceMarked?.();
@@ -502,12 +519,17 @@ export default function BiometricAttendanceDesk({
               staff_id: matchedStaff.id,
               date: todayStr,
               status: existingRec?.status || 'Present',
-              check_in: existingRec?.check_in || existingRec?.checkIn || hhmm,
+              check_in: existingRec?.check_in || existingRec?.checkIn || hhmmss,
               check_in_time: existingRec?.check_in_time || existingRec?.checkInTime || now.toISOString(),
-              check_out: hhmm,
+              check_out: hhmmss,
               check_out_time: now.toISOString(),
               verification_method: 'secugen_fingerprint',
-              notes: `SecuGen Biometric Check-In & Check-Out (Score ${bestScore})`,
+              notes: JSON.stringify({
+                method: 'biometric_fingerprint',
+                check_in_time: existingRec?.check_in || hhmmss,
+                check_out_time: hhmmss,
+                score: bestScore,
+              }),
             };
 
             if (isSupabaseConfigured) {
@@ -536,7 +558,7 @@ export default function BiometricAttendanceDesk({
               punchTime: displayTime,
               score: bestScore,
               message: 'Official Duty Check-Out Recorded!',
-              thumbBmp: res.bmpBase64,
+              thumbBmp: thumbDataUrl,
             });
 
             onAttendanceMarked?.();
@@ -547,6 +569,13 @@ export default function BiometricAttendanceDesk({
             if (isMountedRef.current) setVerifiedCard(null);
           }, 3200);
         } else if (matchedStudent) {
+          if (res.bmpBase64) {
+            secugenService.saveFingerprintThumbnail(
+              matchedStudent.id,
+              res.bmpBase64,
+              matchedStudent.collegeNo
+            );
+          }
           // Student Biometric Attendance
           const payload = {
             student_id: matchedStudent.id,
@@ -576,7 +605,7 @@ export default function BiometricAttendanceDesk({
             punchTime: displayTime,
             score: bestScore,
             message: 'Student Biometric Check-In Recorded!',
-            thumbBmp: res.bmpBase64,
+            thumbBmp: thumbDataUrl,
           });
           if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
           resetTimerRef.current = setTimeout(() => {
