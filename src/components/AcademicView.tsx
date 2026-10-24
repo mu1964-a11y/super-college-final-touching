@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import BatchMarksEntry from './BatchMarksEntry';
 import ClassMeritList from './ClassMeritList';
+import SixMonthProgressComparison from './SixMonthProgressComparison';
 import WhatsAppReportModal, { ReportRecipientItem } from './WhatsAppReportModal';
 import { motion } from 'motion/react';
 import { getDocumentLink } from '../lib/whatsappAutomation';
@@ -276,7 +277,7 @@ export const generateProfessionalResultCard = (records: any[], data: any, doc: j
 
 
 export default function AcademicView({ data }: { data: any }) {
-  const [academicMode, setAcademicMode] = useState<'profiles' | 'batch_entry' | 'merit_list'>('profiles');
+  const [academicMode, setAcademicMode] = useState<'profiles' | 'batch_entry' | 'progress_6m' | 'merit_list'>('batch_entry');
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedGroup, setSelectedGroup] = useState<string>("all");
   const [selectedSection, setSelectedSection] = useState<string>("all");
@@ -722,8 +723,32 @@ _Canal Road, Jahanian | Superior College Jahanian_`;
           <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60 overflow-x-auto">
             <button
               type="button"
+              onClick={() => setAcademicMode('batch_entry')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all whitespace-nowrap cursor-pointer ${
+                academicMode === 'batch_entry'
+                  ? 'bg-superior-teal text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              <Zap size={13} />
+              <span>⚡ Fast Marks Sheet & Excel</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAcademicMode('progress_6m')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all whitespace-nowrap cursor-pointer ${
+                academicMode === 'progress_6m'
+                  ? 'bg-emerald-700 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              <TrendingUp size={13} />
+              <span>📈 6-Month Progress & Comparison</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setAcademicMode('profiles')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all whitespace-nowrap cursor-pointer ${
                 academicMode === 'profiles'
                   ? 'bg-white dark:bg-slate-700 text-emerald-900 dark:text-emerald-300 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
@@ -734,20 +759,8 @@ _Canal Road, Jahanian | Superior College Jahanian_`;
             </button>
             <button
               type="button"
-              onClick={() => setAcademicMode('batch_entry')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all whitespace-nowrap ${
-                academicMode === 'batch_entry'
-                  ? 'bg-superior-teal text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-              }`}
-            >
-              <Zap size={13} />
-              <span>⚡ Batch Entry (Excel)</span>
-            </button>
-            <button
-              type="button"
               onClick={() => setAcademicMode('merit_list')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all whitespace-nowrap cursor-pointer ${
                 academicMode === 'merit_list'
                   ? 'bg-amber-600 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
@@ -764,15 +777,16 @@ _Canal Road, Jahanian | Superior College Jahanian_`;
           <Button 
             variant="outline" 
             size="sm"
-            className="h-7.5 px-2.5 rounded-lg border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 font-bold text-[11px] flex items-center gap-1 hover:bg-emerald-50"
+            onClick={() => setAcademicMode('batch_entry')}
+            className="h-7.5 px-2.5 rounded-lg border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 font-bold text-[11px] flex items-center gap-1 hover:bg-emerald-50 cursor-pointer"
           >
             <Upload size={13} />
-            <span>Import Excel</span>
+            <span>Excel Sheet Marks</span>
           </Button>
           <Button 
             size="sm"
             onClick={handleOpenRecordModal} 
-            className="h-7.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-xs"
+            className="h-7.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-xs cursor-pointer"
           >
             <Plus size={14} />
             <span>Record Marks</span>
@@ -789,9 +803,18 @@ _Canal Road, Jahanian | Superior College Jahanian_`;
             if (data.addBulkAcademicRecords) {
               data.addBulkAcademicRecords(records);
             } else if (data.addAcademicRecord) {
-              records.forEach(r => data.addAcademicRecord(r));
+              records.forEach((r: any) => data.addAcademicRecord(r));
             }
           }}
+          predefinedSections={data.settings?.predefinedSections || []}
+          settings={data.settings}
+        />
+      )}
+
+      {academicMode === 'progress_6m' && (
+        <SixMonthProgressComparison
+          students={data.students || []}
+          academicRecords={data.academicRecords || []}
           predefinedSections={data.settings?.predefinedSections || []}
           settings={data.settings}
         />

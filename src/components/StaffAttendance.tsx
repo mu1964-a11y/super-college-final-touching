@@ -14,6 +14,7 @@ import { safeLocalStorage } from '../utils/safeStorage';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import BiometricEnrollmentModal from './BiometricEnrollmentModal';
+import BiometricAttendanceDesk from './BiometricAttendanceDesk';
 import { sendAutoStaffAttendancePdfNotice } from '../lib/whatsappAutomation';
 
 interface StaffAttendanceProps {
@@ -131,6 +132,7 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
   // Daily Attendance State overrides
   const [dailyEntries, setDailyEntries] = useState<Record<string, Partial<AttendanceRecord>>>({});
   const [isBiometricEnrollOpen, setIsBiometricEnrollOpen] = useState(false);
+  const [isBiometricDeskOpen, setIsBiometricDeskOpen] = useState(false);
   const [biometricTargetStaff, setBiometricTargetStaff] = useState<any | null>(null);
 
   // Initialize or update daily entries when selected date changes or staff list changes
@@ -448,11 +450,11 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              onClick={() => window.open('/?biometric=true', '_blank')}
+              onClick={() => setIsBiometricDeskOpen(true)}
               className="rounded-xl border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold"
-              title="Open SecuGen HU20-A Biometric Attendance Desk"
+              title="Open Fast-Boost SecuGen HU20 Biometric Attendance Desk"
             >
-              <Fingerprint size={16} className="mr-1.5 text-amber-600" /> Biometric Desk
+              <Fingerprint size={16} className="mr-1.5 text-amber-600" /> Fast Biometric Desk
             </Button>
             <Button
               variant="outline"
@@ -1222,6 +1224,26 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
             data?.fetchData?.(true);
           }}
         />
+      )}
+
+      {/* Fast-Boost Zero-Click Biometric Attendance Kiosk Overlay */}
+      {isBiometricDeskOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950">
+          <BiometricAttendanceDesk
+            collegeLogo={data?.settings?.logo || '/superior-logo.png'}
+            collegeName={data?.settings?.collegeName || 'Superior College Jahanian'}
+            staffListProp={staffList}
+            staffAttendanceProp={records}
+            settingsProp={data?.settings}
+            onAttendanceMarked={() => {
+              data?.fetchData?.(true);
+            }}
+            onBackToApp={() => {
+              setIsBiometricDeskOpen(false);
+              data?.fetchData?.(true);
+            }}
+          />
+        </div>
       )}
     </div>
   );

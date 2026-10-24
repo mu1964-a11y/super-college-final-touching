@@ -409,26 +409,61 @@ export function useSupabaseData(user: any) {
         // Run promotion check
         autoPromoteStudents(mappedStudents);
       }
-      if (staffData) setStaff(staffData.map(st => ({
-        ...st,
-        fullName: st.full_name,
-        fatherName: st.father_name,
-        joinDate: st.join_date,
-        designation: st.designation || undefined,
-        secondaryRole: (st as any).secondary_role || (st.designation && st.designation.includes('&') ? st.designation.split('&')[1].trim() : undefined),
-        baseSalary: st.base_salary,
-        salary: st.salary,
-        photo: st.photo_url || st.photo,
-        photo_url: st.photo_url || st.photo,
-        dob: st.dob,
-        cnic: st.cnic,
-        qualification: st.qualification,
-        specialization: st.specialization,
-        subjects: st.subjects,
-        fingerprintTemplate: st.fingerprint_template || (st as any).fingerprintTemplate || undefined,
-        fingerprintFinger: st.fingerprint_finger || (st as any).fingerprintFinger || undefined,
-        fingerprintEnrolledAt: st.fingerprint_enrolled_at || (st as any).fingerprintEnrolledAt || undefined
-      })));
+      if (staffData) setStaff(staffData.map(st => {
+        let dbTemplate = st.fingerprint_template || (st as any).fingerprintTemplate || undefined;
+        let dbFinger = st.fingerprint_finger || (st as any).fingerprintFinger || undefined;
+        let dbEnrolledAt = st.fingerprint_enrolled_at || (st as any).fingerprintEnrolledAt || undefined;
+
+        try {
+          const vaultKey = `scj_fp_vault_${st.id}`;
+          if (dbTemplate) {
+            safeLocalStorage.setItem(vaultKey, JSON.stringify({
+              personId: st.id,
+              personType: 'staff',
+              template: dbTemplate,
+              finger: dbFinger || 'Right Thumb',
+              enrolledAt: dbEnrolledAt || new Date().toISOString()
+            }));
+          } else {
+            const cachedVault = safeLocalStorage.getItem(vaultKey);
+            if (cachedVault) {
+              const parsed = JSON.parse(cachedVault);
+              if (parsed?.template) {
+                dbTemplate = parsed.template;
+                dbFinger = parsed.finger || 'Right Thumb';
+                dbEnrolledAt = parsed.enrolledAt || new Date().toISOString();
+                // Push recovered template back to Supabase silently
+                supabase.from('staff').update({
+                  fingerprint_template: dbTemplate,
+                  fingerprint_finger: dbFinger,
+                  fingerprint_enrolled_at: dbEnrolledAt,
+                }).eq('id', st.id).then(() => {});
+              }
+            }
+          }
+        } catch {}
+
+        return {
+          ...st,
+          fullName: st.full_name,
+          fatherName: st.father_name,
+          joinDate: st.join_date,
+          designation: st.designation || undefined,
+          secondaryRole: (st as any).secondary_role || (st.designation && st.designation.includes('&') ? st.designation.split('&')[1].trim() : undefined),
+          baseSalary: st.base_salary,
+          salary: st.salary,
+          photo: st.photo_url || st.photo,
+          photo_url: st.photo_url || st.photo,
+          dob: st.dob,
+          cnic: st.cnic,
+          qualification: st.qualification,
+          specialization: st.specialization,
+          subjects: st.subjects,
+          fingerprintTemplate: dbTemplate,
+          fingerprintFinger: dbFinger,
+          fingerprintEnrolledAt: dbEnrolledAt
+        };
+      }));
       if (staffAttendanceData) setStaffAttendance(staffAttendanceData.map(a => {
         let parsedNotes: any = null;
         if (a.notes && typeof a.notes === 'string' && a.notes.startsWith('{')) {
@@ -1057,18 +1092,37 @@ export function useSupabaseData(user: any) {
     }
   };
 
-  const updateFingerprintRecord = useCallback((personId: string, personType: 'student' | 'staff', template: string, finger: string) => {
+  const updateFingerprintRecord = useCallback(async (personId: string, personType: 'student' | 'staff', template: string, finger: string) => {
     const isRemoving = !template || template.trim() === '';
-    const enrolledAt = isRemoving ? undefined : new Date().toISOString();
-    const finalTemplate = isRemoving ? undefined : template;
-    const finalFinger = isRemoving ? undefined : finger;
+    const enrolledAt = isRemoving ? null : new Date().toISOString();
+    const finalTemplate = isRemoving ? null : template;
+    const finalFinger = isRemoving ? null : finger;
 
+    // 1. Save redundant local backup vault so templates are never lost even offline
+    try {
+      if (isRemoving) {
+        safeLocalStorage.removeItem(`scj_fp_vault_${personId}`);
+      } else {
+        safeLocalStorage.setItem(
+          `scj_fp_vault_${personId}`,
+          JSON.stringify({
+            personId,
+            personType,
+            template: finalTemplate,
+            finger: finalFinger,
+            enrolledAt,
+          })
+        );
+      }
+    } catch {}
+
+    // 2. Optimistic React state update
     if (personType === 'staff') {
       setStaff(prev => prev.map(s => s.id === personId ? {
         ...s,
-        fingerprintTemplate: finalTemplate,
-        fingerprintFinger: finalFinger,
-        fingerprintEnrolledAt: enrolledAt
+        fingerprintTemplate: finalTemplate || undefined,
+        fingerprintFinger: finalFinger || undefined,
+        fingerprintEnrolledAt: enrolledAt || undefined
       } : s));
     } else {
       setStudents(prev => prev.map(s => (
@@ -1078,9 +1132,9 @@ export function useSupabaseData(user: any) {
         s.admissionId === personId
       ) ? {
         ...s,
-        fingerprintTemplate: finalTemplate,
-        fingerprintFinger: finalFinger,
-        fingerprintEnrolledAt: enrolledAt
+        fingerprintTemplate: finalTemplate || undefined,
+        fingerprintFinger: finalFinger || undefined,
+        fingerprintEnrolledAt: enrolledAt || undefined
       } : s));
       setAdmissions(prev => prev.map(a => (
         a.id === personId || 
@@ -1088,10 +1142,50 @@ export function useSupabaseData(user: any) {
         (a as any).collegeNo === personId
       ) ? {
         ...a,
-        fingerprintTemplate: finalTemplate,
-        fingerprintFinger: finalFinger,
-        fingerprintEnrolledAt: enrolledAt
+        fingerprintTemplate: finalTemplate || undefined,
+        fingerprintFinger: finalFinger || undefined,
+        fingerprintEnrolledAt: enrolledAt || undefined
       } : a));
+    }
+
+    // 3. Persist directly to Supabase database
+    if (isSupabaseConfigured) {
+      try {
+        if (personType === 'staff') {
+          const { error } = await supabase
+            .from('staff')
+            .update({
+              fingerprint_template: finalTemplate,
+              fingerprint_finger: finalFinger,
+              fingerprint_enrolled_at: enrolledAt,
+            })
+            .eq('id', personId);
+          if (error) {
+            console.error('Supabase staff fingerprint update error:', error);
+            toast.error(`Database sync warning: ${error.message}`);
+          }
+        } else {
+          await supabase
+            .from('students')
+            .update({
+              fingerprint_template: finalTemplate,
+              fingerprint_finger: finalFinger,
+              fingerprint_enrolled_at: enrolledAt,
+            })
+            .or(`id.eq.${personId},admission_id.eq.${personId}`);
+
+          await supabase
+            .from('admissions')
+            .update({
+              fingerprint_template: finalTemplate,
+              fingerprint_finger: finalFinger,
+              fingerprint_enrolled_at: enrolledAt,
+            })
+            .or(`id.eq.${personId},student_id.eq.${personId}`);
+        }
+      } catch (err: any) {
+        console.error('Failed to persist fingerprint to Supabase:', err);
+      }
     }
   }, []);
 
