@@ -77,6 +77,7 @@ import { safeLocalStorage } from "../utils/safeStorage";
 import { getUnifiedTransactions } from "../utils/fee";
 import { useDebounce } from "../hooks/useDebounce";
 import { calculateStudentFeeBreakdown } from "../lib/feeCalculations";
+import { matchesEducationalStream, matchesCohortStage } from "../lib/academicMasterData";
 import { supabase } from "../lib/supabase";
 
 
@@ -106,6 +107,7 @@ export default function FeeManagementView({
   const [paymentType, setPaymentType] = React.useState<string>(
     "Tuition Fee Installment",
   );
+  const [paymentMethod, setPaymentMethod] = React.useState<"Cash" | "Bank Transfer">("Cash");
   const [paymentDate, setPaymentDate] = React.useState<string>(
     new Date().toISOString().split("T")[0],
   );
@@ -258,12 +260,24 @@ export default function FeeManagementView({
 
         raw.push({
           id: a.studentId || a.id,
+          admissionId: a.id,
+          collegeNo: a.collegeNo || a.studentId || a.id,
           fullName: a.fullName,
           fatherName: a.fatherName,
           gender: derivedGender,
           category: a.category || "",
           group: a.group || "",
           section: a.section || "",
+          session: a.session || "2026-28",
+          academicPart: a.academicPart || "Part-1",
+          programType: a.programType || "2-Year Yearly",
+          currentSemester: a.currentSemester || 1,
+          totalSemesters: a.totalSemesters || 2,
+          totalInstallments: a.totalInstallments || 12,
+          previousArrears: a.previousArrears || 0,
+          contact: a.contactNumber || a.contact || a.phone || "",
+          fatherContact: a.fatherContact || a.contactNumber || "",
+          photo: a.photo || a.photo_url || "",
           totalPackage: a.totalPackage || 0,
           feeReceived: a.feeReceived || 0,
           status: "Active",
@@ -274,22 +288,8 @@ export default function FeeManagementView({
     });
 
     // Filter by program here so executive stats reflect the current program
-    if (program) {
-      raw = raw.filter((s: any) => {
-        const identifier = `${s.category || ""} ${s.group || ""}`.toLowerCase();
-        if (program === "fsc")
-          return (
-            !identifier.includes("dit") &&
-            !identifier.includes("level 3") &&
-            !identifier.includes("uk") &&
-            !identifier.includes("bs ")
-          );
-        if (program === "dit") return identifier.includes("dit");
-        if (program === "ukl3")
-          return identifier.includes("level 3") || identifier.includes("uk");
-        if (program === "bs") return identifier.includes("bs");
-        return true;
-      });
+    if (program && program !== "all") {
+      raw = raw.filter((s: any) => matchesEducationalStream(s, program));
     }
 
     return raw;
@@ -400,12 +400,14 @@ export default function FeeManagementView({
       datePaid: payDate.toISOString(),
       receiptId: receiptNo,
       feeType: paymentType,
+      paymentMethod,
       collectedBy: collectedByName.trim() || undefined,
     });
 
     setIsPaymentOpen(false);
     setPaymentAmount("");
     setPaymentType("Tuition Fee Installment");
+    setPaymentMethod("Cash");
     setCollectedByName("");
   };
 
@@ -438,27 +440,12 @@ export default function FeeManagementView({
       toast.loading(`Applying "${ancillaryForm.title.trim()}" to matching scholars...`, { id: "anc-apply" });
 
       const targetList = allEnrolled.filter((s: any) => {
-        // Program match
-        if (ancillaryForm.targetProgram !== "all") {
-          const sGroup = (s.group || "").toLowerCase();
-          const sCat = (s.category || "").toLowerCase();
-          const isDIT = sGroup.includes("dit") || sCat.includes("dit");
-          const isBS = sGroup.includes("bs") || sCat.includes("bs");
-          const isUK = sGroup.includes("uk") || sCat.includes("uk");
-          if (ancillaryForm.targetProgram === "fsc" && (isDIT || isBS || isUK)) return false;
-          if (ancillaryForm.targetProgram === "dit" && !isDIT) return false;
-          if (ancillaryForm.targetProgram === "bs" && !isBS) return false;
-          if (ancillaryForm.targetProgram === "ukl3" && !isUK) return false;
+        if (ancillaryForm.targetProgram !== "all" && !matchesEducationalStream(s, ancillaryForm.targetProgram)) {
+          return false;
         }
-        // Stage match
-        if (ancillaryForm.targetStage !== "all") {
-          const part = s.academicPart || s.academic_part || "";
-          const sem = Number(s.currentSemester || s.current_semester || 0);
-          if (ancillaryForm.targetStage === "part1" && part !== "Part-1" && sem > 0) return false;
-          if (ancillaryForm.targetStage === "part2" && part !== "Part-2") return false;
-          if (ancillaryForm.targetStage.startsWith("sem") && sem !== Number(ancillaryForm.targetStage.replace("sem", ""))) return false;
+        if (ancillaryForm.targetStage !== "all" && !matchesCohortStage(s, ancillaryForm.targetStage)) {
+          return false;
         }
-        // Section match
         if (ancillaryForm.targetSection !== "all") {
           if ((s.section || "").trim().toLowerCase() !== ancillaryForm.targetSection.trim().toLowerCase()) return false;
         }
@@ -483,17 +470,22 @@ export default function FeeManagementView({
       for (const student of targetList) {
         const existingLedger = student.feeLedger || {};
         const existingAncillary = existingLedger.ancillaryFees || [];
-        const updatedAncillary = [...existingAncillary, { ...newEntry, id: `anc-${Date.now()}-${student.id}` }];
+        const updatedLedger = {
+          ...existingLedger,
+          ancillaryFees: [...existingAncillary, { ...newEntry, id: `anc-${Date.now()}-${student.id}` }],
+        };
 
         await supabase
           .from("students")
-          .update({
-            fee_ledger: {
-              ...existingLedger,
-              ancillaryFees: updatedAncillary,
-            },
-          })
+          .update({ fee_ledger: updatedLedger })
           .eq("id", student.id);
+
+        if (student.admissionId) {
+          await supabase
+            .from("admissions")
+            .update({ fee_ledger: updatedLedger })
+            .eq("id", student.admissionId);
+        }
       }
 
       toast.success(`Applied "${ancillaryForm.title}" (Rs. ${feeAmount.toLocaleString()}) to ${targetList.length} scholars!`, { id: "anc-apply" });
@@ -1194,33 +1186,18 @@ export default function FeeManagementView({
     }
     
     // Filter by group if selected
-    const pFilter = groupFilter.toLowerCase();
-    if (pFilter !== "all") {
-      sections = sections.filter((s: any) => {
-        const pg = (s.program || "").toLowerCase();
-        
-        const isDIT = pg.includes("dit") || pg.includes("diploma");
-        const isBS = pg.includes("bs") || pg.includes("b.s");
-        const isUKL3 = pg.includes("uk") || pg.includes("level 3") || pg.includes("ukl3");
-
-        if (pFilter === "fsc") {
-          return !isDIT && !isBS && !isUKL3;
-        } else if (pFilter === "dit" || pFilter.includes("diploma")) {
-          return isDIT;
-        } else if (pFilter === "bs" || pFilter.includes("b.s")) {
-          return isBS;
-        } else if (pFilter === "ukl3" || pFilter.includes("uk") || pFilter.includes("level 3")) {
-          return isUKL3;
-        } else {
-          return pg.includes(pFilter);
-        }
-      });
-    }
+      const pFilter = groupFilter.toLowerCase();
+      if (pFilter !== "all") {
+        sections = sections.filter((s: any) =>
+          matchesEducationalStream({ group: s.program || s.name || "", category: s.program || "" }, pFilter)
+        );
+      }
 
     const predefinedNames = sections.map((s: any) => s.name).filter(Boolean);
     const studentSections = (students || [])
       .filter((s: any) => {
         if (genderFilter !== "all" && s.gender && s.gender !== genderFilter) return false;
+        if (groupFilter !== "all" && !matchesEducationalStream(s, groupFilter)) return false;
         return true;
       })
       .map((s: any) => (s.section || '').trim())
@@ -1234,7 +1211,7 @@ export default function FeeManagementView({
       const nameMatch = (s.fullName || s.full_name || "")
         .toLowerCase()
         .includes(debouncedSearch.toLowerCase());
-      const idMatch = (s.id || "")
+      const idMatch = (s.id || s.collegeNo || "")
         .toLowerCase()
         .includes(debouncedSearch.toLowerCase());
       const fatherMatch = (s.fatherName || s.father_name || "")
@@ -1257,58 +1234,13 @@ export default function FeeManagementView({
           (statusFilter === "not-paid" && received <= 0);
       }
 
-      const pFilter = groupFilter.toLowerCase();
-      let matchesGroup = true;
-      if (pFilter !== "all") {
-        const sGroup = (s.group || "").toLowerCase();
-        const sCategory = (s.category || "").toLowerCase();
-        const identifier = `${sGroup} ${sCategory}`;
-        
-        const isDIT = sGroup.includes("dit") || sGroup.includes("diploma") || sCategory.includes("dit") || sCategory.includes("diploma");
-        const isBS = sGroup.includes("bs") || sGroup.includes("b.s") || sCategory.includes("bs");
-        const isUKL3 = sGroup.includes("uk") || sGroup.includes("level 3") || sGroup.includes("l3") || sCategory.includes("uk");
-
-        if (pFilter === "fsc") {
-          matchesGroup = !isDIT && !isBS && !isUKL3;
-        } else if (pFilter === "dit" || pFilter.includes("diploma")) {
-          matchesGroup = isDIT;
-        } else if (pFilter === "bs" || pFilter.includes("b.s")) {
-          matchesGroup = isBS;
-        } else if (
-          pFilter === "ukl3" ||
-          pFilter.includes("uk") ||
-          pFilter.includes("level 3")
-        ) {
-          matchesGroup = isUKL3;
-        } else {
-          matchesGroup = identifier.includes(pFilter);
-        }
-      }
+      const matchesGroup = groupFilter === "all" || matchesEducationalStream(s, groupFilter);
       const matchesSection =
         sectionFilter === "all" ||
         (s.section || "").trim().toLowerCase() ===
           sectionFilter.trim().toLowerCase();
 
-      // Academic Stage / Part / Semester filter
-      let matchesStage = true;
-      if (stageFilter !== "all") {
-        const studentPart = (s.academicPart || s.academic_part || "").toLowerCase();
-        const studentSem = Number(s.currentSemester || s.current_semester || 0);
-        if (stageFilter === "part1") {
-          matchesStage = studentPart.includes("part-1") || studentPart.includes("1st") || (!studentPart && studentSem === 0);
-        } else if (stageFilter === "part2") {
-          matchesStage = studentPart.includes("part-2") || studentPart.includes("2nd");
-        } else if (stageFilter.startsWith("sem")) {
-          const targetSem = Number(stageFilter.replace("sem", ""));
-          matchesStage = studentSem === targetSem;
-        } else if (stageFilter === "yr1") {
-          matchesStage = studentSem <= 2 || studentPart.includes("1st") || studentPart.includes("part-1");
-        } else if (stageFilter === "yr2") {
-          matchesStage = (studentSem >= 3 && studentSem <= 4) || studentPart.includes("2nd") || studentPart.includes("part-2");
-        } else if (stageFilter === "yr3") {
-          matchesStage = studentSem >= 5 || studentPart.includes("3rd") || studentPart.includes("part-3");
-        }
-      }
+      const matchesStage = stageFilter === "all" || matchesCohortStage(s, stageFilter);
 
       return matchesSearch && matchesStatus && matchesGroup && matchesSection && matchesStage;
     });
@@ -1377,12 +1309,13 @@ export default function FeeManagementView({
             </div>
 
             {/* Educational Stream Program Navigation Pills */}
-            <div className="hidden lg:flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+            <div className="flex flex-wrap items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
               {[
                 { id: "all", label: "All Streams" },
-                { id: "fsc", label: "FSc (2-Yr)", icon: School },
-                { id: "dit", label: "DIT (3-Yr)", icon: GraduationCap },
-                { id: "bs", label: "BS (4-Yr SS4)", icon: GraduationCap },
+                { id: "fsc", label: "Inter (2-Yr)", icon: School },
+                { id: "bs", label: "BS (4-Yr)", icon: GraduationCap },
+                { id: "ads", label: "ADS (2-Yr)", icon: GraduationCap },
+                { id: "dit", label: "DIT Diploma", icon: GraduationCap },
                 { id: "ukl3", label: "UK Level 3", icon: Globe },
               ].map((grp) => {
                 const Icon = grp.icon;
@@ -1409,13 +1342,13 @@ export default function FeeManagementView({
               })}
             </div>
 
-            {/* Dynamic Academic Stage Sub-Pills (FSc Part-1/2, BS Semesters 1-8, DIT Years) */}
+            {/* Dynamic Academic Stage Sub-Pills (Inter, BS Semesters 1-8, ADS, DIT, UKL3) */}
             {groupFilter === "fsc" && (
-              <div className="hidden xl:flex items-center bg-emerald-50/80 dark:bg-emerald-950/40 p-0.5 rounded-lg border border-emerald-200/80 dark:border-emerald-800/60">
+              <div className="flex items-center bg-emerald-50/80 dark:bg-emerald-950/40 p-0.5 rounded-lg border border-emerald-200/80 dark:border-emerald-800/60">
                 {[
-                  { id: "all", label: "All FSc" },
-                  { id: "part1", label: "Part-1 (1st Year Fresh)" },
-                  { id: "part2", label: "Part-2 (2nd Year Senior)" },
+                  { id: "all", label: "All Inter" },
+                  { id: "part1", label: "Part-1 (1st Year)" },
+                  { id: "part2", label: "Part-2 (2nd Year)" },
                 ].map((stg) => (
                   <button
                     key={stg.id}
@@ -1435,7 +1368,7 @@ export default function FeeManagementView({
             )}
 
             {groupFilter === "bs" && (
-              <div className="hidden xl:flex items-center bg-indigo-50/80 dark:bg-indigo-950/40 p-0.5 rounded-lg border border-indigo-200/80 dark:border-indigo-800/60 overflow-x-auto max-w-[340px]">
+              <div className="flex items-center bg-indigo-50/80 dark:bg-indigo-950/40 p-0.5 rounded-lg border border-indigo-200/80 dark:border-indigo-800/60 overflow-x-auto max-w-[380px]">
                 <button
                   type="button"
                   onClick={() => setStageFilter("all")}
@@ -1462,13 +1395,36 @@ export default function FeeManagementView({
               </div>
             )}
 
+            {groupFilter === "ads" && (
+              <div className="flex items-center bg-purple-50/80 dark:bg-purple-950/40 p-0.5 rounded-lg border border-purple-200/80 dark:border-purple-800/60">
+                {[
+                  { id: "all", label: "All ADS" },
+                  { id: "ads-p1", label: "Part-1 (Year 1)" },
+                  { id: "ads-p2", label: "Part-2 (Year 2)" },
+                ].map((stg) => (
+                  <button
+                    key={stg.id}
+                    type="button"
+                    onClick={() => setStageFilter(stg.id)}
+                    className={cn(
+                      "px-2 py-0.5 rounded-md text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                      stageFilter === stg.id
+                        ? "bg-purple-600 text-white shadow-2xs"
+                        : "text-purple-800 dark:text-purple-300 hover:text-purple-950"
+                    )}
+                  >
+                    {stg.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {groupFilter === "dit" && (
-              <div className="hidden xl:flex items-center bg-teal-50/80 dark:bg-teal-950/40 p-0.5 rounded-lg border border-teal-200/80 dark:border-teal-800/60">
+              <div className="flex items-center bg-teal-50/80 dark:bg-teal-950/40 p-0.5 rounded-lg border border-teal-200/80 dark:border-teal-800/60">
                 {[
                   { id: "all", label: "All DIT" },
-                  { id: "yr1", label: "1st Year" },
-                  { id: "yr2", label: "2nd Year" },
-                  { id: "yr3", label: "3rd Year" },
+                  { id: "dit-p1", label: "Part-1 (Year 1)" },
+                  { id: "dit-p2", label: "Part-2 (Year 2)" },
                 ].map((stg) => (
                   <button
                     key={stg.id}
@@ -1479,6 +1435,30 @@ export default function FeeManagementView({
                       stageFilter === stg.id
                         ? "bg-teal-600 text-white shadow-2xs"
                         : "text-teal-800 dark:text-teal-300 hover:text-teal-950"
+                    )}
+                  >
+                    {stg.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {groupFilter === "ukl3" && (
+              <div className="flex items-center bg-amber-50/80 dark:bg-amber-950/40 p-0.5 rounded-lg border border-amber-200/80 dark:border-amber-800/60">
+                {[
+                  { id: "all", label: "All UK L3" },
+                  { id: "uk-yr1", label: "Year-1 (Foundation)" },
+                  { id: "uk-yr2", label: "Year-2 (Advanced)" },
+                ].map((stg) => (
+                  <button
+                    key={stg.id}
+                    type="button"
+                    onClick={() => setStageFilter(stg.id)}
+                    className={cn(
+                      "px-2 py-0.5 rounded-md text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                      stageFilter === stg.id
+                        ? "bg-amber-600 text-white shadow-2xs"
+                        : "text-amber-800 dark:text-amber-300 hover:text-amber-950"
                     )}
                   >
                     {stg.label}
@@ -2162,17 +2142,50 @@ export default function FeeManagementView({
                 </p>
               )}
             </div>
-            <div className="space-y-2">
-              <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-                Collected By (Optional)
-              </Label>
-              <Input
-                placeholder="Enter name (or leave empty to use system role)..."
-                className="rounded-xl h-12 font-bold border-slate-100"
-                value={collectedByName}
-                onChange={(e) => setCollectedByName(e.target.value)}
-                disabled={!selectedStudent}
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                  Payment Mode (Roznamcha)
+                </Label>
+                <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl h-12 items-center">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("Cash")}
+                    className={cn(
+                      "h-10 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                      paymentMethod === "Cash"
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    )}
+                  >
+                    Cash Counter
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("Bank Transfer")}
+                    className={cn(
+                      "h-10 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                      paymentMethod === "Bank Transfer"
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    )}
+                  >
+                    Bank Transfer
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                  Collected By (Optional)
+                </Label>
+                <Input
+                  placeholder="Staff Name..."
+                  className="rounded-xl h-12 font-bold border-slate-100"
+                  value={collectedByName}
+                  onChange={(e) => setCollectedByName(e.target.value)}
+                  disabled={!selectedStudent}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter className="gap-3">
@@ -2500,10 +2513,11 @@ _Accounts & Finance Department, SGC Jahanian_`;
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Programs & Streams</SelectItem>
-                    <SelectItem value="fsc">FSc (2-Yr Intermediate)</SelectItem>
-                    <SelectItem value="dit">DIT (3-Yr Diploma)</SelectItem>
-                    <SelectItem value="bs">BS (4-Yr SS4)</SelectItem>
-                    <SelectItem value="ukl3">UK Level 3</SelectItem>
+                    <SelectItem value="fsc">Inter (2-Yr FSc / ICS / ICom)</SelectItem>
+                    <SelectItem value="bs">BS (4-Yr Degree Programs)</SelectItem>
+                    <SelectItem value="ads">ADS (2-Yr Associate Degree)</SelectItem>
+                    <SelectItem value="dit">DIT (Diploma in IT)</SelectItem>
+                    <SelectItem value="ukl3">UK Level 3 Diploma</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2523,10 +2537,18 @@ _Accounts & Finance Department, SGC Jahanian_`;
                     <SelectItem value="all">All Academic Stages</SelectItem>
                     <SelectItem value="part1">Part-1 Fresh (1st Year)</SelectItem>
                     <SelectItem value="part2">Part-2 Senior (2nd Year)</SelectItem>
+                    <SelectItem value="dit-p1">DIT Part-1</SelectItem>
+                    <SelectItem value="dit-p2">DIT Part-2</SelectItem>
+                    <SelectItem value="uk-yr1">UK Level 3 Year-1</SelectItem>
+                    <SelectItem value="uk-yr2">UK Level 3 Year-2</SelectItem>
                     <SelectItem value="sem1">BS Semester 1</SelectItem>
                     <SelectItem value="sem2">BS Semester 2</SelectItem>
                     <SelectItem value="sem3">BS Semester 3</SelectItem>
                     <SelectItem value="sem4">BS Semester 4</SelectItem>
+                    <SelectItem value="sem5">BS Semester 5</SelectItem>
+                    <SelectItem value="sem6">BS Semester 6</SelectItem>
+                    <SelectItem value="sem7">BS Semester 7</SelectItem>
+                    <SelectItem value="sem8">BS Semester 8</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

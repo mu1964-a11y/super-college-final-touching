@@ -448,7 +448,7 @@ export function useAccountsOperations(ctx: any) {
         if (student) {
           const currentLedger = student.feeLedger || { totalPackage: 0, totalReceived: 0, remainingBalance: 0, installments: [], transactions: [] };
           const feeReceived = student.feeReceived || 0;
-          const remainingBalance = totalPackage - feeReceived;
+          const remainingBalance = Math.max(0, totalPackage - feeReceived);
 
           const updatedLedger = {
             ...currentLedger,
@@ -465,16 +465,28 @@ export function useAccountsOperations(ctx: any) {
           
           // Also sync with admission if linked
           if (student.admissionId) {
-            await supabase.from('admissions').update({ total_package: totalPackage }).eq('id', student.admissionId);
+            await supabase.from('admissions').update({
+              total_package: totalPackage,
+              fee_ledger: updatedLedger
+            }).eq('id', student.admissionId);
           }
         } else if (admission) {
+          const currentLedger = admission.feeLedger || { totalPackage: 0, totalReceived: 0, remainingBalance: 0, installments: [], transactions: [] };
+          const feeReceived = admission.feeReceived || 0;
+          const remainingBalance = Math.max(0, totalPackage - feeReceived);
+          const updatedLedger = {
+            ...currentLedger,
+            totalPackage,
+            remainingBalance
+          };
           const { error } = await supabase.from('admissions').update({
-            total_package: totalPackage
+            total_package: totalPackage,
+            fee_ledger: updatedLedger
           }).eq('id', admission.id);
           if (error) throw error;
         }
 
-        // await fetchData(true);
+        if (fetchData) fetchData(true);
         logActivity("Fee Package Updated", `Fee package changed for student/admission ${studentId}`, "warning");
         toast.success("Fee package updated");
       } catch (e: any) {
@@ -531,14 +543,53 @@ export function useAccountsOperations(ctx: any) {
         });
         if (error) throw error;
         
-        // Also record as expense in DB
-        await supabase.from('expenses').insert({
+        // Also record as expense in DB with payment_method preserved for Roznamcha Cash vs Bank accuracy
+        const expPayload: any = {
           description: expDesc,
           amount: payment.amount,
           category: 'Salaries',
           date: payment.date,
-          recorded_by: user?.email
-        });
+          added_by: user?.email || 'Admin Office',
+          payment_method: payment.paymentMethod || 'Cash'
+        };
+        const expRes = await supabase.from('expenses').insert(expPayload);
+        if (expRes.error) {
+          await supabase.from('expenses').insert({
+            description: expDesc,
+            amount: payment.amount,
+            category: 'Salaries',
+            date: payment.date,
+            recorded_by: user?.email || 'Admin Office'
+          });
+        }
+
+        // Auto-recover active staff salary advances for this staff member
+        if (payment.staffId) {
+          try {
+            const { data: activeAdvances } = await supabase
+              .from('staff_advances')
+              .select('*')
+              .eq('staff_id', payment.staffId)
+              .gt('remaining_balance', 0);
+
+            if (activeAdvances && activeAdvances.length > 0) {
+              for (const adv of activeAdvances) {
+                const rem = Number(adv.remaining_balance || 0);
+                const monthlyDed = Number(adv.deduction_per_month || rem);
+                if (rem > 0 && monthlyDed > 0) {
+                  const deductNow = Math.min(rem, monthlyDed);
+                  const newRem = Math.max(0, rem - deductNow);
+                  await supabase
+                    .from('staff_advances')
+                    .update({ remaining_balance: newRem })
+                    .eq('id', adv.id);
+                }
+              }
+            }
+          } catch (advErr) {
+            console.warn("Could not auto-deduct staff advance on salary payment:", advErr);
+          }
+        }
 
         toast.success("Salary payment recorded successfully!");
         if (fetchData) fetchData(true);

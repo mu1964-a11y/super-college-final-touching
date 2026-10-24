@@ -119,6 +119,34 @@ export function useStaffOperations(ctx: any) {
         const oldMember = staff.find((s: any) => s.id === id);
         // Instant optimistic removal from UI (0ms)
         setStaff((prev: Staff[]) => prev.filter(s => s.id !== id));
+
+        // 0. Archive staff member before deleting
+        if (oldMember && typeof ctx.archiveRecords === 'function') {
+          ctx.archiveRecords([{
+            id: `arch-staff-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            originalId: oldMember.id,
+            entityType: 'staff',
+            fullName: oldMember.fullName,
+            fatherName: oldMember.fatherName || '',
+            category: oldMember.role || 'Staff',
+            group: oldMember.designation || oldMember.role || '',
+            contact: oldMember.contact || '',
+            totalPackage: oldMember.baseSalary || oldMember.salary || 0,
+            snapshot: { staff: oldMember },
+            deletedAt: new Date().toISOString(),
+            deletedBy: user?.email || 'System'
+          }]);
+        }
+
+        // 1. Clean up child tables to avoid orphaned records or FK errors
+        try {
+          await supabase.from('staff_attendance').delete().eq('staff_id', id);
+          await supabase.from('staff_timetable').delete().eq('staff_id', id);
+          await supabase.from('staff_advances').delete().eq('staff_id', id);
+        } catch (childErr) {
+          console.warn("Staff child tables cleanup warning:", childErr);
+        }
+
         const { error } = await supabase.from('staff').delete().eq('id', id);
         if (error) {
           if (oldMember) setStaff((prev: Staff[]) => [...prev, oldMember]);
@@ -132,7 +160,7 @@ export function useStaffOperations(ctx: any) {
           targetName: oldMember?.fullName || id,
           deletedRecord: oldMember || { id }
         }, 'alert');
-        toast.success("Staff member removed");
+        toast.success("Staff member moved to Deleted Archive");
       } catch (e: any) {
         toast.error(`Failed to delete staff: ${e.message}`);
       }
@@ -142,13 +170,38 @@ export function useStaffOperations(ctx: any) {
       if (!ids.length) return;
       
       isBulkOperatingRef.current = true;
+      const targetMembers = staff.filter((s: any) => ids.includes(s.id));
       setStaff(prev => prev.filter(s => !ids.includes(s.id)));
       const toastId = toast.loading(`Deleting ${ids.length} staff members...`);
 
       try {
+        if (targetMembers.length > 0 && typeof ctx.archiveRecords === 'function') {
+          ctx.archiveRecords(targetMembers.map((m: any) => ({
+            id: `arch-staff-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            originalId: m.id,
+            entityType: 'staff',
+            fullName: m.fullName,
+            fatherName: m.fatherName || '',
+            category: m.role || 'Staff',
+            group: m.designation || m.role || '',
+            contact: m.contact || '',
+            totalPackage: m.baseSalary || m.salary || 0,
+            snapshot: { staff: m },
+            deletedAt: new Date().toISOString(),
+            deletedBy: user?.email || 'System'
+          })));
+        }
+
         const batchSize = 100;
         for (let i = 0; i < ids.length; i += batchSize) {
           const chunk = ids.slice(i, i + batchSize);
+          try {
+            await supabase.from('staff_attendance').delete().in('staff_id', chunk);
+            await supabase.from('staff_timetable').delete().in('staff_id', chunk);
+            await supabase.from('staff_advances').delete().in('staff_id', chunk);
+          } catch (childErr) {
+            console.warn("Bulk staff child cleanup warning:", childErr);
+          }
           const { error } = await supabase.from('staff').delete().in('id', chunk);
           if (error) throw error;
 
@@ -163,7 +216,7 @@ export function useStaffOperations(ctx: any) {
         toast.error(`Deletion failed: ${e.message}`, { id: toastId });
       } finally {
         isBulkOperatingRef.current = false;
-        // fetchData(true);
+        fetchData(true);
       }
     };
   const bulkSaveStaffAttendance = async (records: any[]) => {

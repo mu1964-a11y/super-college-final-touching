@@ -51,8 +51,21 @@ export function useStudentsOperations(ctx: any) {
         const oldStudent = students.find((s: any) => s.id === id);
         const changes = diffObjects(oldStudent, updates, STUDENT_FIELD_LABELS);
 
+        let syncedLedger = updates.feeLedger;
+        if (!syncedLedger && (updates.totalPackage !== undefined || updates.feeReceived !== undefined)) {
+          const baseLedger = oldStudent?.feeLedger || { totalPackage: 0, totalReceived: 0, remainingBalance: 0, installments: [], transactions: [] };
+          const nextTotal = updates.totalPackage !== undefined ? Number(updates.totalPackage) : Number(oldStudent?.totalPackage || baseLedger.totalPackage || 0);
+          const nextReceived = updates.feeReceived !== undefined ? Number(updates.feeReceived) : Number(oldStudent?.feeReceived || baseLedger.totalReceived || 0);
+          syncedLedger = {
+            ...baseLedger,
+            totalPackage: nextTotal,
+            totalReceived: nextReceived,
+            remainingBalance: Math.max(0, nextTotal - nextReceived)
+          };
+        }
+
         // Immediate optimistic in-memory update (0ms)
-        setStudents((prev: Student[]) => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+        setStudents((prev: Student[]) => prev.map(s => s.id === id ? { ...s, ...updates, ...(syncedLedger ? { feeLedger: syncedLedger } : {}) } : s));
 
         const updatePayload: any = {
           full_name: updates.fullName,
@@ -73,14 +86,24 @@ export function useStudentsOperations(ctx: any) {
           blood_group: updates.bloodGroup,
           address: updates.address,
           photo: updates.photo,
+          photo_url: updates.photo,
           total_package: updates.totalPackage,
           fee_received: updates.feeReceived,
           monthly_fee: updates.monthlyFee,
-          fee_ledger: updates.feeLedger,
+          fee_ledger: syncedLedger,
           fee_history: updates.feeHistory,
           academic_part: updates.academicPart,
+          current_semester: updates.currentSemester,
+          total_semesters: updates.totalSemesters,
+          program_type: updates.programType,
+          total_installments: updates.totalInstallments,
           session: updates.session
         };
+
+        // Remove undefined keys so existing DB values are never wiped out
+        Object.keys(updatePayload).forEach(k => {
+          if (updatePayload[k] === undefined) delete updatePayload[k];
+        });
 
         if ((updates as any).fingerprintTemplate !== undefined) {
           updatePayload.fingerprint_template = (updates as any).fingerprintTemplate || null;
@@ -98,13 +121,18 @@ export function useStudentsOperations(ctx: any) {
           const admUpdates: any = {};
           if (updates.fullName !== undefined) admUpdates.full_name = updates.fullName;
           if (updates.fatherName !== undefined) admUpdates.father_name = updates.fatherName;
+          if (updates.category !== undefined) admUpdates.category = updates.category;
           if (updates.group !== undefined) admUpdates.group = updates.group;
           if (updates.session !== undefined) admUpdates.session = updates.session;
           if (updates.section !== undefined) admUpdates.section = updates.section;
           if (updates.totalPackage !== undefined) admUpdates.total_package = updates.totalPackage;
           if (updates.feeReceived !== undefined) admUpdates.fee_received = updates.feeReceived;
+          if (syncedLedger !== undefined) admUpdates.fee_ledger = syncedLedger;
           if (updates.academicPart !== undefined) admUpdates.academic_part = updates.academicPart;
           if (updates.currentSemester !== undefined) admUpdates.current_semester = updates.currentSemester;
+          if (updates.totalSemesters !== undefined) admUpdates.total_semesters = updates.totalSemesters;
+          if (updates.programType !== undefined) admUpdates.program_type = updates.programType;
+          if (updates.totalInstallments !== undefined) admUpdates.total_installments = updates.totalInstallments;
           if (updates.subjects !== undefined) admUpdates.subjects = updates.subjects;
           if (Object.keys(admUpdates).length > 0) {
             await supabase.from('admissions').update(admUpdates).eq('id', admId);
@@ -419,6 +447,7 @@ export function useStudentsOperations(ctx: any) {
         };
 
         const { error } = await supabase.from('students').update({
+          current_semester: nextSemester,
           total_package: newTotalPackage,
           fee_ledger: updatedLedger
         }).eq('id', student.id);
@@ -436,7 +465,9 @@ export function useStudentsOperations(ctx: any) {
           else admissionStatus = 'Not Paid';
 
           await supabase.from('admissions').update({ 
+            current_semester: nextSemester,
             total_package: newTotalPackage,
+            fee_ledger: updatedLedger,
             status: admissionStatus
           }).eq('id', student.admissionId);
         }

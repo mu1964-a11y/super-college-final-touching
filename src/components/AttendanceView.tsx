@@ -58,6 +58,7 @@ import {
   buildPhotoUploadRequestMessage,
   dispatchBulkPhotoRequests
 } from '../lib/whatsappAutomation';
+import { matchesEducationalStream, matchesCohortStage } from '../lib/academicMasterData';
 import { supabase } from '../lib/supabase';
 
 export type StudentAttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Leave' | 'Holiday' | '';
@@ -262,9 +263,15 @@ export default function AttendanceView({ data }: { data: any }) {
             contact: a.contactNumber || a.phone || '',
             fatherContact: a.fatherContact || a.contactNumber || '',
             section: a.section,
+            category: a.category,
+            group: a.group,
             currentClass: a.category,
             groupName: a.group,
             gender: a.gender,
+            session: a.session,
+            academicPart: a.academicPart,
+            programType: a.programType,
+            currentSemester: a.currentSemester,
             photo: a.photo || a.photoUrl || a.photo_url || a.studentPhoto || a.student_photo
           });
         }
@@ -272,6 +279,67 @@ export default function AttendanceView({ data }: { data: any }) {
     });
     return raw;
   }, [data?.students, data?.admissions]);
+
+  const matchesAttendanceClassFilter = React.useCallback((s: any, filter: string): boolean => {
+    if (!filter || filter === 'all') return true;
+    const f = filter.trim();
+    const fl = f.toLowerCase();
+    const sGender = (s.gender || '').toLowerCase();
+    const isFemale = sGender === 'female' || `${s.category || ''} ${s.currentClass || ''}`.toLowerCase().includes('girl');
+    const isMale = !isFemale;
+
+    // Direct match fallback
+    if (s.category === f || s.currentClass === f || s.groupName === f || s.group === f) {
+      return true;
+    }
+
+    if (fl.startsWith('inter')) {
+      if (!matchesEducationalStream(s, 'fsc')) return false;
+      if (fl.includes('boys') && !isMale) return false;
+      if (fl.includes('girls') && !isFemale) return false;
+      if (fl.includes('part-1') && !matchesCohortStage(s, 'part1')) return false;
+      if (fl.includes('part-2') && !matchesCohortStage(s, 'part2')) return false;
+      return true;
+    }
+
+    if (fl.startsWith('bs')) {
+      if (!matchesEducationalStream(s, 'bs')) return false;
+      if (fl.includes('boys') && !isMale) return false;
+      if (fl.includes('girls') && !isFemale) return false;
+      const semMatch = fl.match(/sem-(\d)/);
+      if (semMatch && !matchesCohortStage(s, `sem${semMatch[1]}`)) return false;
+      return true;
+    }
+
+    if (fl.startsWith('ads')) {
+      if (!matchesEducationalStream(s, 'ads')) return false;
+      if (fl.includes('boys') && !isMale) return false;
+      if (fl.includes('girls') && !isFemale) return false;
+      if (fl.includes('part-1') && !matchesCohortStage(s, 'ads-p1')) return false;
+      if (fl.includes('part-2') && !matchesCohortStage(s, 'ads-p2')) return false;
+      return true;
+    }
+
+    if (fl.startsWith('dit')) {
+      if (!matchesEducationalStream(s, 'dit')) return false;
+      if (fl.includes('boys') && !isMale) return false;
+      if (fl.includes('girls') && !isFemale) return false;
+      if (fl.includes('part-1') && !matchesCohortStage(s, 'dit-p1')) return false;
+      if (fl.includes('part-2') && !matchesCohortStage(s, 'dit-p2')) return false;
+      return true;
+    }
+
+    if (fl.startsWith('uk')) {
+      if (!matchesEducationalStream(s, 'ukl3')) return false;
+      if (fl.includes('boys') && !isMale) return false;
+      if (fl.includes('girls') && !isFemale) return false;
+      if (fl.includes('year-1') && !matchesCohortStage(s, 'uk-yr1')) return false;
+      if (fl.includes('year-2') && !matchesCohortStage(s, 'uk-yr2')) return false;
+      return true;
+    }
+
+    return false;
+  }, []);
 
   const sectionOptions = React.useMemo(() => {
     let sections = data?.settings?.predefinedSections || [];
@@ -284,33 +352,30 @@ export default function AttendanceView({ data }: { data: any }) {
     }
     const predefinedNames = sections.map((s: any) => s.name).filter(Boolean);
     const studentSections = (students || [])
-      .filter((s: any) => {
-        if (classFilter && classFilter !== 'all') {
-          const matchClass = s.category === classFilter || s.currentClass === classFilter || s.groupName === classFilter;
-          if (!matchClass) return false;
-        }
-        return true;
-      })
+      .filter((s: any) => matchesAttendanceClassFilter(s, classFilter))
       .map((s: any) => (s.section || '').trim())
       .filter((sec: string) => sec && sec !== '-' && sec.toLowerCase() !== 'unassigned');
 
     return Array.from(new Set([...predefinedNames, ...studentSections])).sort() as string[];
-  }, [data?.settings?.predefinedSections, classFilter, students]);
+  }, [data?.settings?.predefinedSections, classFilter, students, matchesAttendanceClassFilter]);
 
   const classOptions = [
-    "Inter Part-1 Boys", "Inter Part-2 Boys", "Inter Part-1 Girls", "Inter Part-2 Girls", 
-    "DIT Boys", "DIT Girls", "UK L3 Boys", "UK L3 Girls", "BS Boys", "BS Girls"
+    "Inter Part-1 Boys", "Inter Part-2 Boys", "Inter Part-1 Girls", "Inter Part-2 Girls",
+    "BS Boys", "BS Girls", "BS Sem-1", "BS Sem-2", "BS Sem-3", "BS Sem-4", "BS Sem-5", "BS Sem-6", "BS Sem-7", "BS Sem-8",
+    "ADS Boys", "ADS Girls", "ADS Part-1", "ADS Part-2",
+    "DIT Boys", "DIT Girls", "DIT Part-1", "DIT Part-2",
+    "UK L3 Boys", "UK L3 Girls", "UK L3 Year-1", "UK L3 Year-2"
   ];
 
   const filteredStudents = useMemo(() => {
     return students.filter((s: any) => {
       const matchName = (s.fullName || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-             (s.studentId || '').toLowerCase().includes(searchTerm.toLowerCase());
+             (s.studentId || s.collegeNo || s.id || '').toLowerCase().includes(searchTerm.toLowerCase());
       const matchSection = sectionFilter === 'all' || s.section === sectionFilter;
-      const matchClass = classFilter === 'all' || s.category === classFilter || s.currentClass === classFilter || s.groupName === classFilter;
+      const matchClass = matchesAttendanceClassFilter(s, classFilter);
       return matchName && matchSection && matchClass;
     });
-  }, [students, searchTerm, sectionFilter, classFilter]);
+  }, [students, searchTerm, sectionFilter, classFilter, matchesAttendanceClassFilter]);
 
   // Real-time WhatsApp Bot Status for Attendance (Cached for 30 minutes)
   const [waStatuses, setWaStatuses] = useState<Record<string, AttendanceWhatsAppStatus>>(() => getStoredWaStatuses(selectedDate));

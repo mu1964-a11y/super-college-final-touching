@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus, ArchivedRecord } from '../../types';
 import { diffObjects, ADMISSION_FIELD_LABELS } from '../../utils/changeTracker';
 import { sendAutoAdmissionNotice } from '../../lib/whatsappAutomation';
+import { getDefaultInstallmentCount, generateInstallmentSchedule } from '../../lib/feeCalculations';
 
 export function useAdmissionsOperations(ctx: any) {
   const { user, generateStudentId, admissions, setAdmissions, students, setStudents, settings, isBulkOperatingRef, logActivity, fetchData, archiveRecords } = ctx;
@@ -18,46 +19,64 @@ export function useAdmissionsOperations(ctx: any) {
     try {
       const today = new Date();
       const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-      
-      let initialHistory: FeePayment[] = [];
-      let initialLedger: any = null;
-      let paymentRecord: FeePayment | null = null;
+      const initialPaymentMethod: 'Cash' | 'Bank Transfer' = (admission as any).paymentMethod === 'Bank Transfer' ? 'Bank Transfer' : 'Cash';
+      const installmentsCount = admission.totalInstallments || getDefaultInstallmentCount(admission);
+      const totalPkg = Number(admission.totalPackage || 0);
+      const feeRec = Number(admission.feeReceived || 0);
+      const prevArrears = Number((admission as any).previousArrears || 0);
+      const remaining = Math.max(0, totalPkg - feeRec);
+      const generatedInstallments = generateInstallmentSchedule(
+        totalPkg,
+        feeRec,
+        installmentsCount,
+        admission.sessionStartDate || undefined,
+        admission
+      );
 
-      if (admission.feeReceived && admission.feeReceived > 0) {
+      let initialHistory: FeePayment[] = [];
+      let paymentRecord: FeePayment | null = null;
+      const transactions: FeeTransaction[] = [];
+
+      if (feeRec > 0) {
         paymentRecord = {
           id: `pay-${Date.now()}`,
           month: monthNames[today.getMonth()],
           year: today.getFullYear(),
-          amountDue: admission.totalPackage || 0,
-          amountPaid: admission.feeReceived,
-          status: 'Paid',
+          amountDue: totalPkg,
+          amountPaid: feeRec,
+          status: feeRec >= totalPkg && totalPkg > 0 ? 'Paid' : 'Partial',
           datePaid: today.toISOString(),
           receiptId: `REC-${Date.now().toString().slice(-6)}`,
-          feeType: 'Admission Fee / Initial Payment'
-        };
+          feeType: 'Admission Fee / Initial Payment',
+          paymentMethod: initialPaymentMethod
+        } as any;
 
         initialHistory = [paymentRecord];
 
-        const transaction: FeeTransaction = {
+        transactions.push({
           id: `tx-${Date.now()}`,
           date: today.toISOString(),
-          amount: admission.feeReceived,
+          amount: feeRec,
           description: `Initial Admission Fee Payment`,
-          paymentMethod: 'Cash',
+          paymentMethod: initialPaymentMethod,
           receiptId: paymentRecord.receiptId || '',
           recordedBy: user?.email || 'System'
-        };
-
-        initialLedger = {
-          totalPackage: admission.totalPackage || 0,
-          totalReceived: admission.feeReceived,
-          remainingBalance: Math.max(0, (admission.totalPackage || 0) - admission.feeReceived),
-          installments: [],
-          transactions: [transaction]
-        };
+        });
       }
 
-      const finalStudentId = admission.studentId || ((admission.feeReceived && admission.feeReceived > 0) || admission.isAdmitted || admission.status === 'Admitted/Confirmed' ? generateStudentId(admission.group) : null);
+      const initialLedger = {
+        totalPackage: totalPkg,
+        totalReceived: feeRec,
+        remainingBalance: remaining,
+        previousArrears: prevArrears,
+        installments: generatedInstallments,
+        transactions
+      };
+
+      const finalStudentId = admission.studentId || ((feeRec > 0) || admission.isAdmitted || admission.status === 'Admitted/Confirmed' ? generateStudentId(admission.group) : null);
+      const resolvedProgramType = admission.programType || (admission.paymentPlan === 'Semester' || admission.currentSemester ? 'Semester' : 'Yearly');
+      const resolvedCurrentSemester = admission.currentSemester || 1;
+      const resolvedTotalSemesters = admission.totalSemesters || (resolvedProgramType === 'Semester' ? 8 : 4);
 
       const { data, error } = await supabase.from('admissions').insert({
         full_name: admission.fullName,
@@ -77,9 +96,16 @@ export function useAdmissionsOperations(ctx: any) {
         admission_fee: admission.admissionFee || 0,
         misc_funds: admission.miscFunds || 0,
         total_fee_finalized: admission.totalFeeFinalized || 0,
-        total_package: admission.totalPackage || 0,
-        fee_received: admission.feeReceived || 0,
+        total_package: totalPkg,
+        fee_received: feeRec,
         payment_plan: admission.paymentPlan,
+        total_installments: installmentsCount,
+        program_type: resolvedProgramType,
+        current_semester: resolvedCurrentSemester,
+        total_semesters: resolvedTotalSemesters,
+        concession_reason: admission.concessionReason || null,
+        fee_ledger: initialLedger,
+        fee_history: initialHistory,
         contact_number: admission.contactNumber,
         father_contact: admission.fatherContact,
         secondary_contact: admission.secondaryContact,
@@ -104,7 +130,7 @@ export function useAdmissionsOperations(ctx: any) {
       if (error) throw error;
 
       // Synchronized Income Record with confirmed Student/Admission ID (Single Source of Truth)
-      if (admission.feeReceived && admission.feeReceived > 0 && paymentRecord) {
+      if (feeRec > 0 && paymentRecord) {
         try {
           await supabase.from('income').insert({
             student_id: finalStudentId || data.id,
@@ -115,7 +141,7 @@ export function useAdmissionsOperations(ctx: any) {
             year: paymentRecord.year,
             date: paymentRecord.datePaid,
             status: paymentRecord.status,
-            payment_method: 'Cash',
+            payment_method: initialPaymentMethod,
             recorded_by: user?.email || 'System'
           });
         } catch (incErr) {
@@ -128,7 +154,7 @@ export function useAdmissionsOperations(ctx: any) {
         admission.status === 'Admitted/Confirmed' || 
         admission.status === 'Admitted' || 
         admission.status === 'Confirmed' || 
-        Number(admission.feeReceived) > 0;
+        feeRec > 0;
 
       if (isConfirmedStudent && finalStudentId) {
         let derivedGender = admission.gender;
@@ -137,9 +163,7 @@ export function useAdmissionsOperations(ctx: any) {
           derivedGender = (identifier.includes('girl') || identifier.includes('female')) ? 'Female' : 'Male';
         }
 
-        const remaining = Math.max(0, (admission.totalPackage || 0) - (admission.feeReceived || 0));
-        const installments = admission.totalInstallments || 12;
-        const calculatedMonthlyFee = installments > 0 ? Math.ceil(remaining / installments) : 0;
+        const calculatedMonthlyFee = installmentsCount > 0 ? Math.ceil(remaining / installmentsCount) : 0;
 
         try {
           await supabase.from('students').upsert({
@@ -158,29 +182,22 @@ export function useAdmissionsOperations(ctx: any) {
             section: admission.section || 'A',
             subjects: admission.subjects || [],
             contact: admission.contactNumber || 'N/A',
+            father_contact: admission.fatherContact || null,
+            secondary_contact: admission.secondaryContact || null,
+            concession_reason: admission.concessionReason || null,
             address: admission.address || '',
             gender: derivedGender,
             admission_fee: admission.admissionFee || 0,
             misc_funds: admission.miscFunds || 0,
-            total_fee_finalized: admission.totalFeeFinalized || admission.totalPackage || 0,
-            total_package: admission.totalPackage || 0,
-            fee_received: admission.feeReceived || 0,
-            fee_ledger: initialLedger || {
-              totalPackage: admission.totalPackage || 0,
-              totalReceived: admission.feeReceived || 0,
-              remainingBalance: remaining,
-              installments: [],
-              transactions: (admission.feeReceived || 0) > 0 ? [{
-                id: `tx-adm-${Date.now()}`,
-                date: new Date().toISOString().split('T')[0],
-                amount: admission.feeReceived,
-                description: 'Initial Admission Payment',
-                paymentMethod: 'Cash',
-                receiptId: `REC-${data.id.slice(-6)}`
-              }] : []
-            },
+            total_fee_finalized: admission.totalFeeFinalized || totalPkg,
+            total_package: totalPkg,
+            fee_received: feeRec,
+            fee_ledger: initialLedger,
             monthly_fee: calculatedMonthlyFee,
-            total_installments: installments,
+            total_installments: installmentsCount,
+            program_type: resolvedProgramType,
+            current_semester: resolvedCurrentSemester,
+            total_semesters: resolvedTotalSemesters,
             session: admission.session || settings?.academicSession,
             session_start_date: admission.sessionStartDate || null,
             session_end_date: admission.sessionEndDate || null,
@@ -211,16 +228,22 @@ export function useAdmissionsOperations(ctx: any) {
               section: admission.section || 'A',
               subjects: admission.subjects || [],
               contact: admission.contactNumber || 'N/A',
+              fatherContact: admission.fatherContact || '',
+              secondaryContact: admission.secondaryContact || '',
+              concessionReason: admission.concessionReason || '',
               address: admission.address || '',
               gender: derivedGender,
               admissionFee: admission.admissionFee || 0,
               miscFunds: admission.miscFunds || 0,
-              totalFeeFinalized: admission.totalFeeFinalized || admission.totalPackage || 0,
-              totalPackage: admission.totalPackage || 0,
-              feeReceived: admission.feeReceived || 0,
+              totalFeeFinalized: admission.totalFeeFinalized || totalPkg,
+              totalPackage: totalPkg,
+              feeReceived: feeRec,
               feeLedger: initialLedger,
               monthlyFee: calculatedMonthlyFee,
-              totalInstallments: installments,
+              totalInstallments: installmentsCount,
+              programType: resolvedProgramType,
+              currentSemester: resolvedCurrentSemester,
+              totalSemesters: resolvedTotalSemesters,
               session: admission.session || settings?.academicSession,
               academicPart: admission.academicPart || 'Part-1',
               feeHistory: initialHistory || [],
@@ -238,7 +261,7 @@ export function useAdmissionsOperations(ctx: any) {
         }
       }
 
-      setAdmissions(prev => prev.map(a => a.id === optimisticId ? { ...a, id: data.id, studentId: finalStudentId || a.studentId, dateApplied: data.created_at || data.date } : a));
+      setAdmissions(prev => prev.map(a => a.id === optimisticId ? { ...a, id: data.id, studentId: finalStudentId || a.studentId, feeLedger: initialLedger, feeHistory: initialHistory, dateApplied: data.created_at || data.date } : a));
       
       // Crucial: Refresh app state so counters (305) and directories are immediately up-to-date
       fetchData(true);
@@ -354,6 +377,11 @@ export function useAdmissionsOperations(ctx: any) {
         if (updates.sessionStartDate !== undefined) dbUpdates.session_start_date = updates.sessionStartDate || null;
         if (updates.sessionEndDate !== undefined) dbUpdates.session_end_date = updates.sessionEndDate || null;
         if (updates.academicPart !== undefined) dbUpdates.academic_part = updates.academicPart;
+        if (updates.programType !== undefined) dbUpdates.program_type = updates.programType;
+        if (updates.currentSemester !== undefined) dbUpdates.current_semester = updates.currentSemester;
+        if (updates.totalSemesters !== undefined) dbUpdates.total_semesters = updates.totalSemesters;
+        if (updates.totalInstallments !== undefined) dbUpdates.total_installments = updates.totalInstallments;
+        if (updates.concessionReason !== undefined) dbUpdates.concession_reason = updates.concessionReason;
         if (updates.feeLedger !== undefined) dbUpdates.fee_ledger = updates.feeLedger;
         if (updates.feeHistory !== undefined) dbUpdates.fee_history = updates.feeHistory;
         if ((updates as any).fingerprintTemplate !== undefined) dbUpdates.fingerprint_template = (updates as any).fingerprintTemplate || null;
@@ -368,6 +396,13 @@ export function useAdmissionsOperations(ctx: any) {
         // Auto-sync to Students Table!
         if (needsId && updatedStudentId) {
           const { data: existingStudent } = await supabase.from('students').select('id').eq('admission_id', id).maybeSingle();
+          const mergedAdm = { ...(existingAdmission || {}), ...updates };
+          const instCount = mergedAdm.totalInstallments || getDefaultInstallmentCount(mergedAdm);
+          const totalPkg = Number(mergedAdm.totalPackage || 0);
+          const feeRec = Number(mergedAdm.feeReceived || 0);
+          const remBal = Math.max(0, totalPkg - feeRec);
+          const calcMonthly = instCount > 0 ? Math.ceil(remBal / instCount) : 0;
+
           if (!existingStudent) {
             let derivedGender = updates.gender || existingAdmission?.gender;
             if (!derivedGender) {
@@ -395,15 +430,30 @@ export function useAdmissionsOperations(ctx: any) {
               section: updates.section || existingAdmission?.section || 'Unassigned',
               subjects: updates.subjects || existingAdmission?.subjects || [],
               contact: updates.contactNumber || existingAdmission?.contactNumber || 'N/A',
+              father_contact: updates.fatherContact || existingAdmission?.fatherContact || null,
+              secondary_contact: updates.secondaryContact || existingAdmission?.secondaryContact || null,
+              concession_reason: updates.concessionReason || existingAdmission?.concessionReason || null,
               address: updates.address || existingAdmission?.address || 'N/A',
               gender: derivedGender,
               photo: updates.photo || (updates as any).photo_url || existingAdmission?.photo,
+              photo_url: updates.photo || (updates as any).photo_url || existingAdmission?.photo,
               admission_fee: updates.admissionFee || existingAdmission?.admissionFee || 0,
               misc_funds: updates.miscFunds || existingAdmission?.miscFunds || 0,
-              total_package: updates.totalPackage || existingAdmission?.totalPackage || 0,
-              fee_received: updates.feeReceived || existingAdmission?.feeReceived || 0,
-              monthly_fee: Math.round((updates.totalPackage || existingAdmission?.totalPackage || 0) / 12),
-              total_installments: 12,
+              total_package: totalPkg,
+              fee_received: feeRec,
+              fee_ledger: updates.feeLedger || existingAdmission?.feeLedger || {
+                totalPackage: totalPkg,
+                totalReceived: feeRec,
+                remainingBalance: remBal,
+                installments: generateInstallmentSchedule(totalPkg, feeRec, instCount, mergedAdm.sessionStartDate || undefined, mergedAdm),
+                transactions: []
+              },
+              fee_history: updates.feeHistory || existingAdmission?.feeHistory || [],
+              monthly_fee: calcMonthly,
+              total_installments: instCount,
+              program_type: mergedAdm.programType || (mergedAdm.currentSemester ? 'Semester' : 'Yearly'),
+              current_semester: mergedAdm.currentSemester || 1,
+              total_semesters: mergedAdm.totalSemesters || 4,
               session: updates.session || existingAdmission?.session,
               session_start_date: updates.sessionStartDate || existingAdmission?.sessionStartDate || null,
               session_end_date: updates.sessionEndDate || existingAdmission?.sessionEndDate || null,
@@ -428,6 +478,9 @@ export function useAdmissionsOperations(ctx: any) {
             if (updates.section !== undefined) studentUpdates.section = updates.section;
             if (updates.subjects !== undefined) studentUpdates.subjects = updates.subjects;
             if (updates.contactNumber !== undefined) studentUpdates.contact = updates.contactNumber;
+            if (updates.fatherContact !== undefined) studentUpdates.father_contact = updates.fatherContact;
+            if (updates.secondaryContact !== undefined) studentUpdates.secondary_contact = updates.secondaryContact;
+            if (updates.concessionReason !== undefined) studentUpdates.concession_reason = updates.concessionReason;
             if (updates.address !== undefined) studentUpdates.address = updates.address;
             if (updates.gender !== undefined) studentUpdates.gender = updates.gender;
             if (updates.photo !== undefined || (updates as any).photo_url !== undefined) {
@@ -436,6 +489,12 @@ export function useAdmissionsOperations(ctx: any) {
             }
             if (updates.totalPackage !== undefined) studentUpdates.total_package = updates.totalPackage;
             if (updates.feeReceived !== undefined) studentUpdates.fee_received = updates.feeReceived;
+            if (updates.totalInstallments !== undefined) studentUpdates.total_installments = updates.totalInstallments;
+            if (updates.programType !== undefined) studentUpdates.program_type = updates.programType;
+            if (updates.currentSemester !== undefined) studentUpdates.current_semester = updates.currentSemester;
+            if (updates.totalSemesters !== undefined) studentUpdates.total_semesters = updates.totalSemesters;
+            if (updates.feeLedger !== undefined) studentUpdates.fee_ledger = updates.feeLedger;
+            if (updates.feeHistory !== undefined) studentUpdates.fee_history = updates.feeHistory;
             if (updates.session !== undefined) studentUpdates.session = updates.session;
             if (updates.academicPart !== undefined) studentUpdates.academic_part = updates.academicPart;
             if ((updates as any).fingerprintTemplate !== undefined) studentUpdates.fingerprint_template = (updates as any).fingerprintTemplate || null;

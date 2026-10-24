@@ -102,7 +102,7 @@ import autoTable from 'jspdf-autotable';
 
 import { useDebounce } from '../hooks/useDebounce';
 import { getUnifiedTransactions, parseDateSafe } from '../utils/fee';
-import { CANONICAL_SESSIONS, normalizeSessionString } from '../lib/academicMasterData';
+import { CANONICAL_SESSIONS, normalizeSessionString, detectEducationalStream, matchesEducationalStream, matchesCohortStage } from '../lib/academicMasterData';
 import PhotoEditorModal from './PhotoEditorModal';
 
 export default function StudentsView({ data, gender, program }: { data: any, gender?: Gender, program?: string }) {
@@ -283,26 +283,21 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
     let interTotal = 0, p1Boys = 0, p1Girls = 0, p2Boys = 0, p2Girls = 0, interSess26_28 = 0, interSess25_27 = 0;
     let bsTotal = 0, bsBoys = 0, bsGirls = 0, bsSem1 = 0, bsSem5 = 0, bsSem7_8 = 0, bsSess26_30 = 0, bsSess25_29 = 0, bsSess24_28 = 0, bsSess23_27 = 0, bsSess24_26 = 0;
     let adsTotal = 0, adsBoys = 0, adsGirls = 0, adsPart1 = 0, adsPart2 = 0, adsSess26_28 = 0, adsSess25_27 = 0;
-    let ditTotal = 0, ukl3Total = 0;
+    let ditTotal = 0, ditBoys = 0, ditGirls = 0, ditPart1 = 0, ditPart2 = 0, ditSess26_27 = 0, ditSess26_28 = 0;
+    let ukl3Total = 0, ukBoys = 0, ukGirls = 0, ukYear1 = 0, ukYear2 = 0, ukSess26_28 = 0;
 
     for (const s of allRawStudents) {
-      const g = (s.group || '').toLowerCase();
+      const stream = detectEducationalStream(s);
       const c = (s.category || '').toLowerCase();
       const sess = normalizeSessionString(s.session);
       const isMale = s.gender === 'Male';
       const isFemale = s.gender === 'Female';
 
-      const isADS = g.includes('ads') || c.includes('ads') || g.includes('adp') || c.includes('adp') || g.includes('ada') || c.includes('ada');
-      const isDIT = g.includes('dit') || g.includes('diploma') || c.includes('dit') || c.includes('diploma');
-      const isUK = g.includes('uk') || g.includes('level 3') || g.includes('l3') || c.includes('uk');
-      const isBS = !isADS && (g.includes('bs') || g.includes('b.s') || c.includes('bs') || g.includes('bba') || g.includes('bachelor') || g.includes('bscs') || g.includes('bsit'));
-      const isInter = !isADS && !isDIT && !isUK && !isBS;
-
       const sem = Number(s.currentSemester || s.current_semester || 0);
       const part = (s.academicPart || s.academic_part || '').toLowerCase();
-      const isPart2 = part.includes('part-2') || part.includes('2nd') || c.includes('part-2') || c.includes('part 2') || sess === '2025-27';
+      const isPart2 = part.includes('part-2') || part.includes('2nd') || c.includes('part-2') || c.includes('part 2') || c.includes('year-2') || c.includes('year 2') || sess === '2025-27';
 
-      if (isInter) {
+      if (stream === 'fsc') {
         interTotal++;
         if (!isPart2 && isMale) p1Boys++;
         if (!isPart2 && isFemale) p1Girls++;
@@ -310,7 +305,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
         if (isPart2 && isFemale) p2Girls++;
         if (sess === '2026-28') interSess26_28++;
         if (sess === '2025-27') interSess25_27++;
-      } else if (isBS) {
+      } else if (stream === 'bs') {
         bsTotal++;
         if (isMale) bsBoys++;
         if (isFemale) bsGirls++;
@@ -322,18 +317,29 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
         if (sess === '2024-28') bsSess24_28++;
         if (sess === '2023-27') bsSess23_27++;
         if (sess === '2024-26') bsSess24_26++;
-      } else if (isADS) {
+      } else if (stream === 'ads') {
         adsTotal++;
         if (isMale) adsBoys++;
         if (isFemale) adsGirls++;
-        if (sem <= 2 && !part.includes('part-2')) adsPart1++;
+        if ((sem > 0 && sem <= 2) || (!isPart2 && sem <= 2)) adsPart1++;
         else adsPart2++;
         if (sess === '2026-28') adsSess26_28++;
         if (sess === '2025-27') adsSess25_27++;
-      } else if (isDIT) {
+      } else if (stream === 'dit') {
         ditTotal++;
-      } else if (isUK) {
+        if (isMale) ditBoys++;
+        if (isFemale) ditGirls++;
+        if (!isPart2) ditPart1++;
+        else ditPart2++;
+        if (sess === '2026-27') ditSess26_27++;
+        if (sess === '2026-28') ditSess26_28++;
+      } else if (stream === 'ukl3') {
         ukl3Total++;
+        if (isMale) ukBoys++;
+        if (isFemale) ukGirls++;
+        if (!isPart2) ukYear1++;
+        else ukYear2++;
+        if (sess === '2026-28') ukSess26_28++;
       }
     }
 
@@ -342,113 +348,31 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
       inter: { total: interTotal, p1Boys, p1Girls, p2Boys, p2Girls, sess26_28: interSess26_28, sess25_27: interSess25_27 },
       bs: { total: bsTotal, bsBoys, bsGirls, sem1: bsSem1, sem5: bsSem5, sem7_8: bsSem7_8, sess26_30: bsSess26_30, sess25_29: bsSess25_29, sess24_28: bsSess24_28, sess23_27: bsSess23_27, sess24_26: bsSess24_26 },
       ads: { total: adsTotal, adsBoys, adsGirls, part1: adsPart1, part2: adsPart2, sess26_28: adsSess26_28, sess25_27: adsSess25_27 },
-      dit: { total: ditTotal },
-      ukl3: { total: ukl3Total }
+      dit: { total: ditTotal, ditBoys, ditGirls, part1: ditPart1, part2: ditPart2, sess26_27: ditSess26_27, sess26_28: ditSess26_28 },
+      ukl3: { total: ukl3Total, ukBoys, ukGirls, year1: ukYear1, year2: ukYear2, sess26_28: ukSess26_28 }
     };
   }, [allRawStudents]);
 
   const mergedStudents = React.useMemo(() => {
-    const searchClean = (debouncedSearch || '').trim().toLowerCase();
     return allRawStudents.filter((s: any) => {
-      // 1. Gender Filter
-      let matchesGender = true;
-      if (!searchClean && genderFilter !== 'all') matchesGender = s.gender === genderFilter;
+      // 1. Gender Filter (Always enforced even during search so Boys/Girls campus never leaks)
+      if (genderFilter !== 'all' && s.gender !== genderFilter) return false;
       
-      // 2. Educational Stream Filter
-      let matchesProgram = true;
-      if (!searchClean && programFilter !== 'all') {
-        const sGroup = (s.group || '').toLowerCase();
-        const sCategory = (s.category || '').toLowerCase();
-        const identifier = `${sGroup} ${sCategory}`;
-        const pFilter = programFilter.toLowerCase();
-        
-        const isADS = sGroup.includes('ads') || sGroup.includes('adp') || sGroup.includes('ada') || sCategory.includes('ads') || sCategory.includes('adp') || sCategory.includes('ada');
-        const isDIT = sGroup.includes('dit') || sGroup.includes('diploma') || sCategory.includes('dit') || sCategory.includes('diploma');
-        const isUKL3 = sGroup.includes('uk') || sGroup.includes('l3') || sGroup.includes('level 3') || sCategory.includes('uk');
-        const isBS = !isADS && (sGroup.includes('bs') || sGroup.includes('b.s') || sCategory.includes('bs') || sGroup.includes('bba') || sGroup.includes('bachelor'));
-        const isInter = !isADS && !isDIT && !isUKL3 && !isBS;
-
-        if (pFilter === 'fsc' || pFilter === 'inter') {
-           matchesProgram = isInter;
-        } else if (pFilter === 'ads') {
-           matchesProgram = isADS;
-        } else if (pFilter === 'dit' || pFilter.includes('diploma')) {
-           matchesProgram = isDIT;
-        } else if (pFilter === 'bs' || pFilter.includes('b.s')) {
-           matchesProgram = isBS;
-        } else if (pFilter === 'ukl3' || pFilter.includes('uk') || pFilter.includes('level 3')) {
-           matchesProgram = isUKL3;
-        } else {
-           matchesProgram = identifier.includes(pFilter);
-        }
-      }
+      // 2. Educational Stream Filter (Single Source of Truth)
+      if (programFilter !== 'all' && !matchesEducationalStream(s, programFilter)) return false;
 
       // 3. Academic Stage & Cohort Filter
-      let matchesStage = true;
-      if (academicStageFilter !== 'all') {
-        const studentPart = (s.academicPart || s.academic_part || '').toLowerCase();
-        const studentSem = Number(s.currentSemester || s.current_semester || 0);
-        const sGroup = (s.group || '').toLowerCase();
-        const sCategory = (s.category || '').toLowerCase();
-        const sessNorm = normalizeSessionString(s.session);
-        const isPart2 = studentPart.includes('part-2') || studentPart.includes('2nd') || sCategory.includes('part-2') || sCategory.includes('part 2') || sessNorm === '2025-27';
-        const isMale = s.gender === 'Male';
-        const isFemale = s.gender === 'Female';
-        const isADS = sGroup.includes('ads') || sGroup.includes('adp') || sGroup.includes('ada') || sCategory.includes('ads') || sCategory.includes('adp') || sCategory.includes('ada');
-        const isBS = !isADS && (sGroup.includes('bs') || sGroup.includes('b.s') || sCategory.includes('bs') || sGroup.includes('bba') || sGroup.includes('bachelor'));
-        const isInter = !isADS && !isBS && !sGroup.includes('dit') && !sGroup.includes('uk');
-
-        if (academicStageFilter === 'part1' || academicStageFilter === 'inter-p1') {
-          matchesStage = isInter && !isPart2;
-        } else if (academicStageFilter === 'part2' || academicStageFilter === 'inter-p2') {
-          matchesStage = isInter && isPart2;
-        } else if (academicStageFilter === 'p1-boys') {
-          matchesStage = isInter && !isPart2 && isMale;
-        } else if (academicStageFilter === 'p1-girls') {
-          matchesStage = isInter && !isPart2 && isFemale;
-        } else if (academicStageFilter === 'p2-boys') {
-          matchesStage = isInter && isPart2 && isMale;
-        } else if (academicStageFilter === 'p2-girls') {
-          matchesStage = isInter && isPart2 && isFemale;
-        } else if (academicStageFilter === 'bs-boys') {
-          matchesStage = isBS && isMale;
-        } else if (academicStageFilter === 'bs-girls') {
-          matchesStage = isBS && isFemale;
-        } else if (academicStageFilter === 'bs-sem1') {
-          matchesStage = isBS && (studentSem === 1 || sCategory.includes('1st') || sCategory.includes('fresh'));
-        } else if (academicStageFilter === 'bs-sem5') {
-          matchesStage = isBS && (studentSem === 5 || sCategory.includes('5th') || sCategory.includes('lateral'));
-        } else if (academicStageFilter === 'bs-sem7-8') {
-          matchesStage = isBS && (studentSem === 7 || studentSem === 8 || sCategory.includes('7th') || sCategory.includes('8th') || sCategory.includes('final'));
-        } else if (academicStageFilter.startsWith('sem')) {
-          matchesStage = studentSem === Number(academicStageFilter.replace('sem', ''));
-        } else if (academicStageFilter === 'ads-boys') {
-          matchesStage = isADS && isMale;
-        } else if (academicStageFilter === 'ads-girls') {
-          matchesStage = isADS && isFemale;
-        } else if (academicStageFilter === 'ads-p1') {
-          matchesStage = isADS && (studentSem <= 2 || !studentPart.includes('part-2'));
-        } else if (academicStageFilter === 'ads-p2') {
-          matchesStage = isADS && (studentSem > 2 || studentPart.includes('part-2'));
-        } else if (academicStageFilter === 'yr1') {
-          matchesStage = studentSem <= 2 || studentPart.includes('1st') || studentPart.includes('part-1');
-        } else if (academicStageFilter === 'yr2') {
-          matchesStage = (studentSem >= 3 && studentSem <= 4) || studentPart.includes('2nd') || studentPart.includes('part-2');
-        } else if (academicStageFilter === 'yr3') {
-          matchesStage = studentSem >= 5 || studentPart.includes('3rd') || studentPart.includes('part-3');
-        }
-      }
+      if (academicStageFilter !== 'all' && !matchesCohortStage(s, academicStageFilter)) return false;
 
       // 4. Session Filter
-      let matchesSession = true;
       if (sessionFilter !== 'all') {
         const sSessNorm = normalizeSessionString(s.session);
-        matchesSession = sSessNorm === normalizeSessionString(sessionFilter);
+        if (sSessNorm !== normalizeSessionString(sessionFilter)) return false;
       }
 
-      return matchesGender && matchesProgram && matchesStage && matchesSession;
+      return true;
     });
-  }, [allRawStudents, genderFilter, programFilter, debouncedSearch, academicStageFilter, sessionFilter]);
+  }, [allRawStudents, genderFilter, programFilter, academicStageFilter, sessionFilter]);
 
   const sectionOptions = React.useMemo(() => {
     let sections = data?.settings?.predefinedSections || [];
@@ -509,15 +433,24 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
       const searchableText = `${s.fullName || ''} ${s.fatherName || ''} ${s.id || ''} ${s.studentId || ''} ${s.collegeNo || s.college_no || ''} ${s.contact || s.contactNumber || ''} ${s.fatherContact || ''} ${s.bayFormNo || (s as any).bay_form_no || ''} ${s.group || ''} ${s.category || ''} ${s.section || ''}`.toLowerCase();
       const matchesSearch = searchTokens.length === 0 || searchTokens.every(tok => searchableText.includes(tok));
       
-      // Monthly fee status for current month (March 2026 for demo)
-      const currentMonthPayment = s.feeHistory.find((f: any) => f.month === 'March' && f.year === 2026);
+      // Dynamic fee status check (current calendar month OR overall package status)
+      const now = new Date();
+      const currentMonthName = now.toLocaleString('en-US', { month: 'long' });
+      const currentYearNum = now.getFullYear();
+      const currentMonthPayment = (s.feeHistory || []).find((f: any) => f.month === currentMonthName && Number(f.year) === currentYearNum);
+      const totalPkg = Number(s.totalPackage || s.feeLedger?.totalPackage || 0);
+      const totalRec = Number(s.feeReceived || s.feeLedger?.totalReceived || 0);
+      const isFullyPaidPkg = totalPkg > 0 && totalRec >= totalPkg;
+      const isPartialPkg = totalRec > 0 && totalRec < totalPkg;
+      const isUnpaidPkg = totalRec <= 0;
+
       const matchesFee = monthlyFeeFilter === 'all' || 
-                        (monthlyFeeFilter === 'Paid' && currentMonthPayment?.status === 'Paid') ||
-                        (monthlyFeeFilter === 'Partial' && currentMonthPayment?.status === 'Partial') ||
-                        (monthlyFeeFilter === 'Unpaid' && (!currentMonthPayment || currentMonthPayment.status === 'Unpaid'));
+                        (monthlyFeeFilter === 'Paid' && (currentMonthPayment?.status === 'Paid' || isFullyPaidPkg)) ||
+                        (monthlyFeeFilter === 'Partial' && (currentMonthPayment?.status === 'Partial' || isPartialPkg)) ||
+                        (monthlyFeeFilter === 'Unpaid' && ((!currentMonthPayment || currentMonthPayment.status === 'Unpaid') && isUnpaidPkg));
 
       // Defaulter logic
-      const unpaidMonths = s.feeHistory.filter((f: any) => f.status === 'Unpaid').length;
+      const unpaidMonths = (s.feeHistory || []).filter((f: any) => f.status === 'Unpaid').length;
       const matchesDefaulter = defaulterFilter === 'all' ||
                               (defaulterFilter === '1' && unpaidMonths === 1) ||
                               (defaulterFilter === '2' && unpaidMonths === 2) ||
@@ -1125,10 +1058,10 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
             <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/60 dark:border-slate-700/60 gap-0.5">
               {[
                 { id: 'all', label: 'All Streams' },
-                { id: 'fsc', label: 'FSc (2-Yr)' },
+                { id: 'fsc', label: 'Inter (2-Yr)' },
                 { id: 'bs', label: 'BS (4-Yr)' },
                 { id: 'ads', label: 'ADS (2-Yr)' },
-                { id: 'dit', label: 'DIT (3-Yr)' },
+                { id: 'dit', label: 'DIT Diploma' },
                 { id: 'ukl3', label: 'UK Level 3' },
               ].map(prog => (
                 <button
@@ -1155,9 +1088,9 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
             {programFilter === 'fsc' && (
               <div className="hidden sm:flex items-center bg-emerald-50/80 dark:bg-emerald-950/40 p-0.5 rounded-xl border border-emerald-200/80 dark:border-emerald-800/60 gap-0.5">
                 {[
-                  { id: 'all', label: 'All FSc' },
-                  { id: 'part1', label: 'Part-1 Fresh (1st Year)' },
-                  { id: 'part2', label: 'Part-2 Senior (2nd Year)' },
+                  { id: 'all', label: 'All Inter' },
+                  { id: 'part1', label: 'Part-1 (1st Year)' },
+                  { id: 'part2', label: 'Part-2 (2nd Year)' },
                 ].map(stg => (
                   <button
                     key={stg.id}
@@ -1232,9 +1165,8 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
               <div className="hidden sm:flex items-center bg-teal-50/80 dark:bg-teal-950/40 p-0.5 rounded-xl border border-teal-200/80 dark:border-teal-800/60 gap-0.5">
                 {[
                   { id: 'all', label: 'All DIT' },
-                  { id: 'yr1', label: '1st Year' },
-                  { id: 'yr2', label: '2nd Year' },
-                  { id: 'yr3', label: '3rd Year' },
+                  { id: 'dit-p1', label: 'Part-1' },
+                  { id: 'dit-p2', label: 'Part-2' },
                 ].map(stg => (
                   <button
                     key={stg.id}
@@ -1245,6 +1177,30 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                       academicStageFilter === stg.id
                         ? "bg-teal-600 text-white shadow-2xs"
                         : "text-teal-800 dark:text-teal-300 hover:text-teal-950"
+                    )}
+                  >
+                    {stg.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {programFilter === 'ukl3' && (
+              <div className="hidden sm:flex items-center bg-purple-50/80 dark:bg-purple-950/40 p-0.5 rounded-xl border border-purple-200/80 dark:border-purple-800/60 gap-0.5">
+                {[
+                  { id: 'all', label: 'All UKL3' },
+                  { id: 'uk-yr1', label: 'Year-1' },
+                  { id: 'uk-yr2', label: 'Year-2' },
+                ].map(stg => (
+                  <button
+                    key={stg.id}
+                    type="button"
+                    onClick={() => setAcademicStageFilter(stg.id)}
+                    className={cn(
+                      "px-2 py-0.5 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                      academicStageFilter === stg.id
+                        ? "bg-purple-600 text-white shadow-2xs"
+                        : "text-purple-800 dark:text-purple-300 hover:text-purple-950"
                     )}
                   >
                     {stg.label}
@@ -1710,17 +1666,92 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           )}
 
           {programFilter === "dit" && (
-            <div className="flex items-center gap-1.5 text-xs text-sky-800 dark:text-sky-300 font-bold bg-sky-50 dark:bg-sky-950/40 px-3 py-1 rounded-xl border border-sky-200">
-              <Laptop size={13} />
-              <span>D.I.T. Technical Diploma Enrollment: {quickCohortStats.dit.total} Total Active Students</span>
-            </div>
+            <>
+              {[
+                { id: "all", label: "All DIT", count: quickCohortStats.dit.total, type: "stage" },
+                { id: "dit-boys", label: "DIT Boys", count: quickCohortStats.dit.ditBoys, type: "stage", color: "bg-sky-50 text-sky-800 border-sky-300 dark:bg-sky-950 dark:text-sky-200" },
+                { id: "dit-girls", label: "DIT Girls", count: quickCohortStats.dit.ditGirls, type: "stage", color: "bg-pink-50 text-pink-800 border-pink-300 dark:bg-pink-950 dark:text-pink-200" },
+                { id: "dit-p1", label: "DIT Part-1", count: quickCohortStats.dit.part1, type: "stage" },
+                { id: "dit-p2", label: "DIT Part-2", count: quickCohortStats.dit.part2, type: "stage" },
+                { id: "2026-27", label: "Session 2026-27 (1-Yr)", count: quickCohortStats.dit.sess26_27, type: "session" },
+                { id: "2026-28", label: "Session 2026-28 (2-Yr)", count: quickCohortStats.dit.sess26_28, type: "session" },
+              ].map((pill) => {
+                const isActive = pill.type === "session"
+                  ? sessionFilter === pill.id
+                  : academicStageFilter === pill.id;
+                return (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    onClick={() => {
+                      if (pill.type === "session") {
+                        setSessionFilter(sessionFilter === pill.id ? "all" : pill.id);
+                      } else {
+                        setAcademicStageFilter(academicStageFilter === pill.id ? "all" : pill.id);
+                      }
+                    }}
+                    className={cn(
+                      "px-2.5 py-0.5 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer border",
+                      isActive
+                        ? "bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 shadow-xs"
+                        : pill.color || "bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
+                    )}
+                  >
+                    <span>{pill.label}</span>
+                    <span className={cn(
+                      "text-[9.5px] font-mono font-black px-1.5 py-0.1 rounded-full",
+                      isActive ? "bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-900" : "bg-black/5 dark:bg-white/10"
+                    )}>
+                      {pill.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </>
           )}
 
           {programFilter === "ukl3" && (
-            <div className="flex items-center gap-1.5 text-xs text-purple-800 dark:text-purple-300 font-bold bg-purple-50 dark:bg-purple-950/40 px-3 py-1 rounded-xl border border-purple-200">
-              <Globe size={13} />
-              <span>U.K. Level 3 International Enrollment: {quickCohortStats.ukl3.total} Total Active Students</span>
-            </div>
+            <>
+              {[
+                { id: "all", label: "All UK Level 3", count: quickCohortStats.ukl3.total, type: "stage" },
+                { id: "uk-boys", label: "UK L3 Boys", count: quickCohortStats.ukl3.ukBoys, type: "stage", color: "bg-purple-50 text-purple-800 border-purple-300 dark:bg-purple-950 dark:text-purple-200" },
+                { id: "uk-girls", label: "UK L3 Girls", count: quickCohortStats.ukl3.ukGirls, type: "stage", color: "bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-200" },
+                { id: "uk-yr1", label: "Year-1", count: quickCohortStats.ukl3.year1, type: "stage" },
+                { id: "uk-yr2", label: "Year-2", count: quickCohortStats.ukl3.year2, type: "stage" },
+                { id: "2026-28", label: "Session 2026-28", count: quickCohortStats.ukl3.sess26_28, type: "session" },
+              ].map((pill) => {
+                const isActive = pill.type === "session"
+                  ? sessionFilter === pill.id
+                  : academicStageFilter === pill.id;
+                return (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    onClick={() => {
+                      if (pill.type === "session") {
+                        setSessionFilter(sessionFilter === pill.id ? "all" : pill.id);
+                      } else {
+                        setAcademicStageFilter(academicStageFilter === pill.id ? "all" : pill.id);
+                      }
+                    }}
+                    className={cn(
+                      "px-2.5 py-0.5 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer border",
+                      isActive
+                        ? "bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 shadow-xs"
+                        : pill.color || "bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
+                    )}
+                  >
+                    <span>{pill.label}</span>
+                    <span className={cn(
+                      "text-[9.5px] font-mono font-black px-1.5 py-0.1 rounded-full",
+                      isActive ? "bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-900" : "bg-black/5 dark:bg-white/10"
+                    )}>
+                      {pill.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </>
           )}
         </div>
       </div>
