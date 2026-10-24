@@ -915,7 +915,9 @@ export function useSupabaseData(user: any) {
       const { admission: admSnap, student: stuSnap } = snap;
 
       const resolvedStudentId = stuSnap?.id || admSnap?.student_id || admSnap?.studentId || item.studentId || item.originalId;
-      const resolvedAdmId = admSnap?.id || stuSnap?.admission_id || stuSnap?.admissionId || `adm-res-${Date.now()}`;
+      const rawAdmId = admSnap?.id || stuSnap?.admission_id || stuSnap?.admissionId;
+      const isUuid = typeof rawAdmId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawAdmId);
+      const resolvedAdmId = isUuid ? rawAdmId : crypto.randomUUID();
       const feePkg = Number(item.totalPackage || stuSnap?.totalPackage || stuSnap?.total_package || admSnap?.total_package || admSnap?.totalPackage || 0);
       const feeRec = Number(item.feeReceived || stuSnap?.feeReceived || stuSnap?.fee_received || admSnap?.fee_received || admSnap?.feeReceived || 0);
       const feeRem = Math.max(0, feePkg - feeRec);

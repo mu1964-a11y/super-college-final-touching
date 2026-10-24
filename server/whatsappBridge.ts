@@ -5183,8 +5183,9 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
         if (delegatedAdmin.pinHash && testHash === delegatedAdmin.pinHash) {
           try {
             const newId = `SGC-26-${Math.floor(100 + Math.random() * 900)}`;
+            const admUuid = crypto.randomUUID();
             const admRecord = {
-              id: newId,
+              id: admUuid,
               student_id: newId,
               college_no: newId,
               full_name: pendingAdm.fullName,
@@ -5195,6 +5196,7 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
               previous_marks: pendingAdm.previousMarks ? Number(pendingAdm.previousMarks) : null,
               previous_institute: pendingAdm.previousInstitute || "",
               category: pendingAdm.category || "General",
+              group: pendingAdm.groupName || "Intermediate",
               group_name: pendingAdm.groupName || "Intermediate",
               section: pendingAdm.section || "A",
               total_fee_finalized: Number(pendingAdm.totalPackage || 60000),
@@ -5207,7 +5209,7 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
               session: "2026-28",
               reference: `[Source: WhatsApp AI] Via WhatsApp Bot (${delegatedAdmin.name})`,
               source: "WhatsApp AI",
-              status: "Admitted",
+              status: "Admitted/Confirmed",
               is_admitted: true
             };
 
@@ -5215,24 +5217,19 @@ Baraye meherbani phone camera se apni ek saaf selfie / face photo bhejein taake 
             try {
               await supabase.from("students").insert({
                 id: newId,
-                admission_id: newId,
+                admission_id: admUuid,
                 college_no: newId,
                 full_name: pendingAdm.fullName,
                 father_name: pendingAdm.fatherName || "N/A",
                 contact: pendingAdm.contact || standardPhone,
                 category: pendingAdm.category || "General",
                 group: pendingAdm.groupName || "Intermediate",
+                group_name: pendingAdm.groupName || "Intermediate",
                 section: pendingAdm.section || "A",
                 total_package: Number(pendingAdm.totalPackage || 60000),
                 fee_received: Number(pendingAdm.admissionFee || 10000),
                 session: "2026-28",
-                address: pendingAdm.address || "Jahanian",
-                reference: `Via WhatsApp Bot (${delegatedAdmin.name})`,
-                notes: [{
-                  date: new Date().toISOString(),
-                  type: "General",
-                  content: `Admitted via WhatsApp Bot by ${delegatedAdmin.name}`
-                }]
+                address: pendingAdm.address || "Jahanian"
               });
             } catch (e) {}
 

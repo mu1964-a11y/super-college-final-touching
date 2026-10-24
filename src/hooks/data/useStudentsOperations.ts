@@ -94,7 +94,6 @@ export function useStudentsOperations(ctx: any) {
           fee_history: updates.feeHistory,
           academic_part: updates.academicPart,
           current_semester: updates.currentSemester,
-          total_semesters: updates.totalSemesters,
           program_type: updates.programType,
           total_installments: updates.totalInstallments,
           session: updates.session
@@ -130,9 +129,7 @@ export function useStudentsOperations(ctx: any) {
           if (syncedLedger !== undefined) admUpdates.fee_ledger = syncedLedger;
           if (updates.academicPart !== undefined) admUpdates.academic_part = updates.academicPart;
           if (updates.currentSemester !== undefined) admUpdates.current_semester = updates.currentSemester;
-          if (updates.totalSemesters !== undefined) admUpdates.total_semesters = updates.totalSemesters;
           if (updates.programType !== undefined) admUpdates.program_type = updates.programType;
-          if (updates.totalInstallments !== undefined) admUpdates.total_installments = updates.totalInstallments;
           if (updates.subjects !== undefined) admUpdates.subjects = updates.subjects;
           if (Object.keys(admUpdates).length > 0) {
             await supabase.from('admissions').update(admUpdates).eq('id', admId);

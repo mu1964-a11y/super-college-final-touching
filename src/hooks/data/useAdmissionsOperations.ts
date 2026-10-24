@@ -99,10 +99,8 @@ export function useAdmissionsOperations(ctx: any) {
         total_package: totalPkg,
         fee_received: feeRec,
         payment_plan: admission.paymentPlan,
-        total_installments: installmentsCount,
         program_type: resolvedProgramType,
         current_semester: resolvedCurrentSemester,
-        total_semesters: resolvedTotalSemesters,
         concession_reason: admission.concessionReason || null,
         fee_ledger: initialLedger,
         fee_history: initialHistory,
@@ -197,7 +195,6 @@ export function useAdmissionsOperations(ctx: any) {
             total_installments: installmentsCount,
             program_type: resolvedProgramType,
             current_semester: resolvedCurrentSemester,
-            total_semesters: resolvedTotalSemesters,
             session: admission.session || settings?.academicSession,
             session_start_date: admission.sessionStartDate || null,
             session_end_date: admission.sessionEndDate || null,
@@ -379,8 +376,6 @@ export function useAdmissionsOperations(ctx: any) {
         if (updates.academicPart !== undefined) dbUpdates.academic_part = updates.academicPart;
         if (updates.programType !== undefined) dbUpdates.program_type = updates.programType;
         if (updates.currentSemester !== undefined) dbUpdates.current_semester = updates.currentSemester;
-        if (updates.totalSemesters !== undefined) dbUpdates.total_semesters = updates.totalSemesters;
-        if (updates.totalInstallments !== undefined) dbUpdates.total_installments = updates.totalInstallments;
         if (updates.concessionReason !== undefined) dbUpdates.concession_reason = updates.concessionReason;
         if (updates.feeLedger !== undefined) dbUpdates.fee_ledger = updates.feeLedger;
         if (updates.feeHistory !== undefined) dbUpdates.fee_history = updates.feeHistory;
@@ -453,7 +448,6 @@ export function useAdmissionsOperations(ctx: any) {
               total_installments: instCount,
               program_type: mergedAdm.programType || (mergedAdm.currentSemester ? 'Semester' : 'Yearly'),
               current_semester: mergedAdm.currentSemester || 1,
-              total_semesters: mergedAdm.totalSemesters || 4,
               session: updates.session || existingAdmission?.session,
               session_start_date: updates.sessionStartDate || existingAdmission?.sessionStartDate || null,
               session_end_date: updates.sessionEndDate || existingAdmission?.sessionEndDate || null,
@@ -492,7 +486,6 @@ export function useAdmissionsOperations(ctx: any) {
             if (updates.totalInstallments !== undefined) studentUpdates.total_installments = updates.totalInstallments;
             if (updates.programType !== undefined) studentUpdates.program_type = updates.programType;
             if (updates.currentSemester !== undefined) studentUpdates.current_semester = updates.currentSemester;
-            if (updates.totalSemesters !== undefined) studentUpdates.total_semesters = updates.totalSemesters;
             if (updates.feeLedger !== undefined) studentUpdates.fee_ledger = updates.feeLedger;
             if (updates.feeHistory !== undefined) studentUpdates.fee_history = updates.feeHistory;
             if (updates.session !== undefined) studentUpdates.session = updates.session;
@@ -904,7 +897,8 @@ export function useAdmissionsOperations(ctx: any) {
           const adm = chunk[j];
           const rowNum = i + j + 1;
           const studentId = adm.studentId || adm.student_id;
-          const admissionId = adm.id || `adm-imp-${Date.now()}-${i}-${j}`;
+          const isValidUuid = typeof adm.id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(adm.id);
+          const admissionId = isValidUuid ? adm.id : crypto.randomUUID();
 
           try {
             // 1. Insert into admissions table
@@ -937,7 +931,6 @@ export function useAdmissionsOperations(ctx: any) {
               address: adm.address || '',
               subjects: adm.subjects || [],
               date: adm.date || new Date().toISOString().split('T')[0],
-              date_applied: adm.dateApplied || new Date().toISOString().split('T')[0],
               status: Number(adm.feeReceived ?? adm.fee_received ?? 0) >= Number(adm.totalPackage ?? adm.total_package ?? 0) && Number(adm.totalPackage ?? adm.total_package ?? 0) > 0 ? 'Full Paid' : Number(adm.feeReceived ?? adm.fee_received ?? 0) > 0 ? 'Partial Paid' : 'Admitted/Confirmed',
               is_admitted: true
             };
@@ -1006,8 +999,9 @@ export function useAdmissionsOperations(ctx: any) {
                   month: new Date().toLocaleString('default', { month: 'long' }),
                   year: new Date().getFullYear(),
                   date: new Date().toISOString().split('T')[0],
+                  status: 'Paid',
                   payment_method: 'Cash',
-                  receipt_id: `REC-IMP-${Math.floor(Date.now() / 1000).toString().slice(-6)}`
+                  recorded_by: user?.email || 'System'
                 });
               } catch (incErr) {
                 console.warn("Income insert warning on bulk import:", incErr);

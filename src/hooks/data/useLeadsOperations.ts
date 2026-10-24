@@ -15,7 +15,6 @@ export function useLeadsOperations(ctx: any) {
       student_name: lead.studentName,
       father_name: lead.fatherName,
       package: lead.finalizedFee,
-      finalized_fee: lead.finalizedFee,
       finalized_by: lead.finalizedBy,
       cnic: lead.cnic,
       previous_school: lead.previousSchool,
@@ -74,7 +73,6 @@ export function useLeadsOperations(ctx: any) {
         student_name: updates.studentName,
         father_name: updates.fatherName,
         package: updates.finalizedFee,
-        finalized_fee: updates.finalizedFee,
         finalized_by: updates.finalizedBy,
         cnic: updates.cnic,
         previous_school: updates.previousSchool,
@@ -88,13 +86,18 @@ export function useLeadsOperations(ctx: any) {
       };
       if (updates.pipelineStage !== undefined) {
         updatePayload.extra_info1 = updates.pipelineStage;
+        updatePayload.pipeline_stage = updates.pipelineStage;
       }
       if (updates.followUpDate !== undefined) {
         updatePayload.extra_info2 = updates.followUpDate;
+        updatePayload.follow_up_date = updates.followUpDate;
       }
       if (updates.source !== undefined) {
         updatePayload.source = updates.source;
       }
+      Object.keys(updatePayload).forEach(k => {
+        if (updatePayload[k] === undefined) delete updatePayload[k];
+      });
 
       let { error } = await supabase.from('leads').update(updatePayload).eq('id', id);
       if (error && (error.code === 'PGRST204' || (error.message || '').includes("'source'"))) {
