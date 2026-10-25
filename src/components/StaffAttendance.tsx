@@ -111,6 +111,29 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
   const [auditSnapshot, setAuditSnapshot] = useState<AuditSnapshotData | null>(null);
   const [selectedDossierStaff, setSelectedDossierStaff] = useState<Staff | null>(null);
   
+  // Helper to convert "07:50:12 AM" or ISO or "08:00:00" into 24-hour "HH:MM" for <input type="time">
+  const toTimeInputHHMM = (raw?: string | null): string => {
+    if (!raw || typeof raw !== 'string') return '';
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    // Match 12-hour format e.g. "07:50:12 AM" or "2:15 PM"
+    const ampmMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
+    if (ampmMatch) {
+      let h = parseInt(ampmMatch[1], 10);
+      const m = ampmMatch[2];
+      const period = ampmMatch[3].toUpperCase();
+      if (period === 'PM' && h < 12) h += 12;
+      if (period === 'AM' && h === 12) h = 0;
+      return `${String(h).padStart(2, '0')}:${m}`;
+    }
+    // Match 24-hour HH:MM or HH:MM:SS
+    const hhmmMatch = trimmed.match(/^(\d{2}):(\d{2})/);
+    if (hhmmMatch) {
+      return `${hhmmMatch[1]}:${hhmmMatch[2]}`;
+    }
+    return '';
+  };
+
   // Local state for attendance records
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
 
@@ -129,6 +152,24 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
     }
   }, [attendanceRecords]);
 
+  // Listen for live biometric punches from InstantBiometricVerifyModal or BiometricAttendanceDesk
+  React.useEffect(() => {
+    const handleLivePunch = (e: Event) => {
+      const custom = e as CustomEvent;
+      const rec = custom.detail?.record;
+      const staffId = custom.detail?.staffId;
+      const date = custom.detail?.date;
+      if (!rec || !staffId || !date) return;
+
+      setRecords((prev) => [
+        rec,
+        ...prev.filter((r: any) => !((r.staffId || r.staff_id) === staffId && r.date === date)),
+      ]);
+    };
+    window.addEventListener('scj-biometric-attendance-updated', handleLivePunch);
+    return () => window.removeEventListener('scj-biometric-attendance-updated', handleLivePunch);
+  }, []);
+
   // Daily Attendance State overrides
   const [dailyEntries, setDailyEntries] = useState<Record<string, Partial<AttendanceRecord>>>({});
   const [isBiometricEnrollOpen, setIsBiometricEnrollOpen] = useState(false);
@@ -141,9 +182,19 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
     
     const newEntries: Record<string, Partial<AttendanceRecord>> = {};
     staffList.forEach(staff => {
-      const existing = existingForDate.find(r => r.staffId === staff.id);
+      const existing = existingForDate.find(r => (r.staffId || (r as any).staff_id) === staff.id);
       if (existing) {
-        newEntries[staff.id] = { ...existing };
+        const parsed = parseAttendanceNotesAndTime(
+          existing.notes,
+          existing.checkIn || (existing as any).check_in || existing.checkInTime || (existing as any).check_in_time,
+          existing.checkOut || (existing as any).check_out || existing.checkOutTime || (existing as any).check_out_time
+        );
+        newEntries[staff.id] = {
+          ...existing,
+          staffId: staff.id,
+          checkIn: toTimeInputHHMM(parsed.checkIn || existing.checkIn) || '08:00',
+          checkOut: toTimeInputHHMM(parsed.checkOut || existing.checkOut) || '',
+        };
       } else {
         newEntries[staff.id] = {
           staffId: staff.id,
@@ -688,14 +739,14 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                                   <CheckCircle2 size={9} className="text-emerald-600" /> {exitSnap ? 'In+Out' : 'Match'}
                                 </span>
                               </div>
-                            ) : (entry?.verificationMethod === 'secugen_fingerprint' || entry?.verification_method === 'secugen_fingerprint' || entry?.notes?.includes('SecuGen') || entry?.notes?.includes('biometric_fingerprint')) ? (
+                            ) : (entry?.verificationMethod === 'secugen_fingerprint' || entry?.verification_method === 'secugen_fingerprint' || entry?.notes?.includes('SecuGen') || entry?.notes?.includes('biometric_fingerprint') || entry?.notes?.includes('Biometric')) ? (
                               (() => {
                                 const parsed = parseAttendanceNotesAndTime(entry?.notes, entry?.checkIn, entry?.checkOut);
                                 return (
                                   <div className="space-y-1">
-                                    <span className="inline-flex items-center gap-1 font-bold text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 shadow-2xs">
-                                      <Fingerprint size={12} className="text-amber-600" />
-                                      <span>Biometric Thumb</span>
+                                    <span className="inline-flex items-center gap-1 font-black text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-300 shadow-2xs">
+                                      <CheckCircle2 size={11} className="text-emerald-600" />
+                                      <span>Biometric Marked {parsed.checkIn ? `• ${parsed.checkIn}` : ''}</span>
                                     </span>
                                     {parsed.breakOut && (
                                       <div className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50/70 px-1.5 py-0.5 rounded border border-amber-200/70">

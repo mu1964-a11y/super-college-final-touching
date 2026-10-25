@@ -22,8 +22,16 @@ export interface SecuGenMatchResult {
   success: boolean;
   matched: boolean;
   score: number;
+  matchedFinger?: string;
   error?: string;
 }
+
+export interface EnrolledFingerEntry {
+  finger: string;
+  template: string;
+}
+
+export const MULTI_FINGER_DELIMITER = '|||';
 
 export interface IsoMinutiaPoint {
   type: number; // 1 = ridge ending, 2 = ridge bifurcation
@@ -71,12 +79,182 @@ class SecuGenService {
   private hwMatchEndpointWorks: boolean | null = null;
 
   /**
+   * Normalizes a finger label so "Right Thumb (دایاں انگوٹھا)" and "Right Thumb" map to the same canonical key.
+   */
+  normalizeFingerKey(fingerLabel?: string | null): string {
+    const raw = (fingerLabel || '').toLowerCase();
+    if (raw.includes('right') && raw.includes('thumb')) return 'right_thumb';
+    if (raw.includes('right') && raw.includes('index')) return 'right_index';
+    if (raw.includes('left') && raw.includes('thumb')) return 'left_thumb';
+    if (raw.includes('left') && raw.includes('index')) return 'left_index';
+    if (raw.includes('middle')) return 'middle_finger';
+    return raw.trim() || 'right_thumb';
+  }
+
+  /**
+   * Extracts all enrolled { finger, template } entries from a single or multi-finger template field.
+   * Supports:
+   * - Single base64 ISO FMR 20 template ("Rk1SACAyMAAA...")
+   * - Multi-finger "|||" delimited templates ("Rk1S...|||Rk1S...") paired with "+" or "|||" finger labels
+   * - JSON array of { finger, template }
+   */
+  extractEnrolledFingers(
+    templateField?: string | null,
+    fingerField?: string | null
+  ): EnrolledFingerEntry[] {
+    if (!templateField || typeof templateField !== 'string') return [];
+    const trimmed = templateField.trim();
+    if (!trimmed || trimmed === 'enrolled') return [];
+
+    // 1. Check if JSON array format
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .filter((item) => item && typeof item.template === 'string' && item.template.trim().length > 10)
+            .map((item) => ({
+              finger: String(item.finger || 'Right Thumb (دایاں انگوٹھا)').trim(),
+              template: item.template.trim(),
+            }));
+        }
+      } catch {}
+    }
+
+    // 2. Split by MULTI_FINGER_DELIMITER ("|||")
+    const rawTemplates = trimmed
+      .split(MULTI_FINGER_DELIMITER)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 10);
+
+    if (rawTemplates.length === 0) return [];
+
+    const rawFingers = (fingerField || 'Right Thumb (دایاں انگوٹھا)')
+      .split(/\s*(?:\|\|\||\+)\s*/)
+      .map((f) => f.trim())
+      .filter(Boolean);
+
+    return rawTemplates.map((tpl, idx) => ({
+      finger:
+        rawFingers[idx] ||
+        (idx === 0 ? 'Right Thumb (دایاں انگوٹھا)' : idx === 1 ? 'Right Index (شہادت کی انگلی)' : `Finger #${idx + 1}`),
+      template: tpl,
+    }));
+  }
+
+  /**
+   * Merges a newly scanned finger template with any existing enrolled finger(s) for the same person.
+   * - If the person already has Right Thumb enrolled and now scans Right Index, BOTH fingers are preserved!
+   * - If the person re-scans the SAME finger (e.g. Right Thumb again), that finger's template is updated while keeping any 2nd finger intact.
+   */
+  mergeFingerTemplate(
+    existingTemplateField?: string | null,
+    existingFingerField?: string | null,
+    newTemplate?: string | null,
+    newFinger?: string | null,
+    mode: 'merge' | 'replace_all' = 'merge'
+  ): {
+    templateField: string;
+    fingerField: string;
+    entries: EnrolledFingerEntry[];
+  } {
+    if (!newTemplate || !newTemplate.trim()) {
+      return { templateField: '', fingerField: '', entries: [] };
+    }
+
+    // If newTemplate already contains multiple templates joined by |||, parse and return directly
+    if (newTemplate.includes(MULTI_FINGER_DELIMITER)) {
+      const entries = this.extractEnrolledFingers(newTemplate, newFinger);
+      return {
+        templateField: entries.map((e) => e.template).join(MULTI_FINGER_DELIMITER),
+        fingerField: entries.map((e) => e.finger).join(' + '),
+        entries,
+      };
+    }
+
+    const cleanNewFinger = (newFinger || 'Right Thumb (دایاں انگوٹھا)').trim();
+    const cleanNewTpl = newTemplate.trim();
+
+    if (mode === 'replace_all' || !existingTemplateField) {
+      const entries = [{ finger: cleanNewFinger, template: cleanNewTpl }];
+      return {
+        templateField: cleanNewTpl,
+        fingerField: cleanNewFinger,
+        entries,
+      };
+    }
+
+    const existingEntries = this.extractEnrolledFingers(existingTemplateField, existingFingerField);
+    const targetKey = this.normalizeFingerKey(cleanNewFinger);
+
+    const updatedEntries: EnrolledFingerEntry[] = [];
+    let replaced = false;
+
+    for (const entry of existingEntries) {
+      if (this.normalizeFingerKey(entry.finger) === targetKey) {
+        updatedEntries.push({ finger: cleanNewFinger, template: cleanNewTpl });
+        replaced = true;
+      } else {
+        updatedEntries.push(entry);
+      }
+    }
+
+    if (!replaced) {
+      updatedEntries.push({ finger: cleanNewFinger, template: cleanNewTpl });
+    }
+
+    // Sort so Right Thumb comes first, Right Index second for clean display
+    updatedEntries.sort((a, b) => {
+      const ka = this.normalizeFingerKey(a.finger);
+      const kb = this.normalizeFingerKey(b.finger);
+      const order: Record<string, number> = {
+        right_thumb: 1,
+        right_index: 2,
+        left_thumb: 3,
+        left_index: 4,
+      };
+      return (order[ka] || 9) - (order[kb] || 9);
+    });
+
+    return {
+      templateField: updatedEntries.map((e) => e.template).join(MULTI_FINGER_DELIMITER),
+      fingerField: updatedEntries.map((e) => e.finger).join(' + '),
+      entries: updatedEntries,
+    };
+  }
+
+  /**
+   * Returns a concise display label for a person's enrolled fingers (e.g., "Thumb + Index (2)" or "Right Thumb").
+   */
+  formatFingerBadge(fingerField?: string | null, templateField?: string | null): string {
+    const entries = this.extractEnrolledFingers(templateField, fingerField);
+    if (entries.length >= 2) {
+      const names = entries.map((e) => {
+        const k = this.normalizeFingerKey(e.finger);
+        if (k === 'right_thumb') return 'R-Thumb';
+        if (k === 'right_index') return 'R-Index';
+        if (k === 'left_thumb') return 'L-Thumb';
+        if (k === 'left_index') return 'L-Index';
+        return e.finger.split('(')[0].trim();
+      });
+      return `${names.join(' + ')} (${entries.length} Fingers)`;
+    }
+    if (entries.length === 1) {
+      return entries[0].finger;
+    }
+    return fingerField || 'Right Thumb (دایاں انگوٹھا)';
+  }
+
+  /**
    * Parses an ISO/IEC 19794-2 (FMR 20) fingerprint template into its constituent minutiae points.
    * All 31+ faculty and student templates in Supabase use this exact ISO FMR 20 format ("Rk1SACAyMAAA...").
    */
   parseIsoMinutiae(templateBase64?: string | null): IsoMinutiaPoint[] {
     if (!templateBase64 || typeof templateBase64 !== 'string') return [];
-    const bytes = decodeBase64ToBytes(templateBase64);
+    const primaryTpl = templateBase64.includes(MULTI_FINGER_DELIMITER)
+      ? templateBase64.split(MULTI_FINGER_DELIMITER)[0].trim()
+      : templateBase64.trim();
+    const bytes = decodeBase64ToBytes(primaryTpl);
     if (!bytes || bytes.length < 28) return [];
     // Check "FMR\0" magic header (0x46, 0x4d, 0x52, 0x00)
     if (bytes[0] !== 0x46 || bytes[1] !== 0x4d || bytes[2] !== 0x52) return [];
@@ -338,22 +516,15 @@ class SecuGenService {
   }
 
   /**
-   * Matches two templates using both the ISO/IEC 19794-2 (FMR 20) geometric minutiae engine
-   * and the local SecuGen WebAPI (/SGIMatchScore) when available.
+   * Matches a single scanned template against a single stored template.
    */
-  async matchTemplates(
-    template1: string,
-    template2: string,
+  private async matchSingleTemplatePair(
+    clean1: string,
+    clean2: string,
     templateFormat: 'ISO' | 'ANSI' = 'ISO'
-  ): Promise<SecuGenMatchResult> {
-    if (!template1 || !template2) {
-      return { success: false, matched: false, score: 0, error: 'Missing templates' };
-    }
-    const clean1 = template1.trim();
-    const clean2 = template2.trim();
-    if (clean1 === clean2) {
-      return { success: true, matched: true, score: 199 };
-    }
+  ): Promise<number> {
+    if (!clean1 || !clean2) return 0;
+    if (clean1 === clean2) return 199;
 
     // 1. Instant (< 0.2ms) ISO 19794-2 FMR 20 geometric minutiae match
     const isoScore = this.matchIsoFmr20(clean1, clean2);
@@ -386,7 +557,6 @@ class SecuGenService {
             this.hwMatchEndpointWorks = true;
             hwScore = Number(data.MatchingScore || 0);
           } else if (data && data.ErrorCode && data.ErrorCode !== 0) {
-            // e.g. license missing on local SGIMatchScore; rely on ISO FMR 20 engine
             this.hwMatchEndpointWorks = false;
           }
         } else {
@@ -397,12 +567,54 @@ class SecuGenService {
       }
     }
 
-    const finalScore = Math.max(isoScore, hwScore);
+    return Math.max(isoScore, hwScore);
+  }
+
+  /**
+   * Matches a scanned template against a person's stored template field (which may contain 1 finger
+   * like Right Thumb OR 2+ fingers like Right Thumb + Right Index).
+   * If the person enrolled 2 fingers, scanning EITHER finger will match and return the highest score!
+   * If the person only enrolled 1 finger, only that enrolled finger is compared.
+   */
+  async matchTemplates(
+    template1: string,
+    template2: string,
+    templateFormat: 'ISO' | 'ANSI' = 'ISO',
+    storedFingerField?: string | null
+  ): Promise<SecuGenMatchResult> {
+    if (!template1 || !template2) {
+      return { success: false, matched: false, score: 0, error: 'Missing templates' };
+    }
+    const scannedEntries = this.extractEnrolledFingers(template1);
+    const storedEntries = this.extractEnrolledFingers(template2, storedFingerField);
+
+    if (scannedEntries.length === 0 || storedEntries.length === 0) {
+      return { success: false, matched: false, score: 0, error: 'Invalid template data' };
+    }
+
+    let bestScore = 0;
+    let bestFinger: string | undefined = storedEntries[0]?.finger;
+
+    for (const scanned of scannedEntries) {
+      for (const stored of storedEntries) {
+        const score = await this.matchSingleTemplatePair(
+          scanned.template,
+          stored.template,
+          templateFormat
+        );
+        if (score > bestScore) {
+          bestScore = score;
+          bestFinger = stored.finger;
+        }
+      }
+    }
+
     // Match threshold: 80 on SecuGen 0..199 scale
     return {
       success: true,
-      matched: finalScore >= 80,
-      score: finalScore,
+      matched: bestScore >= 80,
+      score: bestScore,
+      matchedFinger: bestFinger,
     };
   }
 

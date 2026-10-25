@@ -15,6 +15,7 @@ import {
 } from '../types';
 import { toast } from 'sonner';
 import { safeLocalStorage } from '../utils/safeStorage';
+import { secugenService } from '../lib/secugenService';
 
 function safeParseArray(val: any): string[] {
   if (Array.isArray(val)) return val;
@@ -469,8 +470,10 @@ export function useSupabaseData(user: any) {
         if (a.notes && typeof a.notes === 'string' && a.notes.startsWith('{')) {
           try { parsedNotes = JSON.parse(a.notes); } catch {}
         }
-        const checkIn = a.check_in || a.check_in_time || parsedNotes?.check_in_time || null;
-        const checkOut = a.check_out || a.check_out_time || parsedNotes?.check_out_time || null;
+        const checkIn = a.check_in || a.check_in_time || parsedNotes?.checkIn || parsedNotes?.check_in || parsedNotes?.check_in_time || null;
+        const breakOut = parsedNotes?.breakOut || parsedNotes?.break_out || null;
+        const breakIn = parsedNotes?.breakIn || parsedNotes?.break_in || null;
+        const checkOut = a.check_out || a.check_out_time || parsedNotes?.checkOut || parsedNotes?.check_out || parsedNotes?.check_out_time || null;
         let entrySnap: string | null = null;
         let exitSnap: string | null = null;
         if (parsedNotes) {
@@ -485,18 +488,21 @@ export function useSupabaseData(user: any) {
           }
         }
         const isBio = a.verification_method === 'face_biometric' || parsedNotes?.verification_method === 'face_biometric' || Boolean(entrySnap || exitSnap);
+        const isSecuGen = a.verification_method === 'secugen_fingerprint' || parsedNotes?.method === 'biometric_fingerprint' || parsedNotes?.Verify?.includes('SecuGen') || parsedNotes?.Verify?.includes('Biometric');
 
         return {
           ...a,
           staffId: a.staff_id,
           checkIn,
+          breakOut,
+          breakIn,
           checkOut,
           checkInTime: checkIn,
           checkOutTime: checkOut,
           snapshotUrl: entrySnap || exitSnap || null,
           entrySnapshotUrl: entrySnap,
           exitSnapshotUrl: exitSnap,
-          verificationMethod: isBio ? 'face_biometric' : (a.verification_method || 'manual'),
+          verificationMethod: isSecuGen ? 'secugen_fingerprint' : isBio ? 'face_biometric' : (a.verification_method || 'manual'),
           parsedNotes
         };
       }));
@@ -513,8 +519,8 @@ export function useSupabaseData(user: any) {
         if (a.notes && typeof a.notes === 'string' && a.notes.startsWith('{')) {
           try { parsedNotes = JSON.parse(a.notes); } catch {}
         }
-        const checkIn = a.check_in_time || parsedNotes?.check_in_time || null;
-        const checkOut = a.check_out_time || parsedNotes?.check_out_time || null;
+        const checkIn = a.check_in_time || parsedNotes?.checkIn || parsedNotes?.check_in || parsedNotes?.check_in_time || null;
+        const checkOut = a.check_out_time || parsedNotes?.checkOut || parsedNotes?.check_out || parsedNotes?.check_out_time || null;
         let entrySnap: string | null = null;
         let exitSnap: string | null = null;
         if (parsedNotes) {
@@ -529,16 +535,19 @@ export function useSupabaseData(user: any) {
           }
         }
         const isBio = a.verification_method === 'face_biometric' || parsedNotes?.verification_method === 'face_biometric' || Boolean(entrySnap || exitSnap);
+        const isSecuGen = a.verification_method === 'secugen_fingerprint' || parsedNotes?.method === 'biometric_fingerprint' || parsedNotes?.Verify?.includes('SecuGen') || parsedNotes?.Verify?.includes('Biometric');
 
         return {
           ...a,
           studentId: a.student_id,
+          checkIn,
+          checkOut,
           checkInTime: checkIn,
           checkOutTime: checkOut,
           snapshotUrl: entrySnap || exitSnap || null,
           entrySnapshotUrl: entrySnap,
           exitSnapshotUrl: exitSnap,
-          verificationMethod: isBio ? 'face_biometric' : (a.verification_method || 'manual'),
+          verificationMethod: isSecuGen ? 'secugen_fingerprint' : isBio ? 'face_biometric' : (a.verification_method || 'manual'),
           parsedNotes
         };
       }));
@@ -1206,11 +1215,65 @@ export function useSupabaseData(user: any) {
     }
   };
 
-  const updateFingerprintRecord = useCallback(async (personId: string, personType: 'student' | 'staff', template: string, finger: string) => {
+  const updateFingerprintRecord = useCallback(async (
+    personId: string,
+    personType: 'student' | 'staff',
+    template: string,
+    finger: string,
+    mode: 'merge' | 'replace_all' = 'merge'
+  ) => {
     const isRemoving = !template || template.trim() === '';
     const enrolledAt = isRemoving ? null : new Date().toISOString();
-    const finalTemplate = isRemoving ? null : template;
-    const finalFinger = isRemoving ? null : finger;
+
+    let finalTemplate: string | null = isRemoving ? null : template;
+    let finalFinger: string | null = isRemoving ? null : finger;
+
+    if (!isRemoving && mode === 'merge') {
+      let existingTpl: string | null = null;
+      let existingFinger: string | null = null;
+
+      try {
+        const cached = safeLocalStorage.getItem(`scj_fp_vault_${personId}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed?.template) {
+            existingTpl = parsed.template;
+            existingFinger = parsed.finger;
+          }
+        }
+      } catch {}
+
+      if (personType === 'staff') {
+        const found = staff.find(s => s.id === personId);
+        if (found?.fingerprintTemplate) {
+          existingTpl = found.fingerprintTemplate;
+          existingFinger = found.fingerprintFinger || existingFinger;
+        }
+      } else {
+        const foundStu = students.find(s =>
+          s.id === personId ||
+          (s as any).studentId === personId ||
+          (s as any).collegeNo === personId ||
+          s.admissionId === personId
+        );
+        if (foundStu?.fingerprintTemplate) {
+          existingTpl = foundStu.fingerprintTemplate;
+          existingFinger = foundStu.fingerprintFinger || existingFinger;
+        }
+      }
+
+      if (existingTpl) {
+        const merged = secugenService.mergeFingerTemplate(
+          existingTpl,
+          existingFinger,
+          template,
+          finger,
+          'merge'
+        );
+        finalTemplate = merged.templateField;
+        finalFinger = merged.fingerField;
+      }
+    }
 
     // 1. Save redundant local backup vault so templates are never lost even offline
     try {
@@ -1301,7 +1364,7 @@ export function useSupabaseData(user: any) {
         console.error('Failed to persist fingerprint to Supabase:', err);
       }
     }
-  }, []);
+  }, [staff, students]);
 
   const ctx = { user, generateStudentId, generateBatchStudentIds, leads, setLeads, admissions, setAdmissions, students, setStudents, staff, setStaff, staffAttendance, setStaffAttendance, staffTimetable, setStaffTimetable, staffAdvances, setStaffAdvances, expenses, setExpenses, incomes, setIncomes, academicRecords, setAcademicRecords, salaryPayments, setSalaryPayments, studentAttendance, setStudentAttendance, settings, setSettings, permissions, setPermissions, notifications, setNotifications, isBulkOperatingRef, logActivity, fetchData, archiveRecords, deletedArchive, setDeletedArchive };
   const leadsOps = useLeadsOperations(ctx);
@@ -1353,5 +1416,7 @@ export function useSupabaseData(user: any) {
     setStudents,
     setAdmissions,
     setLeads,
+    setStaffAttendance,
+    setStudentAttendance,
   };
 }

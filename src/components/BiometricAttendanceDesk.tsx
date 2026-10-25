@@ -454,23 +454,50 @@ export default function BiometricAttendanceDesk({
         }
       }
 
+      const updatedStaffRecord = {
+        ...existingRec,
+        ...basePayload,
+        staffId: matchedStaff.id,
+        checkIn: nextCheckIn,
+        breakOut: nextBreakOut,
+        breakIn: nextBreakIn,
+        checkOut: nextCheckOut,
+        verificationMethod: 'secugen_fingerprint',
+      };
+
       setTodayAttendance((prev) => {
         const others = prev.filter(
           (r: any) => (r.staff_id || r.staffId) !== matchedStaff.id
         );
-        return [
-          ...others,
-          {
-            ...existingRec,
-            ...basePayload,
-            staffId: matchedStaff.id,
-            checkIn: nextCheckIn,
-            breakOut: nextBreakOut,
-            breakIn: nextBreakIn,
-            checkOut: nextCheckOut,
-          },
-        ];
+        return [updatedStaffRecord, ...others];
       });
+
+      try {
+        const stored = safeLocalStorage.getItem('staffAttendanceRecords');
+        const list = stored ? JSON.parse(stored) : [];
+        const filtered = list.filter(
+          (r: any) => !(r.staffId === matchedStaff.id && r.date === todayStr)
+        );
+        filtered.push({
+          id: `${matchedStaff.id}-${todayStr}`,
+          staffId: matchedStaff.id,
+          date: todayStr,
+          status: computedStatus,
+          checkIn: nextCheckIn,
+          breakOut: nextBreakOut,
+          breakIn: nextBreakIn,
+          checkOut: nextCheckOut,
+          notes: notesJson,
+          verificationMethod: 'secugen_fingerprint',
+          checkInTime: now.toISOString(),
+        });
+        safeLocalStorage.setItem('staffAttendanceRecords', JSON.stringify(filtered));
+        window.dispatchEvent(
+          new CustomEvent('scj-biometric-attendance-updated', {
+            detail: { staffId: matchedStaff.id, date: todayStr, record: updatedStaffRecord },
+          })
+        );
+      } catch {}
 
       onAttendanceMarked?.();
 
@@ -528,7 +555,7 @@ export default function BiometricAttendanceDesk({
             breakOutTime: nextBreakOut || undefined,
             breakInTime: nextBreakIn || undefined,
             checkOutTime: nextCheckOut || undefined,
-            eventType: stageAction,
+            punchEventLabel: statusLabel,
             mode:
               stageAction === 'breakout'
                 ? 'Biometric Scanner (Mid-Day Break Out)'
@@ -579,14 +606,19 @@ export default function BiometricAttendanceDesk({
 
         setScannerStatus({ connected: true, deviceFound: true });
 
-        // 1:N Fast Template Matching against Enrolled Staff (31+ Faculty)
+        // 1:N Fast Template Matching against Enrolled Staff (31+ Faculty, supports 1 or 2 fingers per teacher)
         let matchedStaff: any = null;
         let bestScore = 0;
 
         for (const teacher of enrolledStaff) {
           const tpl = teacher.fingerprintTemplate || teacher.fingerprint_template;
           if (!tpl) continue;
-          const m = await secugenService.matchTemplates(res.templateBase64, tpl);
+          const m = await secugenService.matchTemplates(
+            res.templateBase64,
+            tpl,
+            'ISO',
+            teacher.fingerprintFinger || teacher.fingerprint_finger
+          );
           if (m.matched && m.score > bestScore) {
             bestScore = m.score;
             matchedStaff = teacher;
@@ -599,7 +631,12 @@ export default function BiometricAttendanceDesk({
           for (const stu of enrolledStudents) {
             const tpl = stu.fingerprintTemplate || stu.fingerprint_template;
             if (!tpl) continue;
-            const m = await secugenService.matchTemplates(res.templateBase64, tpl);
+            const m = await secugenService.matchTemplates(
+              res.templateBase64,
+              tpl,
+              'ISO',
+              stu.fingerprintFinger || stu.fingerprint_finger
+            );
             if (m.matched && m.score > bestScore) {
               bestScore = m.score;
               matchedStudent = stu;

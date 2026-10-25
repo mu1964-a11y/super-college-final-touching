@@ -130,15 +130,28 @@ export default function InstantBiometricVerifyModal({
   const [punchMode, setPunchMode] = useState<'auto' | 'checkin' | 'breakout' | 'breakin' | 'checkout' | 'verify'>('auto');
   const [rosterSearch, setRosterSearch] = useState('');
   const [rosterTab, setRosterTab] = useState<'staff' | 'students'>('staff');
+  const [rosterFilter, setRosterFilter] = useState<'all' | 'marked' | 'pending'>('all');
   const [todayStaffAtt, setTodayStaffAtt] = useState<any[]>([]);
   const [todayStudentAtt, setTodayStudentAtt] = useState<any[]>([]);
   const [scannerReady, setScannerReady] = useState<boolean>(true);
+  const [enrollingSecondFingerFor, setEnrollingSecondFingerFor] = useState<{
+    person: any;
+    personType: 'staff' | 'student';
+    finger: string;
+  } | null>(null);
+  const [lastUnrecognizedScan, setLastUnrecognizedScan] = useState<{
+    templateBase64: string;
+    bmpBase64?: string;
+    bmpDataUrl?: string;
+    scannedAt: number;
+  } | null>(null);
 
   const [matchedResult, setMatchedResult] = useState<{
     type: 'checkin' | 'breakout' | 'breakin' | 'checkout' | 'duplicate' | 'verify' | 'unrecognized';
     personType?: 'Staff' | 'Student';
     person?: any;
     score?: number;
+    matchedFinger?: string;
     statusLabel?: string;
     punchTime?: string;
     message: string;
@@ -154,14 +167,40 @@ export default function InstantBiometricVerifyModal({
     autoLoopRef.current = autoLoop;
   }, [autoLoop]);
 
+  const normalizeAttRow = useCallback((row: any) => {
+    const parsed = parseAttendanceNotesAndTime(
+      row?.notes,
+      row?.check_in || row?.checkIn || row?.check_in_time || row?.checkInTime,
+      row?.check_out || row?.checkOut || row?.check_out_time || row?.checkOutTime
+    );
+    return {
+      ...row,
+      staffId: row?.staff_id || row?.staffId,
+      studentId: row?.student_id || row?.studentId,
+      checkIn: parsed.checkIn || row?.check_in || row?.checkIn || '',
+      breakOut: parsed.breakOut || row?.breakOut || '',
+      breakIn: parsed.breakIn || row?.breakIn || '',
+      checkOut: parsed.checkOut || row?.check_out || row?.checkOut || '',
+      campusState: parsed.campusState || '',
+    };
+  }, []);
+
   // Sync today's attendance from data prop + Supabase
   const refreshTodayAttendance = useCallback(async () => {
     const todayStr = getTodayStr();
     if (data?.staffAttendance && Array.isArray(data.staffAttendance)) {
-      setTodayStaffAtt(data.staffAttendance.filter((a: any) => a.date === todayStr));
+      setTodayStaffAtt(
+        data.staffAttendance
+          .filter((a: any) => a.date === todayStr)
+          .map(normalizeAttRow)
+      );
     }
     if (data?.studentAttendance && Array.isArray(data.studentAttendance)) {
-      setTodayStudentAtt(data.studentAttendance.filter((a: any) => a.date === todayStr));
+      setTodayStudentAtt(
+        data.studentAttendance
+          .filter((a: any) => a.date === todayStr)
+          .map(normalizeAttRow)
+      );
     }
     if (isSupabaseConfigured) {
       try {
@@ -169,11 +208,11 @@ export default function InstantBiometricVerifyModal({
           supabase.from('staff_attendance').select('*').eq('date', todayStr),
           supabase.from('student_attendance').select('*').eq('date', todayStr),
         ]);
-        if (stAtt.data) setTodayStaffAtt(stAtt.data);
-        if (stuAtt.data) setTodayStudentAtt(stuAtt.data);
+        if (stAtt.data) setTodayStaffAtt(stAtt.data.map(normalizeAttRow));
+        if (stuAtt.data) setTodayStudentAtt(stuAtt.data.map(normalizeAttRow));
       } catch {}
     }
-  }, [data?.staffAttendance, data?.studentAttendance]);
+  }, [data?.staffAttendance, data?.studentAttendance, normalizeAttRow]);
 
   useEffect(() => {
     if (isOpen) {
@@ -453,18 +492,34 @@ export default function InstantBiometricVerifyModal({
         }
       }
 
+      const updatedStaffRecord = {
+        ...existingRec,
+        ...basePayload,
+        staffId: teacher.id,
+        checkIn: nextCheckIn,
+        breakOut: nextBreakOut,
+        breakIn: nextBreakIn,
+        checkOut: nextCheckOut,
+        campusState,
+        verificationMethod: 'secugen_fingerprint',
+        checkInTime: nextCheckIn,
+        checkOutTime: nextCheckOut,
+      };
+
       setTodayStaffAtt((prev) => [
+        updatedStaffRecord,
         ...prev.filter((r: any) => (r.staff_id || r.staffId) !== teacher.id),
-        {
-          ...existingRec,
-          ...basePayload,
-          staffId: teacher.id,
-          checkIn: nextCheckIn,
-          breakOut: nextBreakOut,
-          breakIn: nextBreakIn,
-          checkOut: nextCheckOut,
-        },
       ]);
+
+      // Optimistically update parent React state in 0ms so StaffAttendance sheet updates live
+      if (data?.setStaffAttendance) {
+        data.setStaffAttendance((prev: any[]) => [
+          updatedStaffRecord,
+          ...(prev || []).filter(
+            (r: any) => !((r.staff_id || r.staffId) === teacher.id && r.date === todayStr)
+          ),
+        ]);
+      }
 
       try {
         const stored = safeLocalStorage.getItem('staffAttendanceRecords');
@@ -486,6 +541,11 @@ export default function InstantBiometricVerifyModal({
           checkInTime: now.toISOString(),
         });
         safeLocalStorage.setItem('staffAttendanceRecords', JSON.stringify(filtered));
+        window.dispatchEvent(
+          new CustomEvent('scj-biometric-attendance-updated', {
+            detail: { staffId: teacher.id, date: todayStr, record: updatedStaffRecord },
+          })
+        );
       } catch {}
 
       data?.fetchData?.(true);
@@ -616,10 +676,27 @@ export default function InstantBiometricVerifyModal({
         }
       }
 
+      const updatedStudentRec = {
+        ...basePayload,
+        studentId: student.id,
+        checkIn: displayTime,
+        checkInTime: displayTime,
+        verificationMethod: 'secugen_fingerprint',
+      };
+
       setTodayStudentAtt((prev) => [
+        updatedStudentRec,
         ...prev.filter((r: any) => (r.student_id || r.studentId) !== student.id),
-        { ...basePayload, studentId: student.id, checkIn: displayTime },
       ]);
+
+      if (data?.setStudentAttendance) {
+        data.setStudentAttendance((prev: any[]) => [
+          updatedStudentRec,
+          ...(prev || []).filter(
+            (r: any) => !((r.student_id || r.studentId) === student.id && r.date === todayStr)
+          ),
+        ]);
+      }
 
       data?.fetchData?.(true);
 
@@ -653,7 +730,116 @@ export default function InstantBiometricVerifyModal({
     [soundEnabled, data]
   );
 
-  // Core Scan & 1:N Match Cycle
+  // Save a 2nd finger (e.g. Right Thumb or Right Index) merged with the person's existing template and mark attendance
+  const linkAndSaveSecondFinger = useCallback(
+    async (
+      person: any,
+      personType: 'staff' | 'student',
+      targetFingerLabel: string,
+      templateBase64: string,
+      bmpBase64?: string,
+      bmpDataUrl?: string
+    ) => {
+      const merged = secugenService.mergeFingerTemplate(
+        person.fingerprintTemplate,
+        person.fingerprintFinger,
+        templateBase64,
+        targetFingerLabel,
+        'merge'
+      );
+
+      if (bmpBase64) {
+        secugenService.saveFingerprintThumbnail(person.id, bmpBase64, person.collegeNo);
+      }
+
+      await data?.updateFingerprintRecord?.(
+        person.id,
+        personType,
+        merged.templateField,
+        merged.fingerField,
+        'merge'
+      );
+
+      setEnrollingSecondFingerFor(null);
+      setLastUnrecognizedScan(null);
+
+      const updatedPerson = {
+        ...person,
+        fingerprintTemplate: merged.templateField,
+        fingerprintFinger: merged.fingerField,
+      };
+
+      toast.success(
+        `2nd Finger Added (${secugenService.formatFingerBadge(
+          merged.fingerField,
+          merged.templateField
+        )}) for ${person.fullName}! Both Thumb & Index will now work.`
+      );
+
+      if (personType === 'staff') {
+        await recordStaffPunch(updatedPerson, undefined, 195, bmpDataUrl);
+      } else {
+        await recordStudentPunch(updatedPerson, 195, bmpDataUrl);
+      }
+    },
+    [data, recordStaffPunch, recordStudentPunch]
+  );
+
+  const handleQuickScanSecondFinger = useCallback(
+    async (person: any, personType: 'staff' | 'student', targetFingerLabel: string) => {
+      // If the user JUST scanned an unrecognized finger within the last 20 seconds, link it immediately!
+      if (
+        lastUnrecognizedScan &&
+        Date.now() - lastUnrecognizedScan.scannedAt < 20000 &&
+        lastUnrecognizedScan.templateBase64
+      ) {
+        await linkAndSaveSecondFinger(
+          person,
+          personType,
+          targetFingerLabel,
+          lastUnrecognizedScan.templateBase64,
+          lastUnrecognizedScan.bmpBase64,
+          lastUnrecognizedScan.bmpDataUrl
+        );
+        return;
+      }
+
+      setEnrollingSecondFingerFor({ person, personType, finger: targetFingerLabel });
+      toast.info(
+        `Place ${person.fullName}'s ${targetFingerLabel.split('(')[0].trim()} on SecuGen scanner now...`
+      );
+
+      if (isScanningRef.current) return;
+      isScanningRef.current = true;
+      setScanning(true);
+      try {
+        const res = await secugenService.captureFingerprint({
+          timeoutMs: 10000,
+          quality: 40,
+          templateFormat: 'ISO',
+        });
+        if (res.success && res.templateBase64) {
+          await linkAndSaveSecondFinger(
+            person,
+            personType,
+            targetFingerLabel,
+            res.templateBase64,
+            res.bmpBase64,
+            res.bmpDataUrl
+          );
+        } else {
+          setEnrollingSecondFingerFor(null);
+          if (res.error) toast.error(res.error);
+        }
+      } finally {
+        setScanning(false);
+        isScanningRef.current = false;
+      }
+    },
+    [lastUnrecognizedScan, linkAndSaveSecondFinger]
+  );
+
+  // Core Scan & 1:N Match Cycle (matches against ALL enrolled fingers per person: Right Thumb + Right Index)
   const handleScanCycle = useCallback(
     async (isManualClick = false) => {
       if (isScanningRef.current) return;
@@ -678,64 +864,105 @@ export default function InstantBiometricVerifyModal({
 
         setScannerReady(true);
 
-        // 1:N Match against all 31+ enrolled Staff
+        // If user clicked "+ Add 2nd Finger" for a specific person, save this scan to that person!
+        if (enrollingSecondFingerFor) {
+          await linkAndSaveSecondFinger(
+            enrollingSecondFingerFor.person,
+            enrollingSecondFingerFor.personType,
+            enrollingSecondFingerFor.finger,
+            res.templateBase64,
+            res.bmpBase64,
+            res.bmpDataUrl
+          );
+          return;
+        }
+
+        // 1:N Match against all 31+ enrolled Staff (checks both Right Thumb & Right Index if both enrolled)
         let bestStaff: any = null;
         let bestStaffScore = 0;
+        let bestStaffFinger = '';
 
         for (const st of enrolledStaff) {
-          const m = await secugenService.matchTemplates(res.templateBase64, st.fingerprintTemplate);
+          const m = await secugenService.matchTemplates(
+            res.templateBase64,
+            st.fingerprintTemplate,
+            'ISO',
+            st.fingerprintFinger
+          );
           if (m.matched && m.score > bestStaffScore) {
             bestStaffScore = m.score;
             bestStaff = st;
+            bestStaffFinger = m.matchedFinger || st.fingerprintFinger;
           }
         }
 
         // 1:N Match against enrolled Students
         let bestStudent: any = null;
         let bestStudentScore = 0;
+        let bestStudentFinger = '';
 
         for (const stu of enrolledStudents) {
-          const m = await secugenService.matchTemplates(res.templateBase64, stu.fingerprintTemplate);
+          const m = await secugenService.matchTemplates(
+            res.templateBase64,
+            stu.fingerprintTemplate,
+            'ISO',
+            stu.fingerprintFinger
+          );
           if (m.matched && m.score > bestStudentScore) {
             bestStudentScore = m.score;
             bestStudent = stu;
+            bestStudentFinger = m.matchedFinger || stu.fingerprintFinger;
           }
         }
 
         if (!bestStaff && !bestStudent) {
+          setLastUnrecognizedScan({
+            templateBase64: res.templateBase64,
+            bmpBase64: res.bmpBase64,
+            bmpDataUrl: res.bmpDataUrl,
+            scannedAt: Date.now(),
+          });
           if (soundEnabled) playBiometricTone('error');
-          speakBiometricVoice('Finger not recognized. Please place enrolled thumb flat on sensor.', soundEnabled);
+          speakBiometricVoice('Finger not recognized. Please place enrolled thumb or index finger flat on sensor.', soundEnabled);
           setMatchedResult({
             type: 'unrecognized',
-            message: 'Fingerprint did not match any enrolled record. Please place enrolled finger flat on the center of the SecuGen sensor.',
+            message:
+              'Finger did not match yet. If this staff member gave 2 fingers (Thumb + Index) and one finger was overwritten earlier, click "+ Link Finger" next to their name in the Roster on the right to save this 2nd finger & mark attendance!',
             bmpDataUrl: res.bmpDataUrl,
           });
           if (clearCardTimerRef.current) clearTimeout(clearCardTimerRef.current);
           clearCardTimerRef.current = setTimeout(() => {
             if (isMountedRef.current) setMatchedResult(null);
-          }, 3000);
+          }, 8000);
           return;
         }
+
+        setLastUnrecognizedScan(null);
 
         if (bestStaff && bestStaffScore >= bestStudentScore) {
           if (res.bmpBase64) {
             secugenService.saveFingerprintThumbnail(bestStaff.id, res.bmpBase64);
           }
+          const staffWithMatchedFinger = {
+            ...bestStaff,
+            matchedFingerLabel: bestStaffFinger,
+          };
           if (punchMode === 'verify') {
             if (soundEnabled) playBiometricTone('checkin');
             speakBiometricVoice(`Verified faculty ${bestStaff.fullName}.`, soundEnabled);
             setMatchedResult({
               type: 'verify',
               personType: 'Staff',
-              person: bestStaff,
+              person: staffWithMatchedFinger,
               score: bestStaffScore,
+              matchedFinger: bestStaffFinger,
               statusLabel: 'Identity Verified',
               punchTime: formatTime12h(new Date()),
-              message: '100% Biometric Identity Match Confirmed!',
+              message: `100% Biometric Identity Match Confirmed (${bestStaffFinger})!`,
               bmpDataUrl: res.bmpDataUrl,
             });
           } else {
-            await recordStaffPunch(bestStaff, undefined, bestStaffScore, res.bmpDataUrl);
+            await recordStaffPunch(staffWithMatchedFinger, undefined, bestStaffScore, res.bmpDataUrl);
           }
         } else if (bestStudent) {
           if (res.bmpBase64) {
@@ -745,21 +972,26 @@ export default function InstantBiometricVerifyModal({
               bestStudent.collegeNo
             );
           }
+          const studentWithMatchedFinger = {
+            ...bestStudent,
+            matchedFingerLabel: bestStudentFinger,
+          };
           if (punchMode === 'verify') {
             if (soundEnabled) playBiometricTone('checkin');
             speakBiometricVoice(`Verified student ${bestStudent.fullName}.`, soundEnabled);
             setMatchedResult({
               type: 'verify',
               personType: 'Student',
-              person: bestStudent,
+              person: studentWithMatchedFinger,
               score: bestStudentScore,
+              matchedFinger: bestStudentFinger,
               statusLabel: 'Identity Verified',
               punchTime: formatTime12h(new Date()),
-              message: '100% Biometric Identity Match Confirmed!',
+              message: `100% Biometric Identity Match Confirmed (${bestStudentFinger})!`,
               bmpDataUrl: res.bmpDataUrl,
             });
           } else {
-            await recordStudentPunch(bestStudent, bestStudentScore, res.bmpDataUrl);
+            await recordStudentPunch(studentWithMatchedFinger, bestStudentScore, res.bmpDataUrl);
           }
         }
 
@@ -783,6 +1015,8 @@ export default function InstantBiometricVerifyModal({
       soundEnabled,
       recordStaffPunch,
       recordStudentPunch,
+      enrollingSecondFingerFor,
+      linkAndSaveSecondFinger,
     ]
   );
 
@@ -810,13 +1044,39 @@ export default function InstantBiometricVerifyModal({
   const filteredRoster = useMemo(() => {
     const q = (rosterSearch || '').toLowerCase();
     const list = rosterTab === 'staff' ? enrolledStaff : enrolledStudents;
-    return list.filter(
-      (item: any) =>
+    const attList = rosterTab === 'staff' ? todayStaffAtt : todayStudentAtt;
+
+    const filtered = list.filter((item: any) => {
+      const matchesQuery =
         (item.fullName || '').toLowerCase().includes(q) ||
         (item.id || '').toLowerCase().includes(q) ||
-        (item.role || item.group || '').toLowerCase().includes(q)
-    );
-  }, [rosterTab, enrolledStaff, enrolledStudents, rosterSearch]);
+        (item.role || item.group || '').toLowerCase().includes(q);
+      if (!matchesQuery) return false;
+
+      const hasAtt = attList.some(
+        (r: any) =>
+          (r.staff_id || r.staffId || r.student_id || r.studentId) === item.id &&
+          (r.status === 'Present' || r.status === 'Late')
+      );
+      if (rosterFilter === 'marked') return hasAtt;
+      if (rosterFilter === 'pending') return !hasAtt;
+      return true;
+    });
+
+    // Sort so staff who have marked attendance today appear at the top (most recent first) when viewing 'all' or 'marked'
+    return [...filtered].sort((a: any, b: any) => {
+      const recA = attList.find(
+        (r: any) => (r.staff_id || r.staffId || r.student_id || r.studentId) === a.id
+      );
+      const recB = attList.find(
+        (r: any) => (r.staff_id || r.staffId || r.student_id || r.studentId) === b.id
+      );
+      const aMarked = Boolean(recA && (recA.status === 'Present' || recA.status === 'Late'));
+      const bMarked = Boolean(recB && (recB.status === 'Present' || recB.status === 'Late'));
+      if (aMarked !== bMarked) return aMarked ? -1 : 1;
+      return String(a.id || '').localeCompare(String(b.id || ''));
+    });
+  }, [rosterTab, enrolledStaff, enrolledStudents, rosterSearch, rosterFilter, todayStaffAtt, todayStudentAtt]);
 
   if (!isOpen) return null;
 
@@ -1208,24 +1468,40 @@ export default function InstantBiometricVerifyModal({
                   {enrolledStaff.length}
                 </p>
               </div>
-              <div className="p-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700">
-                <p className="text-[10px] font-bold uppercase text-slate-400">Staff Checked In</p>
-                <p className="text-base font-black text-slate-900 dark:text-white">
-                  {todayStaffAtt.filter((a: any) => a.status === 'Present' || a.status === 'Late').length}
+              <div className="p-2.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
+                <p className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">
+                  Staff Marked Today
+                </p>
+                <p className="text-base font-black text-emerald-800 dark:text-emerald-200">
+                  {
+                    todayStaffAtt.filter(
+                      (a: any) => a.status === 'Present' || a.status === 'Late'
+                    ).length
+                  }{' '}
+                  <span className="text-xs font-bold text-slate-400">/ {enrolledStaff.length}</span>
                 </p>
               </div>
               <div className="p-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700">
                 <p className="text-[10px] font-bold uppercase text-slate-400">Staff Checked Out</p>
                 <p className="text-base font-black text-sky-600">
-                  {todayStaffAtt.filter((a: any) => Boolean(a.check_out || a.checkOut)).length}
+                  {
+                    todayStaffAtt.filter((a: any) => {
+                      const p = parseAttendanceNotesAndTime(
+                        a.notes,
+                        a.check_in || a.checkIn,
+                        a.check_out || a.checkOut
+                      );
+                      return Boolean(p.checkOut || a.check_out || a.checkOut);
+                    }).length
+                  }
                 </p>
               </div>
             </div>
           </div>
 
           {/* Right 5 Columns: Enrolled Biometric Roster & Today's Live Punch Log */}
-          <div className="lg:col-span-5 p-5 flex flex-col justify-between bg-white dark:bg-slate-900 max-h-[540px]">
-            <div className="space-y-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="lg:col-span-5 p-5 flex flex-col justify-between bg-white dark:bg-slate-900 max-h-[560px]">
+            <div className="space-y-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5">
                   <ShieldCheck size={16} className="text-emerald-600" />
@@ -1259,6 +1535,58 @@ export default function InstantBiometricVerifyModal({
                 </div>
               </div>
 
+              {/* Live Attendance Status Filter Pills */}
+              {(() => {
+                const activeList = rosterTab === 'staff' ? enrolledStaff : enrolledStudents;
+                const activeAtt = rosterTab === 'staff' ? todayStaffAtt : todayStudentAtt;
+                const markedCount = activeList.filter((item: any) =>
+                  activeAtt.some(
+                    (r: any) =>
+                      (r.staff_id || r.staffId || r.student_id || r.studentId) === item.id &&
+                      (r.status === 'Present' || r.status === 'Late')
+                  )
+                ).length;
+                const pendingCount = Math.max(0, activeList.length - markedCount);
+
+                return (
+                  <div className="grid grid-cols-3 gap-1.5 bg-slate-100/90 dark:bg-slate-800 p-1 rounded-xl text-[10px] font-black">
+                    <button
+                      type="button"
+                      onClick={() => setRosterFilter('all')}
+                      className={`py-1 rounded-lg transition-all cursor-pointer ${
+                        rosterFilter === 'all'
+                          ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      All ({activeList.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRosterFilter('marked')}
+                      className={`py-1 rounded-lg transition-all cursor-pointer ${
+                        rosterFilter === 'marked'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50'
+                      }`}
+                    >
+                      ✓ Marked ({markedCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRosterFilter('pending')}
+                      className={`py-1 rounded-lg transition-all cursor-pointer ${
+                        rosterFilter === 'pending'
+                          ? 'bg-amber-600 text-white shadow-2xs'
+                          : 'text-amber-700 dark:text-amber-400 hover:bg-amber-50'
+                      }`}
+                    >
+                      Pending ({pendingCount})
+                    </button>
+                  </div>
+                );
+              })()}
+
               <div className="relative">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -1271,7 +1599,7 @@ export default function InstantBiometricVerifyModal({
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 my-2 pr-1">
+            <div className="flex-1 overflow-y-auto space-y-1.5 my-2 pr-1">
               {filteredRoster.length === 0 ? (
                 <div className="py-12 text-center text-xs text-slate-400">
                   No enrolled records matching filter.
@@ -1284,56 +1612,157 @@ export default function InstantBiometricVerifyModal({
                       : todayStudentAtt.find(
                           (r: any) => (r.student_id || r.studentId) === person.id
                         );
-                  const cin = rec?.check_in || rec?.checkIn;
-                  const cout = rec?.check_out || rec?.checkOut;
+                  const parsedAtt = rec
+                    ? parseAttendanceNotesAndTime(
+                        rec.notes,
+                        rec.check_in || rec.checkIn || rec.check_in_time || rec.checkInTime,
+                        rec.check_out || rec.checkOut || rec.check_out_time || rec.checkOutTime
+                      )
+                    : null;
+                  const cin = parsedAtt?.checkIn || rec?.check_in || rec?.checkIn || '';
+                  const bOut = parsedAtt?.breakOut || rec?.breakOut || '';
+                  const bIn = parsedAtt?.breakIn || rec?.breakIn || '';
+                  const cout = parsedAtt?.checkOut || rec?.check_out || rec?.checkOut || '';
+                  const isMarked = Boolean(
+                    rec && (rec.status === 'Present' || rec.status === 'Late')
+                  );
+
+                  const fingerEntries = secugenService.extractEnrolledFingers(
+                    person.fingerprintTemplate,
+                    person.fingerprintFinger
+                  );
+                  const hasThumb = fingerEntries.some(
+                    (e) => secugenService.normalizeFingerKey(e.finger) === 'right_thumb'
+                  );
+                  const hasIndex = fingerEntries.some(
+                    (e) => secugenService.normalizeFingerKey(e.finger) === 'right_index'
+                  );
+                  const missingSecondFingerLabel = !hasThumb
+                    ? 'Right Thumb (دایاں انگوٹھا)'
+                    : !hasIndex
+                    ? 'Right Index (شہادت کی انگلی)'
+                    : null;
+                  const missingShortLabel = !hasThumb
+                    ? '+ Thumb'
+                    : !hasIndex
+                    ? '+ Index'
+                    : null;
+                  const hasRecentUnrecognized =
+                    lastUnrecognizedScan &&
+                    Date.now() - lastUnrecognizedScan.scannedAt < 20000;
 
                   return (
                     <div
                       key={person.id}
-                      className="py-2.5 px-1.5 flex items-center justify-between gap-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-xl transition-colors"
+                      className={`py-2 px-2.5 flex items-center justify-between gap-2 rounded-xl border transition-all ${
+                        isMarked
+                          ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 shadow-2xs'
+                          : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                      }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <FingerprintThumbnail
                           personId={person.id}
                           altId={person.collegeNo}
                           template={person.fingerprintTemplate}
-                          fingerLabel={person.fingerprintFinger}
+                          fingerLabel={secugenService.formatFingerBadge(
+                            person.fingerprintFinger,
+                            person.fingerprintTemplate
+                          )}
                           size="xs"
                           allowInspect={true}
                         />
                         <div className="min-w-0">
-                          <p className="text-xs font-black text-slate-800 dark:text-slate-200 truncate">
-                            {person.fullName}
-                          </p>
-                          <p className="text-[10px] text-slate-500 font-mono truncate">
-                            {person.collegeNo || person.id} • {person.fingerprintFinger || 'Thumb'}
-                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-xs font-black text-slate-900 dark:text-slate-100 truncate">
+                              {person.fullName}
+                            </p>
+                            {fingerEntries.length >= 2 && (
+                              <span className="px-1.5 py-0.2 rounded bg-emerald-600 text-white text-[8.5px] font-black uppercase shrink-0">
+                                2 Fingers ✓
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-[10px] text-slate-500 font-mono truncate">
+                              {person.collegeNo || person.id} •{' '}
+                              {secugenService.formatFingerBadge(
+                                person.fingerprintFinger,
+                                person.fingerprintTemplate
+                              )}
+                            </p>
+                            {missingSecondFingerLabel && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleQuickScanSecondFinger(
+                                    person,
+                                    rosterTab === 'staff' ? 'staff' : 'student',
+                                    missingSecondFingerLabel
+                                  )
+                                }
+                                title={
+                                  hasRecentUnrecognized
+                                    ? `Link just-scanned finger as ${missingSecondFingerLabel} & mark attendance`
+                                    : `Add 2nd finger (${missingSecondFingerLabel}) so both Thumb & Index work`
+                                }
+                                className={`px-1.5 py-0.5 rounded text-[9px] font-black cursor-pointer transition-all ${
+                                  hasRecentUnrecognized
+                                    ? 'bg-amber-500 text-white animate-pulse shadow-xs'
+                                    : 'bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200'
+                                }`}
+                              >
+                                {hasRecentUnrecognized
+                                  ? `Link ${missingShortLabel}`
+                                  : missingShortLabel}
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
 
                       <div className="text-right shrink-0">
-                        {rec ? (
+                        {isMarked ? (
                           <div className="flex flex-col items-end gap-0.5">
                             <span
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black ${
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black shadow-2xs ${
                                 rec.status === 'Late'
-                                  ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                                  : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                  ? 'bg-amber-500 text-white'
+                                  : 'bg-emerald-600 text-white'
                               }`}
                             >
                               <CheckCircle2 size={10} />
-                              {rec.status} {cin ? `• ${String(cin).slice(0, 5)}` : ''}
+                              {rec.status} {cin ? `• ${cin}` : ''}
                             </span>
+                            {bOut && !cout && (
+                              <span className="text-[9px] font-mono font-bold text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded">
+                                {bIn ? `Break: ${bOut}→${bIn}` : `On Break: ${bOut}`}
+                              </span>
+                            )}
                             {cout && (
-                              <span className="text-[9px] font-mono font-bold text-sky-700">
-                                Out: {String(cout).slice(0, 5)}
+                              <span className="text-[9px] font-mono font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200">
+                                Out: {cout}
                               </span>
                             )}
                           </div>
                         ) : (
-                          <span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
-                            Awaiting Scan
-                          </span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+                              Awaiting Scan
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                rosterTab === 'staff'
+                                  ? recordStaffPunch(person, 'checkin', 199)
+                                  : recordStudentPunch(person, 199)
+                              }
+                              title="Mark Present Now"
+                              className="px-1.5 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-200 text-[9.5px] font-black transition-colors cursor-pointer"
+                            >
+                              Mark
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>

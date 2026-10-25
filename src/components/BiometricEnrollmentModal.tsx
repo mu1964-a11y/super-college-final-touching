@@ -169,6 +169,30 @@ export default function BiometricEnrollmentModal({
 
   const activePerson = selectedPerson || targetPerson;
 
+  const enrolledFingersList = useMemo(() => {
+    if (!activePerson?.fingerprintTemplate) return [];
+    return secugenService.extractEnrolledFingers(
+      activePerson.fingerprintTemplate,
+      activePerson.fingerprintFinger
+    );
+  }, [activePerson?.fingerprintTemplate, activePerson?.fingerprintFinger]);
+
+  const hasThumbEnrolled = useMemo(
+    () =>
+      enrolledFingersList.some(
+        (e) => secugenService.normalizeFingerKey(e.finger) === 'right_thumb'
+      ),
+    [enrolledFingersList]
+  );
+
+  const hasIndexEnrolled = useMemo(
+    () =>
+      enrolledFingersList.some(
+        (e) => secugenService.normalizeFingerKey(e.finger) === 'right_index'
+      ),
+    [enrolledFingersList]
+  );
+
   const minutiaePoints = useMemo(() => {
     if (!activePerson?.fingerprintTemplate) return [];
     return secugenService.parseIsoMinutiae(activePerson.fingerprintTemplate);
@@ -178,7 +202,24 @@ export default function BiometricEnrollmentModal({
 
   const handleSelectPersonFromList = (person: any) => {
     setSelectedPerson(person);
-    setFinger(person.fingerprintFinger || 'Right Thumb (دایاں انگوٹھا)');
+    const existingEntries = secugenService.extractEnrolledFingers(
+      person.fingerprintTemplate,
+      person.fingerprintFinger
+    );
+    const hasThumb = existingEntries.some(
+      (e) => secugenService.normalizeFingerKey(e.finger) === 'right_thumb'
+    );
+    const hasIndex = existingEntries.some(
+      (e) => secugenService.normalizeFingerKey(e.finger) === 'right_index'
+    );
+    // Default to whichever finger is missing if 1 finger is already enrolled, so adding the 2nd finger is automatic!
+    if (hasThumb && !hasIndex) {
+      setFinger('Right Index (شہادت کی انگلی)');
+    } else if (hasIndex && !hasThumb) {
+      setFinger('Right Thumb (دایاں انگوٹھا)');
+    } else {
+      setFinger('Right Thumb (دایاں انگوٹھا)');
+    }
     setVerifyResult(null);
     const cached =
       safeLocalStorage.getItem(`scj_fp_thumb_${person.id}`) ||
@@ -190,8 +231,10 @@ export default function BiometricEnrollmentModal({
     }
   };
 
-  const handleCaptureAndSave = async () => {
+  const handleCaptureAndSave = async (overrideFinger?: string) => {
     if (!activePerson) return;
+    const targetFinger = overrideFinger || finger;
+    if (overrideFinger) setFinger(overrideFinger);
     setScanning(true);
     setVerifyResult(null);
     try {
@@ -217,6 +260,17 @@ export default function BiometricEnrollmentModal({
         }
         setLastQuality(res.quality || 85);
 
+        // Merge with any existing finger (e.g. Right Thumb + Right Index) so both fingers work!
+        const merged = secugenService.mergeFingerTemplate(
+          activePerson.fingerprintTemplate,
+          activePerson.fingerprintFinger,
+          res.templateBase64,
+          targetFinger,
+          'merge'
+        );
+        const finalTemplate = merged.templateField;
+        const finalFinger = merged.fingerField;
+
         // Save in local vault
         try {
           safeLocalStorage.setItem(
@@ -224,8 +278,8 @@ export default function BiometricEnrollmentModal({
             JSON.stringify({
               personId: activePerson.id,
               personType: pType,
-              template: res.templateBase64,
-              finger,
+              template: finalTemplate,
+              finger: finalFinger,
               enrolledAt: nowIso,
             })
           );
@@ -237,8 +291,8 @@ export default function BiometricEnrollmentModal({
             const { error } = await supabase
               .from('staff')
               .update({
-                fingerprint_template: res.templateBase64,
-                fingerprint_finger: finger,
+                fingerprint_template: finalTemplate,
+                fingerprint_finger: finalFinger,
                 fingerprint_enrolled_at: nowIso,
               })
               .eq('id', activePerson.id);
@@ -251,8 +305,8 @@ export default function BiometricEnrollmentModal({
             await supabase
               .from('students')
               .update({
-                fingerprint_template: res.templateBase64,
-                fingerprint_finger: finger,
+                fingerprint_template: finalTemplate,
+                fingerprint_finger: finalFinger,
                 fingerprint_enrolled_at: nowIso,
               })
               .or(`id.eq.${activePerson.id},admission_id.eq.${activePerson.id}`);
@@ -260,8 +314,8 @@ export default function BiometricEnrollmentModal({
             await supabase
               .from('admissions')
               .update({
-                fingerprint_template: res.templateBase64,
-                fingerprint_finger: finger,
+                fingerprint_template: finalTemplate,
+                fingerprint_finger: finalFinger,
                 fingerprint_enrolled_at: nowIso,
               })
               .or(`id.eq.${activePerson.id},student_id.eq.${activePerson.id}`);
@@ -269,17 +323,19 @@ export default function BiometricEnrollmentModal({
         }
 
         playFeedbackBeep('success');
-        await onEnrollmentSaved?.(activePerson.id, pType, res.templateBase64, finger);
+        await onEnrollmentSaved?.(activePerson.id, pType, finalTemplate, finalFinger);
 
         setSelectedPerson({
           ...activePerson,
-          fingerprintTemplate: res.templateBase64,
-          fingerprintFinger: finger,
+          fingerprintTemplate: finalTemplate,
+          fingerprintFinger: finalFinger,
           fingerprintEnrolledAt: nowIso,
         });
 
         toast.success(
-          `Fingerprint saved permanently for ${activePerson.fullName} (${finger})`
+          merged.entries.length >= 2
+            ? `Both Fingers Active (${secugenService.formatFingerBadge(finalFinger, finalTemplate)}) for ${activePerson.fullName}! Either finger will now mark attendance.`
+            : `Fingerprint saved permanently for ${activePerson.fullName} (${targetFinger})`
         );
       } else {
         playFeedbackBeep('error');
@@ -556,7 +612,11 @@ export default function BiometricEnrollmentModal({
                       </div>
                       {hasBio ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black shrink-0">
-                          <CheckCircle2 size={11} /> Enrolled ({person.fingerprintFinger})
+                          <CheckCircle2 size={11} />{' '}
+                          {secugenService.formatFingerBadge(
+                            person.fingerprintFinger,
+                            person.fingerprintTemplate
+                          )}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold shrink-0">
@@ -600,36 +660,93 @@ export default function BiometricEnrollmentModal({
                         {activePerson.roleOrGroup || activePerson.personType || 'Faculty Member'}
                       </p>
                       {activePerson.fingerprintTemplate ? (
-                        <div className="inline-flex items-center gap-1.5 mt-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-900 text-[11px] font-extrabold">
-                          <ShieldCheck size={13} className="text-emerald-700" />
-                          <span>
-                            Biometric Enrolled ({activePerson.fingerprintFinger || 'Right Thumb'})
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-900 text-[10.5px] font-extrabold">
+                            <ShieldCheck size={12} className="text-emerald-700" />
+                            <span>
+                              {secugenService.formatFingerBadge(
+                                activePerson.fingerprintFinger,
+                                activePerson.fingerprintTemplate
+                              )}
+                            </span>
                           </span>
                         </div>
                       ) : (
                         <div className="inline-flex items-center gap-1.5 mt-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-900 text-[11px] font-bold">
                           <AlertCircle size={13} className="text-amber-700" />
-                          <span>Thumb Not Scanned Yet</span>
+                          <span>Finger Not Scanned Yet</span>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Finger Selector */}
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">
-                      Selected Finger for SecuGen Scanner
+                  {/* Dual-Finger Quick Slots (Right Thumb + Right Index) */}
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+                      Dual-Finger Enrollment (Scan 1 or Both Fingers — Either Will Work)
                     </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={scanning || verifying}
+                        onClick={() => handleCaptureAndSave('Right Thumb (دایاں انگوٹھا)')}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-1.5 ${
+                          hasThumbEnrolled
+                            ? 'bg-emerald-50 border-emerald-400 text-emerald-950'
+                            : finger.includes('Right Thumb')
+                            ? 'bg-white border-emerald-600 ring-2 ring-emerald-500/20 text-slate-900'
+                            : 'bg-white border-slate-200 hover:border-emerald-400 text-slate-700'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-black truncate">Right Thumb</p>
+                          <p className="text-[9.5px] font-bold text-slate-500">
+                            {hasThumbEnrolled ? '✓ Enrolled (Click to Re-Scan)' : '+ Click to Scan Thumb'}
+                          </p>
+                        </div>
+                        {hasThumbEnrolled ? (
+                          <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                        ) : (
+                          <Fingerprint size={15} className="text-slate-400 shrink-0" />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={scanning || verifying}
+                        onClick={() => handleCaptureAndSave('Right Index (شہادت کی انگلی)')}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-1.5 ${
+                          hasIndexEnrolled
+                            ? 'bg-emerald-50 border-emerald-400 text-emerald-950'
+                            : finger.includes('Right Index')
+                            ? 'bg-white border-emerald-600 ring-2 ring-emerald-500/20 text-slate-900'
+                            : 'bg-white border-slate-200 hover:border-emerald-400 text-slate-700'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-black truncate">Right Index</p>
+                          <p className="text-[9.5px] font-bold text-slate-500">
+                            {hasIndexEnrolled ? '✓ Enrolled (Click to Re-Scan)' : '+ Click to Scan Index'}
+                          </p>
+                        </div>
+                        {hasIndexEnrolled ? (
+                          <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                        ) : (
+                          <Fingerprint size={15} className="text-slate-400 shrink-0" />
+                        )}
+                      </button>
+                    </div>
+
                     <select
                       value={finger}
                       onChange={(e) => setFinger(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
                     >
                       <option value="Right Thumb (دایاں انگوٹھا)">
-                        Right Thumb (دایاں انگوٹھا - Recommended)
+                        Right Thumb (دایاں انگوٹھا - Primary)
                       </option>
                       <option value="Right Index (شہادت کی انگلی)">
-                        Right Index (شہادت کی انگلی)
+                        Right Index (شہادت کی انگلی - 2nd Finger)
                       </option>
                       <option value="Left Thumb (بایاں انگوٹھا)">
                         Left Thumb (بایاں انگوٹھا)
@@ -682,7 +799,9 @@ export default function BiometricEnrollmentModal({
                         ))}
                       </svg>
                       <span className="text-[10px] font-black uppercase text-emerald-300 tracking-wider mt-1">
-                        ISO 19794-2 Enrolled
+                        {enrolledFingersList.length >= 2
+                          ? `${enrolledFingersList.length} Fingers Enrolled (Thumb + Index)`
+                          : 'ISO 19794-2 Enrolled'}
                       </span>
                       <span className="text-[9px] font-mono text-emerald-400/80">
                         {minutiaePoints.length > 0
@@ -712,7 +831,7 @@ export default function BiometricEnrollmentModal({
                     <button
                       type="button"
                       onClick={handleClearFingerprint}
-                      title="Clear stored fingerprint"
+                      title="Clear all stored fingerprints for this person"
                       className="absolute top-2 right-2 p-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 cursor-pointer"
                     >
                       <Trash2 size={12} />
@@ -747,17 +866,17 @@ export default function BiometricEnrollmentModal({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <button
                   type="button"
-                  onClick={handleCaptureAndSave}
+                  onClick={() => handleCaptureAndSave()}
                   disabled={scanning || verifying}
                   className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-md"
                 >
                   <Fingerprint size={16} className={scanning ? 'animate-ping' : ''} />
                   <span>
                     {scanning
-                      ? 'Place Finger on SecuGen...'
+                      ? `Scanning ${finger.split('(')[0].trim()}...`
                       : activePerson.fingerprintTemplate
-                      ? 'Re-Scan & Update Finger'
-                      : 'Scan & Save to Database'}
+                      ? `Scan & Save ${finger.split('(')[0].trim()} (Keep Existing)`
+                      : `Scan & Save ${finger.split('(')[0].trim()}`}
                   </span>
                 </button>
 
@@ -771,7 +890,7 @@ export default function BiometricEnrollmentModal({
                     <UserCheck size={16} />
                     <span>
                       {verifying
-                        ? 'Place Finger to Verify...'
+                        ? 'Place Any Enrolled Finger...'
                         : 'Verify Finger & Mark Attendance'}
                     </span>
                   </button>
