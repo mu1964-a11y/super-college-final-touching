@@ -22,7 +22,11 @@ import {
 import { secugenService } from '../lib/secugenService';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { safeLocalStorage } from '../utils/safeStorage';
-import { sendAutoStaffAttendancePdfNotice } from '../lib/whatsappAutomation';
+import {
+  sendAutoStaffDailyCheckInNotice,
+  sendAutoDailyAttendanceNoticeDetailed,
+  parseAttendanceNotesAndTime,
+} from '../lib/whatsappAutomation';
 import FingerprintThumbnail from './FingerprintThumbnail';
 import { toast } from 'sonner';
 
@@ -123,7 +127,7 @@ export default function InstantBiometricVerifyModal({
   const [scanning, setScanning] = useState(false);
   const [autoLoop, setAutoLoop] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [punchMode, setPunchMode] = useState<'auto' | 'checkin' | 'checkout' | 'verify'>('auto');
+  const [punchMode, setPunchMode] = useState<'auto' | 'checkin' | 'breakout' | 'breakin' | 'checkout' | 'verify'>('auto');
   const [rosterSearch, setRosterSearch] = useState('');
   const [rosterTab, setRosterTab] = useState<'staff' | 'students'>('staff');
   const [todayStaffAtt, setTodayStaffAtt] = useState<any[]>([]);
@@ -131,7 +135,7 @@ export default function InstantBiometricVerifyModal({
   const [scannerReady, setScannerReady] = useState<boolean>(true);
 
   const [matchedResult, setMatchedResult] = useState<{
-    type: 'checkin' | 'checkout' | 'duplicate' | 'verify' | 'unrecognized';
+    type: 'checkin' | 'breakout' | 'breakin' | 'checkout' | 'duplicate' | 'verify' | 'unrecognized';
     personType?: 'Staff' | 'Student';
     person?: any;
     score?: number;
@@ -291,50 +295,73 @@ export default function InstantBiometricVerifyModal({
     return Array.from(byId.values());
   }, [studentsList, data?.students, data?.admissions]);
 
-  // Helper to record Staff Attendance in Supabase + Local State
+  // Helper to record 4-Stage Staff Attendance & Movement in Supabase + Local State
   const recordStaffPunch = useCallback(
     async (
       teacher: any,
-      forcedAction?: 'checkin' | 'checkout',
+      forcedAction?: 'checkin' | 'breakout' | 'breakin' | 'checkout',
       score = 185,
       bmpDataUrl?: string
     ) => {
       const now = new Date();
       const todayStr = getTodayStr();
       const hhmmss = formatHHMMSS(now);
-      const hhmm = hhmmss.slice(0, 5);
       const displayTime = formatTime12h(now);
       const cutoffTime = data?.settings?.collegeStartTime || '07:54';
 
       const existingRec = todayStaffAtt.find(
         (r: any) => (r.staff_id || r.staffId) === teacher.id && r.date === todayStr
       );
-      const existingIn =
-        existingRec?.check_in || existingRec?.checkIn || existingRec?.check_in_time || existingRec?.checkInTime;
-      const existingOut =
-        existingRec?.check_out || existingRec?.checkOut || existingRec?.check_out_time || existingRec?.checkOutTime;
+      const parsedExisting = parseAttendanceNotesAndTime(
+        existingRec?.notes,
+        existingRec?.check_in || existingRec?.checkIn || existingRec?.check_in_time || existingRec?.checkInTime,
+        existingRec?.check_out || existingRec?.checkOut || existingRec?.check_out_time || existingRec?.checkOutTime
+      );
+      const existingIn = parsedExisting.checkIn;
+      const existingBreakOut = parsedExisting.breakOut;
+      const existingBreakIn = parsedExisting.breakIn;
+      const existingOut = parsedExisting.checkOut;
+      const existingMovements = Array.isArray(parsedExisting.movements) ? parsedExisting.movements : [];
 
-      let action: 'checkin' | 'checkout' | 'duplicate' = 'checkin';
+      let action: 'checkin' | 'breakout' | 'breakin' | 'checkout' | 'duplicate' = 'checkin';
       if (forcedAction) {
         action = forcedAction;
       } else if (punchMode === 'checkin') {
         action = 'checkin';
+      } else if (punchMode === 'breakout') {
+        action = 'breakout';
+      } else if (punchMode === 'breakin') {
+        action = 'breakin';
       } else if (punchMode === 'checkout') {
         action = 'checkout';
       } else {
+        // Smart 4-Stage Auto-Detection
         if (!existingIn) {
           action = 'checkin';
         } else {
+          // Prevent accidental double-tap within 3 minutes of last punch
           let minsElapsed = 999;
-          const isoIn = existingRec?.check_in_time || existingRec?.checkInTime || existingRec?.created_at;
-          if (isoIn) {
-            const d = new Date(isoIn);
+          let lastIso = existingRec?.check_in_time || existingRec?.checkInTime || existingRec?.created_at;
+          if (existingRec?.notes && typeof existingRec.notes === 'string' && existingRec.notes.startsWith('{')) {
+            try {
+              const p = JSON.parse(existingRec.notes);
+              lastIso = p.lastPunchIso || p.isoCheckIn || lastIso;
+            } catch {}
+          }
+          if (lastIso) {
+            const d = new Date(lastIso);
             if (!isNaN(d.getTime())) {
               minsElapsed = (now.getTime() - d.getTime()) / 60000;
             }
           }
-          if (minsElapsed < 5 && !existingOut) {
+
+          if (minsElapsed < 3) {
             action = 'duplicate';
+          } else if (!existingBreakOut && !existingOut) {
+            // If before 01:00 PM (13:00), 2nd scan defaults to Mid-Day Break / Free-Period Out; after 01:00 PM defaults to Final Check-Out
+            action = now.getHours() < 13 ? 'breakout' : 'checkout';
+          } else if (existingBreakOut && !existingBreakIn && !existingOut) {
+            action = 'breakin';
           } else {
             action = 'checkout';
           }
@@ -343,7 +370,7 @@ export default function InstantBiometricVerifyModal({
 
       if (action === 'duplicate') {
         if (soundEnabled) playBiometricTone('duplicate');
-        speakBiometricVoice(`${teacher.fullName}, your check in is already marked.`, soundEnabled);
+        speakBiometricVoice(`${teacher.fullName}, your attendance punch was just recorded.`, soundEnabled);
         setMatchedResult({
           type: 'duplicate',
           personType: 'Staff',
@@ -351,75 +378,122 @@ export default function InstantBiometricVerifyModal({
           score,
           statusLabel: existingRec?.status || 'Present',
           punchTime: existingIn || displayTime,
-          message: `Already Checked In Today at ${existingIn || displayTime}`,
+          message: `Recent Punch Already Logged (Check-In: ${existingIn || displayTime}${existingBreakOut ? ` • Break Out: ${existingBreakOut}` : ''})`,
           bmpDataUrl,
         });
         return;
       }
 
-      if (action === 'checkin') {
-        const [cutH, cutM] = cutoffTime.split(':').map(Number);
-        const nowMins = now.getHours() * 60 + now.getMinutes();
-        const cutMins = (cutH || 7) * 60 + (cutM || 54);
-        const computedStatus = nowMins > cutMins ? 'Late' : 'Present';
+      const [cutH, cutM] = cutoffTime.split(':').map(Number);
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      const cutMins = (cutH || 7) * 60 + (cutM || 54);
+      const computedStatus = existingRec?.status || (nowMins > cutMins ? 'Late' : 'Present');
 
-        const dbPayload = {
-          staff_id: teacher.id,
+      const nextCheckIn = action === 'checkin' ? displayTime : existingIn || displayTime;
+      const nextBreakOut = action === 'breakout' ? displayTime : existingBreakOut || '';
+      const nextBreakIn = action === 'breakin' ? displayTime : existingBreakIn || '';
+      const nextCheckOut = action === 'checkout' ? displayTime : existingOut || '';
+      const nextMovements = [
+        ...existingMovements,
+        { type: action.toUpperCase(), time: displayTime },
+      ];
+
+      const campusState =
+        action === 'checkin'
+          ? 'In Campus'
+          : action === 'breakout'
+          ? 'Mid-Day Break / Free Period Out'
+          : action === 'breakin'
+          ? 'Returned to Campus'
+          : 'Checked Out (Off-Duty)';
+
+      const notesJson = JSON.stringify({
+        checkIn: nextCheckIn,
+        breakOut: nextBreakOut,
+        breakIn: nextBreakIn,
+        checkOut: nextCheckOut,
+        campusState,
+        movements: nextMovements,
+        check_in_time: action === 'checkin' ? hhmmss : existingIn || hhmmss,
+        check_out_time: action === 'checkout' ? hhmmss : existingOut || '',
+        isoCheckIn: action === 'checkin' ? now.toISOString() : undefined,
+        lastPunchIso: now.toISOString(),
+        method: 'biometric_fingerprint',
+        Verify: 'Biometric Thumb Verified',
+        score,
+        finger: teacher.fingerprintFinger || 'Right Thumb',
+      });
+
+      const basePayload = {
+        id: existingRec?.id || `${teacher.id}-${todayStr}`,
+        staff_id: teacher.id,
+        date: todayStr,
+        status: computedStatus,
+        notes: notesJson,
+      };
+
+      if (isSupabaseConfigured) {
+        const { error } = await supabase
+          .from('staff_attendance')
+          .upsert([basePayload], { onConflict: 'id' });
+        if (error) {
+          await supabase
+            .from('staff_attendance')
+            .upsert(
+              [
+                {
+                  staff_id: teacher.id,
+                  date: todayStr,
+                  status: computedStatus,
+                  notes: notesJson,
+                },
+              ],
+              { onConflict: 'staff_id,date' }
+            );
+        }
+      }
+
+      setTodayStaffAtt((prev) => [
+        ...prev.filter((r: any) => (r.staff_id || r.staffId) !== teacher.id),
+        {
+          ...existingRec,
+          ...basePayload,
+          staffId: teacher.id,
+          checkIn: nextCheckIn,
+          breakOut: nextBreakOut,
+          breakIn: nextBreakIn,
+          checkOut: nextCheckOut,
+        },
+      ]);
+
+      try {
+        const stored = safeLocalStorage.getItem('staffAttendanceRecords');
+        const list = stored ? JSON.parse(stored) : [];
+        const filtered = list.filter(
+          (r: any) => !(r.staffId === teacher.id && r.date === todayStr)
+        );
+        filtered.push({
+          id: `${teacher.id}-${todayStr}`,
+          staffId: teacher.id,
           date: todayStr,
           status: computedStatus,
-          check_in: hhmmss,
-          check_in_time: now.toISOString(),
-          verification_method: 'secugen_fingerprint',
-          notes: JSON.stringify({
-            method: 'biometric_fingerprint',
-            check_in_time: hhmmss,
-            score,
-            finger: teacher.fingerprintFinger || 'Right Thumb',
-          }),
-        };
+          checkIn: nextCheckIn,
+          breakOut: nextBreakOut,
+          breakIn: nextBreakIn,
+          checkOut: nextCheckOut,
+          notes: notesJson,
+          verificationMethod: 'secugen_fingerprint',
+          checkInTime: now.toISOString(),
+        });
+        safeLocalStorage.setItem('staffAttendanceRecords', JSON.stringify(filtered));
+      } catch {}
 
-        if (isSupabaseConfigured) {
-          const { error } = await supabase
-            .from('staff_attendance')
-            .upsert([dbPayload], { onConflict: 'staff_id,date' });
-          if (error) {
-            console.error('Staff attendance upsert error:', error);
-            toast.error(`Attendance DB Error: ${error.message}`);
-          }
-        }
+      data?.fetchData?.(true);
 
-        // Update local state & localStorage
-        setTodayStaffAtt((prev) => [
-          ...prev.filter((r: any) => (r.staff_id || r.staffId) !== teacher.id),
-          { ...existingRec, ...dbPayload, staffId: teacher.id, checkIn: hhmm },
-        ]);
-
-        try {
-          const stored = safeLocalStorage.getItem('staffAttendanceRecords');
-          const list = stored ? JSON.parse(stored) : [];
-          const filtered = list.filter(
-            (r: any) => !(r.staffId === teacher.id && r.date === todayStr)
-          );
-          filtered.push({
-            id: `${teacher.id}-${todayStr}`,
-            staffId: teacher.id,
-            date: todayStr,
-            status: computedStatus,
-            checkIn: hhmm,
-            checkOut: existingRec?.check_out || existingRec?.checkOut || '',
-            notes: dbPayload.notes,
-            verificationMethod: 'secugen_fingerprint',
-            checkInTime: now.toISOString(),
-          });
-          safeLocalStorage.setItem('staffAttendanceRecords', JSON.stringify(filtered));
-        } catch {}
-
-        data?.fetchData?.(true);
-
+      if (action === 'checkin') {
         if (soundEnabled) playBiometricTone('checkin');
-        speakBiometricVoice(`Thank you ${teacher.fullName}. Check in marked.`, soundEnabled);
-        toast.success(`Attendance Marked: ${teacher.fullName} (${computedStatus} at ${displayTime})`);
-
+        speakBiometricVoice(`Thank you ${teacher.fullName}. Check in marked at ${displayTime}.`, soundEnabled);
+        toast.success(`Morning Check-In: ${teacher.fullName} (${computedStatus} at ${displayTime})`);
         setMatchedResult({
           type: 'checkin',
           personType: 'Staff',
@@ -429,62 +503,70 @@ export default function InstantBiometricVerifyModal({
           punchTime: displayTime,
           message:
             computedStatus === 'Late'
-              ? `Check-In Recorded (Late Arrival after ${cutoffTime} AM)`
-              : 'On-Time Biometric Check-In Confirmed!',
+              ? `Morning Check-In at ${displayTime} (Late after ${cutoffTime} AM)`
+              : `On-Time Morning Check-In Confirmed at ${displayTime}!`,
           bmpDataUrl,
         });
-
-        if (teacher.contact) {
-          sendAutoStaffAttendancePdfNotice(teacher.id, teacher.contact, todayStr.slice(0, 7), {
-            silent: true,
-          }).catch(() => {});
-        }
-      } else {
-        // Check-Out
-        const dbPayload = {
-          staff_id: teacher.id,
-          date: todayStr,
-          status: existingRec?.status || 'Present',
-          check_in: existingRec?.check_in || existingRec?.checkIn || hhmmss,
-          check_in_time: existingRec?.check_in_time || existingRec?.checkInTime || now.toISOString(),
-          check_out: hhmmss,
-          check_out_time: now.toISOString(),
-          verification_method: 'secugen_fingerprint',
-          notes: JSON.stringify({
-            method: 'biometric_fingerprint',
-            check_in_time: existingRec?.check_in || hhmmss,
-            check_out_time: hhmmss,
-            score,
-          }),
-        };
-
-        if (isSupabaseConfigured) {
-          await supabase
-            .from('staff_attendance')
-            .upsert([dbPayload], { onConflict: 'staff_id,date' });
-        }
-
-        setTodayStaffAtt((prev) => [
-          ...prev.filter((r: any) => (r.staff_id || r.staffId) !== teacher.id),
-          { ...existingRec, ...dbPayload, staffId: teacher.id, checkOut: hhmm },
-        ]);
-
-        data?.fetchData?.(true);
-
+      } else if (action === 'breakout') {
         if (soundEnabled) playBiometricTone('checkout');
-        speakBiometricVoice(`Goodbye ${teacher.fullName}. Check out recorded.`, soundEnabled);
-        toast.success(`Check-Out Marked: ${teacher.fullName} (${displayTime})`);
-
+        speakBiometricVoice(`${teacher.fullName}, mid day break out logged at ${displayTime}.`, soundEnabled);
+        toast.info(`Mid-Day Break / Free Period Out: ${teacher.fullName} (${displayTime})`);
+        setMatchedResult({
+          type: 'breakout',
+          personType: 'Staff',
+          person: teacher,
+          score,
+          statusLabel: 'Break / Free Period Out',
+          punchTime: displayTime,
+          message: `Mid-Day Break / Free-Period Exit Logged at ${displayTime} (Morning In: ${nextCheckIn})`,
+          bmpDataUrl,
+        });
+      } else if (action === 'breakin') {
+        if (soundEnabled) playBiometricTone('checkin');
+        speakBiometricVoice(`Welcome back ${teacher.fullName}. Break return logged at ${displayTime}.`, soundEnabled);
+        toast.success(`Returned from Break: ${teacher.fullName} (${displayTime})`);
+        setMatchedResult({
+          type: 'breakin',
+          personType: 'Staff',
+          person: teacher,
+          score,
+          statusLabel: 'Returned (Break In)',
+          punchTime: displayTime,
+          message: `Returned to Campus at ${displayTime} (Out: ${nextBreakOut} -> In: ${displayTime})`,
+          bmpDataUrl,
+        });
+      } else {
+        if (soundEnabled) playBiometricTone('checkout');
+        speakBiometricVoice(`Goodbye ${teacher.fullName}. Final check out recorded at ${displayTime}.`, soundEnabled);
+        toast.success(`Final Off-Duty Check-Out: ${teacher.fullName} (${displayTime})`);
         setMatchedResult({
           type: 'checkout',
           personType: 'Staff',
           person: teacher,
           score,
-          statusLabel: 'Checked Out',
+          statusLabel: 'Checked Out (Off-Duty)',
           punchTime: displayTime,
-          message: 'Official Duty Check-Out Confirmed!',
+          message: `Final Duty Check-Out Confirmed at ${displayTime}!`,
           bmpDataUrl,
         });
+      }
+
+      if (teacher.contact) {
+        sendAutoStaffDailyCheckInNotice(
+          teacher,
+          {
+            date: todayStr,
+            status: computedStatus,
+            checkInTime: nextCheckIn,
+            breakOutTime: nextBreakOut,
+            breakInTime: nextBreakIn,
+            checkOutTime: nextCheckOut,
+            punchEventLabel: campusState,
+            mode: `Biometric Thumb (${campusState})`,
+            notes: notesJson,
+          },
+          { silent: true, alsoSendPdf: action === 'checkin' || action === 'checkout' }
+        ).catch(() => {});
       }
     },
     [todayStaffAtt, punchMode, soundEnabled, data]
@@ -497,31 +579,53 @@ export default function InstantBiometricVerifyModal({
       const todayStr = getTodayStr();
       const displayTime = formatTime12h(now);
 
-      const dbPayload = {
+      const notesJson = JSON.stringify({
+        checkIn: displayTime,
+        isoCheckIn: now.toISOString(),
+        method: 'biometric_fingerprint',
+        Verify: `Biometric Thumb Verified (Score ${score})`,
+        notes: `Biometric Check-In at ${displayTime}`,
+      });
+
+      const basePayload = {
+        id: `${student.id}-${todayStr}`,
         student_id: student.id,
         date: todayStr,
         status: 'Present',
-        check_in_time: now.toISOString(),
-        verification_method: 'secugen_fingerprint',
-        notes: `SecuGen Biometric Verified (Score ${score})`,
+        notes: notesJson,
       };
 
       if (isSupabaseConfigured) {
-        await supabase
+        const { error } = await supabase
           .from('student_attendance')
-          .upsert([dbPayload], { onConflict: 'student_id,date' });
+          .upsert([basePayload], { onConflict: 'id' });
+        if (error) {
+          await supabase
+            .from('student_attendance')
+            .upsert(
+              [
+                {
+                  student_id: student.id,
+                  date: todayStr,
+                  status: 'Present',
+                  notes: notesJson,
+                },
+              ],
+              { onConflict: 'student_id,date' }
+            );
+        }
       }
 
       setTodayStudentAtt((prev) => [
         ...prev.filter((r: any) => (r.student_id || r.studentId) !== student.id),
-        { ...dbPayload, studentId: student.id },
+        { ...basePayload, studentId: student.id, checkIn: displayTime },
       ]);
 
       data?.fetchData?.(true);
 
       if (soundEnabled) playBiometricTone('checkin');
-      speakBiometricVoice(`Welcome ${student.fullName}. Attendance marked.`, soundEnabled);
-      toast.success(`Student Attendance Marked: ${student.fullName}`);
+      speakBiometricVoice(`Welcome ${student.fullName}. Attendance marked at ${displayTime}.`, soundEnabled);
+      toast.success(`Student Attendance Marked: ${student.fullName} (${displayTime})`);
 
       setMatchedResult({
         type: 'checkin',
@@ -530,9 +634,21 @@ export default function InstantBiometricVerifyModal({
         score,
         statusLabel: 'Present',
         punchTime: displayTime,
-        message: 'Student Biometric Check-In Confirmed!',
+        message: `Student Biometric Check-In Confirmed at ${displayTime}!`,
         bmpDataUrl,
       });
+
+      sendAutoDailyAttendanceNoticeDetailed(
+        student,
+        {
+          date: todayStr,
+          status: 'Present',
+          checkInTime: displayTime,
+          notes: notesJson,
+        },
+        data?.settings,
+        { silent: true }
+      ).catch(() => {});
     },
     [soundEnabled, data]
   );
@@ -793,20 +909,22 @@ export default function InstantBiometricVerifyModal({
                 </span>
               </div>
 
-              <div className="flex items-center bg-slate-200/80 dark:bg-slate-800 p-1 rounded-xl">
+              <div className="flex flex-wrap items-center bg-slate-200/80 dark:bg-slate-800 p-1 rounded-xl gap-0.5">
                 {(
                   [
-                    { id: 'auto', label: 'Smart Auto' },
-                    { id: 'checkin', label: 'Check-In' },
-                    { id: 'checkout', label: 'Check-Out' },
-                    { id: 'verify', label: 'Verify Only' },
+                    { id: 'auto', label: 'Smart 4-Stage' },
+                    { id: 'checkin', label: 'Morning In' },
+                    { id: 'breakout', label: 'Break Out' },
+                    { id: 'breakin', label: 'Break In' },
+                    { id: 'checkout', label: 'Final Out' },
+                    { id: 'verify', label: 'Verify' },
                   ] as const
                 ).map((m) => (
                   <button
                     key={m.id}
                     type="button"
                     onClick={() => setPunchMode(m.id)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                    className={`px-2 py-1 rounded-lg text-[10.5px] font-black transition-all cursor-pointer whitespace-nowrap ${
                       punchMode === m.id
                         ? 'bg-[#085a4e] text-white shadow-xs'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
@@ -930,10 +1048,10 @@ export default function InstantBiometricVerifyModal({
                         </div>
                       </div>
 
-                      {/* Quick Action Buttons on Verified Card */}
+                      {/* Quick Action Override Buttons on Verified Card */}
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                         {matchedResult.personType === 'Staff' && (
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() =>
@@ -944,9 +1062,37 @@ export default function InstantBiometricVerifyModal({
                                   matchedResult.bmpDataUrl
                                 )
                               }
-                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black flex items-center gap-1 cursor-pointer shadow-xs"
+                              className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-black flex items-center gap-1 cursor-pointer shadow-xs"
                             >
-                              <UserCheck size={13} /> Mark Check-In
+                              <UserCheck size={12} /> Morning In
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                recordStaffPunch(
+                                  matchedResult.person,
+                                  'breakout',
+                                  matchedResult.score,
+                                  matchedResult.bmpDataUrl
+                                )
+                              }
+                              className="px-2.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[10.5px] font-black flex items-center gap-1 cursor-pointer shadow-xs"
+                            >
+                              <Clock size={12} /> Break / Free Out
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                recordStaffPunch(
+                                  matchedResult.person,
+                                  'breakin',
+                                  matchedResult.score,
+                                  matchedResult.bmpDataUrl
+                                )
+                              }
+                              className="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10.5px] font-black flex items-center gap-1 cursor-pointer shadow-xs"
+                            >
+                              <CheckCircle2 size={12} /> Break Return In
                             </button>
                             <button
                               type="button"
@@ -958,9 +1104,9 @@ export default function InstantBiometricVerifyModal({
                                   matchedResult.bmpDataUrl
                                 )
                               }
-                              className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-black flex items-center gap-1 cursor-pointer shadow-xs"
+                              className="px-2.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[10.5px] font-black flex items-center gap-1 cursor-pointer shadow-xs"
                             >
-                              <LogOut size={13} /> Mark Check-Out
+                              <LogOut size={12} /> Final Check-Out
                             </button>
                           </div>
                         )}

@@ -13,6 +13,7 @@ import {
   generateStaffTimetablePdf,
   generateStudentAcademicReportPdf,
   generatePrincipalExecutiveReportPdf,
+  extractAttendanceTimings,
   type GeneratedWhatsAppPdf,
 } from "./whatsappPdfGenerator.ts";
 import {
@@ -1453,12 +1454,17 @@ _Authorized Principal Executive Access_`;
   }
 
   // Hard-Locked Staff Salary PDF Builder (Strictly queries WHERE id = verifiedStaffId ONLY)
-  public async buildLockedStaffSalaryPdf(supabase: any, verifiedStaffId: string, fallbackName: string): Promise<GeneratedWhatsAppPdf | null> {
+  public async buildLockedStaffSalaryPdf(
+    supabase: any,
+    verifiedStaffId: string,
+    fallbackName: string = "Faculty Member",
+    monthStr?: string
+  ): Promise<GeneratedWhatsAppPdf | null> {
     if (!verifiedStaffId) return null;
     const { data: staff } = await supabase.from("staff").select("*").eq("id", verifiedStaffId).maybeSingle();
     if (!staff) return null;
 
-    const currentMonth = this.getPktDate().dateStr.slice(0, 7);
+    const currentMonth = (monthStr && monthStr.length >= 7) ? monthStr.slice(0, 7) : this.getPktDate().dateStr.slice(0, 7);
     const [attRes, advRes] = await Promise.all([
       supabase.from("staff_attendance").select("*").eq("staff_id", verifiedStaffId).ilike("date", `${currentMonth}%`),
       supabase.from("staff_advances").select("*").eq("staff_id", verifiedStaffId),
@@ -1476,12 +1482,12 @@ _Authorized Principal Executive Access_`;
   public async buildLockedStaffAttendancePdf(
     supabase: any,
     verifiedStaffId: string,
-    fallbackName: string,
+    fallbackName: string = "Faculty Member",
     targetDate?: string
   ): Promise<GeneratedWhatsAppPdf | null> {
     if (!verifiedStaffId) return null;
     const { data: staff } = await supabase.from("staff").select("*").eq("id", verifiedStaffId).maybeSingle();
-    const activeDate = targetDate || this.getPktDate().dateStr;
+    const activeDate = (targetDate && targetDate.length >= 10) ? targetDate.slice(0, 10) : this.getPktDate().dateStr;
     const currentMonth = activeDate.slice(0, 7);
 
     const { data: attRows } = await supabase
@@ -1627,11 +1633,12 @@ _Authorized Principal Executive Access_`;
     for (const a of staffAttRes.data || []) attMap.set(a.staff_id, a);
     const staffRoster = (staffRes.data || []).map((st: any) => {
       const a = attMap.get(st.id);
+      const timings = a ? extractAttendanceTimings(a) : { checkIn: "-", checkOut: "-" };
       return {
         name: st.full_name || "Staff Member",
         role: st.designation || st.role || "Faculty",
         status: a?.status || "Absent",
-        checkIn: a?.check_in_time || a?.check_in || (a?.status === "Present" ? "08:00 AM" : "-"),
+        checkIn: timings.checkIn,
       };
     });
 
@@ -1728,15 +1735,23 @@ _Superior College Jahanian Official LMS_`;
     }
 
     const currentMonth = new Date().toISOString().slice(0, 7);
+    const todayStr = this.getPktDate().dateStr;
     const { data: att } = await supabase
       .from("staff_attendance")
-      .select("status, date")
+      .select("*")
       .eq("staff_id", staffId)
-      .ilike("date", `${currentMonth}%`);
+      .ilike("date", `${currentMonth}%`)
+      .order("date", { ascending: false });
 
     const present = (att || []).filter((a: any) => a.status === "Present").length;
     const late = (att || []).filter((a: any) => a.status === "Late").length;
     const absent = (att || []).filter((a: any) => a.status === "Absent").length;
+
+    const todayRec = (att || []).find((a: any) => String(a.date || "").slice(0, 10) === todayStr) || (att || [])[0];
+    const todayTimings = todayRec ? extractAttendanceTimings(todayRec) : null;
+    const todayLine = todayRec
+      ? `• Latest Hazri (${todayRec.date}): *${todayRec.status}* (Check-In: *${todayTimings?.checkIn || "-"}*${todayTimings?.checkOut && todayTimings.checkOut !== "-" ? ` | Check-Out: *${todayTimings.checkOut}*` : ""})`
+      : `• Today's Hazri (${todayStr}): *Not Marked Yet*`;
 
     return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
 📋 *PERSONAL FACULTY PROFILE & ATTENDANCE*
@@ -1745,8 +1760,9 @@ _Superior College Jahanian Official LMS_`;
 🏷️ *Role:* ${staff?.role || "Faculty"} (ID: *${staffId}*)
 💰 *Base Salary:* Rs. ${(staff?.salary || staff?.base_salary || 0).toLocaleString()}
 
-📅 *Monthly Attendance (${currentMonth}):*
-• Present Days: *${present}* | Late: *${late}* | Absent: *${absent}*
+🕒 *Attendance & Check-In Timing:*
+${todayLine}
+• Monthly Summary (${currentMonth}): Present: *${present}* | Late: *${late}* | Absent: *${absent}*
 
 💳 *Salary Advance Account:*
 • Total Advanced: Rs. ${totalAdvance.toLocaleString()}
@@ -2012,7 +2028,8 @@ _Realtime College Management System (LMS)_`;
             absentNames.push(st.full_name || "Staff");
           } else if (a.status === "Late") {
             lateCount++;
-            const t = a.check_in ? ` (${a.check_in.slice(0, 5)})` : "";
+            const timings = extractAttendanceTimings(a);
+            const t = timings.checkIn && timings.checkIn !== "-" ? ` (${timings.checkIn})` : "";
             lateNames.push(`${st.full_name || "Staff"}${t}`);
           } else {
             presentCount++;
@@ -2228,7 +2245,8 @@ Current Month: ${currentYearMonth}
             absentNames.push(st.full_name || "Staff");
           } else if (a.status === "Late") {
             lateStaff++;
-            const t = a.check_in ? ` (${a.check_in.slice(0, 5)})` : "";
+            const timings = extractAttendanceTimings(a);
+            const t = timings.checkIn && timings.checkIn !== "-" ? ` (${timings.checkIn})` : "";
             lateNames.push(`${st.full_name || "Staff"}${t}`);
           } else {
             presentStaff++;
@@ -4668,14 +4686,30 @@ College Key Info:
       });
 
       if (this.sock) {
+        const docBuffer = pdfObj.pdfBuffer || (pdfObj as any).buffer;
         try {
+          if (!docBuffer) throw new Error("PDF Buffer is empty");
           await this.sock.sendMessage(senderJid, {
-            document: pdfObj.buffer,
+            document: docBuffer,
             mimetype: "application/pdf",
             fileName: pdfObj.fileName,
             caption: finalCaption,
           });
         } catch (docErr) {
+          if (senderJid.endsWith("@lid") && docBuffer) {
+            try {
+              const fallbackPhone = this.normalizePhoneNumber(rawNumber);
+              if (fallbackPhone && fallbackPhone.length >= 10) {
+                await this.sock.sendMessage(`${fallbackPhone}@s.whatsapp.net`, {
+                  document: docBuffer,
+                  mimetype: "application/pdf",
+                  fileName: pdfObj.fileName,
+                  caption: finalCaption,
+                });
+                return finalCaption;
+              }
+            } catch {}
+          }
           console.warn("[WhatsApp Bot] Document send fallback to text:", docErr);
           await this.sock.sendMessage(senderJid, { text: finalCaption });
         }
@@ -5679,7 +5713,7 @@ College Zero-Leakage Security Policy ke mutabiq, Staff WhatsApp Desk se kisi bhi
         /\b(salary|sallery|salery|sallary|tankhwah|tankhwa|pay|payroll|payslip|slip|advance|deduction|meri\s*pay|meri\s*salary)\b/i.test(cleanQuery);
 
       if (isSalaryQuery && verifiedUser.staffId) {
-        const pdfObj = await this.buildLockedStaffSalaryPdf(supabase, verifiedUser.staffId);
+        const pdfObj = await this.buildLockedStaffSalaryPdf(supabase, verifiedUser.staffId, verifiedUser.name);
         if (pdfObj) {
           return await sendPdfReply(pdfObj, "Staff Salary Slip PDF Sent", verifiedUser.name);
         }
@@ -5694,7 +5728,7 @@ College Zero-Leakage Security Policy ke mutabiq, Staff WhatsApp Desk se kisi bhi
         /\b(attendance|hazri|hazir|absent|late|present|meri\s*attendance|meri\s*hazri|monthly\s*report|weekly\s*report)\b/i.test(cleanQuery);
 
       if (isStaffAttQuery && verifiedUser.staffId) {
-        const pdfObj = await this.buildLockedStaffAttendancePdf(supabase, verifiedUser.staffId);
+        const pdfObj = await this.buildLockedStaffAttendancePdf(supabase, verifiedUser.staffId, verifiedUser.name);
         if (pdfObj) {
           return await sendPdfReply(pdfObj, "Staff Cumulative Attendance PDF Sent", verifiedUser.name);
         }
@@ -6545,15 +6579,17 @@ _Office of the Controller of Examinations, SGC Jahanian_${this.getMenuFooter()}`
     }
 
     if (intent === "attendance") {
-      const todayStr = new Date().toISOString().split("T")[0];
+      const todayStr = this.getPktDate().dateStr;
       const { data: todayAtt } = await supabase
         .from("student_attendance")
-        .select("status")
+        .select("*")
         .eq("student_id", student.id)
         .eq("date", todayStr)
         .maybeSingle();
 
-      const todayStatus = todayAtt?.status ? todayAtt.status.toUpperCase() : "Marked in Progress";
+      const todayTimings = todayAtt ? extractAttendanceTimings(todayAtt) : null;
+      const todayStatus = todayAtt?.status ? todayAtt.status.toUpperCase() : "MARKED IN PROGRESS";
+      const todayTimeStr = todayTimings && todayTimings.checkIn !== "-" ? todayTimings.checkIn : "Not Recorded Yet";
       const attendanceUrl = `${baseUrl}/?v=attendance&id=${studentRef}`;
 
       return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
@@ -6564,6 +6600,7 @@ _Office of the Controller of Examinations, SGC Jahanian_${this.getMenuFooter()}`
 • *Father:* ${student.father_name}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 • *Today's Status (${todayStr}):* ${todayStatus === "PRESENT" ? "✅ PRESENT (Hazir)" : todayStatus === "ABSENT" ? "🚨 ABSENT (Ghair Hazir)" : "🕒 " + todayStatus}
+• *Marked Check-In Time:* *${todayTimeStr}*${todayTimings?.checkOut && todayTimings.checkOut !== "-" ? ` | *Check-Out:* *${todayTimings.checkOut}*` : ""}
 • *Total Present Days:* ${student.attendance_present || 0}
 • *Total Absent Days:* ${student.attendance_absent || 0}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -6780,9 +6817,10 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
       jid = this.phoneToLidMap.get(normalized)!;
     }
 
+    const docBuffer = pdfObj.pdfBuffer || (pdfObj as any).buffer;
     try {
       const sentMsg = await this.sock.sendMessage(jid, {
-        document: pdfObj.buffer,
+        document: docBuffer,
         mimetype: "application/pdf",
         fileName: pdfObj.fileName,
         caption: pdfObj.caption,
@@ -6801,7 +6839,7 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
         try {
           const fallbackJid = `${normalized}@s.whatsapp.net`;
           const sentMsg = await this.sock.sendMessage(fallbackJid, {
-            document: pdfObj.buffer,
+            document: docBuffer,
             mimetype: "application/pdf",
             fileName: pdfObj.fileName,
             caption: pdfObj.caption,
@@ -6843,18 +6881,17 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
       const targetPhone = payload.phone || d.contact || d.fatherContact;
       if (!targetPhone) return { success: false, error: "No recipient phone provided for Admission Slip PDF." };
       const pdfObj = generateAdmissionSlipPdf({
-        studentName: d.studentName || d.fullName || "Student",
+        fullName: d.studentName || d.fullName || "Student",
         fatherName: d.fatherName || "N/A",
-        rollNo: String(d.rollNo || d.collegeNo || d.id || "N/A"),
-        className: d.className || d.group || "Intermediate",
+        collegeNo: String(d.rollNo || d.collegeNo || d.id || "N/A"),
+        groupName: d.className || d.group || "Intermediate",
         section: d.section || "A",
         session: d.session || "2026-28",
         contact: targetPhone,
-        bForm: d.bForm || d.bayFormNo || "N/A",
+        bayFormNo: d.bForm || d.bayFormNo || "N/A",
         totalPackage: Number(d.totalPackage || 0),
-        paidAmount: Number(d.paidAmount || d.feeReceived || 0),
-        balanceAmount: Math.max(0, Number(d.totalPackage || 0) - Number(d.paidAmount || d.feeReceived || 0)),
-        admissionDate: d.admissionDate || new Date().toISOString(),
+        feeReceived: Number(d.paidAmount || d.feeReceived || 0),
+        date: d.admissionDate || new Date().toISOString(),
       });
       const res = await this.sendDocument(targetPhone, pdfObj);
       return { ...res, fileName: pdfObj.fileName };
@@ -6886,58 +6923,45 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
       const targetPhone = payload.phone || studentRecord.contact || studentRecord.father_contact;
       if (!targetPhone) return { success: false, error: "No target phone for Student Fee Statement PDF." };
 
-      // Fetch all historical installments
-      const { data: feeRows } = await supabase
-        .from("student_fees")
-        .select("*")
-        .eq("student_id", studentRecord.id)
-        .order("payment_date", { ascending: true });
+      // Fetch all historical installments from student_fees / income / studentRecord.fee_history
+      let rawHistory: any[] = Array.isArray(studentRecord.fee_history) ? [...studentRecord.fee_history] : [];
+      try {
+        const { data: feeRows } = await supabase
+          .from("student_fees")
+          .select("*")
+          .eq("student_id", studentRecord.id)
+          .order("payment_date", { ascending: true });
 
-      const installments: FeeInstallmentItem[] = (feeRows || []).map((f: any, idx: number) => ({
-        receiptNo: f.receipt_no || f.id?.slice(0, 8)?.toUpperCase() || `REC-${idx + 1}`,
-        dateStr: f.payment_date || f.created_at || new Date().toISOString(),
-        amount: Number(f.amount_paid || f.amount || 0),
-        mode: f.payment_method || f.mode || "Cash",
-        feeHead: f.fee_month || f.fee_type || "Tuition Fee",
-      }));
-
-      // Ensure current payment is included if not yet in feeRows
-      if (p.paidAmount && Number(p.paidAmount) > 0) {
-        const alreadyInList = installments.some(i => i.receiptNo === p.receiptNo && i.amount === Number(p.paidAmount));
-        if (!alreadyInList) {
-          installments.push({
-            receiptNo: p.receiptNo || `REC-${Date.now().toString().slice(-5)}`,
-            dateStr: p.paymentDate || new Date().toISOString(),
-            amount: Number(p.paidAmount),
-            mode: p.paymentMode || "Cash Counter",
-            feeHead: p.feeMonth || "Tuition Fee Installment",
-          });
+        if (feeRows && feeRows.length > 0 && rawHistory.length === 0) {
+          rawHistory = feeRows.map((f: any, idx: number) => ({
+            receiptId: f.receipt_no || f.id?.slice(0, 8)?.toUpperCase() || `REC-${idx + 1}`,
+            datePaid: f.payment_date || f.created_at || new Date().toISOString(),
+            amountPaid: Number(f.amount_paid || f.amount || 0),
+            paymentMethod: f.payment_method || f.mode || "Cash",
+            feeType: f.fee_month || f.fee_type || "Tuition Fee",
+          }));
         }
-      }
+      } catch {}
 
-      const totalPkg = Number(p.totalPackage ?? studentRecord.total_package ?? 0);
-      const totalSub = Number(p.totalPaidSoFar ?? studentRecord.fee_received ?? installments.reduce((s, i) => s + i.amount, 0));
-      const remBal = Math.max(0, Number(p.remainingBalance ?? (totalPkg - totalSub)));
+      const currentPayment = p.paidAmount && Number(p.paidAmount) > 0
+        ? {
+            receiptId: p.receiptNo || `REC-${Date.now().toString().slice(-5)}`,
+            datePaid: p.paymentDate || new Date().toISOString(),
+            amountPaid: Number(p.paidAmount),
+            paymentMethod: p.paymentMode || "Cash Counter",
+            feeType: p.feeMonth || "Tuition Fee Installment",
+          }
+        : null;
 
-      const pdfObj = generateFeeReceiptAndStatementPdf({
-        studentName: studentRecord.full_name || p.studentName || "Student",
-        fatherName: studentRecord.father_name || p.fatherName || "N/A",
-        rollNo: String(studentRecord.college_no || studentRecord.id || p.rollNo || "N/A"),
-        className: studentRecord.group || p.className || "Intermediate",
-        section: studentRecord.section || "A",
-        session: studentRecord.session || "2026-28",
-        totalPackage: totalPkg,
-        totalSubmitted: totalSub,
-        remainingBalance: remBal,
-        currentPayment: p.paidAmount ? {
-          receiptNo: p.receiptNo || `REC-${Date.now().toString().slice(-5)}`,
-          dateStr: p.paymentDate || new Date().toISOString(),
-          amount: Number(p.paidAmount),
-          mode: p.paymentMode || "Cash Counter",
-          feeHead: p.feeMonth || "Tuition Fee",
-        } : undefined,
-        installments,
-      });
+      const pdfObj = generateFeeReceiptAndStatementPdf(
+        {
+          ...studentRecord,
+          totalPackage: Number(p.totalPackage ?? studentRecord.total_package ?? 0),
+          feeReceived: Number(p.totalPaidSoFar ?? studentRecord.fee_received ?? 0),
+        },
+        currentPayment,
+        rawHistory
+      );
 
       const res = await this.sendDocument(targetPhone, pdfObj);
       return { ...res, fileName: pdfObj.fileName };
@@ -6947,7 +6971,12 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
       const { data: st } = await supabase.from("staff").select("*").eq("id", payload.staffId).maybeSingle();
       const targetPhone = payload.phone || st?.contact || st?.phone;
       if (!targetPhone) return { success: false, error: "Staff contact number not found." };
-      const pdfObj = await this.buildLockedStaffAttendancePdf(supabase, payload.staffId, payload.monthStr);
+      const pdfObj = await this.buildLockedStaffAttendancePdf(
+        supabase,
+        payload.staffId,
+        st?.full_name || "Faculty Member",
+        payload.monthStr
+      );
       if (!pdfObj) return { success: false, error: "Could not build Staff Attendance PDF." };
       const res = await this.sendDocument(targetPhone, pdfObj);
       return { ...res, fileName: pdfObj.fileName };
@@ -6957,7 +6986,12 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
       const { data: st } = await supabase.from("staff").select("*").eq("id", payload.staffId).maybeSingle();
       const targetPhone = payload.phone || st?.contact || st?.phone;
       if (!targetPhone) return { success: false, error: "Staff contact number not found." };
-      const pdfObj = await this.buildLockedStaffSalaryPdf(supabase, payload.staffId, payload.monthStr);
+      const pdfObj = await this.buildLockedStaffSalaryPdf(
+        supabase,
+        payload.staffId,
+        st?.full_name || "Faculty Member",
+        payload.monthStr
+      );
       if (!pdfObj) return { success: false, error: "Could not build Staff Salary PDF." };
       const res = await this.sendDocument(targetPhone, pdfObj);
       return { ...res, fileName: pdfObj.fileName };

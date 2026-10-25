@@ -76,15 +76,127 @@ function stripColumnsFromBody(
   return { nextBody: copy, strippedAny, isEmptyObject: Object.keys(copy).length === 0 };
 }
 
+function purgeStaleSupabaseAuthStorage(): void {
+  try {
+    safeLocalStorage.removeItem('scj-auth');
+    safeLocalStorage.removeItem('scj-auth-user');
+    safeLocalStorage.removeItem('scj-auth-code-verifier');
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i);
+        if (k && (k.includes('scj-auth') || k.startsWith('sb-') || k.includes('supabase.auth'))) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach((k) => {
+        try {
+          window.localStorage.removeItem(k);
+        } catch {}
+      });
+    }
+  } catch {}
+}
+
+function isStaleRefreshTokenMessage(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes('refresh token') ||
+    lower.includes('refresh_token') ||
+    lower.includes('invalid_grant') ||
+    lower.includes('session_not_found') ||
+    lower.includes('auth session missing')
+  );
+}
+
+// Install early console.error & unhandledrejection shield before Supabase client initializes
+if (typeof window !== 'undefined') {
+  const origConsoleError = console.error.bind(console);
+  console.error = (...args: any[]) => {
+    try {
+      const combined = args
+        .map((a) => {
+          if (!a) return '';
+          if (typeof a === 'string') return a;
+          if (typeof a === 'object') {
+            return `${a.name || ''} ${a.message || ''} ${a.code || ''} ${a.error_description || ''} ${a.stack || ''}`;
+          }
+          return String(a);
+        })
+        .join(' ');
+      if (isStaleRefreshTokenMessage(combined)) {
+        purgeStaleSupabaseAuthStorage();
+        return;
+      }
+    } catch {}
+    origConsoleError(...args);
+  };
+
+  // Pre-validate stored scj-auth JSON before GoTrueClient reads it
+  try {
+    const rawAuth = safeLocalStorage.getItem('scj-auth');
+    if (rawAuth) {
+      const parsed = JSON.parse(rawAuth);
+      const sessionObj = parsed?.currentSession || parsed?.session || parsed;
+      if (
+        !sessionObj ||
+        typeof sessionObj !== 'object' ||
+        !sessionObj.refresh_token ||
+        typeof sessionObj.refresh_token !== 'string' ||
+        !sessionObj.access_token
+      ) {
+        purgeStaleSupabaseAuthStorage();
+      }
+    }
+  } catch {
+    purgeStaleSupabaseAuthStorage();
+  }
+}
+
 /**
- * Self-healing fetch wrapper for Supabase PostgREST requests.
- * Automatically intercepts PGRST204 / 42703 missing-column schema cache errors,
- * removes the unbacked column from the payload, and retries transparently so
- * UI operations never fail due to schema drift.
+ * Self-healing fetch wrapper for Supabase Auth & PostgREST requests.
+ * 1. Intercepts stale/expired refresh_token 400/401 responses on /auth/v1/token
+ *    so @supabase/auth-js never throws AuthApiError: Invalid Refresh Token.
+ * 2. Automatically intercepts PGRST204 / 42703 missing-column schema cache errors,
+ *    removes the unbacked column from the payload, and retries transparently.
  */
 const schemaResilientFetch: typeof fetch = async (input, init) => {
   const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
   const method = (init?.method || 'GET').toUpperCase();
+
+  // Intercept Supabase Auth token refresh requests to gracefully clear dead refresh tokens
+  if (urlStr.includes('/auth/v1/token') && urlStr.includes('grant_type=refresh_token')) {
+    try {
+      const authRes = await fetch(input, init);
+      if (!authRes.ok) {
+        let errText = '';
+        try {
+          errText = await authRes.clone().text();
+        } catch {}
+        if (
+          authRes.status === 400 ||
+          authRes.status === 401 ||
+          authRes.status === 422 ||
+          isStaleRefreshTokenMessage(errText)
+        ) {
+          purgeStaleSupabaseAuthStorage();
+          // Return an empty 200 JSON payload so GoTrue's handleError() never throws AuthApiError
+          // and instead cleanly treats the session as signed-out (session: null).
+          return new Response(JSON.stringify({}), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      }
+      return authRes;
+    } catch (err) {
+      purgeStaleSupabaseAuthStorage();
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  }
 
   if ((method !== 'POST' && method !== 'PATCH') || typeof init?.body !== 'string') {
     return fetch(input, init);
@@ -190,6 +302,39 @@ export const supabase = createClient(
     },
   }
 );
+
+// Wrap GoTrueClient's internal _callRefreshToken so expired/missing refresh tokens
+// never trigger GoTrue's internal console.error(error) during _recoverAndRefresh().
+const authClientAny = supabase.auth as any;
+if (authClientAny && typeof authClientAny._callRefreshToken === 'function') {
+  const originalCallRefreshToken = authClientAny._callRefreshToken.bind(authClientAny);
+  authClientAny._callRefreshToken = async (...args: any[]) => {
+    try {
+      const result = await originalCallRefreshToken(...args);
+      if (result?.error) {
+        const errMsg = `${result.error?.name || ''} ${result.error?.message || ''} ${result.error?.code || ''}`;
+        if (isStaleRefreshTokenMessage(errMsg)) {
+          purgeStaleSupabaseAuthStorage();
+          try {
+            await authClientAny._removeSession?.();
+          } catch {}
+          return { data: null, error: null };
+        }
+      }
+      return result;
+    } catch (err: any) {
+      const errMsg = `${err?.name || ''} ${err?.message || ''} ${err?.code || ''}`;
+      if (isStaleRefreshTokenMessage(errMsg)) {
+        purgeStaleSupabaseAuthStorage();
+        try {
+          await authClientAny._removeSession?.();
+        } catch {}
+        return { data: null, error: null };
+      }
+      throw err;
+    }
+  };
+}
 
 export const isSupabaseConfigured = isConfigured;
 

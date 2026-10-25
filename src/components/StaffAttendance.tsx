@@ -15,7 +15,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import BiometricEnrollmentModal from './BiometricEnrollmentModal';
 import BiometricAttendanceDesk from './BiometricAttendanceDesk';
-import { sendAutoStaffAttendancePdfNotice } from '../lib/whatsappAutomation';
+import { sendAutoStaffAttendancePdfNotice, parseAttendanceNotesAndTime } from '../lib/whatsappAutomation';
 
 interface StaffAttendanceProps {
   staffList: Staff[];
@@ -688,13 +688,23 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                                   <CheckCircle2 size={9} className="text-emerald-600" /> {exitSnap ? 'In+Out' : 'Match'}
                                 </span>
                               </div>
-                            ) : (entry?.verificationMethod === 'secugen_fingerprint' || entry?.verification_method === 'secugen_fingerprint' || entry?.notes?.includes('SecuGen')) ? (
-                              <div className="flex items-center gap-1.5">
-                                <span className="inline-flex items-center gap-1 font-bold text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 shadow-2xs">
-                                  <Fingerprint size={12} className="text-amber-600" />
-                                  <span>SecuGen Thumb</span>
-                                </span>
-                              </div>
+                            ) : (entry?.verificationMethod === 'secugen_fingerprint' || entry?.verification_method === 'secugen_fingerprint' || entry?.notes?.includes('SecuGen') || entry?.notes?.includes('biometric_fingerprint')) ? (
+                              (() => {
+                                const parsed = parseAttendanceNotesAndTime(entry?.notes, entry?.checkIn, entry?.checkOut);
+                                return (
+                                  <div className="space-y-1">
+                                    <span className="inline-flex items-center gap-1 font-bold text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 shadow-2xs">
+                                      <Fingerprint size={12} className="text-amber-600" />
+                                      <span>Biometric Thumb</span>
+                                    </span>
+                                    {parsed.breakOut && (
+                                      <div className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50/70 px-1.5 py-0.5 rounded border border-amber-200/70">
+                                        Break: {parsed.breakOut} &rarr; {parsed.breakIn || 'Out'}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()
                             ) : isBiometric ? (
                               <div className="flex items-center gap-2">
                                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
@@ -1182,7 +1192,23 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                             )}
                           </TableCell>
                           <TableCell className="text-xs text-slate-500 max-w-xs truncate">
-                            {rec?.notes || <span className="text-slate-300">—</span>}
+                            {rec?.notes ? (
+                              (() => {
+                                const parsed = parseAttendanceNotesAndTime(rec.notes, cin, cout);
+                                return (
+                                  <div className="space-y-0.5">
+                                    {parsed.breakOut && (
+                                      <span className="inline-block mr-2 px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-[10px] font-mono font-bold text-amber-800">
+                                        Break: {parsed.breakOut} &rarr; {parsed.breakIn || 'Out'}
+                                      </span>
+                                    )}
+                                    <span>{parsed.cleanRemarks || 'Verified'}</span>
+                                  </div>
+                                );
+                              })()
+                            ) : (
+                              <span className="text-slate-300">—</span>
+                            )}
                           </TableCell>
                         </TableRow>
                       );

@@ -3,8 +3,121 @@ import autoTable from "jspdf-autotable";
 
 export interface GeneratedWhatsAppPdf {
   pdfBuffer: Buffer;
+  buffer?: Buffer;
   fileName: string;
   caption: string;
+}
+
+export function extractAttendanceTimings(rec: any): {
+  checkIn: string;
+  breakOut: string;
+  breakIn: string;
+  checkOut: string;
+  remarks: string;
+} {
+  if (!rec) {
+    return { checkIn: "-", breakOut: "-", breakIn: "-", checkOut: "-", remarks: "-" };
+  }
+  let checkIn =
+    rec.check_in_time ||
+    rec.checkInTime ||
+    rec.check_in ||
+    rec.checkIn ||
+    "";
+  let breakOut = rec.break_out || rec.breakOut || "";
+  let breakIn = rec.break_in || rec.breakIn || "";
+  let checkOut =
+    rec.check_out_time ||
+    rec.checkOutTime ||
+    rec.check_out ||
+    rec.checkOut ||
+    "";
+  let remarks = "";
+
+  const rawNotes = rec.notes ?? rec.remarks ?? "";
+  if (typeof rawNotes === "string" && rawNotes.trim()) {
+    const trimmed = rawNotes.trim();
+    if (trimmed.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (!checkIn && (parsed.checkIn || parsed.check_in || parsed.time)) {
+          checkIn = String(parsed.checkIn || parsed.check_in || parsed.time);
+        }
+        if (!breakOut && (parsed.breakOut || parsed.break_out)) {
+          breakOut = String(parsed.breakOut || parsed.break_out);
+        }
+        if (!breakIn && (parsed.breakIn || parsed.break_in)) {
+          breakIn = String(parsed.breakIn || parsed.break_in);
+        }
+        if (!checkOut && (parsed.checkOut || parsed.check_out)) {
+          checkOut = String(parsed.checkOut || parsed.check_out);
+        }
+        const baseRemark =
+          parsed.notes ||
+          parsed.Verify ||
+          parsed.method ||
+          "Biometric Verified";
+        if (breakOut || breakIn) {
+          remarks = `${baseRemark} (Break: ${breakOut || "-"} -> ${breakIn || "Out"})`;
+        } else {
+          remarks = baseRemark;
+        }
+      } catch {
+        remarks = "Biometric Verified";
+      }
+    } else {
+      const inMatch = trimmed.match(/check[-\s]*in[:\s]+([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:AM|PM)?)/i);
+      const outMatch = trimmed.match(/check[-\s]*out[:\s]+([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:AM|PM)?)/i);
+      const timeMatch = trimmed.match(/\b([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:AM|PM))\b/i);
+      if (!checkIn && inMatch) checkIn = inMatch[1].trim();
+      else if (!checkIn && timeMatch) checkIn = timeMatch[1].trim();
+      if (!checkOut && outMatch) checkOut = outMatch[1].trim();
+      remarks = trimmed;
+    }
+  } else if (rawNotes && typeof rawNotes === "object") {
+    if (!checkIn && (rawNotes.checkIn || rawNotes.check_in)) {
+      checkIn = String(rawNotes.checkIn || rawNotes.check_in);
+    }
+    if (!breakOut && (rawNotes.breakOut || rawNotes.break_out)) {
+      breakOut = String(rawNotes.breakOut || rawNotes.break_out);
+    }
+    if (!breakIn && (rawNotes.breakIn || rawNotes.break_in)) {
+      breakIn = String(rawNotes.breakIn || rawNotes.break_in);
+    }
+    if (!checkOut && (rawNotes.checkOut || rawNotes.check_out)) {
+      checkOut = String(rawNotes.checkOut || rawNotes.check_out);
+    }
+    remarks = rawNotes.notes || rawNotes.Verify || "Biometric Verified";
+  }
+
+  if (!checkIn && rec.created_at && String(rec.created_at).includes("T")) {
+    try {
+      const d = new Date(rec.created_at);
+      if (!isNaN(d.getTime())) {
+        const pkt = new Date(d.getTime() + (5 * 60 + d.getTimezoneOffset()) * 60 * 1000);
+        let h = pkt.getHours();
+        const m = String(pkt.getMinutes()).padStart(2, "0");
+        const ampm = h >= 12 ? "PM" : "AM";
+        h = h % 12 || 12;
+        checkIn = `${String(h).padStart(2, "0")}:${m} ${ampm}`;
+      }
+    } catch {}
+  }
+
+  const status = String(rec.status || "");
+  if (!checkIn) {
+    checkIn = status === "Present" || status === "Late" ? "08:00 AM" : "-";
+  }
+  if (!breakOut) breakOut = "-";
+  if (!breakIn) breakIn = "-";
+  if (!checkOut) {
+    checkOut = "-";
+  }
+  if (!remarks) {
+    remarks = status === "Present" || status === "Late" ? "Verified" : "-";
+  }
+
+  return { checkIn, breakOut, breakIn, checkOut, remarks };
 }
 
 const COLLEGE_TITLE = "SUPERIOR COLLEGE JAHANIAN";
@@ -375,7 +488,7 @@ export function generateAdmissionSlipPdf(admission: any): GeneratedWhatsAppPdf {
 ━━━━━━━━━━━━━━━━━━━━
 📎 _Aap ki Official Admission Confirmation PDF Slip niche attach hai._`;
 
-  return { pdfBuffer, fileName, caption };
+  return { pdfBuffer, buffer: pdfBuffer, fileName, caption };
 }
 
 // ============================================================================
@@ -600,7 +713,7 @@ export function generateFeeReceiptAndStatementPdf(
 ━━━━━━━━━━━━━━━━━━━━
 📎 _Tamam jama shuda installments (Date, Day & Time ke sath) ki Official Statement PDF attach hai._`;
 
-  return { pdfBuffer, fileName, caption };
+  return { pdfBuffer, buffer: pdfBuffer, fileName, caption };
 }
 
 // ============================================================================
@@ -656,12 +769,10 @@ export function generateCumulativeStaffAttendancePdf(
 
     const rec = recordMap.get(dStr);
     const rawStatus = rec?.status || (isSunday ? "Sunday Holiday" : "Not Marked");
-    const checkIn = rec?.check_in_time || rec?.checkInTime || rec?.check_in || rec?.checkIn || (rawStatus === "Present" ? "08:00 AM" : "-");
-    const checkOut = rec?.check_out_time || rec?.checkOutTime || rec?.check_out || rec?.checkOut || (rawStatus === "Present" || rawStatus === "Late" ? "02:00 PM" : "-");
-    let cleanRemarks = rec?.notes || "-";
-    if (typeof cleanRemarks === "string" && cleanRemarks.startsWith("{")) {
-      cleanRemarks = "Biometric Verified";
-    }
+    const parsedTimings = rec ? extractAttendanceTimings(rec) : { checkIn: "-", checkOut: "-", remarks: isSunday ? "Weekly Off" : "-" };
+    const checkIn = parsedTimings.checkIn;
+    const checkOut = parsedTimings.checkOut;
+    const cleanRemarks = parsedTimings.remarks;
 
     if (!isSunday && rawStatus !== "College Holiday" && rawStatus !== "Public Holiday") {
       if (rec) monthlyWorkingDays++;
@@ -691,8 +802,10 @@ export function generateCumulativeStaffAttendancePdf(
   }
 
   const todayRec = recordMap.get(activeDateStr);
-  const todayStatus = todayRec?.status || "Present";
-  const todayCheckIn = todayRec?.check_in_time || todayRec?.checkInTime || todayRec?.check_in || todayRec?.checkIn || nowInfo.timeFormatted;
+  const todayTimings = todayRec ? extractAttendanceTimings(todayRec) : null;
+  const todayStatus = todayRec?.status || "Not Marked Yet";
+  const todayCheckIn = todayTimings ? todayTimings.checkIn : "-";
+  const todayCheckOut = todayTimings ? todayTimings.checkOut : "-";
   const attendancePct =
     monthlyWorkingDays > 0 ? Math.round(((monthlyPresent + monthlyLate) / monthlyWorkingDays) * 100) : 100;
 
@@ -709,14 +822,14 @@ export function generateCumulativeStaffAttendancePdf(
     { label: "Designation", value: String(role) },
     { label: "Registered Phone", value: String(phone) },
     { label: "Updated Up To", value: `${nowInfo.dateFormatted} (${nowInfo.dayName})` },
-    { label: "Today's Check-In", value: `${todayStatus} • ${todayCheckIn}` },
+    { label: "Today's Hazri Time", value: `${todayStatus} • In: ${todayCheckIn}${todayCheckOut !== "-" ? ` | Out: ${todayCheckOut}` : ""}` },
   ]);
 
   y = drawSummaryKPIBoxes(doc, y, [
     {
-      label: "Today's Status",
+      label: "Today's Status & Time",
       value: todayStatus.toUpperCase(),
-      subtext: `${nowInfo.dayName} • ${todayCheckIn}`,
+      subtext: `In: ${todayCheckIn}${todayCheckOut !== "-" ? ` | Out: ${todayCheckOut}` : ""}`,
       highlight: todayStatus === "Absent" ? "crimson" : todayStatus === "Late" ? "amber" : "teal",
     },
     {
@@ -781,13 +894,14 @@ export function generateCumulativeStaffAttendancePdf(
 📋 *DAILY UPDATED STAFF ATTENDANCE REPORT*
 ━━━━━━━━━━━━━━━━━━━━
 👤 *Faculty:* *${staffName}* (*${role}* • ID: *${staffId}*)
-🕒 *Today (${nowInfo.dayName}, ${nowInfo.dateFormatted}):* *${todayStatus.toUpperCase()}* (Time: *${todayCheckIn}*)
+🕒 *Aaj Ki Hazri (${nowInfo.dayName}, ${nowInfo.dateFormatted}):* *${todayStatus.toUpperCase()}*
+⏰ *Check-In Time:* *${todayCheckIn}*${todayCheckOut !== "-" ? ` | *Check-Out:* *${todayCheckOut}*` : ""}
 📊 *Weekly:* Present: *${weeklyPresent}* | Late: *${weeklyLate}* | Absent: *${weeklyAbsent}*
 📅 *Monthly Total:* Present: *${monthlyPresent}* | Late: *${monthlyLate}* | Absent: *${monthlyAbsent}* (*${attendancePct}%*)
 ━━━━━━━━━━━━━━━━━━━━
-📎 _1st tareekh se aaj tak ka mukammal Day-by-Day, Weekly aur Monthly Attendance Register PDF mein attach hai._`;
+📎 _1st tareekh se aaj tak ka mukammal Day-by-Day (Check-In / Check-Out Time ke sath) Attendance Register PDF mein attach hai._`;
 
-  return { pdfBuffer, fileName, caption };
+  return { pdfBuffer, buffer: pdfBuffer, fileName, caption };
 }
 
 // ============================================================================
@@ -845,6 +959,13 @@ export function generateStaffSalarySlipPdf(
   const totalDeductions = absentDeduction + lateDeduction + monthlyAdvanceDeduction;
   const netPayable = Math.max(0, baseSalary - totalDeductions);
 
+  const sortedAtt = [...(attendanceRows || [])].sort((a: any, b: any) => String(b.date || "").localeCompare(String(a.date || "")));
+  const latestAtt = sortedAtt[0];
+  const latestTimings = latestAtt ? extractAttendanceTimings(latestAtt) : null;
+  const latestAttLabel = latestAtt
+    ? `${latestAtt.status} (${latestAtt.date} • In: ${latestTimings?.checkIn || "-"})`
+    : "No Entry Yet";
+
   let y = drawExecutiveHeader(doc, `Official Faculty Salary & Payroll Statement (${activeMonth})`, "PAYROLL SLIP", nowInfo);
 
   y = drawIdentityCard(doc, y, "Verified Staff Payroll Profile", [
@@ -853,7 +974,7 @@ export function generateStaffSalarySlipPdf(
     { label: "Designation", value: String(role) },
     { label: "Salary Month", value: activeMonth },
     { label: "Monthly Attendance", value: `P: ${presentCount} | L: ${lateCount} | A: ${absentCount} | Leaves: ${leaveCount}` },
-    { label: "Statement Date", value: `${nowInfo.dateFormatted} (${nowInfo.dayName})` },
+    { label: "Latest Hazri & Time", value: latestAttLabel },
   ]);
 
   y = drawSummaryKPIBoxes(doc, y, [
@@ -916,12 +1037,13 @@ export function generateStaffSalarySlipPdf(
 ━━━━━━━━━━━━━━━━━━━━
 👤 *Faculty:* *${staffName}* (*${role}* • ID: *${staffId}*)
 📅 *Month:* *${activeMonth}* | *Attendance:* P:${presentCount} • L:${lateCount} • A:${absentCount}
+🕒 *Latest Hazri:* *${latestAtt ? `${latestAtt.status} (${latestAtt.date} at ${latestTimings?.checkIn || "-"})` : "Not Marked Today"}*
 💰 *Base Salary:* Rs. ${baseSalary.toLocaleString()} | *Deductions:* Rs. ${totalDeductions.toLocaleString()}
 ✅ *Net Payable Salary:* *Rs. ${netPayable.toLocaleString()}*
 ━━━━━━━━━━━━━━━━━━━━
 📎 _Aap ki mukammal Salary, Attendance aur Advance Statement PDF mein attach hai._`;
 
-  return { pdfBuffer, fileName, caption };
+  return { pdfBuffer, buffer: pdfBuffer, fileName, caption };
 }
 
 // ============================================================================
@@ -988,7 +1110,7 @@ export function generateStaffTimetablePdf(staff: any, timetableRows: any[], quer
 ━━━━━━━━━━━━━━━━━━━━
 📎 _Aap ka mukammal Time-wise aur Room-wise Lecture Schedule PDF mein attach hai._`;
 
-  return { pdfBuffer, fileName, caption };
+  return { pdfBuffer, buffer: pdfBuffer, fileName, caption };
 }
 
 // ============================================================================
@@ -1085,27 +1207,32 @@ export function generateStudentAcademicReportPdf(
     y = ((doc as any).lastAutoTable?.finalY || y + 40) + 6;
   }
 
+  const latestStuAtt = (attendanceRows || [])[0];
+  const latestStuTimings = latestStuAtt ? extractAttendanceTimings(latestStuAtt) : null;
+
   if (attendanceRows && attendanceRows.length > 0 && y < 235) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(11, 36, 71);
-    doc.text("CHRONOLOGICAL ATTENDANCE LOG (DATE, DAY & TIME WISE)", 14, y + 2.5);
+    doc.text("CHRONOLOGICAL ATTENDANCE LOG (DATE, DAY & EXACT CHECK-IN / CHECK-OUT TIME)", 14, y + 2.5);
 
     const attBody = attendanceRows.slice(0, 18).map((a: any, idx: number) => {
-      const dt = formatDateDayTime(a.date, a.check_in_time || a.checkIn);
+      const timings = extractAttendanceTimings(a);
+      const dt = formatDateDayTime(a.date, timings.checkIn);
       return [
         String(idx + 1),
         dt.dateStr,
         dt.dayStr,
-        dt.timeStr,
+        timings.checkIn,
+        timings.checkOut,
         String(a.status || "Present").toUpperCase(),
-        String(a.notes || "Verified"),
+        String(timings.remarks || "Verified").slice(0, 26),
       ];
     });
 
     autoTable(doc, {
       startY: y + 5,
-      head: [["Sr#", "Date", "Day", "Time", "Attendance Status", "Remarks"]],
+      head: [["Sr#", "Date", "Day", "Check-In Time", "Check-Out Time", "Status", "Remarks / Mode"]],
       body: attBody,
       theme: "grid",
       headStyles: { fillColor: [6, 78, 67], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
@@ -1125,12 +1252,13 @@ export function generateStudentAcademicReportPdf(
 📊 *OFFICIAL STUDENT ATTENDANCE & RESULT REPORT*
 ━━━━━━━━━━━━━━━━━━━━
 👤 *Student:* *${studentName}* S/D/O *${fatherName}* (Roll: *${rollNo}*)
-📅 *Attendance:* Present: *${presentDays}* | Absent: *${absentDays}* | Rate: *${attPct}%*
+🕒 *Latest Hazri:* *${latestStuAtt ? `${latestStuAtt.status.toUpperCase()} (${latestStuAtt.date} • Check-In: ${latestStuTimings?.checkIn || "-"})` : "Verified"}*
+📅 *Attendance Summary:* Present: *${presentDays}* | Absent: *${absentDays}* | Rate: *${attPct}%*
 📝 *Academic Standing:* *${(examRecords || []).length} Test(s)* ${totalMax > 0 ? `• Score: *${totalObtained}/${totalMax} (${examPct}%)*` : ""}
 ━━━━━━━━━━━━━━━━━━━━
-📎 _Date & Day-wise Attendance aur Exam Results ki Official PDF Report attach hai._`;
+📎 _Date, Day aur Exact Check-In Time ke sath Attendance aur Exam Results ki Official PDF Report attach hai._`;
 
-  return { pdfBuffer, fileName, caption };
+  return { pdfBuffer, buffer: pdfBuffer, fileName, caption };
 }
 
 // ============================================================================
@@ -1216,5 +1344,5 @@ export function generatePrincipalExecutiveReportPdf(data: {
 ━━━━━━━━━━━━━━━━━━━━
 📎 _Mukammal Staff Attendance Roster aur Financial Audit PDF niche attach hai._`;
 
-  return { pdfBuffer, fileName, caption };
+  return { pdfBuffer, buffer: pdfBuffer, fileName, caption };
 }

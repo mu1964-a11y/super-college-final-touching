@@ -1,120 +1,140 @@
-# Superior College Jahanian — Zero-Leakage WhatsApp Automation & Official PDF Suite Plan
+# Multi-Punch Staff Attendance, All-Program Timetable & Multi-Subject Marks Matrix
 
-## 1. Root Cause Analysis: Why Registered Staff Received Student Data
-Deep inspection of `server/whatsappBridge.ts` revealed **three exact code defects** that caused a staff member (even when their phone number was added) to receive a student's record:
-1. **Staff Handler Called Student Search (`getTeacherStudentDossier`)**:
-   - Even when the bot recognized the sender as Staff (`TEACHER`), line 565 executed `await getTeacherStudentDossier(text)` on the staff member's message.
-2. **The Empty String `.includes("")` Bug (Line 233)**:
-   - Inside `getTeacherStudentDossier`, the filter ran:
-     `sFather.includes(qLower) || qLower.includes(sFather)`
-   - Because some student rows in Supabase had an empty `father_name` (`""`), JavaScript evaluated `qLower.includes("")` as **`true` on every 4+ character message**, causing the bot to pull that student's record and hand it to the staff member.
-3. **WhatsApp `@lid` (Linked Identity) Resolution Gap**:
-   - When WhatsApp delivered messages using `@lid` instead of `@s.whatsapp.net`, phone matching occasionally missed the registered staff number unless linked back to their phone tail.
+This upgrade introduces three real-world campus operations workflows for Superior College Jahanian: (1) a 4-stage Biometric & Manual Staff Movement Engine that tracks Morning Arrival, Mid-Day Free-Period/Recess Exit & Return, and Final Off-Duty Departure; (2) a Program-Tabbed Timetable Builder covering Intermediate, BS, DIT, and UKL3 with automatic class/section discovery; and (3) a Multi-Subject Marks Entry Matrix where every subject has its own custom Total Marks and Test Date with live Grand Total calculation.
 
-### How We Eliminate This 100% From the Root:
-- **Physical Code Air-Gap**: `getTeacherStudentDossier` is **permanently removed** from Staff access. Staff code paths have **zero read access** to the `students` or `student_fees` tables.
-- **Strict Primary-Key Locking**:
-  - **Staff Path**: Queries strictly use `.eq('id', verifiedStaff.id)` and `.eq('staff_id', verifiedStaff.id)`.
-  - **Student/Parent Path**: Queries strictly use `.in('id', verifiedStudentIds)`.
-  - **Principal Path**: Cross-student and cross-staff queries execute ONLY when `senderPhone === verifiedPrincipalPhone`.
-- **Automatic `@lid` to Phone Binding**: Once a registered phone number is matched, its WhatsApp `@lid` and JID are permanently cached/bound to that exact `staff.id` or `student.id`.
+## User Review & Critical Decisions
+
+> [!IMPORTANT]
+> All three architectural choices below reflect your confirmed preferences from our discussion and are 100% backward-compatible with your existing Supabase database schema (zero SQL migrations required).
+
+- **Confirmed Decision 1 (Staff Mid-Day Movement Tracking)**: Biometric and manual staff attendance will support 4 daily punch states — **1st Scan: Morning Check-In**, **2nd Scan: Mid-Day Gate Out (Recess / Free Period)**, **3rd Scan: Mid-Day Gate In (Return for Lecture)**, and **4th Scan: Final Off-Duty Check-Out** (with an optional 1-click selector if a teacher is leaving early for the day on their 2nd scan).
+- **Confirmed Decision 2 (All-Program Timetable Organization)**: The Timetable module will feature top-level **Program Tabs (`Intermediate`, `BS Programs`, `DIT`, `UKL3`)** that automatically discover all active classes, groups, and Boys/Girls sections from enrolled student records, while also allowing new sections to be added on the fly.
+- **Confirmed Decision 3 (Multi-Subject Marks Entry Sheet)**: Marks Entry will default to a **Multi-Subject Spreadsheet Matrix** where selecting a Program, Campus (Boys/Girls), Group/Class, and Section loads all relevant subjects as columns. Each subject column header has its own editable **Custom Total Marks** (e.g., `85`, `100`, `50`, `30`) and **Test Date**, and each student row automatically computes **Grand Obtained, Grand Total, Percentage, and Grade**.
 
 ---
 
-## 2. Smart Verification Architecture (Recommendation Implemented)
-To keep the user experience smooth while guaranteeing **0% data leakage**:
-1. **Tier 1 — Silent Auto-Verification (For Registered Staff, Students & Principal)**:
-   - If the sender's 10-digit phone number matches `staff.phone` or `students.phone / father_phone / whatsapp`, no extra OTP/password is asked—they are instantly verified and locked to their own record ID.
-2. **Tier 2 — 1-Time CNIC Auto-Link + Admin Office Fallback (For Unmatched / Typo Numbers)**:
-   - If a number is not matched in the database (e.g., 1-digit typo during data entry), the bot shares **zero private records**.
-   - If the caller asks for staff/student records, the bot replies with a clean prompt allowing them to either:
-     1. Send their **13-digit CNIC** to auto-verify and auto-update their WhatsApp number in the database immediately, OR
-     2. Update their registered WhatsApp number at the **Superior College Jahanian Admin Office**.
-3. **Tier 3 — Outbound Pre-Send Validation Guard**:
-   - Before any automated outbound message/PDF (Admission, Attendance, Fee Receipt, Salary) is sent, a pre-flight check verifies that the target phone number belongs to that exact `student.id` or `staff.id` and attaches the matching Verified Profile Header inside the PDF.
+## 1. Overview & Core Concept
+
+- **What It Does**:
+  1. **Staff Movement & Gate Pass Tracking**: Distinguishes between a teacher stepping out during a free period/recess and a teacher leaving at the end of duty, recording exact timestamps for each punch (`Morning In`, `Break Out`, `Break In`, `Final Out`) and calculating net campus presence.
+  2. **Unified Multi-Program Timetable (`Inter`, `BS`, `DIT`, `UKL3`)**: Gives administrators and coordinators a visual Period 1–7 grid for every program in the college, automatically preventing a teacher from being double-booked across Intermediate and BS/DIT classes at the same time.
+  3. **Multi-Subject Exam Matrix**: Replaces repetitive single-subject entry with a single unified marksheet per class where all subjects, their individual total marks, and test dates are configured at the top of each column and saved in one click.
+- **Target Audience / Persona**: Principal, Campus Coordinators, Examination Controller, Biometric Gate Operator, and Faculty Members.
+- **Key Value**: Eliminates premature "Off-Duty Check-Out" errors when teachers go out for recess/free periods, brings BS/DIT/UKL3 classes into the official timetable, and cuts exam result entry time by up to 80%.
 
 ---
 
-## 3. Official Branding & High-Vibe Document Design ("Superior College Jahanian")
+## 2. User Experience & Visual Design
 
-### Branding Rule
-- Every WhatsApp message and PDF header will exclusively display **"SUPERIOR COLLEGE JAHANIAN"** (never "Superior Group of Colleges").
+- **Key User Flows**:
+  - **Flow 1: Staff 4-Stage Biometric & Manual Movement**:
+    1. When a teacher scans their thumb in the morning (`07:52 AM`), the system logs **Morning Check-In (`Present` / `Late`)**.
+    2. When the same teacher scans during recess or a free period (`11:10 AM`), the terminal automatically logs **Mid-Day Gate Out (Recess / Free Period)** (and offers a quick toggle if they are taking a Half-Day/Final Check-Out instead).
+    3. When the teacher returns for their next lecture (`11:45 AM`), the 3rd scan logs **Mid-Day Gate In (Returned to Campus)**.
+    4. At dismissal (`02:15 PM`), the 4th scan logs **Final Off-Duty Check-Out**.
+    5. All 4 timestamps appear clearly in the Staff Attendance Register, Staff Portal, PDF Attendance Ledger, and WhatsApp summaries.
+  - **Flow 2: Program-Tabbed Timetable (`Inter | BS | DIT | UKL3`)**:
+    1. Admin opens **Staff > Timetable** and selects a Program Tab at the top (`Intermediate`, `BS Programs`, `DIT`, or `UKL3`) and Campus filter (`All`, `Boys Campus`, `Girls Campus`).
+    2. The system automatically lists all active groups/sections for that program (e.g., `F.Sc Pre-Medical - Sec A`, `ICS - Sec B`, `BS Computer Science`, `BS English`, `DIT`, `UKL3`) derived from enrolled students and saved sections.
+    3. Admin clicks any cell in the **Period 1 – Period 7** grid (or uses Quick Assign) to pick the **Subject**, **Teacher**, and **Room**. If that teacher is already teaching in *any* other program (e.g., teaching Inter Physics in Period 2 while being assigned BS Physics in Period 2), a real-time **Cross-Program Clash Alert** warns the user.
+  - **Flow 3: Multi-Subject Marks Matrix with Custom Totals & Dates**:
+    1. Admin/Teacher opens **Academics > Fast Marks Sheet** and selects **Program (`Inter | BS | DIT | UKL3`)**, **Boys/Girls**, **Group/Class**, **Section**, and **Test Session** (e.g., `Monthly Exam - October 2026`, `Weekly Test`, `Send-Up`).
+    2. The sheet automatically loads the standard subjects for that group (e.g., `Physics`, `Chemistry`, `Biology`, `English`, `Urdu`, `Islamiat` for Pre-Medical) and allows adding/removing any custom subject column with one click.
+    3. In the **Column Header of each Subject**, the user sets:
+       - **Custom Total Marks** for that subject (e.g., Physics = `85`, English = `100`, Islamiat = `50`, or apply a single total to all subjects with 1 click).
+       - **Subject Test Date** (defaults to the exam date, or customizable per subject paper date).
+    4. Below, the scrollable student roster shows all students in roll-number order. The operator types marks across columns or down rows using `Enter`, `Tab`, or Arrow keys (`↑ ↓ ← →`), or types `A` for Absent.
+    5. The rightmost columns display live **Grand Obtained / Grand Total** (e.g., `438 / 505`), **Percentage (`86.7%`)**, and **Grade (`A+`)**.
+    6. Clicking **Download Multi-Subject Excel Template** exports a ready-to-fill Excel sheet containing all subject columns with their custom total marks and dates; uploading it back populates the entire class matrix immediately.
+- **Visual Identity & Theme**:
+  - *Aesthetic Direction*: Crisp Enterprise Academic ERP with high-density tabular grids, sticky headers, and zero nested-card clutter.
+  - *Color Palette & Mood*: Deep Superior Emerald (`#064e43`) primary headers, warm gold (`#c9a84c`) active indicators, clean white (`#FFFFFF`) and slate (`#F8FAFC`) table surfaces, semantic badges for movement states (Emerald for `In Campus`, Amber for `Mid-Day Out`, Indigo for `Returned`, Slate for `Checked Out`).
+  - *Typography & Hierarchy*: `Plus Jakarta Sans` for headers and controls, paired with `JetBrains Mono` (`tabular-nums`) for all attendance timestamps, subject marks, grand totals, and percentages so columns align vertically to the pixel.
 
-### Companion WhatsApp Message Format (Bold, Structured, Good Vibes)
-Every PDF attachment will be accompanied by a crisp, well-formatted WhatsApp card using bold headings and verified metadata:
-```text
-🏛️ *SUPERIOR COLLEGE JAHANIAN*
-📄 *OFFICIAL FEE RECEIPT & STATEMENT*
-━━━━━━━━━━━━━━━━━━━━
-👤 *Student:* Muhammad Ali (Roll: *BSP-26-104*)
-💳 *Paid Today:* Rs. 5,000 (Mon, 23 Oct 2026 • 10:42 AM)
-📊 *Total Paid:* Rs. 15,000 | *Remaining:* Rs. 10,000
-━━━━━━━━━━━━━━━━━━━━
-📎 _Detailed date-wise statement PDF attached below._
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: Schema-Safe JSON Persistence for 4-Stage Movement Timestamps**
+  - *Chosen Approach*: Store `checkIn`, `breakOut`, `breakIn`, `checkOut`, and a chronological `movements` array inside the existing `notes` JSON field of `staff_attendance` while keeping `status` (`Present` / `Late` / `Absent` / `Leave`) in the core column.
+  - *Why*: Works 100% reliably with the current Supabase `staff_attendance` table without requiring any `ALTER TABLE` SQL commands, and preserves full compatibility with existing attendance records.
+- **Decision 2: Automatic Cross-Program Section Discovery in Timetable**
+  - *Chosen Approach*: Dynamically derive program-tagged sections from both `settings.predefinedSections` AND live enrolled students (`students` array grouped by `Inter`, `BS`, `DIT`, `UKL3` + `group` + `section` + `gender`), plus store the `program` tag inside each timetable entry.
+  - *Why*: Ensures that BS, DIT, and UKL3 classes appear automatically in the Timetable builder as soon as students are enrolled, without forcing the admin to manually pre-create every class in Settings first.
+- **Decision 3: Multi-Subject Matrix + Single-Subject Compatibility in `academic_records`**
+  - *Chosen Approach*: The UI presents a unified **Multi-Subject Matrix** where each cell `(student, subject)` saves as a clean, standard `AcademicRecord` row (`studentId`, `subject`, `obtainedMarks`, `totalMarks`, `date`, `testType`, `testName`) in Supabase.
+  - *Why*: Gives the operator a fast, single-screen multi-subject spreadsheet experience with custom total marks and test date per subject, while keeping 100% compatibility with Student Portals, 6-Month Progress Charts, Merit Lists, and WhatsApp Result Card PDFs.
+
+---
+
+## 4. Technical Architecture & Data Strategy *(Technical Reference)*
+
+### Architecture & Component Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                     SUPERIOR COLLEGE JAHANIAN ERP                            │
+└──────────────────────┬───────────────────────────┬───────────────────────────┘
+                       │                           │
+       ┌───────────────▼───────────────┐   ┌───────▼───────────────────────────┐
+       │   STAFF MODULE & BIOMETRICS   │   │   ACADEMICS & MULTI-SUBJECT MARKS │
+       └───────┬───────────────┬───────┘   └───────┬───────────────────────────┘
+               │               │                   │
+┌──────────────▼─────┐ ┌───────▼──────────────┐ ┌──▼───────────────────────────┐
+│ 4-Stage Biometric  │ │ Multi-Program        │ │ Multi-Subject Marks Matrix   │
+│ Movement Engine    │ │ Timetable Builder    │ │ (BatchMarksEntry Upgraded)   │
+│ • 1st: Morning In  │ │ • Tabs: Inter | BS   │ │ • Program/Gender/Group/Sec   │
+│ • 2nd: Break Out   │ │   | DIT | UKL3       │ │ • Subject Columns w/ Custom  │
+│ • 3rd: Break In    │ │ • Auto Class/Section │ │   Total Marks & Test Date    │
+│ • 4th: Final Out   │ │   Discovery          │ │ • Live Grand Total, % & Grade│
+│ • Manual Override  │ │ • Cross-Program      │ │ • Multi-Subject Excel Import │
+│   & WhatsApp Alert │ │   Teacher Clash Guard│ │   & Export Template          │
+└──────────────┬─────┘ └───────┬──────────────┘ └──┬───────────────────────────┘
+               │               │                   │
+               └───────────────┴─────────┬─────────┘
+                                         ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│     Supabase Persistence + Official PDF Generator + WhatsApp Bot Bridge      │
+│  • extractAttendanceTimings() parses Morning In, Break Out/In & Final Out    │
+│  • StaffPortal, StudentPortal & PDFs display full timestamps & subject dates │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Pure-Vector Executive PDF Design (< 35 KB, Razor-Sharp Typography)
-Every PDF generated by `server/whatsappPdfGenerator.ts` will feature:
-- **Royal Navy & Crimson Header Banner**: Bold **"SUPERIOR COLLEGE JAHANIAN"** title, document badge, reference ID, and exact generation **Date, Day of Week, and Time**.
-- **Verified Identity Box**: Clear bold fields for Name, Father Name / Designation, Roll No / Staff ID, Class/Department, and Verified Contact.
-- **Zebra-Striped Data Tables**: Bold table headers, clean borders, exact **Date + Day + Time** columns, and highlighted summary cards.
-- **Official Digital Verification Footer**: Timestamped system verification seal.
+### Data Model & State Mapping
 
----
+1. **4-Stage Staff Attendance Movement Payload (`notes` JSON)**:
+   - Structure stored in `staff_attendance.notes`:
+     ```json
+     {
+       "mode": "SecuGen-Biometric",
+       "checkIn": "07:52:14 AM",
+       "breakOut": "11:05:20 AM",
+       "breakIn": "11:42:10 AM",
+       "checkOut": "02:15:05 PM",
+       "campusState": "Checked-Out",
+       "movements": [
+         { "type": "MORNING_IN", "time": "07:52:14 AM" },
+         { "type": "BREAK_OUT", "time": "11:05:20 AM" },
+         { "type": "BREAK_IN", "time": "11:42:10 AM" },
+         { "type": "FINAL_OUT", "time": "02:15:05 PM" }
+       ]
+     }
+     ```
+   - In `BiometricAttendanceDesk`, `InstantBiometricVerifyModal`, and `StaffAttendance`:
+     - Automatically detects the next logical movement step based on existing timestamps for today, while providing a 1-tap override pill (`Break Out` vs `Final Check-Out`) so a teacher leaving permanently at 11:30 AM can mark `Final Check-Out` directly.
+     - Displays `Morning In`, `Break Out / In`, and `Final Out` badges in the live feed, Staff Attendance Register, Staff Portal, and PDF Attendance Reports.
 
-## 4. Complete PDF Document Suite (Automated Outbound + On-Demand Bot)
+2. **All-Program Timetable Builder (`StaffTimetable`)**:
+   - Adds Program Switcher Tabs: `All Programs`, `Intermediate`, `BS Programs`, `DIT`, `UKL3`.
+   - Auto-discovers classes/sections from `students` (grouping by Program + Group/Course + Section + Gender) and merges them with `predefinedSections`.
+   - Allows adding new custom Class/Section entries for any program (`Inter`, `BS`, `DIT`, `UKL3`) directly inside the Timetable modal.
+   - Cross-checks teacher availability across **all programs** before saving a period slot.
 
-### 1. Official Admission Confirmation Slip PDF (`Admission_Slip_<RollNo>.pdf`)
-- **Triggered**: Automatically when a student admission is confirmed (and on-demand).
-- **Contents**:
-  - Admission Reference No, Admission Date, Day & Time.
-  - Student Full Name, Father Name, CNIC/B-Form, Gender/Campus, Program/Class, Session (`2026-28`), Roll Number, Registered WhatsApp Number.
-  - Fee Package Summary (Total Agreed Package, Admission/1st Installment Received, Remaining Payable Balance).
-
-### 2. Combined Fee Receipt & Historical Ledger Statement PDF (`Fee_Receipt_Statement_<RollNo>.pdf`)
-- *(Replaces plain text receipts and skips unnecessary blank fee vouchers)*
-- **Triggered**: Automatically whenever a student submits fee AND when a student/parent requests their fee status on WhatsApp.
-- **Contents**:
-  - **Current Payment Highlight Box**: Receipt No, Amount Paid Now, Payment Mode (Cash/Bank), Exact **Date, Day of Week, and Time** of submission.
-  - **Complete Historical Installments Table**: Every previous payment submitted across prior days/months with columns: `Sr# | Receipt ID | Date | Day | Time | Mode | Amount Paid`.
-  - **Account Summary Card**: `Total Agreed Package` | `Total Submitted (All Installments)` | `Net Remaining Balance`.
-
-### 3. Cumulative Day-by-Day Staff Attendance Report PDF (`Staff_Attendance_<Name>_<Month>.pdf`)
-- **Triggered**: Automatically updated & sent when daily staff attendance is marked AND on-demand when staff asks for attendance.
-- **Contents**:
-  - **Live Cumulative Day-by-Day Table (Current Month)**: Lists every recorded day from the 1st of the month up to today (`Date | Day (Mon/Tue...) | Check-In Time | Check-Out/Status | Remarks`) so each daily PDF acts as an up-to-date running monthly register.
-  - **Weekly Summary Card (Current Week)**: `Days Logged | Present | Late | Absent | Leave`.
-  - **Monthly Cumulative Summary Card**: `Total Working Days | Total Present | Total Late | Total Absent | Attendance %`.
-
-### 4. Official Staff Salary & Advance Statement PDF (`Salary_Slip_<Name>_<Month>.pdf`)
-- **Triggered**: When payroll is issued or when staff requests their salary slip on WhatsApp.
-- **Contents**:
-  - Staff Profile (Name, Designation, Staff ID, Month/Year).
-  - Attendance & Punctuality Summary (Present, Late, Absent, Leaves with exact dates).
-  - Advance Salary Ledger (Date-wise advances taken, monthly deduction applied, remaining advance balance).
-  - Net Salary Calculation Table (`Base Salary - Absent Deduction - Late Deduction - Advance Recovery = Net Payable`).
-
-### 5. Staff Timetable Schedule PDF (`Staff_Timetable_<Name>.pdf`)
-- **Triggered**: When staff requests their lecture schedule or when timetable is updated.
-- **Contents**: Day-wise and time-slot-wise lecture schedule with Class, Section, Subject, and Room details.
-
-### 6. Student Attendance & Academic Result Statement PDF (`Student_Report_<RollNo>.pdf`)
-- **Triggered**: On student/parent WhatsApp request or monthly report dispatch.
-- **Contents**: Date/day/time attendance log with weekly/monthly counters + subject-wise exam marks, percentage, and grade table.
-
-### 7. Principal Daily Executive Report PDF (`SCJ_Executive_Report_<Date>.pdf`)
-- **Triggered**: Exclusively for the Principal's verified WhatsApp number.
-- **Contents**: Live Cash vs Bank fee collection table (with date/time), complete Staff Attendance roster (Present/Late/Absent with check-in times), and Admissions summary.
-
----
-
-## 5. Planned File Changes
-1. **`/server/whatsappPdfGenerator.ts` (New)**:
-   - Vector PDF builders (< 35 KB) for all 7 official documents above using **Superior College Jahanian** branding, bold headers, Date/Day/Time columns, historical fee ledgers, and cumulative day-by-day + weekly + monthly attendance tables.
-2. **`/server/whatsappIntentRouter.ts` (New)**:
-   - Deterministic AI + rule intent classifier (`MY_SALARY_SLIP`, `MY_ATTENDANCE`, `MY_TIMETABLE`, `MY_FEE_STATEMENT`, `MY_RESULT_CARD`, `ADMISSION_SLIP`, `CONVERSATIONAL_ACK`, `CNIC_VERIFICATION`, `UNAUTHORIZED_CROSS_QUERY`).
-3. **`/server/whatsappBridge.ts` (Update)**:
-   - Remove `getTeacherStudentDossier` from Staff flow; enforce hard row-level isolation (`verifiedStaff.id` / `verifiedStudentIds`).
-   - Add `/api/whatsapp/send-document` endpoint so portal actions (Admission, Fee Collection, Daily Staff Attendance) automatically generate and send the official PDF + formatted WhatsApp card.
-4. **`/src/lib/whatsappAutomation.ts` (Update)**:
-   - Upgrade Admission Notice, Fee Receipt Notice, and Daily Staff Attendance triggers to dispatch the official **Superior College Jahanian** PDFs alongside the formatted summary message.
+3. **Multi-Subject Marks Matrix (`BatchMarksEntry`)**:
+   - Supports switching between **Multi-Subject Class Matrix Mode (Default)** and **Single-Subject Mode**.
+   - Auto-populates default subject lists based on selected Program/Group (e.g., Pre-Medical, Pre-Engineering, ICS, I.Com, FA, BS, DIT, UKL3) with `+ Add Subject` and `× Remove Subject` controls.
+   - Each subject column header contains:
+     - Subject Title
+     - Editable `Total Marks` input (e.g., `85`, `100`, `50`, `30`) + `"Apply to All"` quick button
+     - Editable `Test Date` input (`YYYY-MM-DD`)
+   - Student rows render fast keyboard-navigable inputs (`Enter` moves down to next student in same subject; `Tab` / `→` moves right to next subject for the same student) plus live `Grand Obtained / Grand Total`, `Percentage`, and `Grade` columns.

@@ -1745,6 +1745,7 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
       <TabsContent value="timetable" className="space-y-8 mt-0 focus-visible:outline-none">
         <StaffTimetable 
           staffList={data.staff || filteredStaff} 
+          students={data.students || []}
           timetableRecords={data.staffTimetable || []} 
           onAddEntry={data.addTimetableEntry} 
           onRemoveEntry={data.removeTimetableEntry} 

@@ -5,10 +5,9 @@ import {
   Briefcase,
   ArrowRight,
   Sparkles,
-  Fingerprint,
-  Camera,
   CheckCircle2,
   Clock,
+  Lock,
 } from 'lucide-react';
 
 interface WelcomeScreenProps {
@@ -51,7 +50,7 @@ export default function WelcomeScreen({
               {collegeName}
             </h1>
             <p className="text-xs text-amber-200/90 font-semibold">
-              Digital Campus ERP, Biometrics & LMS • Session 2026-28
+              Official Campus Management & Academic Portal • Session 2026-28
             </p>
           </div>
         </div>
@@ -91,8 +90,8 @@ export default function WelcomeScreen({
         </h2>
 
         <p className="max-w-2xl mx-auto text-sm sm:text-base text-emerald-100/85 leading-relaxed">
-          Unified real-time academic records, fast-boost SecuGen thumb attendance, double-entry
-          fee ledgers, and executive analytics for Inter, BS, DIT, and UKL3 programs.
+          Unified real-time academic records, attendance logs, fee vouchers, and executive
+          analytics for Intermediate, BS, DIT, and UKL3 programs.
         </p>
 
         {/* 3 Direct Role Cards */}
@@ -112,7 +111,7 @@ export default function WelcomeScreen({
               />
             </div>
             <p className="text-xs text-emerald-100/75 mt-1.5 leading-relaxed">
-              Principal, Admissions, Accounts Ledger, Payroll & Biometric Control
+              Authorized Administration, Admissions, Accounts & Institutional Operations
             </p>
           </button>
 
@@ -131,7 +130,7 @@ export default function WelcomeScreen({
               />
             </div>
             <p className="text-xs text-emerald-100/75 mt-1.5 leading-relaxed">
-              Lecture Schedule, Biometric Logs, Marks Entry & Monthly Salary Slips
+              Lecture Schedule, Attendance Records, Academic Evaluations & Salary Slips
             </p>
           </button>
 
@@ -150,27 +149,17 @@ export default function WelcomeScreen({
               />
             </div>
             <p className="text-xs text-emerald-100/75 mt-1.5 leading-relaxed">
-              6-Month Result Progress, Fee Vouchers, Attendance & Timetable
+              Result Progress, Fee Vouchers, Daily Attendance Timings & Timetable
             </p>
           </button>
         </div>
 
-        {/* Fast Kiosk Quick-Launch Bar for Morning Rush Hour */}
-        <div className="pt-4 flex flex-wrap items-center justify-center gap-3">
-          <a
-            href="/?biometric=true"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-400/40 text-xs font-black text-emerald-200 shadow-lg transition-all"
-          >
-            <Fingerprint size={15} className="text-amber-300" />
-            <span>Launch Fast Biometric Thumb Terminal (Zero-Click)</span>
-          </a>
-          <a
-            href="/?gate=true"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/20 text-xs font-bold text-white transition-all"
-          >
-            <Camera size={15} className="text-emerald-300" />
-            <span>Smart Gate Face Attendance Kiosk</span>
-          </a>
+        {/* Security Assurance Notice */}
+        <div className="pt-2 flex items-center justify-center">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-xs font-semibold text-emerald-100/80">
+            <Lock size={13} className="text-amber-300" />
+            <span>Role-Based Encrypted Access • Authorized SGC-J Personnel, Faculty & Scholars Only</span>
+          </div>
         </div>
       </main>
 
@@ -178,7 +167,7 @@ export default function WelcomeScreen({
         <span>&copy; 2026 {collegeName}. All rights reserved.</span>
         <span className="inline-flex items-center gap-1.5">
           <CheckCircle2 size={13} className="text-emerald-300" />
-          <span>30+ Faculty Biometric Profiles Active & Synchronized</span>
+          <span>256-Bit Encrypted Enterprise Academic Cloud</span>
         </span>
       </footer>
     </div>

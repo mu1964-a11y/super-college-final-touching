@@ -105,7 +105,7 @@ export function useSupabaseData(user: any) {
     return allData;
   };
 
-  const fetchData = useCallback(async (silent = false) => {
+  const runFullFetchData = useCallback(async (silent = false) => {
     // Prevent overlapping fetches or fetches during bulk operations
     if (isFetchingRef.current || isBulkOperatingRef.current || !isSupabaseConfigured) return;
     
@@ -647,9 +647,114 @@ export function useSupabaseData(user: any) {
   const debouncedFetchData = useCallback(() => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
-      fetchData(true);
-    }, 1500); // 1.5 second debounce to bundle realtime events during bulk operations
-  }, [fetchData]);
+      runFullFetchData(true);
+    }, 1200);
+  }, [runFullFetchData]);
+
+  // Fast non-blocking fetchData:
+  // - Initial load (silent === false) awaits full dataset
+  // - Post-mutation silent sync (silent === true) schedules background refresh and resolves in 0ms
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) {
+      await runFullFetchData(false);
+      return;
+    }
+    debouncedFetchData();
+  }, [runFullFetchData, debouncedFetchData]);
+
+  const refreshStudentAttendanceOnly = useCallback(async () => {
+    if (!isSupabaseConfigured || isBulkOperatingRef.current) return;
+    try {
+      const { data: studentAttendanceData } = await supabase
+        .from('student_attendance')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(3000);
+      if (studentAttendanceData) {
+        setStudentAttendance(studentAttendanceData.map(a => {
+          let parsedNotes: any = null;
+          if (a.notes && typeof a.notes === 'string' && a.notes.startsWith('{')) {
+            try { parsedNotes = JSON.parse(a.notes); } catch {}
+          }
+          const checkIn = a.check_in_time || parsedNotes?.check_in_time || null;
+          const checkOut = a.check_out_time || parsedNotes?.check_out_time || null;
+          let entrySnap: string | null = null;
+          let exitSnap: string | null = null;
+          if (parsedNotes) {
+            entrySnap = parsedNotes.entry_snapshot || null;
+            exitSnap = parsedNotes.exit_snapshot || null;
+          }
+          if (!entrySnap && !exitSnap && a.snapshot_url) {
+            if (checkOut && !checkIn) {
+              exitSnap = a.snapshot_url;
+            } else {
+              entrySnap = a.snapshot_url;
+            }
+          }
+          const isBio = a.verification_method === 'face_biometric' || parsedNotes?.verification_method === 'face_biometric' || Boolean(entrySnap || exitSnap);
+          return {
+            ...a,
+            studentId: a.student_id,
+            checkInTime: checkIn,
+            checkOutTime: checkOut,
+            snapshotUrl: entrySnap || exitSnap || null,
+            entrySnapshotUrl: entrySnap,
+            exitSnapshotUrl: exitSnap,
+            verificationMethod: isBio ? 'face_biometric' : (a.verification_method || 'manual'),
+            parsedNotes
+          };
+        }));
+      }
+    } catch {}
+  }, []);
+
+  const refreshStaffAttendanceOnly = useCallback(async () => {
+    if (!isSupabaseConfigured || isBulkOperatingRef.current) return;
+    try {
+      const { data: staffAttendanceData } = await supabase
+        .from('staff_attendance')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(2000);
+      if (staffAttendanceData) {
+        setStaffAttendance(staffAttendanceData.map(a => {
+          let parsedNotes: any = null;
+          if (a.notes && typeof a.notes === 'string' && a.notes.startsWith('{')) {
+            try { parsedNotes = JSON.parse(a.notes); } catch {}
+          }
+          const checkIn = a.check_in || a.check_in_time || parsedNotes?.check_in_time || null;
+          const checkOut = a.check_out || a.check_out_time || parsedNotes?.check_out_time || null;
+          let entrySnap: string | null = null;
+          let exitSnap: string | null = null;
+          if (parsedNotes) {
+            entrySnap = parsedNotes.entry_snapshot || null;
+            exitSnap = parsedNotes.exit_snapshot || null;
+          }
+          if (!entrySnap && !exitSnap && a.snapshot_url) {
+            if (checkOut && !checkIn) {
+              exitSnap = a.snapshot_url;
+            } else {
+              entrySnap = a.snapshot_url;
+            }
+          }
+          const isBio = a.verification_method === 'face_biometric' || parsedNotes?.verification_method === 'face_biometric' || Boolean(entrySnap || exitSnap);
+          return {
+            ...a,
+            staffId: a.staff_id,
+            checkIn,
+            checkOut,
+            checkInTime: checkIn,
+            checkOutTime: checkOut,
+            snapshotUrl: entrySnap || exitSnap || null,
+            entrySnapshotUrl: entrySnap,
+            exitSnapshotUrl: exitSnap,
+            verificationMethod: isBio ? 'face_biometric' : (a.verification_method || 'manual'),
+            parsedNotes
+          };
+        }));
+      }
+    } catch {}
+  }, []);
 
   const userId = user?.id;
 
@@ -659,7 +764,7 @@ export function useSupabaseData(user: any) {
       return;
     }
 
-    fetchData();
+    runFullFetchData(false);
 
     const leadsSubscription = supabase.channel('leads-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => debouncedFetchData())
@@ -667,16 +772,28 @@ export function useSupabaseData(user: any) {
 
     const notifSubscription = supabase.channel('notifications-changes')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
-        const newNotif = payload.new;
+        const newNotif: any = payload.new;
+        if (newNotif) {
+          setNotifications(prev => [
+            {
+              ...newNotif,
+              actorName: newNotif.actor_name,
+              isRead: newNotif.is_read,
+              timestamp: newNotif.created_at,
+            },
+            ...prev.filter(n => n.id !== newNotif.id).slice(0, 199),
+          ]);
+        }
+
         const msgOpts = {
           description: `${newNotif.message} (by ${newNotif.actor_name || 'Admin'})`,
-          duration: 6000,
+          duration: 2500,
         };
         
         // Define priority - only show global toasts for important things to avoid spam
-        const isUpdateOrDelete = newNotif.title.toLowerCase().includes('delete') || 
-                                 newNotif.title.toLowerCase().includes('update') || 
-                                 newNotif.title.toLowerCase().includes('remove') ||
+        const isUpdateOrDelete = (newNotif.title || '').toLowerCase().includes('delete') || 
+                                 (newNotif.title || '').toLowerCase().includes('update') || 
+                                 (newNotif.title || '').toLowerCase().includes('remove') ||
                                  newNotif.type === 'alert' ||
                                  newNotif.type === 'warning';
                                  
@@ -703,21 +820,18 @@ export function useSupabaseData(user: any) {
               toast.info(`${newNotif.title}`, msgOpts);
           }
         }
-        
-        // Always fetch the notifications silently so the notification panel stays updated
-        debouncedFetchData();
       })
       .subscribe();
 
     const studentAttSubscription = supabase.channel('student-attendance-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'student_attendance' }, () => {
-        debouncedFetchData();
+        refreshStudentAttendanceOnly();
       })
       .subscribe();
 
     const staffAttSubscription = supabase.channel('staff-attendance-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_attendance' }, () => {
-        debouncedFetchData();
+        refreshStaffAttendanceOnly();
       })
       .subscribe();
 
@@ -728,22 +842,20 @@ export function useSupabaseData(user: any) {
       supabase.removeChannel(staffAttSubscription);
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
-  }, [userId, fetchData, debouncedFetchData]);
+  }, [userId, runFullFetchData, debouncedFetchData, refreshStudentAttendanceOnly, refreshStaffAttendanceOnly]);
 
-  const logActivity = async (title: string, message: string | object, type: 'info' | 'alert' | 'success' | 'warning' = 'info') => {
+  const logActivity = (title: string, message: string | object, type: 'info' | 'alert' | 'success' | 'warning' = 'info') => {
     if (!user) return;
-    try {
-      const finalMessage = typeof message === 'object' && message !== null ? JSON.stringify(message) : String(message);
-      await supabase.from('notifications').insert({
-        title,
-        message: finalMessage,
-        type,
-        actor_name: user.displayName || user.email,
-        is_read: false
-      });
-    } catch (e) {
-      console.error('Failed to log activity', e);
-    }
+    const finalMessage = typeof message === 'object' && message !== null ? JSON.stringify(message) : String(message);
+    supabase.from('notifications').insert({
+      title,
+      message: finalMessage,
+      type,
+      actor_name: user.displayName || user.email,
+      is_read: false
+    }).then(() => {}).catch((e) => {
+      console.warn('Failed to log activity', e);
+    });
   };
 
   async function autoPromoteStudents(studentsList: Student[]) {

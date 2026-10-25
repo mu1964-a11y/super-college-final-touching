@@ -221,9 +221,36 @@ export function useStaffOperations(ctx: any) {
     };
   const bulkSaveStaffAttendance = async (records: any[]) => {
       try {
+        if (setStaffAttendance && Array.isArray(records) && records.length > 0) {
+          setStaffAttendance((prev: any[]) => {
+            const next = [...(prev || [])];
+            for (const r of records) {
+              const idx = next.findIndex(
+                (item) => (item.staffId || item.staff_id) === r.staffId && item.date === r.date
+              );
+              const optimisticItem = {
+                ...(idx >= 0 ? next[idx] : {}),
+                ...r,
+                staffId: r.staffId,
+                staff_id: r.staffId,
+                checkIn: r.checkIn || r.checkInTime || null,
+                checkOut: r.checkOut || r.checkOutTime || null,
+                checkInTime: r.checkInTime || r.checkIn || null,
+                checkOutTime: r.checkOutTime || r.checkOut || null,
+              };
+              if (idx >= 0) {
+                next[idx] = optimisticItem;
+              } else {
+                next.unshift(optimisticItem);
+              }
+            }
+            return next;
+          });
+        }
+
         const { error } = await supabase.from('staff_attendance').upsert(
           records.map(r => ({
-            id: r.id && !r.id.includes('-') ? undefined : (r.id.includes('-') ? r.id : r.id), // Let supabase generate UUID if it's currently a compound id, wait, actually let's not touch id on upsert if it's new. Actually, if r.id includes '-' and it's not a UUID, inserting it will fail because id is UUID.
+            id: r.id && !r.id.includes('-') ? undefined : (r.id.includes('-') ? r.id : r.id),
             staff_id: r.staffId,
             date: r.date,
             status: r.status,
@@ -235,8 +262,6 @@ export function useStaffOperations(ctx: any) {
             check_in_time: r.checkInTime || r.check_in_time || null,
             check_out_time: r.checkOutTime || r.check_out_time || null,
           })).map(rec => {
-            // Remove id if it's an old compound id from localstorage to let UUID default gen work
-            // But we need to use constraint `staff_attendance_staff_id_date_key`
             if (rec.id && rec.id.length !== 36) delete rec.id; 
             return rec;
           }), 

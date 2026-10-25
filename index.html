@@ -49,9 +49,60 @@
           }
         } catch (_) {}
 
+        function clearStaleAuthStorage() {
+          try {
+            window.localStorage.removeItem('scj-auth');
+            window.localStorage.removeItem('scj-auth-user');
+            window.localStorage.removeItem('scj-auth-code-verifier');
+            for (var i = window.localStorage.length - 1; i >= 0; i--) {
+              var k = window.localStorage.key(i);
+              if (k && (k.indexOf('scj-auth') !== -1 || k.indexOf('sb-') === 0 || k.indexOf('supabase.auth') !== -1)) {
+                window.localStorage.removeItem(k);
+              }
+            }
+          } catch (_) {}
+        }
+
+        function isRefreshTokenErrorString(str) {
+          if (!str) return false;
+          var lower = String(str).toLowerCase();
+          return (
+            lower.indexOf('refresh token') !== -1 ||
+            lower.indexOf('refresh_token') !== -1 ||
+            lower.indexOf('invalid_grant') !== -1 ||
+            lower.indexOf('session_not_found') !== -1
+          );
+        }
+
+        try {
+          var rawConsoleError = console.error.bind(console);
+          console.error = function() {
+            try {
+              var argsStr = Array.prototype.slice.call(arguments).map(function(a) {
+                if (!a) return '';
+                if (typeof a === 'string') return a;
+                return (a.name || '') + ' ' + (a.message || '') + ' ' + (a.code || '') + ' ' + (a.stack || '');
+              }).join(' ');
+              if (isRefreshTokenErrorString(argsStr)) {
+                clearStaleAuthStorage();
+                return;
+              }
+            } catch (_) {}
+            return rawConsoleError.apply(console, arguments);
+          };
+        } catch (_) {}
+
         window.addEventListener('error', function(event) {
           var msg = (event && event.message) ? String(event.message) : '';
           var file = (event && event.filename) ? String(event.filename) : '';
+          var errObjStr = (event && event.error) ? String(event.error.message || event.error) : '';
+          var combined = msg + ' ' + errObjStr;
+          if (isRefreshTokenErrorString(combined)) {
+            clearStaleAuthStorage();
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return false;
+          }
           if (
             msg.indexOf('Cannot set property fetch') !== -1 ||
             file.indexOf('chrome-extension://') !== -1 ||
@@ -65,6 +116,12 @@
 
         window.addEventListener('unhandledrejection', function(event) {
           var reason = event && event.reason ? String(event.reason.stack || event.reason.message || event.reason) : '';
+          if (isRefreshTokenErrorString(reason)) {
+            clearStaleAuthStorage();
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return false;
+          }
           if (
             reason.indexOf('Cannot set property fetch') !== -1 ||
             reason.indexOf('chrome-extension://') !== -1 ||

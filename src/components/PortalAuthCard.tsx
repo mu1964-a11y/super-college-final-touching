@@ -7,11 +7,9 @@ import {
   ArrowRight,
   ArrowLeft,
   UserCheck,
-  Phone,
-  Fingerprint,
+  KeyRound,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { secugenService } from '../lib/secugenService';
 import { toast } from 'sonner';
 
 interface PortalAuthCardProps {
@@ -55,7 +53,6 @@ export default function PortalAuthCard({
   const [showPass, setShowPass] = useState(false);
   const [identifier, setIdentifier] = useState('');
   const [secretPin, setSecretPin] = useState('');
-  const [bioSigningIn, setBioSigningIn] = useState(false);
 
   const handlePortalLookup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +60,18 @@ export default function PortalAuthCard({
     const cleanPin = secretPin.trim().replace(/\D/g, '');
 
     if (!cleanId) {
-      toast.error('Please enter your Roll No / ID or Registered Phone Number');
+      toast.error(
+        loginPortal === 'student'
+          ? 'Please enter your Roll Number or Student ID'
+          : 'Please enter your Staff ID (e.g. SGC-T-002) or Registered Mobile'
+      );
+      return;
+    }
+
+    if (cleanPin.length < 4) {
+      toast.error(
+        'Please enter your 4-digit Security PIN (Last 4 digits of registered Mobile or CNIC / B-Form)'
+      );
       return;
     }
 
@@ -87,22 +95,32 @@ export default function PortalAuthCard({
           }
         }
 
+        const pin4 = cleanPin.slice(-4);
         const matched = pool.find((s: any) => {
           const roll = String(s.collegeNo || s.studentId || s.id || '').toLowerCase();
           const name = String(s.fullName || '').toLowerCase();
-          const phone = String(s.contact || s.fatherContact || '').replace(/\D/g, '');
+          const phone = String(s.contact || '').replace(/\D/g, '');
+          const fatherPhone = String(s.fatherContact || '').replace(/\D/g, '');
+          const bform = String(s.bayFormNo || '').replace(/\D/g, '');
           const idDigits = cleanId.replace(/\D/g, '');
+
           const idMatches =
             roll === cleanId ||
             name === cleanId ||
-            (idDigits.length >= 7 && phone.endsWith(idDigits.slice(-7)));
+            (idDigits.length >= 7 &&
+              (phone.endsWith(idDigits.slice(-7)) || fatherPhone.endsWith(idDigits.slice(-7))));
           if (!idMatches) return false;
-          if (!cleanPin) return true;
+
+          // If student has a registered phone or B-Form, require last 4 digits to match
+          const hasStoredCredentials =
+            phone.length >= 4 || fatherPhone.length >= 4 || bform.length >= 4;
+          if (!hasStoredCredentials) {
+            return roll === cleanId;
+          }
           return (
-            phone.endsWith(cleanPin.slice(-4)) ||
-            String(s.bayFormNo || '')
-              .replace(/\D/g, '')
-              .endsWith(cleanPin.slice(-4))
+            phone.endsWith(pin4) ||
+            fatherPhone.endsWith(pin4) ||
+            bform.endsWith(pin4)
           );
         });
 
@@ -110,7 +128,7 @@ export default function PortalAuthCard({
           onLoginSuccessStudent(matched);
         } else {
           setAuthLoading(false);
-          toast.error('No matching student record found. Check Roll No or Contact Number.');
+          toast.error('Invalid Student ID / Roll No or 4-digit Security PIN.');
         }
       } else {
         let pool = staffList && staffList.length > 0 ? staffList : [];
@@ -128,70 +146,39 @@ export default function PortalAuthCard({
           }
         }
 
+        const pin4 = cleanPin.slice(-4);
         const idDigits = cleanId.replace(/\D/g, '');
         const matched = pool.find((st: any) => {
           const id = String(st.id || '').toLowerCase();
           const name = String(st.fullName || '').toLowerCase();
           const phone = String(st.contact || '').replace(/\D/g, '');
           const cnic = String(st.cnic || '').replace(/\D/g, '');
-          return (
+
+          const idMatches =
             id === cleanId ||
-            name.includes(cleanId) ||
-            (idDigits.length >= 7 && phone.endsWith(idDigits.slice(-7))) ||
-            (cleanPin.length >= 4 &&
-              (phone.endsWith(cleanPin.slice(-4)) || cnic.endsWith(cleanPin.slice(-4))))
-          );
+            name === cleanId ||
+            (idDigits.length >= 7 && phone.endsWith(idDigits.slice(-7)));
+          if (!idMatches) return false;
+
+          const hasStoredCredentials = phone.length >= 4 || cnic.length >= 4;
+          if (!hasStoredCredentials) {
+            return id === cleanId;
+          }
+          return phone.endsWith(pin4) || cnic.endsWith(pin4);
         });
 
         if (matched) {
           onLoginSuccessStaff(matched);
         } else {
           setAuthLoading(false);
-          toast.error('Faculty record not found. Enter your Staff ID (e.g. SGC-T-002), Name, or Mobile.');
+          toast.error(
+            'Invalid Staff ID or 4-digit Security PIN. Enter your Staff ID and last 4 digits of registered Mobile/CNIC.'
+          );
         }
       }
     } catch (err: any) {
       setAuthLoading(false);
       toast.error(err?.message || 'Error verifying portal login');
-    }
-  };
-
-  // 1-Touch Biometric Thumb Login for Faculty
-  const handleFacultyBiometricLogin = async () => {
-    setBioSigningIn(true);
-    try {
-      const cap = await secugenService.captureFingerprint({ timeoutMs: 9000, quality: 45 });
-      if (!cap.success || !cap.templateBase64) {
-        toast.error(cap.error || 'Could not capture fingerprint from SecuGen sensor');
-        return;
-      }
-
-      let pool = staffList && staffList.length > 0 ? staffList : [];
-      if (pool.length === 0 && isSupabaseConfigured) {
-        const { data } = await supabase.from('staff').select('*');
-        if (data) {
-          pool = data.map((st: any) => ({
-            ...st,
-            fullName: st.full_name || st.fullName,
-            fatherName: st.father_name || st.fatherName,
-            photo: st.photo_url || st.photo,
-            baseSalary: st.base_salary || st.salary,
-            fingerprintTemplate: st.fingerprint_template || st.fingerprintTemplate,
-          }));
-        }
-      }
-
-      const enrolled = pool.filter((st: any) => Boolean(st.fingerprintTemplate));
-      for (const st of enrolled) {
-        const m = await secugenService.matchTemplates(cap.templateBase64, st.fingerprintTemplate);
-        if (m.matched) {
-          onLoginSuccessStaff(st);
-          return;
-        }
-      }
-      toast.warning('Fingerprint did not match any enrolled faculty member.');
-    } finally {
-      setBioSigningIn(false);
     }
   };
 
@@ -292,8 +279,8 @@ export default function PortalAuthCard({
         </h2>
         <p className="text-xs text-slate-500">
           {loginPortal === 'student'
-            ? 'Enter your Roll Number or Registered Mobile Number'
-            : 'Enter your Staff ID (e.g. SGC-T-002), Faculty Name, or Mobile Number'}
+            ? 'Enter your Roll Number / Student ID and 4-digit Security PIN'
+            : 'Enter your Official Staff ID (e.g. SGC-T-002) and 4-digit Security PIN'}
         </p>
       </div>
 
@@ -301,8 +288,8 @@ export default function PortalAuthCard({
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
             {loginPortal === 'student'
-              ? 'Roll No / Student ID / Mobile'
-              : 'Staff ID / Faculty Name / Mobile'}
+              ? 'Roll No / Student ID / Registered Mobile'
+              : 'Official Staff ID / Registered Mobile'}
           </label>
           <div className="relative">
             <UserCheck className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -314,7 +301,7 @@ export default function PortalAuthCard({
               placeholder={
                 loginPortal === 'student'
                   ? 'e.g. SCJ-26-101 or 03001234567'
-                  : 'e.g. SGC-T-002 or M. Tahir'
+                  : 'e.g. SGC-T-002 or 03001234567'
               }
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
             />
@@ -323,46 +310,45 @@ export default function PortalAuthCard({
 
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-            Verification PIN (Last 4 Digits of Phone / CNIC - Optional)
+            4-Digit Security PIN (Last 4 Digits of Registered Mobile / CNIC)
           </label>
           <div className="relative">
-            <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="password"
+              required
+              maxLength={6}
               value={secretPin}
               onChange={(e) => setSecretPin(e.target.value)}
-              placeholder="Last 4 digits"
+              placeholder="•••• (Required)"
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
             />
           </div>
         </div>
       </div>
 
+      <div className="flex items-center justify-between text-xs pt-0.5">
+        <span className="text-[11px] text-slate-500">
+          PIN = Last 4 digits of registered phone or CNIC
+        </span>
+        <button
+          type="button"
+          onClick={onBackToGateway}
+          className="text-emerald-700 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
+        >
+          <ArrowLeft size={12} /> Switch Portal
+        </button>
+      </div>
+
       <div className="space-y-2.5 pt-1">
         <button
           type="submit"
-          disabled={authLoading || bioSigningIn}
+          disabled={authLoading}
           className="w-full py-3 rounded-xl bg-gradient-to-r from-[#064e43] to-[#085a4e] text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg cursor-pointer disabled:opacity-50"
         >
-          <span>{authLoading ? 'Verifying...' : 'Open Portal Dashboard'}</span>
+          <span>{authLoading ? 'Verifying Credentials...' : 'Sign In to Portal'}</span>
           <ArrowRight size={16} />
         </button>
-
-        {loginPortal === 'staff' && (
-          <button
-            type="button"
-            onClick={handleFacultyBiometricLogin}
-            disabled={authLoading || bioSigningIn}
-            className="w-full py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-900 font-black text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
-          >
-            <Fingerprint size={15} className="text-emerald-700" />
-            <span>
-              {bioSigningIn
-                ? 'Place Enrolled Finger on SecuGen Scanner...'
-                : '1-Touch Biometric Thumb Sign-In (Enrolled Faculty)'}
-            </span>
-          </button>
-        )}
       </div>
     </form>
   );

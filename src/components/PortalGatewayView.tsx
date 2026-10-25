@@ -5,8 +5,7 @@ import {
   GraduationCap,
   ArrowLeft,
   ArrowRight,
-  Fingerprint,
-  Camera,
+  Lock,
 } from 'lucide-react';
 
 interface PortalGatewayViewProps {
@@ -28,7 +27,7 @@ export default function PortalGatewayView({
       id: 'admin' as const,
       title: 'Administration & Accounts ERP',
       subtitle:
-        'Executive Dashboard, Inter/BS/DIT/UKL3 Admissions, Double-Entry Fee Ledger & Biometrics',
+        'Executive Dashboard, Admissions Pipeline, Accounts Ledger & Institutional Operations',
       icon: Shield,
       badge: 'Executive Access',
       accent: 'from-[#064e43] to-teal-700',
@@ -37,7 +36,7 @@ export default function PortalGatewayView({
       id: 'staff' as const,
       title: 'Faculty & Staff Workplace',
       subtitle:
-        'Lecture Timetable, Thumb Biometric Logs, Fast Marks Entry & Monthly Salary Vouchers',
+        'Lecture Timetable, Daily Attendance Timings, Academic Evaluations & Monthly Salary Slips',
       icon: Briefcase,
       badge: 'Faculty Access',
       accent: 'from-amber-600 to-orange-700',
@@ -46,7 +45,7 @@ export default function PortalGatewayView({
       id: 'student' as const,
       title: 'Student & Parent Portal',
       subtitle:
-        '6-Month Exam Progress, Attendance Record, Official Fee Receipts & Digital Student ID',
+        'Exam Progress, Daily Attendance Timings, Official Fee Vouchers & Digital Student ID',
       icon: GraduationCap,
       badge: 'Scholar Access',
       accent: 'from-sky-600 to-indigo-700',
@@ -121,21 +120,11 @@ export default function PortalGatewayView({
           })}
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-          <a
-            href="/?biometric=true"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-black/30 hover:bg-black/45 border border-white/15 text-xs font-bold text-emerald-200"
-          >
-            <Fingerprint size={14} className="text-amber-300" />
-            <span>Open Biometric Attendance Kiosk</span>
-          </a>
-          <a
-            href="/?gate=true"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-black/30 hover:bg-black/45 border border-white/15 text-xs font-bold text-emerald-200"
-          >
-            <Camera size={14} className="text-emerald-300" />
-            <span>Open Face Gate Kiosk</span>
-          </a>
+        <div className="flex items-center justify-center pt-2">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-black/25 border border-white/10 text-xs font-semibold text-emerald-100/80">
+            <Lock size={13} className="text-amber-300" />
+            <span>Authenticated Session Required • All Logins Are Audited</span>
+          </div>
         </div>
       </div>
 

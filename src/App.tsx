@@ -309,9 +309,10 @@ export default function App() {
   const [dossierStudent, setDossierStudent] = useState<any | null>(null);
   const [dossierInitialTab, setDossierInitialTab] = useState<'profile' | 'financials' | 'academic' | 'whatsapp'>('profile');
 
-  // Global Ctrl+K (Spotlight) & Ctrl+B (Biometric Spot-Check) keyboard shortcuts
+  // Global Ctrl+K (Spotlight) & Ctrl+B (Biometric Spot-Check) keyboard shortcuts (Admin Only)
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (!user) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setIsCommandPaletteOpen((prev) => !prev);
@@ -322,7 +323,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [user]);
 
   // Local USB biometric scanner status (SecuGen Hamster Pro 20 on localhost:8443)
   const [localBiometricStatus, setLocalBiometricStatus] = useState<{
@@ -441,10 +442,9 @@ export default function App() {
         if (error) {
           const errMsg = error.message || String(error);
           if (errMsg.toLowerCase().includes("refresh token") || errMsg.toLowerCase().includes("refresh_token")) {
-            console.warn("Detected invalid refresh token in branding fetch. Clearing auth session.");
             safeLocalStorage.removeItem("scj-auth");
             supabase.auth.signOut({ scope: "local" }).catch(() => {});
-            window.location.reload();
+            setUser(null);
             return;
           }
           console.warn("Branding fetch query error:", error);
@@ -479,10 +479,9 @@ export default function App() {
       } catch (err) {
         const errMsg = typeof err === 'string' ? err : (err as any)?.message || String(err);
         if (errMsg.toLowerCase().includes("refresh token") || errMsg.toLowerCase().includes("refresh_token")) {
-          console.warn("Detected invalid refresh token in branding fetch catch block. Clearing auth session.");
           safeLocalStorage.removeItem("scj-auth");
           supabase.auth.signOut({ scope: "local" }).catch(() => {});
-          window.location.reload();
+          setUser(null);
           return;
         }
         console.warn("Branding fetch fatal error:", err);
@@ -508,17 +507,18 @@ export default function App() {
           const lowerMsg = errMsg.toLowerCase();
           if (lowerMsg.includes("refresh token") || lowerMsg.includes("refresh_token") || lowerMsg.includes("session_not_found") || lowerMsg.includes("invalid_grant")) {
             safeLocalStorage.removeItem("scj-auth");
-            // Also remove the generic supabase storage items if any exist
-            for (let i = 0; i < localStorage.length; i++) {
+            for (let i = localStorage.length - 1; i >= 0; i--) {
               const key = localStorage.key(i);
               if (key && (key.includes('supabase') || key.includes('scj-auth') || key.includes('sb-'))) {
                 localStorage.removeItem(key);
               }
             }
             supabase.auth.signOut({ scope: "local" }).catch(() => {});
-            window.location.reload();
+            setUser(null);
+            setAuthLoading(false);
+            return;
           } else {
-            console.error("Session error:", error);
+            console.warn("Session warning:", error);
           }
         }
         setUser(data?.session?.user ?? null);
@@ -529,14 +529,14 @@ export default function App() {
         const lowerMsg = errMsg.toLowerCase();
         if (lowerMsg.includes("refresh token") || lowerMsg.includes("refresh_token") || lowerMsg.includes("session_not_found") || lowerMsg.includes("invalid_grant")) {
           safeLocalStorage.removeItem("scj-auth");
-          for (let i = 0; i < localStorage.length; i++) {
+          for (let i = localStorage.length - 1; i >= 0; i--) {
             const key = localStorage.key(i);
             if (key && (key.includes('supabase') || key.includes('scj-auth') || key.includes('sb-'))) {
               localStorage.removeItem(key);
             }
           }
           supabase.auth.signOut({ scope: "local" }).catch(() => {});
-          window.location.reload();
+          setUser(null);
         } else {
           console.warn("Got session error:", err);
         }
@@ -1276,7 +1276,7 @@ export default function App() {
     window.location.pathname.startsWith('/fingerprint')
   );
 
-  if (isBiometricDeskMode) {
+  if (isBiometricDeskMode && user) {
     return (
       <BiometricAttendanceDesk
         standalone={true}
@@ -2351,130 +2351,114 @@ export default function App() {
           </div>
         )}
 
-        {/* Content Area with Spatial 3D Perspective Transition */}
-        <div className="flex-1 overflow-auto relative z-10" style={{ perspective: 1200 }}>
+        {/* Instant Zero-Lag Content Area */}
+        <div className="flex-1 overflow-auto relative z-10">
           <div className="w-full max-w-full px-3 sm:px-6 pt-1 pb-6">
-            <AnimatePresence mode="wait">
-              
-                <motion.div
-                  key={`${activePage}-${activeFilter}`}
-                  initial={{ opacity: 0, rotateX: 6, scale: 0.985, y: 10 }}
-                  animate={{ opacity: 1, rotateX: 0, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, rotateX: -6, scale: 0.985, y: -10 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 380,
-                    damping: 30,
-                    mass: 0.8
-                  }}
-                  style={{ transformStyle: "preserve-3d", transformOrigin: "top center" }}
-                >
-                  {activePage === "dashboard" && (
-                    <DashboardView
-                      data={filteredData}
-                      setActivePage={handleNavClick}
-                      selectedSession={selectedSession}
-                      setSelectedSession={setSelectedSession}
-                      allowedSections={allowedSections}
-                    />
-                  )}
-                {activePage === "leads" && (
-                  <LeadsManagementView
-                    data={filteredData}
-                    onNavigate={(page, filter) =>
-                      handleNavClick(page as Page, filter)
-                    }
-                  />
-                )}
-                {activePage.startsWith("admissions") && (
-                  <AdmissionsView
-                    data={filteredData}
-                    initialFilter={activeFilter}
-                    selectedSession={selectedSession}
-                    program={activePage.includes("-") ? activePage.split("-")[1] : undefined}
-                  />
-                )}
-                {activePage.startsWith("fee") && (
-                  <FeeManagementView
-                    data={filteredData}
-                    gender={
-                      activePage === "fee-boys"
-                        ? "Male"
-                        : activePage === "fee-girls"
-                          ? "Female"
-                          : undefined
-                    }
-                    program={
-                      activePage.includes("-") ? (activePage === "fee-boys" || activePage === "fee-girls" ? "fsc" : activePage.replace("fee-", "")) : undefined
-                    }
-                  />
-                )}
-                {activePage.startsWith("students") && (
-                  <StudentsView
-                    data={filteredData}
-                    gender={
-                      activePage === "students-boys"
-                        ? "Male"
-                        : activePage === "students-girls"
-                          ? "Female"
-                          : undefined
-                    }
-                    program={
-                      activePage.includes("-") ? (activePage === "students-boys" || activePage === "students-girls" ? undefined : activePage.replace("students-", "")) : undefined
-                    }
-                  />
-                )}
-                {activePage === "attendance" && (
-                  <AttendanceView data={filteredData} />
-                )}
-                {activePage === "classes" && (
-                  <StaffView key="classes" data={filteredData} initialFilter="subjects" title="Classes & Subjects" hideNavigation={true} />
-                )}
-                {activePage === "timetable" && (
-                  <StaffView key="timetable" data={filteredData} initialFilter="timetable" title="Timetable" hideNavigation={true} />
-                )}
-                {activePage === "staff" && (
-                  <StaffView key="staff" data={filteredData} initialFilter={activeFilter} />
-                )}
-                {activePage === "accounts" && (
-                  <AccountsView data={filteredData} initialTab={activeFilter} />
-                )}
-                {activePage === "reports" && (
-                  <ReportsView
-                    data={filteredData}
-                    initialFilter={activeFilter}
-                  />
-                )}
-                {activePage === "settings" && (
-                  <SettingsView data={filteredData} />
-                )}
-                {activePage === "library" && (
-                  <div className="flex h-full items-center justify-center p-8 bg-slate-50 animate-in fade-in zoom-in duration-300">
-                    <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-100 shadow-xl text-center">
-                      <div className="w-20 h-20 bg-superior-teal/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                        <BookOpen size={40} className="text-superior-teal" />
-                      </div>
-                      <h2 className="text-2xl font-black text-slate-800 mb-2">Library Module</h2>
-                      <p className="text-slate-500 mb-6">The robust global library management system is being provisioned and will be activated shortly.</p>
-                      <Button variant="outline" className="rounded-xl w-full border-slate-200 hover:bg-slate-50 shadow-sm" onClick={() => handleNavClick("dashboard")}>Return to Dashboard</Button>
+            <div key={`${activePage}-${activeFilter}`} className="w-full">
+              {activePage === "dashboard" && (
+                <DashboardView
+                  data={filteredData}
+                  setActivePage={handleNavClick}
+                  selectedSession={selectedSession}
+                  setSelectedSession={setSelectedSession}
+                  allowedSections={allowedSections}
+                />
+              )}
+              {activePage === "leads" && (
+                <LeadsManagementView
+                  data={filteredData}
+                  onNavigate={(page, filter) =>
+                    handleNavClick(page as Page, filter)
+                  }
+                />
+              )}
+              {activePage.startsWith("admissions") && (
+                <AdmissionsView
+                  data={filteredData}
+                  initialFilter={activeFilter}
+                  selectedSession={selectedSession}
+                  program={activePage.includes("-") ? activePage.split("-")[1] : undefined}
+                />
+              )}
+              {activePage.startsWith("fee") && (
+                <FeeManagementView
+                  data={filteredData}
+                  gender={
+                    activePage === "fee-boys"
+                      ? "Male"
+                      : activePage === "fee-girls"
+                        ? "Female"
+                        : undefined
+                  }
+                  program={
+                    activePage.includes("-") ? (activePage === "fee-boys" || activePage === "fee-girls" ? "fsc" : activePage.replace("fee-", "")) : undefined
+                  }
+                />
+              )}
+              {activePage.startsWith("students") && (
+                <StudentsView
+                  data={filteredData}
+                  gender={
+                    activePage === "students-boys"
+                      ? "Male"
+                      : activePage === "students-girls"
+                        ? "Female"
+                        : undefined
+                  }
+                  program={
+                    activePage.includes("-") ? (activePage === "students-boys" || activePage === "students-girls" ? undefined : activePage.replace("students-", "")) : undefined
+                  }
+                />
+              )}
+              {activePage === "attendance" && (
+                <AttendanceView data={filteredData} />
+              )}
+              {activePage === "classes" && (
+                <StaffView key="classes" data={filteredData} initialFilter="subjects" title="Classes & Subjects" hideNavigation={true} />
+              )}
+              {activePage === "timetable" && (
+                <StaffView key="timetable" data={filteredData} initialFilter="timetable" title="Timetable" hideNavigation={true} />
+              )}
+              {activePage === "staff" && (
+                <StaffView key="staff" data={filteredData} initialFilter={activeFilter} />
+              )}
+              {activePage === "accounts" && (
+                <AccountsView data={filteredData} initialTab={activeFilter} />
+              )}
+              {activePage === "reports" && (
+                <ReportsView
+                  data={filteredData}
+                  initialFilter={activeFilter}
+                />
+              )}
+              {activePage === "settings" && (
+                <SettingsView data={filteredData} />
+              )}
+              {activePage === "library" && (
+                <div className="flex h-full items-center justify-center p-8 bg-slate-50">
+                  <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-100 shadow-xl text-center">
+                    <div className="w-20 h-20 bg-superior-teal/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                      <BookOpen size={40} className="text-superior-teal" />
                     </div>
+                    <h2 className="text-2xl font-black text-slate-800 mb-2">Library Module</h2>
+                    <p className="text-slate-500 mb-6">The robust global library management system is being provisioned and will be activated shortly.</p>
+                    <Button variant="outline" className="rounded-xl w-full border-slate-200 hover:bg-slate-50 shadow-sm" onClick={() => handleNavClick("dashboard")}>Return to Dashboard</Button>
                   </div>
-                )}
-                {activePage === "academic" && (
-                  <AcademicView data={filteredData} />
-                )}
-                {activePage === "whatsapp-center" && (
-                  <WhatsAppCenterView data={filteredData} />
-                )}
-                {activePage === "archive" && (
-                  <DeletedArchiveView 
-                    data={filteredData} 
-                    onNavigate={(p: string) => handleNavClick(p as Page)} 
-                  />
-                )}
-              </motion.div>
-              
-            </AnimatePresence>
+                </div>
+              )}
+              {activePage === "academic" && (
+                <AcademicView data={filteredData} />
+              )}
+              {activePage === "whatsapp-center" && (
+                <WhatsAppCenterView data={filteredData} />
+              )}
+              {activePage === "archive" && (
+                <DeletedArchiveView 
+                  data={filteredData} 
+                  onNavigate={(p: string) => handleNavClick(p as Page)} 
+                />
+              )}
+            </div>
           </div>
         </div>
       </main>
@@ -2521,7 +2505,6 @@ export default function App() {
         data={data}
       />
 
-      <Toaster position="top-right" richColors />
       <style dangerouslySetInnerHTML={{ __html: themeStyles }} />
     </div>
   );

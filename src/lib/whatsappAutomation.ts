@@ -150,11 +150,75 @@ export async function sendAutoAdmissionNotice(
   return res.success;
 }
 
+export function parseAttendanceNotesAndTime(
+  notes?: string,
+  explicitCheckIn?: string,
+  explicitCheckOut?: string
+): {
+  checkIn: string;
+  breakOut: string;
+  breakIn: string;
+  checkOut: string;
+  campusState: string;
+  movements: Array<{ type: string; time: string }>;
+  cleanRemarks: string;
+} {
+  let checkIn = explicitCheckIn || '';
+  let breakOut = '';
+  let breakIn = '';
+  let checkOut = explicitCheckOut || '';
+  let campusState = '';
+  let movements: Array<{ type: string; time: string }> = [];
+  let cleanRemarks = '';
+
+  if (notes && typeof notes === 'string') {
+    const trimmed = notes.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (!checkIn && (parsed.checkIn || parsed.check_in || parsed.time)) {
+          checkIn = String(parsed.checkIn || parsed.check_in || parsed.time);
+        }
+        if (parsed.breakOut || parsed.break_out) {
+          breakOut = String(parsed.breakOut || parsed.break_out);
+        }
+        if (parsed.breakIn || parsed.break_in) {
+          breakIn = String(parsed.breakIn || parsed.break_in);
+        }
+        if (!checkOut && (parsed.checkOut || parsed.check_out)) {
+          checkOut = String(parsed.checkOut || parsed.check_out);
+        }
+        if (parsed.campusState) {
+          campusState = String(parsed.campusState);
+        }
+        if (Array.isArray(parsed.movements)) {
+          movements = parsed.movements;
+        }
+        cleanRemarks = parsed.notes || parsed.Verify || parsed.method || 'Biometric Verified';
+      } catch {
+        cleanRemarks = 'Biometric Verified';
+      }
+    } else {
+      const inMatch = trimmed.match(/check[-\s]*in[:\s]+([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:AM|PM)?)/i);
+      const outMatch = trimmed.match(/check[-\s]*out[:\s]+([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:AM|PM)?)/i);
+      const timeMatch = trimmed.match(/\b([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:AM|PM))\b/i);
+      if (!checkIn && inMatch) checkIn = inMatch[1].trim();
+      else if (!checkIn && timeMatch) checkIn = timeMatch[1].trim();
+      if (!checkOut && outMatch) checkOut = outMatch[1].trim();
+      cleanRemarks = trimmed;
+    }
+  }
+
+  return { checkIn, breakOut, breakIn, checkOut, campusState, movements, cleanRemarks };
+}
+
 export function buildDailyAttendanceMessage(
   student: any,
   attendance: {
     date: string;
     status: string;
+    checkInTime?: string;
+    checkOutTime?: string;
     notes?: string;
     monthlyAbsents?: number;
     monthlyLeaves?: number;
@@ -164,23 +228,37 @@ export function buildDailyAttendanceMessage(
   settings?: any
 ): string {
   const collegeName = 'Superior College Jahanian';
-  const name = student?.fullName || 'Student';
-  const rollNo = student?.studentId || student?.collegeNo || student?.id || 'N/A';
+  const name = student?.fullName || student?.full_name || 'Student';
+  const rollNo = student?.studentId || student?.collegeNo || student?.college_no || student?.id || 'N/A';
   const cls = student?.currentClass || student?.group || student?.groupName || 'Class';
   const status = attendance.status || 'Present';
   const statusIcon =
     status === 'Present'
-      ? '✅ PRESENT'
+      ? '✅ PRESENT (Hazir)'
       : status === 'Absent'
-      ? '🚨 ABSENT'
+      ? '🚨 ABSENT (Ghair Hazir)'
       : status === 'Late'
       ? '⏰ LATE ARRIVAL'
       : '📋 ON LEAVE';
 
-  let msg = `🏛️ *${collegeName.toUpperCase()}*\n📋 *DAILY ATTENDANCE ALERT*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 *Student:* *${name}*\n🆔 *Roll No:* *${rollNo}* (${cls})\n📅 *Date:* *${attendance.date}*\n📌 *Status:* *${statusIcon}*`;
+  const parsed = parseAttendanceNotesAndTime(
+    attendance.notes,
+    attendance.checkInTime || (attendance as any).check_in_time,
+    attendance.checkOutTime || (attendance as any).check_out_time
+  );
+  const nowTimeStr = new Date().toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+  const markedTime =
+    parsed.checkIn || (status === 'Present' || status === 'Late' ? nowTimeStr : nowTimeStr);
 
-  if (attendance.notes) {
-    msg += `\n📝 *Remarks:* ${attendance.notes}`;
+  let msg = `🏛️ *${collegeName.toUpperCase()}*\n📋 *DAILY ATTENDANCE ALERT*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 *Student:* *${name}*\n🆔 *Roll No:* *${rollNo}* (${cls})\n📅 *Date:* *${attendance.date}*\n⏰ *Marked Time:* *${markedTime}*${parsed.checkOut ? ` | *Check-Out:* *${parsed.checkOut}*` : ''}\n📌 *Status:* *${statusIcon}*`;
+
+  if (parsed.cleanRemarks) {
+    msg += `\n📝 *Verification:* ${parsed.cleanRemarks}`;
   }
   if (typeof attendance.monthlyAbsents === 'number') {
     msg += `\n\n📊 *${attendance.monthName || 'Monthly'} Summary:* Present: *${attendance.monthlyPresents ?? 0}* | Absent: *${attendance.monthlyAbsents}* | Leave: *${attendance.monthlyLeaves ?? 0}*`;
@@ -194,6 +272,8 @@ export async function sendAutoDailyAttendanceNoticeDetailed(
   attendance: {
     date: string;
     status: string;
+    checkInTime?: string;
+    checkOutTime?: string;
     notes?: string;
     monthlyAbsents?: number;
     monthlyLeaves?: number;
@@ -205,6 +285,7 @@ export async function sendAutoDailyAttendanceNoticeDetailed(
 ): Promise<{ success: boolean; phone: string; error?: string }> {
   const phone =
     student?.fatherContact ||
+    student?.father_contact ||
     student?.guardianPhone ||
     student?.whatsapp ||
     student?.contact ||
@@ -216,12 +297,74 @@ export async function sendAutoDailyAttendanceNoticeDetailed(
 
 export async function sendAutoDailyAttendanceNotice(
   student: any,
-  attendance: { date: string; status: string; notes?: string },
+  attendance: { date: string; status: string; checkInTime?: string; checkOutTime?: string; notes?: string },
   settings?: any
 ): Promise<boolean> {
   const res = await sendAutoDailyAttendanceNoticeDetailed(student, attendance, settings, {
     manualTrigger: true,
   });
+  return res.success;
+}
+
+export async function sendAutoStaffDailyCheckInNotice(
+  staff: any,
+  attendance: {
+    date: string;
+    status: string;
+    checkInTime?: string;
+    breakOutTime?: string;
+    breakInTime?: string;
+    checkOutTime?: string;
+    punchEventLabel?: string;
+    mode?: string;
+    notes?: string;
+  },
+  options?: { silent?: boolean; alsoSendPdf?: boolean }
+): Promise<boolean> {
+  const phone = staff?.contact || staff?.phone || staff?.whatsapp || '';
+  const cleanPhone = formatWhatsAppPhone(phone);
+  if (!cleanPhone || cleanPhone.length < 10) return false;
+
+  const parsed = parseAttendanceNotesAndTime(
+    attendance.notes,
+    attendance.checkInTime,
+    attendance.checkOutTime
+  );
+  const nowTimeStr = new Date().toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+  const checkIn = parsed.checkIn || nowTimeStr;
+  const breakOut = attendance.breakOutTime || parsed.breakOut || '';
+  const breakIn = attendance.breakInTime || parsed.breakIn || '';
+  const checkOut = parsed.checkOut || '';
+  const staffName = staff?.fullName || staff?.full_name || 'Faculty Member';
+  const role = staff?.designation || staff?.role || 'Faculty';
+  const staffId = staff?.id || 'STF';
+
+  if (options?.alsoSendPdf && staff?.id) {
+    const pdfOk = await sendAutoStaffAttendancePdfNotice(staff.id, cleanPhone, attendance.date, {
+      silent: options?.silent ?? true,
+    });
+    if (pdfOk) return true;
+  }
+
+  let timingBlock = `⏰ *Morning Check-In:* *${checkIn}*`;
+  if (breakOut) {
+    timingBlock += `\n☕ *Mid-Day Out (Break/Free Period):* *${breakOut}*`;
+  }
+  if (breakIn) {
+    timingBlock += `\n🔄 *Returned to Campus (Break In):* *${breakIn}*`;
+  }
+  if (checkOut) {
+    timingBlock += `\n🏁 *Final Duty Check-Out:* *${checkOut}*`;
+  }
+
+  const msg = `🏛️ *SUPERIOR COLLEGE JAHANIAN*\n✅ *STAFF ATTENDANCE & MOVEMENT LOG*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 *Faculty:* *${staffName}* (${role} • ID: *${staffId}*)\n📅 *Date:* *${attendance.date}*\n📌 *Status:* *${(attendance.punchEventLabel || attendance.status).toUpperCase()}*\n${timingBlock}\n🔐 *Mode:* ${attendance.mode || parsed.cleanRemarks || 'Biometric Verified'}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n_HR & Attendance Desk — Superior College Jahanian_`;
+
+  const res = await dispatchWhatsAppMessage(cleanPhone, msg, { silent: options?.silent ?? true });
   return res.success;
 }
 

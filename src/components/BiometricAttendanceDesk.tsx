@@ -20,7 +20,11 @@ import {
 import { secugenService } from '../lib/secugenService';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { safeLocalStorage } from '../utils/safeStorage';
-import { sendAutoStaffAttendancePdfNotice } from '../lib/whatsappAutomation';
+import {
+  sendAutoStaffDailyCheckInNotice,
+  sendAutoDailyAttendanceNoticeDetailed,
+  parseAttendanceNotesAndTime,
+} from '../lib/whatsappAutomation';
 import { toast } from 'sonner';
 
 interface BiometricAttendanceDeskProps {
@@ -154,7 +158,7 @@ export default function BiometricAttendanceDesk({
   const [autoLoopEnabled, setAutoLoopEnabled] = useState<boolean>(true);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(true);
-  const [punchMode, setPunchMode] = useState<'auto' | 'checkin' | 'checkout'>('auto');
+  const [punchMode, setPunchMode] = useState<'auto' | 'checkin' | 'breakout' | 'breakin' | 'checkout'>('auto');
   const [scannerStatus, setScannerStatus] = useState<{ connected: boolean; deviceFound: boolean }>({
     connected: false,
     deviceFound: false,
@@ -163,15 +167,20 @@ export default function BiometricAttendanceDesk({
   const [searchRoster, setSearchRoster] = useState<string>('');
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
 
-  // Instant Verification Result Banner (Auto-resets after 3 seconds)
+  // Instant Verification Result Banner (Auto-resets after 3.5 seconds)
   const [verifiedCard, setVerifiedCard] = useState<{
-    type: 'checkin' | 'checkout' | 'duplicate' | 'unrecognized';
+    type: 'checkin' | 'breakout' | 'breakin' | 'checkout' | 'duplicate' | 'unrecognized';
     person?: any;
     status?: string;
     punchTime?: string;
     score?: number;
     message: string;
     thumbBmp?: string;
+    checkIn?: string;
+    breakOut?: string;
+    breakIn?: string;
+    checkOut?: string;
+    campusState?: 'in_campus' | 'on_break' | 'checked_out';
   } | null>(null);
 
   const isMountedRef = useRef<boolean>(true);
@@ -311,6 +320,232 @@ export default function BiometricAttendanceDesk({
     [studentsList]
   );
 
+  // Apply and persist a 4-stage Staff Movement action (Morning In, Break Out, Break In, Final Out)
+  const recordStaffStageAction = useCallback(
+    async (
+      matchedStaff: any,
+      stageAction: 'checkin' | 'breakout' | 'breakin' | 'checkout' | 'duplicate',
+      bestScore: number,
+      thumbDataUrl?: string
+    ) => {
+      const now = new Date();
+      const todayStr = getTodayDateStr();
+      const hhmm = formatHHMM(now);
+      const hhmmss = `${hhmm}:${String(now.getSeconds()).padStart(2, '0')}`;
+      const displayTime = formatTime12h(now);
+      const cutoffTime = settings?.collegeStartTime || '07:54';
+
+      const existingRec = todayAttendance.find(
+        (r: any) => (r.staff_id || r.staffId) === matchedStaff.id && r.date === todayStr
+      );
+      const parsedExisting = parseAttendanceNotesAndTime(
+        existingRec?.notes,
+        existingRec?.check_in || existingRec?.checkIn || existingRec?.check_in_time || existingRec?.checkInTime,
+        existingRec?.check_out || existingRec?.checkOut || existingRec?.check_out_time || existingRec?.checkOutTime
+      );
+
+      let prevJson: Record<string, any> = {};
+      if (existingRec?.notes && typeof existingRec.notes === 'string' && existingRec.notes.startsWith('{')) {
+        try {
+          prevJson = JSON.parse(existingRec.notes);
+        } catch {}
+      }
+
+      const existingCheckIn = parsedExisting.checkIn;
+      const existingBreakOut = parsedExisting.breakOut || prevJson.breakOut || '';
+      const existingBreakIn = parsedExisting.breakIn || prevJson.breakIn || '';
+      const existingCheckOut = parsedExisting.checkOut;
+      const prevMovements = Array.isArray(parsedExisting.movements) ? parsedExisting.movements : [];
+
+      if (stageAction === 'duplicate') {
+        if (soundEnabled) playKioskSound('duplicate');
+        speakKioskAnnouncement(
+          `${matchedStaff.fullName}, your punch is already recorded.`,
+          voiceEnabled
+        );
+        setVerifiedCard({
+          type: 'duplicate',
+          person: matchedStaff,
+          status: existingRec?.status || 'Present',
+          punchTime: displayTime,
+          score: bestScore,
+          message: `Duplicate Scan Guard — Already Punched Recently (${existingCheckIn || displayTime})`,
+          thumbBmp: thumbDataUrl,
+          checkIn: existingCheckIn,
+          breakOut: existingBreakOut,
+          breakIn: existingBreakIn,
+          checkOut: existingCheckOut,
+          campusState: parsedExisting.campusState || 'in_campus',
+        });
+        return;
+      }
+
+      const [cutH, cutM] = cutoffTime.split(':').map(Number);
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      const cutMins = (cutH || 7) * 60 + (cutM || 54);
+      const computedStatus =
+        existingRec?.status || (nowMins > cutMins ? 'Late' : 'Present');
+
+      const nextCheckIn = stageAction === 'checkin' ? (existingCheckIn || displayTime) : (existingCheckIn || displayTime);
+      const nextBreakOut = stageAction === 'breakout' ? displayTime : existingBreakOut;
+      const nextBreakIn = stageAction === 'breakin' ? displayTime : existingBreakIn;
+      const nextCheckOut = stageAction === 'checkout' ? displayTime : existingCheckOut;
+      const nextCampusState: 'in_campus' | 'on_break' | 'checked_out' =
+        stageAction === 'breakout'
+          ? 'on_break'
+          : stageAction === 'checkout'
+          ? 'checked_out'
+          : 'in_campus';
+
+      const nextMovements = [
+        ...prevMovements,
+        {
+          type: stageAction,
+          time: displayTime,
+          iso: now.toISOString(),
+        },
+      ];
+
+      const notesJson = JSON.stringify({
+        ...prevJson,
+        checkIn: nextCheckIn,
+        breakOut: nextBreakOut,
+        breakIn: nextBreakIn,
+        checkOut: nextCheckOut,
+        campusState: nextCampusState,
+        movements: nextMovements,
+        check_in_time: prevJson.check_in_time || hhmmss,
+        ...(stageAction === 'checkin' ? { isoCheckIn: now.toISOString() } : {}),
+        ...(stageAction === 'breakout' ? { break_out_time: hhmmss, isoBreakOut: now.toISOString() } : {}),
+        ...(stageAction === 'breakin' ? { break_in_time: hhmmss, isoBreakIn: now.toISOString() } : {}),
+        ...(stageAction === 'checkout' ? { check_out_time: hhmmss, isoCheckOut: now.toISOString() } : {}),
+        lastPunchIso: now.toISOString(),
+        method: 'biometric_fingerprint',
+        Verify: 'Biometric Thumb Verified',
+        score: bestScore,
+      });
+
+      const basePayload = {
+        id: existingRec?.id || `${matchedStaff.id}-${todayStr}`,
+        staff_id: matchedStaff.id,
+        date: todayStr,
+        status: computedStatus,
+        notes: notesJson,
+      };
+
+      if (isSupabaseConfigured) {
+        const { error } = await supabase
+          .from('staff_attendance')
+          .upsert([basePayload], { onConflict: 'id' });
+        if (error) {
+          await supabase
+            .from('staff_attendance')
+            .upsert(
+              [
+                {
+                  staff_id: matchedStaff.id,
+                  date: todayStr,
+                  status: computedStatus,
+                  notes: notesJson,
+                },
+              ],
+              { onConflict: 'staff_id,date' }
+            );
+        }
+      }
+
+      setTodayAttendance((prev) => {
+        const others = prev.filter(
+          (r: any) => (r.staff_id || r.staffId) !== matchedStaff.id
+        );
+        return [
+          ...others,
+          {
+            ...existingRec,
+            ...basePayload,
+            staffId: matchedStaff.id,
+            checkIn: nextCheckIn,
+            breakOut: nextBreakOut,
+            breakIn: nextBreakIn,
+            checkOut: nextCheckOut,
+          },
+        ];
+      });
+
+      onAttendanceMarked?.();
+
+      let statusLabel = computedStatus;
+      let cardMessage = `On-Time Biometric Check-In Recorded at ${displayTime}!`;
+      let voiceText = `Thank you ${matchedStaff.fullName}. Check in marked at ${displayTime}.`;
+
+      if (stageAction === 'checkin') {
+        if (soundEnabled) playKioskSound('checkin');
+        cardMessage =
+          computedStatus === 'Late'
+            ? `Morning Check-In Recorded at ${displayTime} (Late Arrival after ${cutoffTime} AM)`
+            : `On-Time Morning Check-In Recorded at ${displayTime}!`;
+      } else if (stageAction === 'breakout') {
+        if (soundEnabled) playKioskSound('checkout');
+        statusLabel = 'Break / Free-Period Out';
+        cardMessage = `Mid-Day Break / Free-Period Exit Recorded at ${displayTime}`;
+        voiceText = `${matchedStaff.fullName}, mid day break out recorded at ${displayTime}.`;
+      } else if (stageAction === 'breakin') {
+        if (soundEnabled) playKioskSound('checkin');
+        statusLabel = 'Returned from Break';
+        cardMessage = `Mid-Day Break Return Recorded at ${displayTime} (Out: ${nextBreakOut})`;
+        voiceText = `Welcome back ${matchedStaff.fullName}. Break return recorded at ${displayTime}.`;
+      } else if (stageAction === 'checkout') {
+        if (soundEnabled) playKioskSound('checkout');
+        statusLabel = 'Checked Out';
+        cardMessage = `Final Off-Duty Check-Out Recorded at ${displayTime}!`;
+        voiceText = `Goodbye ${matchedStaff.fullName}. Final check out recorded at ${displayTime}.`;
+      }
+
+      speakKioskAnnouncement(voiceText, voiceEnabled);
+
+      setVerifiedCard({
+        type: stageAction,
+        person: matchedStaff,
+        status: statusLabel,
+        punchTime: displayTime,
+        score: bestScore,
+        message: cardMessage,
+        thumbBmp: thumbDataUrl,
+        checkIn: nextCheckIn,
+        breakOut: nextBreakOut,
+        breakIn: nextBreakIn,
+        checkOut: nextCheckOut,
+        campusState: nextCampusState,
+      });
+
+      if (matchedStaff.contact) {
+        sendAutoStaffDailyCheckInNotice(
+          matchedStaff,
+          {
+            date: todayStr,
+            status: computedStatus,
+            checkInTime: nextCheckIn,
+            breakOutTime: nextBreakOut || undefined,
+            breakInTime: nextBreakIn || undefined,
+            checkOutTime: nextCheckOut || undefined,
+            eventType: stageAction,
+            mode:
+              stageAction === 'breakout'
+                ? 'Biometric Scanner (Mid-Day Break Out)'
+                : stageAction === 'breakin'
+                ? 'Biometric Scanner (Break Return In)'
+                : stageAction === 'checkout'
+                ? 'Biometric Scanner (Final Check-Out)'
+                : 'Biometric Thumb Scanner',
+            notes: notesJson,
+          },
+          { silent: true, alsoSendPdf: stageAction === 'checkin' || stageAction === 'checkout' }
+        ).catch(() => {});
+      }
+    },
+    [todayAttendance, settings, soundEnabled, voiceEnabled, onAttendanceMarked]
+  );
+
   // Core 1:N Biometric Scan & Instant Attendance Processor
   const executeSingleScanCycle = useCallback(
     async (isManualTrigger = false) => {
@@ -328,7 +563,6 @@ export default function BiometricAttendanceDesk({
         if (!isMountedRef.current) return;
 
         if (!res.success || !res.templateBase64) {
-          // If in continuous auto-loop and it simply timed out waiting for a finger, silently loop again
           if (isManualTrigger && res.error) {
             toast.error(res.error);
           }
@@ -375,10 +609,7 @@ export default function BiometricAttendanceDesk({
 
         const now = new Date();
         const todayStr = getTodayDateStr();
-        const hhmm = formatHHMM(now);
-        const hhmmss = `${hhmm}:${String(now.getSeconds()).padStart(2, '0')}`;
         const displayTime = formatTime12h(now);
-        const cutoffTime = settings?.collegeStartTime || '07:54';
 
         if (!matchedStaff && !matchedStudent) {
           if (soundEnabled) playKioskSound('error');
@@ -403,171 +634,58 @@ export default function BiometricAttendanceDesk({
           const existingRec = todayAttendance.find(
             (r: any) => (r.staff_id || r.staffId) === matchedStaff.id && r.date === todayStr
           );
-          const existingCheckIn =
-            existingRec?.check_in || existingRec?.checkIn || existingRec?.check_in_time || existingRec?.checkInTime;
-          const existingCheckOut =
-            existingRec?.check_out || existingRec?.checkOut || existingRec?.check_out_time || existingRec?.checkOutTime;
+          const parsedExisting = parseAttendanceNotesAndTime(
+            existingRec?.notes,
+            existingRec?.check_in || existingRec?.checkIn || existingRec?.check_in_time || existingRec?.checkInTime,
+            existingRec?.check_out || existingRec?.checkOut || existingRec?.check_out_time || existingRec?.checkOutTime
+          );
+          const existingCheckIn = parsedExisting.checkIn;
+          const existingBreakOut = parsedExisting.breakOut;
+          const existingBreakIn = parsedExisting.breakIn;
 
-          // Determine whether this scan is Check-In, Duplicate Guard, or Check-Out
-          let actionType: 'checkin' | 'checkout' | 'duplicate' = 'checkin';
-          if (punchMode === 'checkin') {
+          // Determine 4-stage action: Morning Check-In -> Mid-Day Break Out -> Break Return In -> Final Check-Out
+          let actionType: 'checkin' | 'breakout' | 'breakin' | 'checkout' | 'duplicate' = 'checkin';
+          if (punchMode !== 'auto') {
+            actionType = punchMode;
+          } else if (!existingCheckIn) {
             actionType = 'checkin';
-          } else if (punchMode === 'checkout') {
-            actionType = 'checkout';
           } else {
-            // Smart Auto Mode
-            if (!existingCheckIn) {
-              actionType = 'checkin';
+            let minsSinceLastPunch = 999;
+            let lastIso = existingRec?.check_in_time || existingRec?.checkInTime || existingRec?.created_at;
+            if (existingRec?.notes && typeof existingRec.notes === 'string' && existingRec.notes.startsWith('{')) {
+              try {
+                const p = JSON.parse(existingRec.notes);
+                lastIso = p.lastPunchIso || p.isoBreakIn || p.isoBreakOut || p.isoCheckIn || lastIso;
+              } catch {}
+            }
+            if (lastIso) {
+              const lastDate = new Date(lastIso);
+              if (!isNaN(lastDate.getTime())) {
+                minsSinceLastPunch = (now.getTime() - lastDate.getTime()) / 60000;
+              }
+            }
+
+            const nowTotalMins = now.getHours() * 60 + now.getMinutes();
+            // Before 12:45 PM (765 mins), 2nd scan defaults to Mid-Day Break / Free-Period Out
+            const isMidDayWindow = nowTotalMins < 12 * 60 + 45;
+
+            if (minsSinceLastPunch < 3) {
+              actionType = 'duplicate';
+            } else if (parsedExisting.campusState === 'on_break' || (existingBreakOut && !existingBreakIn)) {
+              actionType = 'breakin';
+            } else if (!existingBreakOut && isMidDayWindow) {
+              actionType = 'breakout';
             } else {
-              // Calculate minutes since check-in to prevent accidental double-scan within 5 mins
-              let minsSinceCheckIn = 999;
-              const isoIn = existingRec?.check_in_time || existingRec?.checkInTime || existingRec?.created_at;
-              if (isoIn) {
-                const cinDate = new Date(isoIn);
-                if (!isNaN(cinDate.getTime())) {
-                  minsSinceCheckIn = (now.getTime() - cinDate.getTime()) / 60000;
-                }
-              }
-              if (minsSinceCheckIn < 5 && !existingCheckOut) {
-                actionType = 'duplicate';
-              } else {
-                actionType = 'checkout';
-              }
+              actionType = 'checkout';
             }
           }
 
-          if (actionType === 'duplicate') {
-            if (soundEnabled) playKioskSound('duplicate');
-            speakKioskAnnouncement(
-              `${matchedStaff.fullName}, your check in is already marked.`,
-              voiceEnabled
-            );
-            setVerifiedCard({
-              type: 'duplicate',
-              person: matchedStaff,
-              status: existingRec?.status || 'Present',
-              punchTime: existingCheckIn || displayTime,
-              score: bestScore,
-              message: `Already Checked In Today at ${existingCheckIn || displayTime}`,
-              thumbBmp: thumbDataUrl,
-            });
-          } else if (actionType === 'checkin') {
-            // Calculate Present vs Late based on collegeStartTime (default 07:54)
-            const [cutH, cutM] = cutoffTime.split(':').map(Number);
-            const nowMins = now.getHours() * 60 + now.getMinutes();
-            const cutMins = (cutH || 7) * 60 + (cutM || 54);
-            const computedStatus = nowMins > cutMins ? 'Late' : 'Present';
-
-            const payload = {
-              staff_id: matchedStaff.id,
-              date: todayStr,
-              status: computedStatus,
-              check_in: hhmmss,
-              check_in_time: now.toISOString(),
-              verification_method: 'secugen_fingerprint',
-              notes: JSON.stringify({
-                method: 'biometric_fingerprint',
-                check_in_time: hhmmss,
-                score: bestScore,
-              }),
-            };
-
-            if (isSupabaseConfigured) {
-              await supabase
-                .from('staff_attendance')
-                .upsert([payload], { onConflict: 'staff_id,date' });
-            }
-
-            setTodayAttendance((prev) => {
-              const others = prev.filter(
-                (r: any) => (r.staff_id || r.staffId) !== matchedStaff.id
-              );
-              return [...others, { ...existingRec, ...payload, staffId: matchedStaff.id }];
-            });
-
-            if (soundEnabled) playKioskSound('checkin');
-            speakKioskAnnouncement(
-              `Thank you ${matchedStaff.fullName}. Check in marked.`,
-              voiceEnabled
-            );
-
-            setVerifiedCard({
-              type: 'checkin',
-              person: matchedStaff,
-              status: computedStatus,
-              punchTime: displayTime,
-              score: bestScore,
-              message:
-                computedStatus === 'Late'
-                  ? `Check-In Recorded (Late Arrival after ${cutoffTime} AM)`
-                  : 'On-Time Biometric Check-In Recorded!',
-              thumbBmp: thumbDataUrl,
-            });
-
-            onAttendanceMarked?.();
-
-            // Dispatch Official WhatsApp Attendance Slip in background
-            if (matchedStaff.contact) {
-              const monthStr = todayStr.slice(0, 7);
-              sendAutoStaffAttendancePdfNotice(matchedStaff.id, matchedStaff.contact, monthStr, {
-                silent: true,
-              }).catch(() => {});
-            }
-          } else {
-            // Check-Out
-            const payload = {
-              staff_id: matchedStaff.id,
-              date: todayStr,
-              status: existingRec?.status || 'Present',
-              check_in: existingRec?.check_in || existingRec?.checkIn || hhmmss,
-              check_in_time: existingRec?.check_in_time || existingRec?.checkInTime || now.toISOString(),
-              check_out: hhmmss,
-              check_out_time: now.toISOString(),
-              verification_method: 'secugen_fingerprint',
-              notes: JSON.stringify({
-                method: 'biometric_fingerprint',
-                check_in_time: existingRec?.check_in || hhmmss,
-                check_out_time: hhmmss,
-                score: bestScore,
-              }),
-            };
-
-            if (isSupabaseConfigured) {
-              await supabase
-                .from('staff_attendance')
-                .upsert([payload], { onConflict: 'staff_id,date' });
-            }
-
-            setTodayAttendance((prev) => {
-              const others = prev.filter(
-                (r: any) => (r.staff_id || r.staffId) !== matchedStaff.id
-              );
-              return [...others, { ...existingRec, ...payload, staffId: matchedStaff.id }];
-            });
-
-            if (soundEnabled) playKioskSound('checkout');
-            speakKioskAnnouncement(
-              `Goodbye ${matchedStaff.fullName}. Check out recorded.`,
-              voiceEnabled
-            );
-
-            setVerifiedCard({
-              type: 'checkout',
-              person: matchedStaff,
-              status: 'Checked Out',
-              punchTime: displayTime,
-              score: bestScore,
-              message: 'Official Duty Check-Out Recorded!',
-              thumbBmp: thumbDataUrl,
-            });
-
-            onAttendanceMarked?.();
-          }
+          await recordStaffStageAction(matchedStaff, actionType, bestScore, thumbDataUrl);
 
           if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
           resetTimerRef.current = setTimeout(() => {
             if (isMountedRef.current) setVerifiedCard(null);
-          }, 3200);
+          }, 4200);
         } else if (matchedStudent) {
           if (res.bmpBase64) {
             secugenService.saveFingerprintThumbnail(
@@ -577,22 +695,44 @@ export default function BiometricAttendanceDesk({
             );
           }
           // Student Biometric Attendance
-          const payload = {
+          const notesJson = JSON.stringify({
+            checkIn: displayTime,
+            isoCheckIn: now.toISOString(),
+            method: 'biometric_fingerprint',
+            Verify: `Biometric Thumb Verified (Score ${bestScore})`,
+            notes: `Biometric Check-In at ${displayTime}`,
+          });
+
+          const basePayload = {
+            id: `${matchedStudent.id}-${todayStr}`,
             student_id: matchedStudent.id,
             date: todayStr,
             status: 'Present',
-            check_in_time: now.toISOString(),
-            verification_method: 'secugen_fingerprint',
-            notes: `SecuGen Biometric Check-In (Score ${bestScore})`,
+            notes: notesJson,
           };
           if (isSupabaseConfigured) {
-            await supabase
+            const { error } = await supabase
               .from('student_attendance')
-              .upsert([payload], { onConflict: 'student_id,date' });
+              .upsert([basePayload], { onConflict: 'id' });
+            if (error) {
+              await supabase
+                .from('student_attendance')
+                .upsert(
+                  [
+                    {
+                      student_id: matchedStudent.id,
+                      date: todayStr,
+                      status: 'Present',
+                      notes: notesJson,
+                    },
+                  ],
+                  { onConflict: 'student_id,date' }
+                );
+            }
           }
           if (soundEnabled) playKioskSound('checkin');
           speakKioskAnnouncement(
-            `Welcome ${matchedStudent.fullName}. Attendance marked.`,
+            `Welcome ${matchedStudent.fullName}. Attendance marked at ${displayTime}.`,
             voiceEnabled
           );
           setVerifiedCard({
@@ -604,9 +744,20 @@ export default function BiometricAttendanceDesk({
             status: 'Present',
             punchTime: displayTime,
             score: bestScore,
-            message: 'Student Biometric Check-In Recorded!',
+            message: `Student Biometric Check-In Recorded at ${displayTime}!`,
             thumbBmp: thumbDataUrl,
           });
+          sendAutoDailyAttendanceNoticeDetailed(
+            matchedStudent,
+            {
+              date: todayStr,
+              status: 'Present',
+              checkInTime: displayTime,
+              notes: notesJson,
+            },
+            settings,
+            { silent: true }
+          ).catch(() => {});
           if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
           resetTimerRef.current = setTimeout(() => {
             if (isMountedRef.current) setVerifiedCard(null);
@@ -628,6 +779,7 @@ export default function BiometricAttendanceDesk({
       voiceEnabled,
       settings,
       onAttendanceMarked,
+      recordStaffStageAction,
     ]
   );
 
@@ -667,12 +819,24 @@ export default function BiometricAttendanceDesk({
   const stats = useMemo(() => {
     const present = todayAttendance.filter((a) => a.status === 'Present').length;
     const late = todayAttendance.filter((a) => a.status === 'Late').length;
-    const checkedOut = todayAttendance.filter(
-      (a) => Boolean(a.check_out || a.checkOut || a.check_out_time)
-    ).length;
+    let onBreak = 0;
+    let checkedOut = 0;
+    todayAttendance.forEach((a) => {
+      const p = parseAttendanceNotesAndTime(
+        a.notes,
+        a.check_in || a.checkIn,
+        a.check_out || a.checkOut
+      );
+      if (p.campusState === 'on_break' || (p.breakOut && !p.breakIn && !p.checkOut)) {
+        onBreak++;
+      }
+      if (p.checkOut) {
+        checkedOut++;
+      }
+    });
     const totalEnrolled = enrolledStaff.length;
     const pending = Math.max(0, staffList.length - (present + late));
-    return { present, late, checkedOut, totalEnrolled, pending };
+    return { present, late, onBreak, checkedOut, totalEnrolled, pending };
   }, [todayAttendance, enrolledStaff.length, staffList.length]);
 
   const filteredStaffRoster = useMemo(() => {
@@ -699,11 +863,11 @@ export default function BiometricAttendanceDesk({
                 {settings?.collegeName || collegeName}
               </h1>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                Fast-Boost Zero-Click Terminal
+                4-Stage Movement & Attendance Terminal
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              SecuGen HU20 Biometric Attendance Kiosk • Just Place Finger & Walk Away (3s Auto-Reset)
+              Morning In • Mid-Day Break Out • Break Return In • Final Off-Duty Out
             </p>
           </div>
         </div>
@@ -779,51 +943,75 @@ export default function BiometricAttendanceDesk({
               </span>
             </div>
 
-            {/* Punch Mode Selector */}
-            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-white/10">
+            {/* 4-Stage Punch Mode Selector */}
+            <div className="flex flex-wrap items-center bg-slate-950 p-1 rounded-xl border border-white/10 gap-0.5">
               <button
                 type="button"
                 onClick={() => setPunchMode('auto')}
-                className={`px-3 py-1 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
                   punchMode === 'auto'
                     ? 'bg-emerald-600 text-white shadow'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                Smart Auto
+                Smart 4-Stage Auto
               </button>
               <button
                 type="button"
                 onClick={() => setPunchMode('checkin')}
-                className={`px-3 py-1 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
                   punchMode === 'checkin'
                     ? 'bg-emerald-600 text-white shadow'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                Check-In Only
+                Morning In
+              </button>
+              <button
+                type="button"
+                onClick={() => setPunchMode('breakout')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
+                  punchMode === 'breakout'
+                    ? 'bg-amber-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Break Out
+              </button>
+              <button
+                type="button"
+                onClick={() => setPunchMode('breakin')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
+                  punchMode === 'breakin'
+                    ? 'bg-teal-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Break Return
               </button>
               <button
                 type="button"
                 onClick={() => setPunchMode('checkout')}
-                className={`px-3 py-1 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
                   punchMode === 'checkout'
                     ? 'bg-blue-600 text-white shadow'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                Check-Out Only
+                Final Out
               </button>
             </div>
           </div>
 
           {/* Center Display: Either Verified Result Card OR Active Sensor Prompt */}
-          <div className="my-auto py-8 flex flex-col items-center justify-center text-center min-h-[320px]">
+          <div className="my-auto py-6 flex flex-col items-center justify-center text-center min-h-[320px]">
             {verifiedCard ? (
               <div
-                className={`w-full max-w-lg rounded-3xl p-6 sm:p-7 border-2 shadow-2xl transition-all animate-in zoom-in-95 duration-200 ${
-                  verifiedCard.type === 'checkin'
+                className={`w-full max-w-xl rounded-3xl p-5 sm:p-6 border-2 shadow-2xl transition-all animate-in zoom-in-95 duration-200 ${
+                  verifiedCard.type === 'checkin' || verifiedCard.type === 'breakin'
                     ? 'bg-emerald-950/90 border-emerald-400 text-white'
+                    : verifiedCard.type === 'breakout'
+                    ? 'bg-amber-950/90 border-amber-400 text-white'
                     : verifiedCard.type === 'checkout'
                     ? 'bg-blue-950/90 border-blue-400 text-white'
                     : verifiedCard.type === 'duplicate'
@@ -832,9 +1020,9 @@ export default function BiometricAttendanceDesk({
                 }`}
               >
                 {verifiedCard.person ? (
-                  <div className="space-y-5">
+                  <div className="space-y-4">
                     <div className="flex items-center gap-4 text-left">
-                      <div className="w-20 h-20 rounded-2xl bg-white/10 border-2 border-white/30 overflow-hidden flex items-center justify-center text-2xl font-black shrink-0 shadow-lg">
+                      <div className="w-18 h-18 rounded-2xl bg-white/10 border-2 border-white/30 overflow-hidden flex items-center justify-center text-2xl font-black shrink-0 shadow-lg">
                         {verifiedCard.person.photo ? (
                           <img
                             src={verifiedCard.person.photo}
@@ -850,7 +1038,7 @@ export default function BiometricAttendanceDesk({
                           <CheckCircle2 size={13} />
                           <span>{verifiedCard.status}</span>
                         </div>
-                        <h3 className="text-2xl font-black truncate">
+                        <h3 className="text-xl sm:text-2xl font-black truncate">
                           {verifiedCard.person.fullName}
                         </h3>
                         <p className="text-xs text-white/80 font-mono">
@@ -866,17 +1054,17 @@ export default function BiometricAttendanceDesk({
                       )}
                     </div>
 
-                    <div className="p-3.5 rounded-2xl bg-black/30 border border-white/15 flex items-center justify-between">
+                    <div className="p-3 rounded-2xl bg-black/30 border border-white/15 flex items-center justify-between">
                       <div className="text-left">
-                        <p className="text-[11px] uppercase tracking-wider text-white/70 font-bold">
-                          Status Confirmation
+                        <p className="text-[10px] uppercase tracking-wider text-white/70 font-bold">
+                          Movement & Attendance Confirmation
                         </p>
-                        <p className="text-sm font-black text-emerald-300">
+                        <p className="text-xs sm:text-sm font-black text-emerald-300">
                           {verifiedCard.message}
                         </p>
                       </div>
-                      <div className="text-right font-mono">
-                        <p className="text-base font-black text-amber-300">
+                      <div className="text-right font-mono shrink-0 pl-2">
+                        <p className="text-sm sm:text-base font-black text-amber-300">
                           {verifiedCard.punchTime}
                         </p>
                         <p className="text-[10px] text-white/60">
@@ -885,9 +1073,84 @@ export default function BiometricAttendanceDesk({
                       </div>
                     </div>
 
-                    <p className="text-[11px] text-white/70 font-bold uppercase tracking-widest">
-                      ✓ Attendance Confirmed — Ready for Next Teacher in 3 Seconds...
-                    </p>
+                    {/* 4-Stage Timeline Pills */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-left">
+                      <div className="p-2 rounded-xl bg-black/25 border border-white/10">
+                        <p className="text-[9px] uppercase font-bold text-white/60">1. Morning In</p>
+                        <p className="text-xs font-mono font-black text-emerald-300">
+                          {verifiedCard.checkIn || '—'}
+                        </p>
+                      </div>
+                      <div className="p-2 rounded-xl bg-black/25 border border-white/10">
+                        <p className="text-[9px] uppercase font-bold text-white/60">2. Break Out</p>
+                        <p className="text-xs font-mono font-black text-amber-300">
+                          {verifiedCard.breakOut || '—'}
+                        </p>
+                      </div>
+                      <div className="p-2 rounded-xl bg-black/25 border border-white/10">
+                        <p className="text-[9px] uppercase font-bold text-white/60">3. Break Return</p>
+                        <p className="text-xs font-mono font-black text-teal-300">
+                          {verifiedCard.breakIn || '—'}
+                        </p>
+                      </div>
+                      <div className="p-2 rounded-xl bg-black/25 border border-white/10">
+                        <p className="text-[9px] uppercase font-bold text-white/60">4. Final Out</p>
+                        <p className="text-xs font-mono font-black text-sky-300">
+                          {verifiedCard.checkOut || '—'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 1-Click Stage Override Buttons (in case teacher is leaving early or going on break) */}
+                    {!String(verifiedCard.person.role || '').startsWith('Student') && (
+                      <div className="pt-1 flex flex-wrap items-center justify-center gap-1.5">
+                        <span className="text-[10px] text-white/70 font-bold mr-1">
+                          Switch Action:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            recordStaffStageAction(
+                              verifiedCard.person,
+                              'breakout',
+                              verifiedCard.score || 150,
+                              verifiedCard.thumbBmp
+                            )
+                          }
+                          className="px-2.5 py-1 rounded-lg bg-amber-500/30 hover:bg-amber-500/50 border border-amber-300/40 text-[10px] font-black text-amber-100 cursor-pointer"
+                        >
+                          Mark as Break / Free Out
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            recordStaffStageAction(
+                              verifiedCard.person,
+                              'breakin',
+                              verifiedCard.score || 150,
+                              verifiedCard.thumbBmp
+                            )
+                          }
+                          className="px-2.5 py-1 rounded-lg bg-teal-500/30 hover:bg-teal-500/50 border border-teal-300/40 text-[10px] font-black text-teal-100 cursor-pointer"
+                        >
+                          Mark as Break Return In
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            recordStaffStageAction(
+                              verifiedCard.person,
+                              'checkout',
+                              verifiedCard.score || 150,
+                              verifiedCard.thumbBmp
+                            )
+                          }
+                          className="px-2.5 py-1 rounded-lg bg-blue-500/30 hover:bg-blue-500/50 border border-blue-300/40 text-[10px] font-black text-blue-100 cursor-pointer"
+                        >
+                          Mark as Final Off-Duty Out
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-3 py-4">
@@ -925,8 +1188,9 @@ export default function BiometricAttendanceDesk({
                     Place Finger on Scanner
                   </h2>
                   <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
-                    No button press needed! Simply place your enrolled thumb or index finger on the
-                    SecuGen USB sensor. Wait for the confirmation beep and walk away.
+                    Automatically records <strong>1. Morning In</strong> &rarr;{' '}
+                    <strong>2. Break / Free-Period Out</strong> &rarr;{' '}
+                    <strong>3. Break Return In</strong> &rarr; <strong>4. Final Out</strong>.
                   </p>
                 </div>
 
@@ -955,36 +1219,40 @@ export default function BiometricAttendanceDesk({
           </div>
 
           {/* Bottom Summary Counters */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-white/10">
-            <div className="p-3 rounded-2xl bg-slate-950/80 border border-white/10">
-              <p className="text-[10px] font-bold uppercase text-slate-400">Enrolled Faculty</p>
-              <p className="text-xl font-black text-emerald-400 mt-0.5">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-4 border-t border-white/10">
+            <div className="p-2.5 rounded-2xl bg-slate-950/80 border border-white/10">
+              <p className="text-[10px] font-bold uppercase text-slate-400">Enrolled</p>
+              <p className="text-lg font-black text-emerald-400 mt-0.5">
                 {stats.totalEnrolled} <span className="text-xs text-slate-500">/ {staffList.length}</span>
               </p>
             </div>
-            <div className="p-3 rounded-2xl bg-slate-950/80 border border-white/10">
-              <p className="text-[10px] font-bold uppercase text-slate-400">Present Today</p>
-              <p className="text-xl font-black text-white mt-0.5">{stats.present}</p>
+            <div className="p-2.5 rounded-2xl bg-slate-950/80 border border-white/10">
+              <p className="text-[10px] font-bold uppercase text-slate-400">Present</p>
+              <p className="text-lg font-black text-white mt-0.5">{stats.present}</p>
             </div>
-            <div className="p-3 rounded-2xl bg-slate-950/80 border border-white/10">
-              <p className="text-[10px] font-bold uppercase text-slate-400">Late (After 07:54)</p>
-              <p className="text-xl font-black text-amber-400 mt-0.5">{stats.late}</p>
+            <div className="p-2.5 rounded-2xl bg-slate-950/80 border border-white/10">
+              <p className="text-[10px] font-bold uppercase text-slate-400">Late</p>
+              <p className="text-lg font-black text-amber-400 mt-0.5">{stats.late}</p>
             </div>
-            <div className="p-3 rounded-2xl bg-slate-950/80 border border-white/10">
+            <div className="p-2.5 rounded-2xl bg-slate-950/80 border border-white/10">
+              <p className="text-[10px] font-bold uppercase text-slate-400">On Break Out</p>
+              <p className="text-lg font-black text-orange-400 mt-0.5">{stats.onBreak}</p>
+            </div>
+            <div className="p-2.5 rounded-2xl bg-slate-950/80 border border-white/10">
               <p className="text-[10px] font-bold uppercase text-slate-400">Checked Out</p>
-              <p className="text-xl font-black text-sky-400 mt-0.5">{stats.checkedOut}</p>
+              <p className="text-lg font-black text-sky-400 mt-0.5">{stats.checkedOut}</p>
             </div>
           </div>
         </div>
 
-        {/* Right Column (5 Cols): Live Today's Biometric Feed & 30 Enrolled Staff Verification Roster */}
+        {/* Right Column (5 Cols): Live Today's Biometric Feed & Enrolled Staff Verification Roster */}
         <div className="lg:col-span-5 bg-slate-900/90 border border-white/10 rounded-3xl p-6 flex flex-col justify-between max-h-[640px]">
           <div className="space-y-3 pb-3 border-b border-white/10">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-emerald-400" />
                 <h3 className="text-sm font-black uppercase tracking-wider">
-                  Live Faculty Biometric Roster ({enrolledStaff.length} Enrolled)
+                  Live Faculty Movement Roster ({enrolledStaff.length} Enrolled)
                 </h3>
               </div>
               <span className="text-[11px] font-mono text-emerald-400 font-bold">
@@ -1009,8 +1277,17 @@ export default function BiometricAttendanceDesk({
               const rec = todayAttendance.find(
                 (r: any) => (r.staff_id || r.staffId) === teacher.id
               );
-              const cin = rec?.check_in || rec?.checkIn;
-              const cout = rec?.check_out || rec?.checkOut;
+              const parsedRow = rec
+                ? parseAttendanceNotesAndTime(
+                    rec.notes,
+                    rec.check_in || rec.checkIn,
+                    rec.check_out || rec.checkOut
+                  )
+                : { checkIn: '', breakOut: '', breakIn: '', checkOut: '', campusState: undefined, cleanRemarks: '' };
+              const cin = parsedRow.checkIn;
+              const bout = parsedRow.breakOut;
+              const bin = parsedRow.breakIn;
+              const cout = parsedRow.checkOut;
               const hasFinger = Boolean(
                 teacher.fingerprintTemplate || teacher.fingerprint_template
               );
@@ -1069,12 +1346,17 @@ export default function BiometricAttendanceDesk({
                         >
                           <UserCheck size={10} />
                           <span>
-                            {rec.status} {cin ? `• ${cin}` : ''}
+                            {rec.status} {cin ? `• In: ${cin}` : ''}
                           </span>
                         </span>
+                        {bout && (
+                          <p className="text-[10px] font-mono text-amber-300 font-bold">
+                            Break: {bout} &rarr; {bin || 'Out Now'}
+                          </p>
+                        )}
                         {cout && (
                           <p className="text-[10px] font-mono text-sky-300 font-bold">
-                            Out: {cout}
+                            Final Out: {cout}
                           </p>
                         )}
                       </div>
@@ -1090,7 +1372,7 @@ export default function BiometricAttendanceDesk({
           </div>
 
           <div className="pt-3 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400">
-            <span>All 30 Enrolled Staff Templates Verified in Cloud DB</span>
+            <span>All Enrolled Staff Templates Verified in Cloud DB</span>
             <span className="text-emerald-400 font-bold">Late Cutoff: {settings?.collegeStartTime || '07:54'} AM</span>
           </div>
         </div>

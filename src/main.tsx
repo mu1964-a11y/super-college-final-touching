@@ -4,6 +4,7 @@ import App from './App.tsx';
 import './index.css';
 import ErrorBoundary from './components/ErrorBoundary';
 import { safeLocalStorage } from './utils/safeStorage';
+import { Toaster } from '@/components/ui/sonner';
 
 window.addEventListener('unhandledrejection', (event) => {
   const reason = event.reason;
@@ -19,16 +20,13 @@ window.addEventListener('unhandledrejection', (event) => {
   
   if (combined.includes('refresh token') || combined.includes('refresh_token') || combined.includes('session_not_found') || combined.includes('invalid_grant')) {
     event.preventDefault(); // Suppress the console error
-    console.warn("[Session Guard] unhandledrejection triggered clearing for: ", combined);
     safeLocalStorage.removeItem('scj-auth');
-    // Also remove the generic supabase storage items if any exist
-    for (let i = 0; i < localStorage.length; i++) {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
       const key = localStorage.key(i);
       if (key && (key.includes('supabase') || key.includes('scj-auth') || key.includes('sb-'))) {
         localStorage.removeItem(key);
       }
     }
-    window.location.reload();
   }
 });
 
@@ -46,15 +44,13 @@ window.addEventListener('error', (event) => {
   
   if (combined.includes('refresh token') || combined.includes('refresh_token') || combined.includes('session_not_found') || combined.includes('invalid_grant')) {
     event.preventDefault(); // Suppress the console error
-    console.warn("[Session Guard] error event triggered clearing for: ", combined);
     safeLocalStorage.removeItem('scj-auth');
-    for (let i = 0; i < localStorage.length; i++) {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
       const key = localStorage.key(i);
       if (key && (key.includes('supabase') || key.includes('scj-auth') || key.includes('sb-'))) {
         localStorage.removeItem(key);
       }
     }
-    window.location.reload();
   }
 });
 
@@ -62,6 +58,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <App />
+      <Toaster />
     </ErrorBoundary>
   </StrictMode>,
 );
