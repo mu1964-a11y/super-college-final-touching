@@ -154,7 +154,7 @@ export default function AdmissionSlip({ admission, settings }: { admission: Admi
       const verifyUrl = `${origin}/?verify=student&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(admission.collegeNo || '')}&student_id=${encodeURIComponent(admission.studentId || '')}&adm_id=${encodeURIComponent(admission.id || '')}`;
 
       const msg = 
-`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
 🎓 *ADMISSION CONFIRMATION SLIP (PROVISIONAL)*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Assalam-o-Alaikum!

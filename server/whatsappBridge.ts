@@ -2490,7 +2490,7 @@ _Generated for Principal & Directors — SCJ Management System LMS_`;
 • Net Monthly Surplus / Operating Balance: *Rs. ${netSurplus.toLocaleString()}*
 • Cumulative Unpaid Defaulters Balance: *Rs. ${totalOutstanding.toLocaleString()}*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-_Directorate of Audit & Accounts — Superior Group of Colleges Jahanian_`;
+_Directorate of Audit & Accounts — Superior College Jahanian_`;
   }
 
   // 4. Dispatch Scheduled Report (Auto or Manual Trigger)
@@ -5309,7 +5309,7 @@ Aapka admission Superior College Jahanian mein kamyabi se record ho chuka hai.
 📱 *Digital Admission Card & Slip:*
 ${admUrl}
 
-Superior Group of Colleges Jahanian mein khushamdeed!`;
+Superior College Jahanian mein khushamdeed!`;
               await this.sendMessage(pendingAdm.contact, studentMsg);
             }
 

@@ -88,9 +88,26 @@ function speakBiometricVoice(text: string, enabled: boolean) {
   if (!enabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   try {
     window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.rate = 1.06;
-    utter.pitch = 1.02;
+    // Strip seconds from any time like "07:48:23 AM" -> "7:48 AM" and remove leading zero on hour so it sounds completely natural
+    const naturalText = text
+      .replace(/\b0?(\d{1,2}):(\d{2}):\d{2}\s*(AM|PM)\b/gi, '$1:$2 $3')
+      .replace(/\b0(\d):(\d{2})\s*(AM|PM)\b/gi, '$1:$2 $3');
+
+    const utter = new SpeechSynthesisUtterance(naturalText);
+    const voices = window.speechSynthesis.getVoices?.() || [];
+    const preferredVoice =
+      voices.find((v) => /natural|online/i.test(v.name) && /en/i.test(v.lang)) ||
+      voices.find((v) => /Google UK English Female|Google US English/i.test(v.name)) ||
+      voices.find((v) => /Samantha|Daniel|Karen|Moira|Aria|Jenny|Zira/i.test(v.name)) ||
+      voices.find((v) => /^en(-|_)/i.test(v.lang));
+    if (preferredVoice) {
+      utter.voice = preferredVoice;
+      utter.lang = preferredVoice.lang;
+    } else {
+      utter.lang = 'en-GB';
+    }
+    utter.rate = 0.96;
+    utter.pitch = 1.0;
     utter.volume = 1;
     window.speechSynthesis.speak(utter);
   } catch {}
@@ -108,7 +125,6 @@ function formatTime12h(dateObj: Date): string {
   return dateObj.toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
     hour12: true,
   });
 }
@@ -740,11 +756,37 @@ export default function InstantBiometricVerifyModal({
       bmpBase64?: string,
       bmpDataUrl?: string
     ) => {
+      const cleanLabel = secugenService.cleanFingerLabel(targetFingerLabel);
+      const dupCheck = await secugenService.checkDuplicateFinger({
+        scannedTemplate: templateBase64,
+        currentPersonId: person.id,
+        currentPersonName: person.fullName,
+        currentPersonExistingTemplate: person.fingerprintTemplate,
+        currentPersonExistingFinger: person.fingerprintFinger,
+        staffList,
+        studentsList,
+      });
+
+      if (dupCheck.isDuplicate) {
+        if (soundEnabled) playBiometricTone('error');
+        setEnrollingSecondFingerFor(null);
+        if (dupCheck.isSamePerson) {
+          toast.error(
+            `Duplicate Finger Blocked: This exact finger is already enrolled as "${dupCheck.matchedFinger}" for ${person.fullName}. Please place the other finger.`
+          );
+        } else {
+          toast.error(
+            `Duplicate Fingerprint Blocked: This finger is already registered to ${dupCheck.matchedName} (${dupCheck.matchedRole} • ${dupCheck.matchedFinger}).`
+          );
+        }
+        return;
+      }
+
       const merged = secugenService.mergeFingerTemplate(
         person.fingerprintTemplate,
         person.fingerprintFinger,
         templateBase64,
-        targetFingerLabel,
+        cleanLabel,
         'merge'
       );
 
@@ -782,7 +824,7 @@ export default function InstantBiometricVerifyModal({
         await recordStudentPunch(updatedPerson, 195, bmpDataUrl);
       }
     },
-    [data, recordStaffPunch, recordStudentPunch]
+    [data, recordStaffPunch, recordStudentPunch, staffList, studentsList, soundEnabled]
   );
 
   const handleQuickScanSecondFinger = useCallback(
@@ -1638,9 +1680,9 @@ export default function InstantBiometricVerifyModal({
                     (e) => secugenService.normalizeFingerKey(e.finger) === 'right_index'
                   );
                   const missingSecondFingerLabel = !hasThumb
-                    ? 'Right Thumb (دایاں انگوٹھا)'
+                    ? 'Right Thumb'
                     : !hasIndex
-                    ? 'Right Index (شہادت کی انگلی)'
+                    ? 'Right Index'
                     : null;
                   const missingShortLabel = !hasThumb
                     ? '+ Thumb'

@@ -131,9 +131,31 @@ function getPktNowInfo(customDate?: string | Date): {
   monthLabel: string;
   docRef: string;
 } {
-  const base = customDate ? new Date(customDate) : new Date();
-  const validDate = isNaN(base.getTime()) ? new Date() : base;
-  const pkt = new Date(validDate.getTime() + (5 * 60 + validDate.getTimezoneOffset()) * 60 * 1000);
+  const realNow = new Date();
+  const realPkt = new Date(realNow.getTime() + (5 * 60 + realNow.getTimezoneOffset()) * 60 * 1000);
+
+  let pkt = realPkt;
+  const isDateOnlyStr = typeof customDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(customDate.trim());
+
+  if (customDate) {
+    if (isDateOnlyStr) {
+      const [y, m, d] = customDate.trim().split("-").map(Number);
+      // Preserve real current PKT hours/minutes instead of defaulting to UTC midnight (05:00 AM PKT)
+      pkt = new Date(
+        y,
+        (m || 1) - 1,
+        d || 1,
+        realPkt.getHours(),
+        realPkt.getMinutes(),
+        realPkt.getSeconds()
+      );
+    } else {
+      const base = new Date(customDate);
+      if (!isNaN(base.getTime())) {
+        pkt = new Date(base.getTime() + (5 * 60 + base.getTimezoneOffset()) * 60 * 1000);
+      }
+    }
+  }
 
   const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -731,12 +753,14 @@ export function generateCumulativeStaffAttendancePdf(
   const staffId = staff?.id || staff?.staffId || "STF-01";
   const role = staff?.designation || staff?.role || "Faculty";
   const phone = staff?.contact || staff?.phone || "Verified";
+  const officialCollegeTiming = "07:54 AM - 02:00 PM";
 
   const activeDateStr = targetDateStr || nowInfo.isoDate;
   const [yr, mo, dy] = activeDateStr.split("-").map(Number);
   const year = yr || new Date().getFullYear();
   const month = mo || new Date().getMonth() + 1;
   const maxDay = dy || new Date().getDate();
+  const monthPrefix = `${year}-${String(month).padStart(2, "0")}-`;
 
   const daysNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -744,7 +768,9 @@ export function generateCumulativeStaffAttendancePdf(
   const recordMap = new Map<string, any>();
   for (const r of monthAttendanceRows || []) {
     const dKey = String(r.date || "").slice(0, 10);
-    if (dKey) recordMap.set(dKey, r);
+    if (dKey && dKey.startsWith(monthPrefix) && dKey <= activeDateStr) {
+      recordMap.set(dKey, r);
+    }
   }
 
   let monthlyPresent = 0;
@@ -758,24 +784,36 @@ export function generateCumulativeStaffAttendancePdf(
   let weeklyAbsent = 0;
   let weeklyLeave = 0;
 
+  // Build Day-by-Day progressive log: ONLY include days where attendance was recorded (plus today if not yet recorded),
+  // so Day 1 has 1 row, Day 2 has 2 rows, Day 3 has 3 rows — never dumping 25 blank "NOT MARKED" rows!
+  const progressiveDatesSet = new Set<string>(Array.from(recordMap.keys()));
+  progressiveDatesSet.add(activeDateStr);
+  const sortedDates = Array.from(progressiveDatesSet).sort((a, b) => a.localeCompare(b));
+
   const dayRows: string[][] = [];
 
-  for (let d = 1; d <= maxDay; d++) {
-    const dStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    const jsDate = new Date(year, month - 1, d);
+  for (const dStr of sortedDates) {
+    const dayNum = Number(dStr.split("-")[2] || 1);
+    const jsDate = new Date(year, month - 1, dayNum);
     const dayName = daysNames[jsDate.getDay()];
     const isSunday = jsDate.getDay() === 0;
-    const isWithinLast7Days = maxDay - d < 7;
+    const isWithinLast7Days = maxDay - dayNum < 7 && maxDay - dayNum >= 0;
 
     const rec = recordMap.get(dStr);
-    const rawStatus = rec?.status || (isSunday ? "Sunday Holiday" : "Not Marked");
-    const parsedTimings = rec ? extractAttendanceTimings(rec) : { checkIn: "-", checkOut: "-", remarks: isSunday ? "Weekly Off" : "-" };
+    const rawStatus = rec?.status || (isSunday ? "Sunday Holiday" : "Pending");
+    const parsedTimings = rec
+      ? extractAttendanceTimings(rec)
+      : { checkIn: "-", breakOut: "-", breakIn: "-", checkOut: "-", remarks: isSunday ? "Weekly Off" : "Pending Today" };
     const checkIn = parsedTimings.checkIn;
     const checkOut = parsedTimings.checkOut;
-    const cleanRemarks = parsedTimings.remarks;
+    const breakInfo =
+      parsedTimings.breakOut && parsedTimings.breakOut !== "-"
+        ? `Break: ${parsedTimings.breakOut}${parsedTimings.breakIn && parsedTimings.breakIn !== "-" ? `-${parsedTimings.breakIn}` : ""} | `
+        : "";
+    const cleanRemarks = `${breakInfo}${parsedTimings.remarks}`;
 
-    if (!isSunday && rawStatus !== "College Holiday" && rawStatus !== "Public Holiday") {
-      if (rec) monthlyWorkingDays++;
+    if (rec && !isSunday && rawStatus !== "College Holiday" && rawStatus !== "Public Holiday") {
+      monthlyWorkingDays++;
       if (rawStatus === "Present") {
         monthlyPresent++;
         if (isWithinLast7Days) weeklyPresent++;
@@ -792,37 +830,41 @@ export function generateCumulativeStaffAttendancePdf(
     }
 
     dayRows.push([
-      `${String(d).padStart(2, "0")} ${shortMonths[month - 1]} ${year}`,
+      `${String(dayNum).padStart(2, "0")} ${shortMonths[month - 1]} ${year}`,
       dayName,
+      officialCollegeTiming,
       String(checkIn),
       String(checkOut),
       rawStatus.toUpperCase(),
-      String(cleanRemarks).slice(0, 28),
+      String(cleanRemarks).slice(0, 26),
     ]);
   }
 
   const todayRec = recordMap.get(activeDateStr);
   const todayTimings = todayRec ? extractAttendanceTimings(todayRec) : null;
-  const todayStatus = todayRec?.status || "Not Marked Yet";
+  const todayStatus = todayRec?.status || "Pending";
   const todayCheckIn = todayTimings ? todayTimings.checkIn : "-";
   const todayCheckOut = todayTimings ? todayTimings.checkOut : "-";
+  if (todayCheckIn !== "-") {
+    nowInfo.timeFormatted = todayCheckIn;
+  }
   const attendancePct =
     monthlyWorkingDays > 0 ? Math.round(((monthlyPresent + monthlyLate) / monthlyWorkingDays) * 100) : 100;
 
   let y = drawExecutiveHeader(
     doc,
-    `Cumulative Staff Attendance Register (${shortMonths[month - 1]} ${year})`,
+    `Daily Progressive Staff Attendance Register (${shortMonths[month - 1]} ${year})`,
     `TODAY: ${todayStatus.toUpperCase()}`,
     nowInfo
   );
 
-  y = drawIdentityCard(doc, y, "Verified Faculty Profile & Daily Attendance Stamp", [
+  y = drawIdentityCard(doc, y, "Verified Faculty Profile & Official Attendance Stamp", [
     { label: "Faculty Name", value: staffName },
     { label: "Staff ID", value: String(staffId) },
     { label: "Designation", value: String(role) },
-    { label: "Registered Phone", value: String(phone) },
-    { label: "Updated Up To", value: `${nowInfo.dateFormatted} (${nowInfo.dayName})` },
-    { label: "Today's Hazri Time", value: `${todayStatus} • In: ${todayCheckIn}${todayCheckOut !== "-" ? ` | Out: ${todayCheckOut}` : ""}` },
+    { label: "Official College Time", value: officialCollegeTiming },
+    { label: "Report Date", value: `${nowInfo.dateFormatted} (${nowInfo.dayName})` },
+    { label: "Today's Check-In Time", value: `${todayStatus} • In: ${todayCheckIn}${todayCheckOut !== "-" ? ` | Out: ${todayCheckOut}` : ""}` },
   ]);
 
   y = drawSummaryKPIBoxes(doc, y, [
@@ -839,15 +881,15 @@ export function generateCumulativeStaffAttendancePdf(
       highlight: "navy",
     },
     {
-      label: "Monthly Present / Late",
+      label: "Recorded Present / Late",
       value: `${monthlyPresent} Present / ${monthlyLate} Late`,
-      subtext: `Out of ${monthlyWorkingDays} logged days`,
+      subtext: `${monthlyWorkingDays} recorded day(s) so far`,
       highlight: "teal",
     },
     {
-      label: "Monthly Absent / %",
-      value: `${monthlyAbsent} Absent (${attendancePct}%)`,
-      subtext: `Leaves: ${monthlyLeave}`,
+      label: "Punctuality Score",
+      value: `${attendancePct}% Attendance`,
+      subtext: `Absent: ${monthlyAbsent} | Leave: ${monthlyLeave}`,
       highlight: monthlyAbsent > 2 ? "crimson" : "navy",
     },
   ]);
@@ -855,18 +897,22 @@ export function generateCumulativeStaffAttendancePdf(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
   doc.setTextColor(11, 36, 71);
-  doc.text(`DAY-BY-DAY RUNNING ATTENDANCE LOG (01 ${shortMonths[month - 1].toUpperCase()} TO ${String(maxDay).padStart(2, "0")} ${shortMonths[month - 1].toUpperCase()} ${year})`, 14, y + 2.5);
+  doc.text(
+    `DAY-BY-DAY PROGRESSIVE ATTENDANCE LOG (${dayRows.length} RECORDED DAY${dayRows.length === 1 ? "" : "S"} IN ${shortMonths[month - 1].toUpperCase()} ${year})`,
+    14,
+    y + 2.5
+  );
 
   autoTable(doc, {
     startY: y + 5,
-    head: [["Date", "Day of Week", "Check-In Time", "Check-Out Time", "Attendance Status", "Remarks / Mode"]],
+    head: [["Date", "Day", "College Timing", "Check-In", "Check-Out", "Status", "Remarks / Mode"]],
     body: dayRows,
     theme: "grid",
-    headStyles: { fillColor: [11, 36, 71], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.8 },
-    bodyStyles: { fontSize: 7.5, textColor: [15, 23, 42], cellPadding: 1.8 },
+    headStyles: { fillColor: [11, 36, 71], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.5 },
+    bodyStyles: { fontSize: 7.5, textColor: [15, 23, 42], cellPadding: 2.0 },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     didParseCell: (data) => {
-      if (data.section === "body" && data.column.index === 4) {
+      if (data.section === "body" && data.column.index === 5) {
         const val = String(data.cell.raw || "");
         if (val.includes("ABSENT")) {
           data.cell.styles.textColor = [185, 28, 28];
@@ -891,15 +937,15 @@ export function generateCumulativeStaffAttendancePdf(
 
   const caption =
 `🏛️ *${COLLEGE_TITLE}*
-📋 *DAILY UPDATED STAFF ATTENDANCE REPORT*
+📋 *DAILY PROGRESSIVE STAFF ATTENDANCE REPORT*
 ━━━━━━━━━━━━━━━━━━━━
 👤 *Faculty:* *${staffName}* (*${role}* • ID: *${staffId}*)
-🕒 *Aaj Ki Hazri (${nowInfo.dayName}, ${nowInfo.dateFormatted}):* *${todayStatus.toUpperCase()}*
+🏫 *Official College Timing:* *${officialCollegeTiming}*
+🕒 *Today's Attendance (${nowInfo.dayName}, ${nowInfo.dateFormatted}):* *${todayStatus.toUpperCase()}*
 ⏰ *Check-In Time:* *${todayCheckIn}*${todayCheckOut !== "-" ? ` | *Check-Out:* *${todayCheckOut}*` : ""}
-📊 *Weekly:* Present: *${weeklyPresent}* | Late: *${weeklyLate}* | Absent: *${weeklyAbsent}*
-📅 *Monthly Total:* Present: *${monthlyPresent}* | Late: *${monthlyLate}* | Absent: *${monthlyAbsent}* (*${attendancePct}%*)
+📊 *Recorded Days (${shortMonths[month - 1]} ${year}):* Present: *${monthlyPresent}* | Late: *${monthlyLate}* | Absent: *${monthlyAbsent}* (*${attendancePct}%*)
 ━━━━━━━━━━━━━━━━━━━━
-📎 _1st tareekh se aaj tak ka mukammal Day-by-Day (Check-In / Check-Out Time ke sath) Attendance Register PDF mein attach hai._`;
+📎 _Your progressive Day-by-Day Attendance Register PDF (${dayRows.length} recorded day${dayRows.length === 1 ? "" : "s"}) is attached below._`;
 
   return { pdfBuffer, buffer: pdfBuffer, fileName, caption };
 }

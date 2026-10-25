@@ -109,9 +109,24 @@ function speakKioskAnnouncement(text: string, enabled: boolean) {
   if (!enabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   try {
     window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.rate = 1.08;
-    utter.pitch = 1.02;
+    const naturalText = text
+      .replace(/\b0?(\d{1,2}):(\d{2}):\d{2}\s*(AM|PM)\b/gi, '$1:$2 $3')
+      .replace(/\b0(\d):(\d{2})\s*(AM|PM)\b/gi, '$1:$2 $3');
+    const utter = new SpeechSynthesisUtterance(naturalText);
+    const voices = window.speechSynthesis.getVoices?.() || [];
+    const preferredVoice =
+      voices.find((v) => /natural|online/i.test(v.name) && /en/i.test(v.lang)) ||
+      voices.find((v) => /Google UK English Female|Google US English/i.test(v.name)) ||
+      voices.find((v) => /Samantha|Daniel|Karen|Moira|Aria|Jenny|Zira/i.test(v.name)) ||
+      voices.find((v) => /^en(-|_)/i.test(v.lang));
+    if (preferredVoice) {
+      utter.voice = preferredVoice;
+      utter.lang = preferredVoice.lang;
+    } else {
+      utter.lang = 'en-GB';
+    }
+    utter.rate = 0.96;
+    utter.pitch = 1.0;
     utter.volume = 1;
     window.speechSynthesis.speak(utter);
   } catch {}
@@ -129,7 +144,6 @@ function formatTime12h(dateObj: Date): string {
   return dateObj.toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
     hour12: true,
   });
 }

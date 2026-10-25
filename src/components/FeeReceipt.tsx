@@ -170,7 +170,7 @@ export default function FeeReceipt({ student, settings }: { student: any, settin
       const verifyUrl = `${origin}/?verify=receipt&id=${encodeURIComponent(verifyId)}&roll=${encodeURIComponent(student.rollNo || '')}`;
 
       const msg = 
-`🏛️ *SUPERIOR GROUP OF COLLEGES JAHANIAN*
+`🏛️ *SUPERIOR COLLEGE JAHANIAN*
 🧾 *OFFICIAL FEE DEPOSIT RECEIPT*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Assalam-o-Alaikum!

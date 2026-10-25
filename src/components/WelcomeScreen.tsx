@@ -79,7 +79,7 @@ export default function WelcomeScreen({
       <main className="relative z-10 max-w-5xl w-full mx-auto my-auto py-8 text-center space-y-7">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 border border-amber-300/30 text-amber-200 text-xs font-bold shadow-sm">
           <Sparkles size={14} className="text-amber-300" />
-          <span>Superior Group of Colleges Jahanian — Enterprise Campus Cloud</span>
+          <span>Superior College Jahanian — Enterprise Campus Cloud</span>
         </div>
 
         <h2 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-tight">

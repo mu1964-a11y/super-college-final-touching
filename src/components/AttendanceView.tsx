@@ -907,7 +907,7 @@ export default function AttendanceView({ data }: { data: any }) {
 
   const downloadStudentDossierPDF = (student: any) => {
     const doc = new jsPDF();
-    const collegeName = data?.settings?.collegeName || 'Superior Group of Colleges Jahanian';
+    const collegeName = data?.settings?.collegeName || 'Superior College Jahanian';
     const title = `${collegeName}\n30-Day Biometric Attendance Dossier - ${reportMonth}`;
     
     doc.setFontSize(13);
@@ -1076,9 +1076,6 @@ export default function AttendanceView({ data }: { data: any }) {
           <h2 className="text-xl font-display font-black text-superior-teal tracking-tight flex items-center gap-2">
             <CheckCircle2 size={20} className="text-superior-gold" />
             <span>Students Attendance</span>
-            <span className="font-nastaleeq text-xs text-superior-gold font-medium px-1.5 py-0.5 bg-superior-gold/10 rounded-md">
-              طلباء حاضری
-            </span>
           </h2>
 
           {/* Daily / Monthly Switcher */}
@@ -1294,15 +1291,15 @@ export default function AttendanceView({ data }: { data: any }) {
                   </span>
                   <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-2xs">
                     <CheckCircle2 size={14} className="text-emerald-600" />
-                    Hazir: <strong className="font-black">{presentsCount}</strong>
+                    Present: <strong className="font-black">{presentsCount}</strong>
                   </span>
                   <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold shadow-2xs">
                     <AlertCircle size={14} className="text-rose-600" />
-                    Ghair Hazir: <strong className="font-black">{absentsCount}</strong>
+                    Absent: <strong className="font-black">{absentsCount}</strong>
                   </span>
                   {leavesCount > 0 && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-xs font-bold shadow-2xs">
-                      Rukhsat: <strong className="font-black">{leavesCount}</strong>
+                      Leave: <strong className="font-black">{leavesCount}</strong>
                     </span>
                   )}
                 </div>
@@ -2141,16 +2138,16 @@ export default function AttendanceView({ data }: { data: any }) {
                       Days in Month: <strong className="text-slate-900">{daysInMonth}</strong>
                     </span>
                     <span className="px-3 py-1 bg-emerald-50 border border-emerald-200 rounded-xl font-bold text-emerald-800 shadow-2xs">
-                      Hazir (P): <strong className="text-emerald-900">{stats.present}</strong>
+                      Present (P): <strong className="text-emerald-900">{stats.present}</strong>
                     </span>
                     <span className="px-3 py-1 bg-amber-50 border border-amber-200 rounded-xl font-bold text-amber-800 shadow-2xs">
                       Late (L): <strong className="text-amber-900">{stats.late}</strong>
                     </span>
                     <span className="px-3 py-1 bg-rose-50 border border-rose-200 rounded-xl font-bold text-rose-800 shadow-2xs">
-                      Ghair Hazir (A): <strong className="text-rose-900">{stats.absent}</strong>
+                      Absent (A): <strong className="text-rose-900">{stats.absent}</strong>
                     </span>
                     <span className="px-3 py-1 bg-blue-50 border border-blue-200 rounded-xl font-bold text-blue-800 shadow-2xs">
-                      Rukhsat: <strong className="text-blue-900">{stats.leave}</strong>
+                      Leave: <strong className="text-blue-900">{stats.leave}</strong>
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-teal-50 border border-teal-200 text-teal-900 font-extrabold text-[11px] shadow-2xs">
@@ -2230,7 +2227,7 @@ export default function AttendanceView({ data }: { data: any }) {
                             )}
                             {status === 'Leave' && (
                               <span className="inline-flex items-center gap-1 font-bold text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
-                                Rukhsat
+                                Leave
                               </span>
                             )}
                             {status === 'Holiday' && (
@@ -2382,9 +2379,13 @@ export default function AttendanceView({ data }: { data: any }) {
           targetPerson={biometricEnrollTarget}
           studentsList={students}
           staffList={data?.staff || []}
-          onEnrollmentSaved={(personId, personType, template, finger) => {
-            data?.updateFingerprintRecord?.(personId, personType, template, finger);
-            data?.fetchData?.(true);
+          onEnrollmentSaved={async (personId, personType, template, finger) => {
+            await data?.updateFingerprintRecord?.(personId, personType, template, finger);
+            if (!template) {
+              setBiometricEnrollTarget((prev: any) =>
+                prev ? { ...prev, fingerprintTemplate: undefined, fingerprintFinger: undefined } : prev
+              );
+            }
           }}
         />
       )}

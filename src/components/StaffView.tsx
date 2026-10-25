@@ -280,7 +280,7 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(15);
       doc.setTextColor(255, 255, 255);
-      const collegeTitle = (data?.settings?.collegeName || "SUPERIOR GROUP OF COLLEGES JAHANIAN").toUpperCase();
+      const collegeTitle = (data?.settings?.collegeName || "SUPERIOR COLLEGE JAHANIAN").toUpperCase();
       doc.text(collegeTitle, textStartX, 22);
 
       // Document Subtitle

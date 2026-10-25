@@ -604,7 +604,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(15);
       doc.setTextColor(255, 255, 255);
-      const collegeTitle = (data?.settings?.collegeName || "SUPERIOR GROUP OF COLLEGES JAHANIAN").toUpperCase();
+      const collegeTitle = (data?.settings?.collegeName || "SUPERIOR COLLEGE JAHANIAN").toUpperCase();
       doc.text(collegeTitle, textStartX, 22);
 
       // Document Subtitle
@@ -3475,7 +3475,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
         ? cleanNumber 
         : `92${cleanNumber}`;
     const textMsg = encodeURIComponent(
-      `Assalam-o-Alaikum! Superior Group of Colleges Jahanian - Academic update for student ${formData.fullName} (Roll: ${formData.collegeNo || student.id}).`
+      `Assalam-o-Alaikum! Superior College Jahanian - Academic update for student ${formData.fullName} (Roll: ${formData.collegeNo || student.id}).`
     );
     window.open(`https://wa.me/${formatted}?text=${textMsg}`, "_blank");
   };

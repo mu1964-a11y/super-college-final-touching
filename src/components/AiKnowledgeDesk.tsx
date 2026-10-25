@@ -17,7 +17,7 @@ export default function AiKnowledgeDesk() {
       </div>
       <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200 flex items-center gap-2.5 text-xs text-emerald-900 font-semibold">
         <ShieldCheck size={16} className="text-emerald-700 shrink-0" />
-        <span>Synchronized with Superior Group of Colleges Jahanian Session 2026-28 Master Data.</span>
+        <span>Synchronized with Superior College Jahanian Session 2026-28 Master Data.</span>
       </div>
     </div>
   );

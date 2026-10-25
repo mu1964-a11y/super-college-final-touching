@@ -74,7 +74,7 @@ export default function PremiumLoadingScreen({
 
         <div className="pt-2 border-t border-white/10 inline-flex items-center gap-1.5 text-[11px] text-emerald-300/90 font-semibold">
           <ShieldCheck size={14} />
-          <span>Superior Group of Colleges Jahanian • TLS 1.3</span>
+          <span>Superior College Jahanian • TLS 1.3</span>
         </div>
       </div>
     </div>

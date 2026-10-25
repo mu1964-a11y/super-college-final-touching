@@ -308,9 +308,46 @@ export function useSupabaseData(user: any) {
             transactions: s.fee_ledger?.transactions || []
           },
           feeHistory: s.fee_history || [],
-          fingerprintTemplate: s.fingerprint_template || linkedAdmission?.fingerprint_template || (s as any).fingerprintTemplate || undefined,
-          fingerprintFinger: s.fingerprint_finger || linkedAdmission?.fingerprint_finger || (s as any).fingerprintFinger || undefined,
-          fingerprintEnrolledAt: s.fingerprint_enrolled_at || linkedAdmission?.fingerprint_enrolled_at || (s as any).fingerprintEnrolledAt || undefined
+          ...(() => {
+            const isFpDeleted =
+              safeLocalStorage.getItem(`scj_fp_deleted_${s.id}`) === 'true' ||
+              (s.admission_id && safeLocalStorage.getItem(`scj_fp_deleted_${s.admission_id}`) === 'true') ||
+              (linkedAdmission?.id && safeLocalStorage.getItem(`scj_fp_deleted_${linkedAdmission.id}`) === 'true');
+
+            if (isFpDeleted) {
+              if (s.fingerprint_template) {
+                supabase.from('students').update({
+                  fingerprint_template: null,
+                  fingerprint_finger: null,
+                  fingerprint_enrolled_at: null,
+                }).eq('id', s.id).then(() => {});
+              }
+              if (linkedAdmission?.fingerprint_template && linkedAdmission?.id) {
+                supabase.from('admissions').update({
+                  fingerprint_template: null,
+                  fingerprint_finger: null,
+                  fingerprint_enrolled_at: null,
+                }).eq('id', linkedAdmission.id).then(() => {});
+              }
+              return {
+                fingerprintTemplate: undefined,
+                fingerprintFinger: undefined,
+                fingerprintEnrolledAt: undefined,
+              };
+            }
+
+            const rawTpl = s.fingerprint_template || linkedAdmission?.fingerprint_template || (s as any).fingerprintTemplate || undefined;
+            const rawFgr = s.fingerprint_finger || linkedAdmission?.fingerprint_finger || (s as any).fingerprintFinger || undefined;
+            const cleanFgr = rawFgr
+              ? rawFgr.split(/\s*(?:\|\|\||\+)\s*/).map((f: string) => secugenService.cleanFingerLabel(f)).join(' + ')
+              : undefined;
+
+            return {
+              fingerprintTemplate: rawTpl,
+              fingerprintFinger: cleanFgr,
+              fingerprintEnrolledAt: s.fingerprint_enrolled_at || linkedAdmission?.fingerprint_enrolled_at || (s as any).fingerprintEnrolledAt || undefined,
+            };
+          })()
         };
         });
 
@@ -398,9 +435,23 @@ export function useSupabaseData(user: any) {
                 academicPart: a.academic_part || 'Part-1',
                 programType: a.program_type || 'Yearly',
                 currentSemester: a.current_semester || 0,
-                fingerprintTemplate: a.fingerprint_template || (a as any).fingerprintTemplate || undefined,
-                fingerprintFinger: a.fingerprint_finger || (a as any).fingerprintFinger || undefined,
-                fingerprintEnrolledAt: a.fingerprint_enrolled_at || (a as any).fingerprintEnrolledAt || undefined
+                fingerprintTemplate:
+                  safeLocalStorage.getItem(`scj_fp_deleted_${studentId}`) === 'true' ||
+                  safeLocalStorage.getItem(`scj_fp_deleted_${a.id}`) === 'true'
+                    ? undefined
+                    : (a.fingerprint_template || (a as any).fingerprintTemplate || undefined),
+                fingerprintFinger:
+                  safeLocalStorage.getItem(`scj_fp_deleted_${studentId}`) === 'true' ||
+                  safeLocalStorage.getItem(`scj_fp_deleted_${a.id}`) === 'true'
+                    ? undefined
+                    : (a.fingerprint_finger
+                        ? String(a.fingerprint_finger).split(/\s*(?:\|\|\||\+)\s*/).map((f: string) => secugenService.cleanFingerLabel(f)).join(' + ')
+                        : ((a as any).fingerprintFinger || undefined)),
+                fingerprintEnrolledAt:
+                  safeLocalStorage.getItem(`scj_fp_deleted_${studentId}`) === 'true' ||
+                  safeLocalStorage.getItem(`scj_fp_deleted_${a.id}`) === 'true'
+                    ? undefined
+                    : (a.fingerprint_enrolled_at || (a as any).fingerprintEnrolledAt || undefined)
               } as any);
             }
           });
@@ -411,13 +462,19 @@ export function useSupabaseData(user: any) {
         autoPromoteStudents(mappedStudents);
       }
       if (staffData) setStaff(staffData.map(st => {
-        let dbTemplate = st.fingerprint_template || (st as any).fingerprintTemplate || undefined;
-        let dbFinger = st.fingerprint_finger || (st as any).fingerprintFinger || undefined;
-        let dbEnrolledAt = st.fingerprint_enrolled_at || (st as any).fingerprintEnrolledAt || undefined;
+        const isStaffFpDeleted = safeLocalStorage.getItem(`scj_fp_deleted_${st.id}`) === 'true';
+        let dbTemplate = isStaffFpDeleted ? undefined : (st.fingerprint_template || (st as any).fingerprintTemplate || undefined);
+        let rawDbFinger = isStaffFpDeleted ? undefined : (st.fingerprint_finger || (st as any).fingerprintFinger || undefined);
+        let dbFinger = rawDbFinger
+          ? String(rawDbFinger).split(/\s*(?:\|\|\||\+)\s*/).map((f: string) => secugenService.cleanFingerLabel(f)).join(' + ')
+          : undefined;
+        let dbEnrolledAt = isStaffFpDeleted ? undefined : (st.fingerprint_enrolled_at || (st as any).fingerprintEnrolledAt || undefined);
 
         try {
           const vaultKey = `scj_fp_vault_${st.id}`;
-          if (dbTemplate) {
+          if (isStaffFpDeleted) {
+            safeLocalStorage.removeItem(vaultKey);
+          } else if (dbTemplate) {
             safeLocalStorage.setItem(vaultKey, JSON.stringify({
               personId: st.id,
               personType: 'staff',
@@ -431,7 +488,9 @@ export function useSupabaseData(user: any) {
               const parsed = JSON.parse(cachedVault);
               if (parsed?.template) {
                 dbTemplate = parsed.template;
-                dbFinger = parsed.finger || 'Right Thumb';
+                dbFinger = parsed.finger
+                  ? String(parsed.finger).split(/\s*(?:\|\|\||\+)\s*/).map((f: string) => secugenService.cleanFingerLabel(f)).join(' + ')
+                  : 'Right Thumb';
                 dbEnrolledAt = parsed.enrolledAt || new Date().toISOString();
                 // Push recovered template back to Supabase silently
                 supabase.from('staff').update({
@@ -575,10 +634,13 @@ export function useSupabaseData(user: any) {
         if (settingsData.config?.deletedArchive && Array.isArray(settingsData.config.deletedArchive)) {
           setDeletedArchive(settingsData.config.deletedArchive);
         }
+        const normalizedCollegeName = (settingsData.college_name || 'Superior College Jahanian')
+          .replace(/Superior Group of Colleges\s*,?\s*Jahanian/gi, 'Superior College Jahanian')
+          .replace(/Superior Group of Colleges/gi, 'Superior College Jahanian');
         setSettings({
         id: settingsData.id,
-        collegeName: settingsData.college_name,
-        campusName: settingsData.campus_name,
+        collegeName: normalizedCollegeName,
+        campusName: (settingsData.campus_name || '').replace(/Superior Group of Colleges/gi, 'Superior College Jahanian'),
         logo: settingsData.logo_url || settingsData.logo || settingsData.config?.logo,
         address: settingsData.address,
         contactNumber: settingsData.contact_number,
@@ -1275,11 +1337,35 @@ export function useSupabaseData(user: any) {
       }
     }
 
-    // 1. Save redundant local backup vault so templates are never lost even offline
+    const matchedStu = personType === 'student'
+      ? students.find(s =>
+          s.id === personId ||
+          (s as any).studentId === personId ||
+          (s as any).collegeNo === personId ||
+          s.admissionId === personId
+        )
+      : undefined;
+
+    // 1. Save redundant local backup vault so templates are never lost even offline, or mark tombstone when removing
     try {
       if (isRemoving) {
         safeLocalStorage.removeItem(`scj_fp_vault_${personId}`);
+        safeLocalStorage.removeItem(`scj_fp_thumb_${personId}`);
+        safeLocalStorage.setItem(`scj_fp_deleted_${personId}`, 'true');
+        if (matchedStu?.id) {
+          safeLocalStorage.removeItem(`scj_fp_vault_${matchedStu.id}`);
+          safeLocalStorage.removeItem(`scj_fp_thumb_${matchedStu.id}`);
+          safeLocalStorage.setItem(`scj_fp_deleted_${matchedStu.id}`, 'true');
+        }
+        if (matchedStu?.admissionId) {
+          safeLocalStorage.removeItem(`scj_fp_vault_${matchedStu.admissionId}`);
+          safeLocalStorage.removeItem(`scj_fp_thumb_${matchedStu.admissionId}`);
+          safeLocalStorage.setItem(`scj_fp_deleted_${matchedStu.admissionId}`, 'true');
+        }
       } else {
+        safeLocalStorage.removeItem(`scj_fp_deleted_${personId}`);
+        if (matchedStu?.id) safeLocalStorage.removeItem(`scj_fp_deleted_${matchedStu.id}`);
+        if (matchedStu?.admissionId) safeLocalStorage.removeItem(`scj_fp_deleted_${matchedStu.admissionId}`);
         safeLocalStorage.setItem(
           `scj_fp_vault_${personId}`,
           JSON.stringify({
@@ -1316,6 +1402,8 @@ export function useSupabaseData(user: any) {
       setAdmissions(prev => prev.map(a => (
         a.id === personId || 
         a.studentId === personId || 
+        (matchedStu?.admissionId && a.id === matchedStu.admissionId) ||
+        (matchedStu?.collegeNo && (a as any).collegeNo === matchedStu.collegeNo) ||
         (a as any).collegeNo === personId
       ) ? {
         ...a,
@@ -1325,7 +1413,7 @@ export function useSupabaseData(user: any) {
       } : a));
     }
 
-    // 3. Persist directly to Supabase database
+    // 3. Persist directly to Supabase database using safe individual queries so non-UUID roll numbers never fail
     if (isSupabaseConfigured) {
       try {
         if (personType === 'staff') {
@@ -1342,23 +1430,38 @@ export function useSupabaseData(user: any) {
             toast.error(`Database sync warning: ${error.message}`);
           }
         } else {
-          await supabase
-            .from('students')
-            .update({
-              fingerprint_template: finalTemplate,
-              fingerprint_finger: finalFinger,
-              fingerprint_enrolled_at: enrolledAt,
-            })
-            .or(`id.eq.${personId},admission_id.eq.${personId}`);
+          const payload = {
+            fingerprint_template: finalTemplate,
+            fingerprint_finger: finalFinger,
+            fingerprint_enrolled_at: enrolledAt,
+          };
 
-          await supabase
-            .from('admissions')
-            .update({
-              fingerprint_template: finalTemplate,
-              fingerprint_finger: finalFinger,
-              fingerprint_enrolled_at: enrolledAt,
-            })
-            .or(`id.eq.${personId},student_id.eq.${personId}`);
+          const updateOps: Promise<any>[] = [
+            supabase.from('students').update(payload).eq('id', personId),
+            supabase.from('admissions').update(payload).eq('student_id', personId),
+          ];
+
+          if (matchedStu?.id && matchedStu.id !== personId) {
+            updateOps.push(supabase.from('students').update(payload).eq('id', matchedStu.id));
+            updateOps.push(supabase.from('admissions').update(payload).eq('student_id', matchedStu.id));
+          }
+
+          if (matchedStu?.admissionId) {
+            updateOps.push(supabase.from('students').update(payload).eq('admission_id', matchedStu.admissionId));
+            updateOps.push(supabase.from('admissions').update(payload).eq('id', matchedStu.admissionId));
+          }
+
+          if (matchedStu?.collegeNo) {
+            updateOps.push(supabase.from('students').update(payload).eq('college_no', matchedStu.collegeNo));
+            updateOps.push(supabase.from('admissions').update(payload).eq('college_no', matchedStu.collegeNo));
+          }
+
+          // If personId itself is a UUID or matches admissions.id, try updating by id safely
+          updateOps.push(
+            Promise.resolve(supabase.from('admissions').update(payload).eq('id', personId)).catch(() => {})
+          );
+
+          await Promise.allSettled(updateOps);
         }
       } catch (err: any) {
         console.error('Failed to persist fingerprint to Supabase:', err);

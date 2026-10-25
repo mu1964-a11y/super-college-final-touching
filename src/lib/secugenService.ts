@@ -79,7 +79,7 @@ class SecuGenService {
   private hwMatchEndpointWorks: boolean | null = null;
 
   /**
-   * Normalizes a finger label so "Right Thumb (دایاں انگوٹھا)" and "Right Thumb" map to the same canonical key.
+   * Normalizes a finger label so legacy labels and "Right Thumb" map to the same canonical key.
    */
   normalizeFingerKey(fingerLabel?: string | null): string {
     const raw = (fingerLabel || '').toLowerCase();
@@ -89,6 +89,32 @@ class SecuGenService {
     if (raw.includes('left') && raw.includes('index')) return 'left_index';
     if (raw.includes('middle')) return 'middle_finger';
     return raw.trim() || 'right_thumb';
+  }
+
+  /**
+   * Returns a clean 100% English label for any finger name, stripping any Urdu or parenthetical text.
+   */
+  cleanFingerLabel(fingerLabel?: string | null): string {
+    const key = this.normalizeFingerKey(fingerLabel);
+    switch (key) {
+      case 'right_thumb':
+        return 'Right Thumb';
+      case 'right_index':
+        return 'Right Index';
+      case 'left_thumb':
+        return 'Left Thumb';
+      case 'left_index':
+        return 'Left Index';
+      case 'middle_finger':
+        return 'Middle Finger';
+      default: {
+        const stripped = (fingerLabel || '')
+          .replace(/\([^)]*\)/g, '')
+          .replace(/[^\x20-\x7E]/g, '')
+          .trim();
+        return stripped || 'Right Thumb';
+      }
+    }
   }
 
   /**
@@ -114,7 +140,7 @@ class SecuGenService {
           return parsed
             .filter((item) => item && typeof item.template === 'string' && item.template.trim().length > 10)
             .map((item) => ({
-              finger: String(item.finger || 'Right Thumb (دایاں انگوٹھا)').trim(),
+              finger: this.cleanFingerLabel(String(item.finger || 'Right Thumb')),
               template: item.template.trim(),
             }));
         }
@@ -129,15 +155,15 @@ class SecuGenService {
 
     if (rawTemplates.length === 0) return [];
 
-    const rawFingers = (fingerField || 'Right Thumb (دایاں انگوٹھا)')
+    const rawFingers = (fingerField || 'Right Thumb')
       .split(/\s*(?:\|\|\||\+)\s*/)
-      .map((f) => f.trim())
+      .map((f) => this.cleanFingerLabel(f))
       .filter(Boolean);
 
     return rawTemplates.map((tpl, idx) => ({
       finger:
         rawFingers[idx] ||
-        (idx === 0 ? 'Right Thumb (دایاں انگوٹھا)' : idx === 1 ? 'Right Index (شہادت کی انگلی)' : `Finger #${idx + 1}`),
+        (idx === 0 ? 'Right Thumb' : idx === 1 ? 'Right Index' : `Finger #${idx + 1}`),
       template: tpl,
     }));
   }
@@ -167,12 +193,12 @@ class SecuGenService {
       const entries = this.extractEnrolledFingers(newTemplate, newFinger);
       return {
         templateField: entries.map((e) => e.template).join(MULTI_FINGER_DELIMITER),
-        fingerField: entries.map((e) => e.finger).join(' + '),
+        fingerField: entries.map((e) => this.cleanFingerLabel(e.finger)).join(' + '),
         entries,
       };
     }
 
-    const cleanNewFinger = (newFinger || 'Right Thumb (دایاں انگوٹھا)').trim();
+    const cleanNewFinger = this.cleanFingerLabel(newFinger || 'Right Thumb');
     const cleanNewTpl = newTemplate.trim();
 
     if (mode === 'replace_all' || !existingTemplateField) {
@@ -195,7 +221,7 @@ class SecuGenService {
         updatedEntries.push({ finger: cleanNewFinger, template: cleanNewTpl });
         replaced = true;
       } else {
-        updatedEntries.push(entry);
+        updatedEntries.push({ finger: this.cleanFingerLabel(entry.finger), template: entry.template });
       }
     }
 
@@ -616,6 +642,119 @@ class SecuGenService {
       score: bestScore,
       matchedFinger: bestFinger,
     };
+  }
+
+  /**
+   * Checks whether a newly scanned fingerprint template is already enrolled:
+   * 1) For the SAME person (prevents scanning the exact same finger twice without deleting the old one first).
+   * 2) For ANY OTHER staff member or student in the system (prevents cross-person collisions).
+   */
+  async checkDuplicateFinger(params: {
+    scannedTemplate: string;
+    currentPersonId: string;
+    currentPersonName?: string;
+    currentPersonExistingTemplate?: string | null;
+    currentPersonExistingFinger?: string | null;
+    staffList?: any[];
+    studentsList?: any[];
+  }): Promise<{
+    isDuplicate: boolean;
+    isSamePerson?: boolean;
+    matchedPersonId?: string;
+    matchedName?: string;
+    matchedRole?: 'Staff' | 'Student';
+    matchedFinger?: string;
+    score?: number;
+  }> {
+    const {
+      scannedTemplate,
+      currentPersonId,
+      currentPersonName,
+      currentPersonExistingTemplate,
+      currentPersonExistingFinger,
+      staffList = [],
+      studentsList = [],
+    } = params;
+
+    if (!scannedTemplate || scannedTemplate.trim().length < 20) {
+      return { isDuplicate: false };
+    }
+
+    // 1. Check against the SAME person's already enrolled fingers
+    if (currentPersonExistingTemplate && currentPersonExistingTemplate.trim().length > 20) {
+      const sameRes = await this.matchTemplates(
+        scannedTemplate,
+        currentPersonExistingTemplate,
+        'ISO',
+        currentPersonExistingFinger
+      );
+      if (sameRes.matched && sameRes.score >= 80) {
+        return {
+          isDuplicate: true,
+          isSamePerson: true,
+          matchedPersonId: currentPersonId,
+          matchedName: currentPersonName || 'this person',
+          matchedFinger: this.cleanFingerLabel(sameRes.matchedFinger || currentPersonExistingFinger || 'Right Thumb'),
+          score: sameRes.score,
+        };
+      }
+    }
+
+    const normCurrentId = String(currentPersonId || '').trim().toLowerCase();
+
+    // 2. Check against all OTHER Staff members
+    for (const st of staffList) {
+      const tpl = st?.fingerprintTemplate || st?.fingerprint_template;
+      if (!tpl || typeof tpl !== 'string' || tpl.trim().length < 20) continue;
+      const stId = String(st.id || '').trim().toLowerCase();
+      if (stId === normCurrentId) continue;
+
+      const fgr = st?.fingerprintFinger || st?.fingerprint_finger;
+      const res = await this.matchTemplates(scannedTemplate, tpl, 'ISO', fgr);
+      if (res.matched && res.score >= 80) {
+        return {
+          isDuplicate: true,
+          isSamePerson: false,
+          matchedPersonId: st.id,
+          matchedName: st.fullName || st.full_name || 'Staff Member',
+          matchedRole: 'Staff',
+          matchedFinger: this.cleanFingerLabel(res.matchedFinger || fgr || 'Right Thumb'),
+          score: res.score,
+        };
+      }
+    }
+
+    // 3. Check against all OTHER Students
+    for (const stu of studentsList) {
+      const tpl = stu?.fingerprintTemplate || stu?.fingerprint_template;
+      if (!tpl || typeof tpl !== 'string' || tpl.trim().length < 20) continue;
+      const stuId = String(stu.id || '').trim().toLowerCase();
+      const admId = String(stu.admissionId || stu.admission_id || '').trim().toLowerCase();
+      const colNo = String(stu.collegeNo || stu.college_no || '').trim().toLowerCase();
+      if (
+        stuId === normCurrentId ||
+        (admId && admId === normCurrentId) ||
+        (colNo && colNo === normCurrentId)
+      ) {
+        continue;
+      }
+
+      const fgr = stu?.fingerprintFinger || stu?.fingerprint_finger;
+      const res = await this.matchTemplates(scannedTemplate, tpl, 'ISO', fgr);
+      if (res.matched && res.score >= 80) {
+        return {
+          isDuplicate: true,
+          isSamePerson: false,
+          matchedPersonId: stu.id,
+          matchedName: stu.fullName || stu.full_name || 'Student',
+          matchedRole: 'Student',
+          matchedFinger: this.cleanFingerLabel(res.matchedFinger || fgr || 'Right Thumb'),
+          score: res.score,
+        };
+      }
+    }
+
+    return { isDuplicate: false };
   }
 
   /**

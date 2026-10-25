@@ -790,7 +790,7 @@ export default function AdmissionsView({
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(15);
-      doc.text("SUPERIOR GROUP OF COLLEGES", 36, 25);
+      doc.text("SUPERIOR COLLEGE JAHANIAN", 36, 25);
 
       // Gold Subtitle
       doc.setTextColor(201, 168, 76);
@@ -943,7 +943,7 @@ export default function AdmissionsView({
           doc.setFontSize(7.5);
           doc.setTextColor(148, 163, 184);
           doc.text(str, pageWidth - 40, pageHeight - 16, { align: "right" });
-          doc.text("Superior Group of Colleges Jahanian • Official Admissions Record", 36, pageHeight - 16);
+          doc.text("Superior College Jahanian • Official Admissions Record", 36, pageHeight - 16);
         }
       });
 

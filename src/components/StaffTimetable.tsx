@@ -474,7 +474,7 @@ export default function StaffTimetable({
       format: 'a4'
     });
 
-    const collegeName = settings?.collegeName || 'SUPERIOR GROUP OF COLLEGES';
+    const collegeName = settings?.collegeName || 'SUPERIOR COLLEGE JAHANIAN';
     const campusName = (settings?.campusName || 'JAHANIAN') + (secGender === 'Female' ? ' (GIRLS CAMPUS)' : secGender === 'Male' ? ' (BOYS CAMPUS)' : '');
     const session = secObj?.class || settings?.academicSession || '2026-28';
 
@@ -636,7 +636,7 @@ export default function StaffTimetable({
       pageAdded = true;
 
       const secGender = secObj.gender;
-      const collegeName = settings?.collegeName || 'SUPERIOR GROUP OF COLLEGES';
+      const collegeName = settings?.collegeName || 'SUPERIOR COLLEGE JAHANIAN';
       const campusName = (settings?.campusName || 'JAHANIAN') + (secGender === 'Female' ? ' (GIRLS CAMPUS)' : secGender === 'Male' ? ' (BOYS CAMPUS)' : '');
       const session = secObj.class || settings?.academicSession || '2026-28';
 
@@ -765,7 +765,7 @@ export default function StaffTimetable({
     }
 
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    const collegeName = settings?.collegeName || 'SUPERIOR GROUP OF COLLEGES JAHANIAN';
+    const collegeName = settings?.collegeName || 'SUPERIOR COLLEGE JAHANIAN';
     const campusTitle = campusFilter === 'Male' ? 'BOYS CAMPUS' : campusFilter === 'Female' ? 'GIRLS CAMPUS' : 'ALL CAMPUSES COMBINED';
 
     // Header

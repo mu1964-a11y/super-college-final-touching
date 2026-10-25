@@ -72,7 +72,7 @@ export default function BiometricEnrollmentModal({
     targetPerson?.personType === 'student' ? 'students' : 'staff'
   );
   const [finger, setFinger] = useState<string>(
-    targetPerson?.fingerprintFinger || 'Right Thumb (دایاں انگوٹھا)'
+    secugenService.cleanFingerLabel(targetPerson?.fingerprintFinger || 'Right Thumb')
   );
   const [scanning, setScanning] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -90,7 +90,7 @@ export default function BiometricEnrollmentModal({
     if (targetPerson) {
       setSelectedPerson(targetPerson);
       setDirectoryTab(targetPerson.personType === 'student' ? 'students' : 'staff');
-      setFinger(targetPerson.fingerprintFinger || 'Right Thumb (دایاں انگوٹھا)');
+      setFinger(secugenService.cleanFingerLabel(targetPerson.fingerprintFinger || 'Right Thumb'));
       setVerifyResult(null);
 
       const cached =
@@ -120,8 +120,9 @@ export default function BiometricEnrollmentModal({
       photo: st.photo || st.photo_url,
       phone: st.contact || '',
       fingerprintTemplate: st.fingerprintTemplate || st.fingerprint_template,
-      fingerprintFinger:
-        st.fingerprintFinger || st.fingerprint_finger || 'Right Thumb (دایاں انگوٹھا)',
+      fingerprintFinger: secugenService.cleanFingerLabel(
+        st.fingerprintFinger || st.fingerprint_finger || 'Right Thumb'
+      ),
       fingerprintEnrolledAt: st.fingerprintEnrolledAt || st.fingerprint_enrolled_at,
     }));
   }, [staffList]);
@@ -129,6 +130,7 @@ export default function BiometricEnrollmentModal({
   const normalizedStudentsList = useMemo(() => {
     return (studentsList || []).map((s) => ({
       id: s.id,
+      admissionId: s.admissionId || s.admission_id,
       collegeNo: s.collegeNo || s.studentId || s.id,
       fullName: s.fullName || s.full_name || 'Student',
       fatherName: s.fatherName || s.father_name || '',
@@ -139,8 +141,9 @@ export default function BiometricEnrollmentModal({
       photo: s.photo || s.photo_url,
       phone: s.contact || s.fatherContact || '',
       fingerprintTemplate: s.fingerprintTemplate || s.fingerprint_template,
-      fingerprintFinger:
-        s.fingerprintFinger || s.fingerprint_finger || 'Right Thumb (دایاں انگوٹھا)',
+      fingerprintFinger: secugenService.cleanFingerLabel(
+        s.fingerprintFinger || s.fingerprint_finger || 'Right Thumb'
+      ),
       fingerprintEnrolledAt: s.fingerprintEnrolledAt || s.fingerprint_enrolled_at,
     }));
   }, [studentsList]);
@@ -214,11 +217,11 @@ export default function BiometricEnrollmentModal({
     );
     // Default to whichever finger is missing if 1 finger is already enrolled, so adding the 2nd finger is automatic!
     if (hasThumb && !hasIndex) {
-      setFinger('Right Index (شہادت کی انگلی)');
+      setFinger('Right Index');
     } else if (hasIndex && !hasThumb) {
-      setFinger('Right Thumb (دایاں انگوٹھا)');
+      setFinger('Right Thumb');
     } else {
-      setFinger('Right Thumb (دایاں انگوٹھا)');
+      setFinger('Right Thumb');
     }
     setVerifyResult(null);
     const cached =
@@ -233,8 +236,8 @@ export default function BiometricEnrollmentModal({
 
   const handleCaptureAndSave = async (overrideFinger?: string) => {
     if (!activePerson) return;
-    const targetFinger = overrideFinger || finger;
-    if (overrideFinger) setFinger(overrideFinger);
+    const targetFinger = secugenService.cleanFingerLabel(overrideFinger || finger);
+    if (overrideFinger) setFinger(targetFinger);
     setScanning(true);
     setVerifyResult(null);
     try {
@@ -244,6 +247,31 @@ export default function BiometricEnrollmentModal({
         templateFormat: 'ISO',
       });
       if (res.success && res.templateBase64) {
+        // Check for duplicate fingerprint (both same-person duplicate scan and cross-person collision)
+        const dupCheck = await secugenService.checkDuplicateFinger({
+          scannedTemplate: res.templateBase64,
+          currentPersonId: activePerson.id,
+          currentPersonName: activePerson.fullName,
+          currentPersonExistingTemplate: activePerson.fingerprintTemplate,
+          currentPersonExistingFinger: activePerson.fingerprintFinger,
+          staffList,
+          studentsList,
+        });
+
+        if (dupCheck.isDuplicate) {
+          playFeedbackBeep('error');
+          if (dupCheck.isSamePerson) {
+            toast.error(
+              `Duplicate Finger Blocked: This exact finger is already enrolled as "${dupCheck.matchedFinger}" for ${activePerson.fullName}. Please delete the existing fingerprint first before scanning the same finger again.`
+            );
+          } else {
+            toast.error(
+              `Duplicate Fingerprint Blocked: This finger is already registered to ${dupCheck.matchedName} (${dupCheck.matchedRole} • ${dupCheck.matchedFinger}).`
+            );
+          }
+          return;
+        }
+
         const nowIso = new Date().toISOString();
         const pType: 'staff' | 'student' =
           activePerson.personType === 'student' ? 'student' : 'staff';
@@ -271,8 +299,12 @@ export default function BiometricEnrollmentModal({
         const finalTemplate = merged.templateField;
         const finalFinger = merged.fingerField;
 
-        // Save in local vault
+        // Clear any deleted tombstone & save in local vault
         try {
+          safeLocalStorage.removeItem(`scj_fp_deleted_${activePerson.id}`);
+          if (activePerson.admissionId) {
+            safeLocalStorage.removeItem(`scj_fp_deleted_${activePerson.admissionId}`);
+          }
           safeLocalStorage.setItem(
             `scj_fp_vault_${activePerson.id}`,
             JSON.stringify({
@@ -285,7 +317,7 @@ export default function BiometricEnrollmentModal({
           );
         } catch {}
 
-        // Persist directly to Supabase first
+        // Persist directly to Supabase first using safe individual queries
         if (isSupabaseConfigured) {
           if (pType === 'staff') {
             const { error } = await supabase
@@ -302,23 +334,24 @@ export default function BiometricEnrollmentModal({
               return;
             }
           } else {
-            await supabase
-              .from('students')
-              .update({
-                fingerprint_template: finalTemplate,
-                fingerprint_finger: finalFinger,
-                fingerprint_enrolled_at: nowIso,
-              })
-              .or(`id.eq.${activePerson.id},admission_id.eq.${activePerson.id}`);
-
-            await supabase
-              .from('admissions')
-              .update({
-                fingerprint_template: finalTemplate,
-                fingerprint_finger: finalFinger,
-                fingerprint_enrolled_at: nowIso,
-              })
-              .or(`id.eq.${activePerson.id},student_id.eq.${activePerson.id}`);
+            const payload = {
+              fingerprint_template: finalTemplate,
+              fingerprint_finger: finalFinger,
+              fingerprint_enrolled_at: nowIso,
+            };
+            const ops: Promise<any>[] = [
+              supabase.from('students').update(payload).eq('id', activePerson.id),
+              supabase.from('admissions').update(payload).eq('student_id', activePerson.id),
+            ];
+            if (activePerson.admissionId) {
+              ops.push(supabase.from('students').update(payload).eq('admission_id', activePerson.admissionId));
+              ops.push(supabase.from('admissions').update(payload).eq('id', activePerson.admissionId));
+            }
+            if (activePerson.collegeNo) {
+              ops.push(supabase.from('students').update(payload).eq('college_no', activePerson.collegeNo));
+              ops.push(supabase.from('admissions').update(payload).eq('college_no', activePerson.collegeNo));
+            }
+            await Promise.allSettled(ops);
           }
         }
 
@@ -446,16 +479,52 @@ export default function BiometricEnrollmentModal({
     try {
       safeLocalStorage.removeItem(`scj_fp_vault_${activePerson.id}`);
       safeLocalStorage.removeItem(`scj_fp_thumb_${activePerson.id}`);
+      safeLocalStorage.setItem(`scj_fp_deleted_${activePerson.id}`, 'true');
+      if (activePerson.admissionId) {
+        safeLocalStorage.removeItem(`scj_fp_vault_${activePerson.admissionId}`);
+        safeLocalStorage.removeItem(`scj_fp_thumb_${activePerson.admissionId}`);
+        safeLocalStorage.setItem(`scj_fp_deleted_${activePerson.admissionId}`, 'true');
+      }
+      if (activePerson.collegeNo) {
+        safeLocalStorage.removeItem(`scj_fp_thumb_${activePerson.collegeNo}`);
+      }
     } catch {}
+
+    if (isSupabaseConfigured) {
+      const clearPayload = {
+        fingerprint_template: null,
+        fingerprint_finger: null,
+        fingerprint_enrolled_at: null,
+      };
+      if (pType === 'staff') {
+        await supabase.from('staff').update(clearPayload).eq('id', activePerson.id);
+      } else {
+        const clearOps: Promise<any>[] = [
+          supabase.from('students').update(clearPayload).eq('id', activePerson.id),
+          supabase.from('admissions').update(clearPayload).eq('student_id', activePerson.id),
+        ];
+        if (activePerson.admissionId) {
+          clearOps.push(supabase.from('students').update(clearPayload).eq('admission_id', activePerson.admissionId));
+          clearOps.push(supabase.from('admissions').update(clearPayload).eq('id', activePerson.admissionId));
+        }
+        if (activePerson.collegeNo) {
+          clearOps.push(supabase.from('students').update(clearPayload).eq('college_no', activePerson.collegeNo));
+          clearOps.push(supabase.from('admissions').update(clearPayload).eq('college_no', activePerson.collegeNo));
+        }
+        await Promise.allSettled(clearOps);
+      }
+    }
+
     await onEnrollmentSaved?.(activePerson.id, pType, '', '');
     setSelectedPerson({
       ...activePerson,
       fingerprintTemplate: undefined,
       fingerprintFinger: undefined,
+      fingerprintEnrolledAt: undefined,
     });
     setCapturedPreview(null);
     setVerifyResult(null);
-    toast.info(`Cleared stored fingerprint for ${activePerson.fullName}`);
+    toast.success(`Permanently deleted stored fingerprint for ${activePerson.fullName}`);
   };
 
   return (
@@ -689,7 +758,7 @@ export default function BiometricEnrollmentModal({
                       <button
                         type="button"
                         disabled={scanning || verifying}
-                        onClick={() => handleCaptureAndSave('Right Thumb (دایاں انگوٹھا)')}
+                        onClick={() => handleCaptureAndSave('Right Thumb')}
                         className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-1.5 ${
                           hasThumbEnrolled
                             ? 'bg-emerald-50 border-emerald-400 text-emerald-950'
@@ -701,7 +770,7 @@ export default function BiometricEnrollmentModal({
                         <div className="min-w-0">
                           <p className="text-[11px] font-black truncate">Right Thumb</p>
                           <p className="text-[9.5px] font-bold text-slate-500">
-                            {hasThumbEnrolled ? '✓ Enrolled (Click to Re-Scan)' : '+ Click to Scan Thumb'}
+                            {hasThumbEnrolled ? '✓ Enrolled (Primary)' : '+ Click to Scan Thumb'}
                           </p>
                         </div>
                         {hasThumbEnrolled ? (
@@ -714,7 +783,7 @@ export default function BiometricEnrollmentModal({
                       <button
                         type="button"
                         disabled={scanning || verifying}
-                        onClick={() => handleCaptureAndSave('Right Index (شہادت کی انگلی)')}
+                        onClick={() => handleCaptureAndSave('Right Index')}
                         className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-1.5 ${
                           hasIndexEnrolled
                             ? 'bg-emerald-50 border-emerald-400 text-emerald-950'
@@ -726,7 +795,7 @@ export default function BiometricEnrollmentModal({
                         <div className="min-w-0">
                           <p className="text-[11px] font-black truncate">Right Index</p>
                           <p className="text-[9.5px] font-bold text-slate-500">
-                            {hasIndexEnrolled ? '✓ Enrolled (Click to Re-Scan)' : '+ Click to Scan Index'}
+                            {hasIndexEnrolled ? '✓ Enrolled (2nd Finger)' : '+ Click to Scan Index'}
                           </p>
                         </div>
                         {hasIndexEnrolled ? (
@@ -738,21 +807,21 @@ export default function BiometricEnrollmentModal({
                     </div>
 
                     <select
-                      value={finger}
+                      value={secugenService.cleanFingerLabel(finger)}
                       onChange={(e) => setFinger(e.target.value)}
-                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
                     >
-                      <option value="Right Thumb (دایاں انگوٹھا)">
-                        Right Thumb (دایاں انگوٹھا - Primary)
+                      <option value="Right Thumb">
+                        Right Thumb (Primary Finger)
                       </option>
-                      <option value="Right Index (شہادت کی انگلی)">
-                        Right Index (شہادت کی انگلی - 2nd Finger)
+                      <option value="Right Index">
+                        Right Index (Secondary Finger)
                       </option>
-                      <option value="Left Thumb (بایاں انگوٹھا)">
-                        Left Thumb (بایاں انگوٹھا)
+                      <option value="Left Thumb">
+                        Left Thumb
                       </option>
-                      <option value="Left Index (بائیں شہادت کی انگلی)">
-                        Left Index (بائیں شہادت کی انگلی)
+                      <option value="Left Index">
+                        Left Index
                       </option>
                     </select>
                   </div>

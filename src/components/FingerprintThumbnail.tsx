@@ -18,7 +18,7 @@ export default function FingerprintThumbnail({
   personId,
   altId,
   template,
-  fingerLabel = 'Right Thumb (دایاں انگوٹھا)',
+  fingerLabel = 'Right Thumb',
   size = 'sm',
   showBadge = false,
   allowInspect = false,
@@ -28,6 +28,13 @@ export default function FingerprintThumbnail({
   const [inspectOpen, setInspectOpen] = useState(false);
 
   const isEnrolled = Boolean(template && String(template).trim().length > 10);
+  const cleanLabel = useMemo(
+    () =>
+      isEnrolled
+        ? secugenService.formatFingerBadge(fingerLabel, template)
+        : secugenService.cleanFingerLabel(fingerLabel),
+    [fingerLabel, template, isEnrolled]
+  );
 
   const minutiaePoints = useMemo(() => {
     if (!isEnrolled || !template || template === 'enrolled') return [];
@@ -77,7 +84,7 @@ export default function FingerprintThumbnail({
           onClick={handleClick}
           title={
             isEnrolled
-              ? `Biometric Enrolled (${fingerLabel}${
+              ? `Biometric Enrolled (${cleanLabel}${
                   minutiaePoints.length > 0 ? ` • ${minutiaePoints.length} Minutiae` : ''
                 })`
               : 'Fingerprint Not Enrolled — Click to Scan'
@@ -91,7 +98,7 @@ export default function FingerprintThumbnail({
           {bmpSrc ? (
             <img
               src={bmpSrc}
-              alt={fingerLabel}
+              alt={cleanLabel}
               className="w-full h-full object-contain p-0.5 filter contrast-125 brightness-110"
               onError={() => setBmpSrc(null)}
             />
@@ -126,7 +133,7 @@ export default function FingerprintThumbnail({
                 : 'bg-amber-50 text-amber-700 border-amber-200'
             }`}
           >
-            {isEnrolled ? fingerLabel : 'No Thumb'}
+            {isEnrolled ? cleanLabel : 'No Thumb'}
           </span>
         )}
       </div>
@@ -169,7 +176,7 @@ export default function FingerprintThumbnail({
                 {bmpSrc ? (
                   <img
                     src={bmpSrc}
-                    alt={fingerLabel}
+                    alt={cleanLabel}
                     className="w-full h-full object-contain filter contrast-125 brightness-110"
                   />
                 ) : (
@@ -203,7 +210,7 @@ export default function FingerprintThumbnail({
               <div className="space-y-1">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-black">
                   <CheckCircle2 size={13} className="text-emerald-600" />
-                  <span>{fingerLabel}</span>
+                  <span>{cleanLabel}</span>
                 </div>
                 <p className="text-[11px] text-slate-500 font-mono">
                   ISO/IEC 19794-2 (FMR 20) •{' '}
