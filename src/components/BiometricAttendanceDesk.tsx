@@ -371,9 +371,19 @@ export default function BiometricAttendanceDesk({
         return;
       }
 
-      const [cutH, cutM] = cutoffTime.split(':').map(Number);
+      // Determine cutoff time dynamically for this teacher's lecture schedule
+      let teacherDutyStart = matchedStaff.dutyStartTime || matchedStaff.duty_start_time;
+      let teacherGrace = Number(matchedStaff.graceMinutes ?? matchedStaff.grace_minutes ?? 5);
+
+      if (!teacherDutyStart) {
+        // Fallback to campus or college settings
+        const isGirls = matchedStaff.campusShift === 'Girls Campus' || (matchedStaff.campus && String(matchedStaff.campus).toLowerCase().includes('girl'));
+        teacherDutyStart = isGirls ? '08:00' : (settings?.collegeStartTime || '08:30');
+      }
+
+      const [cutH, cutM] = teacherDutyStart.split(':').map(Number);
       const nowMins = now.getHours() * 60 + now.getMinutes();
-      const cutMins = (cutH || 7) * 60 + (cutM || 54);
+      const cutMins = (cutH || 8) * 60 + (cutM || 0) + teacherGrace;
       const computedStatus =
         existingRec?.status || (nowMins > cutMins ? 'Late' : 'Present');
 

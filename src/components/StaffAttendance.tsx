@@ -399,21 +399,23 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
     }
   };
 
-  const isPunchLate = (isoString?: string | null, collegeStartTime = '07:54'): boolean => {
+  const isPunchLate = (isoString?: string | null, collegeStartTime = '07:54', staffObj?: Staff): boolean => {
     if (!isoString) return false;
+    let targetStartTime = staffObj?.dutyStartTime || staffObj?.duty_start_time || collegeStartTime;
+    let grace = Number(staffObj?.graceMinutes ?? staffObj?.grace_minutes ?? 5);
     try {
       const d = new Date(isoString);
       if (!isNaN(d.getTime())) {
         const punchMinutes = d.getHours() * 60 + d.getMinutes();
-        const [h, m] = collegeStartTime.split(':').map(Number);
-        const startMinutes = (h || 7) * 60 + (m || 54);
+        const [h, m] = targetStartTime.split(':').map(Number);
+        const startMinutes = (h || 8) * 60 + (m || 0) + grace;
         return punchMinutes > startMinutes;
       }
       if (typeof isoString === 'string' && isoString.includes(':')) {
         const [ph, pm] = isoString.split(':').map(Number);
         const punchMinutes = (ph || 0) * 60 + (pm || 0);
-        const [h, m] = collegeStartTime.split(':').map(Number);
-        const startMinutes = (h || 7) * 60 + (m || 54);
+        const [h, m] = targetStartTime.split(':').map(Number);
+        const startMinutes = (h || 8) * 60 + (m || 0) + grace;
         return punchMinutes > startMinutes;
       }
     } catch {}

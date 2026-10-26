@@ -1777,7 +1777,8 @@ _Superior College Jahanian Official LMS_`;
       remainingAdvance += Number(adv.remaining_balance || 0);
     }
 
-    const currentMonth = new Date().toISOString().slice(0, 7);
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const currentMonth = todayStr.slice(0, 7);
     const startDate = `${currentMonth}-01`;
     const endDate = `${currentMonth}-31`;
     const { data: att } = await supabase
@@ -6917,6 +6918,8 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
     monthStr?: string;
     admissionData?: any;
     paymentData?: any;
+    currentPunch?: any;
+    settings?: any;
   }): Promise<{ success: boolean; fileName?: string; error?: string }> {
     const supabase = await this.getSupabase();
     if (!supabase) return { success: false, error: "Supabase database not initialized." };

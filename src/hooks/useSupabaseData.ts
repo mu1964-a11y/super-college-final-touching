@@ -521,7 +521,33 @@ export function useSupabaseData(user: any) {
           subjects: st.subjects,
           fingerprintTemplate: dbTemplate,
           fingerprintFinger: dbFinger,
-          fingerprintEnrolledAt: dbEnrolledAt
+          fingerprintEnrolledAt: dbEnrolledAt,
+          ...(() => {
+            let dutyIn = st.duty_start_time || (st as any).dutyStartTime;
+            let dutyOut = st.duty_end_time || (st as any).dutyEndTime;
+            let grace = st.grace_minutes !== undefined && st.grace_minutes !== null ? Number(st.grace_minutes) : ((st as any).graceMinutes !== undefined ? Number((st as any).graceMinutes) : 5);
+            let shift = st.campus_shift || (st as any).campusShift;
+            try {
+              const cached = safeLocalStorage.getItem(`scj_staff_duty_${st.id}`);
+              if (cached) {
+                const parsed = JSON.parse(cached);
+                if (!dutyIn && parsed.dutyStartTime) dutyIn = parsed.dutyStartTime;
+                if (!dutyOut && parsed.dutyEndTime) dutyOut = parsed.dutyEndTime;
+                if (grace === undefined && parsed.graceMinutes !== undefined) grace = Number(parsed.graceMinutes);
+                if (!shift && parsed.campusShift) shift = parsed.campusShift;
+              }
+            } catch {}
+            return {
+              dutyStartTime: dutyIn || undefined,
+              dutyEndTime: dutyOut || undefined,
+              duty_start_time: dutyIn || undefined,
+              duty_end_time: dutyOut || undefined,
+              graceMinutes: grace ?? 5,
+              grace_minutes: grace ?? 5,
+              campusShift: shift || 'Boys Campus',
+              campus_shift: shift || 'Boys Campus',
+            };
+          })()
         };
       }));
       if (staffAttendanceData) setStaffAttendance(staffAttendanceData.map(a => {
@@ -918,13 +944,15 @@ export function useSupabaseData(user: any) {
   const logActivity = (title: string, message: string | object, type: 'info' | 'alert' | 'success' | 'warning' = 'info') => {
     if (!user) return;
     const finalMessage = typeof message === 'object' && message !== null ? JSON.stringify(message) : String(message);
-    supabase.from('notifications').insert({
-      title,
-      message: finalMessage,
-      type,
-      actor_name: user.displayName || user.email,
-      is_read: false
-    }).then(() => {}).catch((e) => {
+    Promise.resolve(
+      supabase.from('notifications').insert({
+        title,
+        message: finalMessage,
+        type,
+        actor_name: user.displayName || user.email,
+        is_read: false
+      })
+    ).catch((e) => {
       console.warn('Failed to log activity', e);
     });
   };
@@ -1436,7 +1464,7 @@ export function useSupabaseData(user: any) {
             fingerprint_enrolled_at: enrolledAt,
           };
 
-          const updateOps: Promise<any>[] = [
+          const updateOps: any[] = [
             supabase.from('students').update(payload).eq('id', personId),
             supabase.from('admissions').update(payload).eq('student_id', personId),
           ];

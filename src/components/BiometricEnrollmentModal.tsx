@@ -499,7 +499,7 @@ export default function BiometricEnrollmentModal({
       if (pType === 'staff') {
         await supabase.from('staff').update(clearPayload).eq('id', activePerson.id);
       } else {
-        const clearOps: Promise<any>[] = [
+        const clearOps: any[] = [
           supabase.from('students').update(clearPayload).eq('id', activePerson.id),
           supabase.from('admissions').update(clearPayload).eq('student_id', activePerson.id),
         ];

@@ -96,6 +96,31 @@ export function useStaffOperations(ctx: any) {
           updatePayload.fingerprint_finger = updates.fingerprintFinger || null;
           updatePayload.fingerprint_enrolled_at = updates.fingerprintTemplate ? new Date().toISOString() : null;
         }
+        if (updates.dutyStartTime !== undefined || updates.duty_start_time !== undefined) {
+          updatePayload.duty_start_time = updates.dutyStartTime || updates.duty_start_time || null;
+        }
+        if (updates.dutyEndTime !== undefined || updates.duty_end_time !== undefined) {
+          updatePayload.duty_end_time = updates.dutyEndTime || updates.duty_end_time || null;
+        }
+        if (updates.graceMinutes !== undefined || updates.grace_minutes !== undefined) {
+          updatePayload.grace_minutes = updates.graceMinutes !== undefined ? updates.graceMinutes : updates.grace_minutes;
+        }
+        if (updates.campusShift !== undefined || updates.campus_shift !== undefined) {
+          updatePayload.campus_shift = updates.campusShift || updates.campus_shift || null;
+        }
+
+        // Cache duty roster locally for immediate offline/fast access
+        try {
+          const existingCacheStr = safeLocalStorage.getItem(`scj_staff_duty_${id}`);
+          const prevCache = existingCacheStr ? JSON.parse(existingCacheStr) : {};
+          safeLocalStorage.setItem(`scj_staff_duty_${id}`, JSON.stringify({
+            ...prevCache,
+            dutyStartTime: updates.dutyStartTime ?? updates.duty_start_time ?? prevCache.dutyStartTime,
+            dutyEndTime: updates.dutyEndTime ?? updates.duty_end_time ?? prevCache.dutyEndTime,
+            graceMinutes: updates.graceMinutes ?? updates.grace_minutes ?? prevCache.graceMinutes ?? 5,
+            campusShift: updates.campusShift ?? updates.campus_shift ?? prevCache.campusShift,
+          }));
+        } catch {}
 
         const { error } = await supabase.from('staff').update(updatePayload).eq('id', id);
         if (error) throw error;

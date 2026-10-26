@@ -1483,20 +1483,24 @@ export default function FeeManagementView({
 
             <Button
               onClick={() => {
-                const toPrint = filteredStudents.slice(0, 50);
-                if (toPrint.length === 0) {
-                  toast.error("No students found to generate challans.");
+                if (!filteredStudents || filteredStudents.length === 0) {
+                  toast.error("No students found in current filter to generate challans.");
                   return;
+                }
+                const toPrint = filteredStudents.slice(0, 100);
+                if (filteredStudents.length > 100) {
+                  toast.info(`Generating challans for the first 100 of ${filteredStudents.length} filtered students.`);
                 }
                 setChallanStudents(toPrint);
                 setIsChallanModalOpen(true);
               }}
               variant="outline"
               size="sm"
-              className="h-7.5 px-2.5 rounded-lg border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-[11px] flex items-center gap-1 hover:bg-slate-50"
+              className="h-7.5 px-2.5 rounded-lg border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-[11px] flex items-center gap-1 hover:bg-slate-50 cursor-pointer"
+              title="Generate 3-Copy Bank Challan Vouchers for Filtered Students"
             >
               <Building2 size={13} className="text-emerald-600" />
-              <span>Challans</span>
+              <span>Challans ({filteredStudents.length})</span>
             </Button>
 
             <Button

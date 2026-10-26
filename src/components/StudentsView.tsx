@@ -3321,7 +3321,7 @@ function EditStudentDialog({ student, data, onClose, onDelete }: { student: Stud
     let defaultGroup = '';
     let defaultCategory = '';
     let defaultSubjects: string[] = [];
-    let programType = 'Yearly';
+    let programType: 'Yearly' | 'Semester' = 'Yearly';
     let totalSemesters = 0;
     let currentSemester = 1;
     let totalInstallments = 12;

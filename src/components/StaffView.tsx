@@ -98,6 +98,7 @@ import BiometricEnrollmentModal from './BiometricEnrollmentModal';
 import InstantBiometricVerifyModal from './InstantBiometricVerifyModal';
 import StaffSalarySlipModal from './StaffSalarySlipModal';
 import StaffJoiningDossierModal from './StaffJoiningDossierModal';
+import StaffDutyRoster from './StaffDutyRoster';
 
 export default function StaffView({ data, initialFilter, title, hideNavigation }: { data: any, initialFilter?: string | null, title?: string, hideNavigation?: boolean }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -801,7 +802,7 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
       } else if (initialFilter === 'directory') {
         setActiveModule('directory');
         setRoleFilter('all');
-      } else if (['attendance', 'payroll', 'timetable', 'subjects'].includes(initialFilter)) {
+      } else if (['attendance', 'payroll', 'timetable', 'subjects', 'roster'].includes(initialFilter)) {
         setActiveModule(initialFilter as any);
         setRoleFilter('all');
       }
@@ -956,6 +957,19 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                 )}
               >
                 <GraduationCap size={13} /> Subjects
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveModule('roster')}
+                className={cn(
+                  "px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                  activeModule === 'roster'
+                    ? "bg-white dark:bg-slate-700 text-superior-teal dark:text-emerald-300 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                )}
+                title="Teacher-wise Lecture Timings & Biometric Duty Roster"
+              >
+                <Clock size={13} className="text-amber-500" /> Duty Roster
               </button>
             </div>
           )}
@@ -1756,6 +1770,16 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
 
       <TabsContent value="subjects" className="space-y-8 mt-0 focus-visible:outline-none">
         <StaffSubjects staffList={data.staff || filteredStaff} onUpdateStaff={data.updateStaff} />
+      </TabsContent>
+
+      <TabsContent value="roster" className="space-y-8 mt-0 focus-visible:outline-none">
+        <StaffDutyRoster 
+          staffList={data.staff || filteredStaff} 
+          staffTimetable={data.staffTimetable || []} 
+          onUpdateStaff={data.updateStaff} 
+          settings={data?.settings}
+          collegeName={data?.settings?.collegeName || 'Superior College Jahanian'}
+        />
       </TabsContent>
       </Tabs>
 
