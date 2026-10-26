@@ -120,6 +120,41 @@ export function extractAttendanceTimings(rec: any): {
   return { checkIn, breakOut, breakIn, checkOut, remarks };
 }
 
+export function formatCollegeTimingRange(settings?: any): string {
+  const startRaw =
+    settings?.collegeStartTime ||
+    settings?.config?.collegeStartTime ||
+    settings?.gateEntryStartTime ||
+    settings?.config?.gateEntryStartTime ||
+    "08:00";
+  const endRaw =
+    settings?.gateExitStartTime ||
+    settings?.config?.gateExitStartTime ||
+    settings?.gateExitCutoffTime ||
+    settings?.config?.gateExitCutoffTime ||
+    settings?.collegeEndTime ||
+    settings?.config?.collegeEndTime ||
+    "14:00";
+
+  const to12h = (timeVal: string, fallback: string): string => {
+    if (!timeVal || typeof timeVal !== "string") return fallback;
+    const clean = timeVal.trim();
+    if (/am|pm/i.test(clean)) return clean;
+    const parts = clean.split(":");
+    if (parts.length < 2) return clean;
+    let h = parseInt(parts[0], 10);
+    const m = parts[1].slice(0, 2);
+    if (isNaN(h)) return fallback;
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return `${String(h).padStart(2, "0")}:${m} ${ampm}`;
+  };
+
+  const startFormatted = to12h(startRaw, "08:00 AM");
+  const endFormatted = to12h(endRaw, "02:00 PM");
+  return `${startFormatted} - ${endFormatted}`;
+}
+
 const COLLEGE_TITLE = "SUPERIOR COLLEGE JAHANIAN";
 const COLLEGE_SUBTITLE = "Official ERP & Automated Document Verification System • Canal Road, Jahanian";
 
@@ -744,7 +779,8 @@ export function generateFeeReceiptAndStatementPdf(
 export function generateCumulativeStaffAttendancePdf(
   staff: any,
   monthAttendanceRows: any[],
-  targetDateStr?: string
+  targetDateStr?: string,
+  settingsOrTiming?: any
 ): GeneratedWhatsAppPdf {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
   const nowInfo = getPktNowInfo(targetDateStr);
@@ -753,7 +789,13 @@ export function generateCumulativeStaffAttendancePdf(
   const staffId = staff?.id || staff?.staffId || "STF-01";
   const role = staff?.designation || staff?.role || "Faculty";
   const phone = staff?.contact || staff?.phone || "Verified";
-  const officialCollegeTiming = "07:54 AM - 02:00 PM";
+
+  let officialCollegeTiming = "08:00 AM - 02:00 PM";
+  if (typeof settingsOrTiming === "string" && settingsOrTiming.trim()) {
+    officialCollegeTiming = settingsOrTiming.trim();
+  } else if (settingsOrTiming && typeof settingsOrTiming === "object") {
+    officialCollegeTiming = formatCollegeTimingRange(settingsOrTiming);
+  }
 
   const activeDateStr = targetDateStr || nowInfo.isoDate;
   const [yr, mo, dy] = activeDateStr.split("-").map(Number);

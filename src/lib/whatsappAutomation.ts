@@ -319,7 +319,7 @@ export async function sendAutoStaffDailyCheckInNotice(
     mode?: string;
     notes?: string;
   },
-  options?: { silent?: boolean; alsoSendPdf?: boolean }
+  options?: { silent?: boolean; alsoSendPdf?: boolean; settings?: any }
 ): Promise<boolean> {
   const phone = staff?.contact || staff?.phone || staff?.whatsapp || '';
   const cleanPhone = formatWhatsAppPhone(phone);
@@ -347,6 +347,8 @@ export async function sendAutoStaffDailyCheckInNotice(
   if (options?.alsoSendPdf && staff?.id) {
     const pdfOk = await sendAutoStaffAttendancePdfNotice(staff.id, cleanPhone, attendance.date, {
       silent: options?.silent ?? true,
+      currentPunch: attendance,
+      settings: options?.settings,
     });
     if (pdfOk) return true;
   }
@@ -540,7 +542,7 @@ export async function sendAutoStaffAttendancePdfNotice(
   staffId: string,
   phone?: string,
   monthStr?: string,
-  options?: { silent?: boolean }
+  options?: { silent?: boolean; currentPunch?: any; settings?: any }
 ): Promise<boolean> {
   try {
     const res = await fetch('/api/whatsapp/send-official-pdf', {
@@ -551,6 +553,8 @@ export async function sendAutoStaffAttendancePdfNotice(
         staffId,
         phone: phone ? formatWhatsAppPhone(phone) : undefined,
         monthStr,
+        currentPunch: options?.currentPunch,
+        settings: options?.settings,
       }),
     });
     const data = await res.json().catch(() => ({}));

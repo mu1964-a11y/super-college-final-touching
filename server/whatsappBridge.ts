@@ -1465,8 +1465,10 @@ _Authorized Principal Executive Access_`;
     if (!staff) return null;
 
     const currentMonth = (monthStr && monthStr.length >= 7) ? monthStr.slice(0, 7) : this.getPktDate().dateStr.slice(0, 7);
+    const startDate = `${currentMonth}-01`;
+    const endDate = `${currentMonth}-31`;
     const [attRes, advRes] = await Promise.all([
-      supabase.from("staff_attendance").select("*").eq("staff_id", verifiedStaffId).ilike("date", `${currentMonth}%`),
+      supabase.from("staff_attendance").select("*").eq("staff_id", verifiedStaffId).gte("date", startDate).lte("date", endDate),
       supabase.from("staff_advances").select("*").eq("staff_id", verifiedStaffId),
     ]);
 
@@ -1483,24 +1485,65 @@ _Authorized Principal Executive Access_`;
     supabase: any,
     verifiedStaffId: string,
     fallbackName: string = "Faculty Member",
-    targetDate?: string
+    targetDate?: string,
+    currentPunch?: any,
+    settingsOverride?: any
   ): Promise<GeneratedWhatsAppPdf | null> {
     if (!verifiedStaffId) return null;
     const { data: staff } = await supabase.from("staff").select("*").eq("id", verifiedStaffId).maybeSingle();
     const activeDate = (targetDate && targetDate.length >= 10) ? targetDate.slice(0, 10) : this.getPktDate().dateStr;
     const currentMonth = activeDate.slice(0, 7);
 
+    // Fetch dynamic college settings for timing & campus parameters
+    let activeSettings = settingsOverride;
+    if (!activeSettings) {
+      try {
+        const { data: setRow } = await supabase.from("settings").select("*").limit(1).maybeSingle();
+        if (setRow) activeSettings = setRow;
+      } catch {}
+    }
+
+    // Query staff attendance with date range (PostgreSQL 'date' column cannot use .ilike)
+    const startDate = `${currentMonth}-01`;
+    const endDate = `${currentMonth}-31`;
     const { data: attRows } = await supabase
       .from("staff_attendance")
       .select("*")
       .eq("staff_id", verifiedStaffId)
-      .ilike("date", `${currentMonth}%`)
+      .gte("date", startDate)
+      .lte("date", endDate)
       .order("date", { ascending: true });
+
+    const rowsList: any[] = Array.isArray(attRows) ? [...attRows] : [];
+
+    // If current punch is passed, guarantee today's row is seamlessly present/merged
+    if (currentPunch && typeof currentPunch === "object") {
+      const punchDate = currentPunch.date || activeDate;
+      const existingIdx = rowsList.findIndex((r) => String(r.date || "").slice(0, 10) === punchDate);
+      const existingRow = existingIdx >= 0 ? rowsList[existingIdx] : {};
+      
+      const mergedRecord = {
+        ...existingRow,
+        staff_id: verifiedStaffId,
+        date: punchDate,
+        status: currentPunch.status || existingRow.status || "Present",
+        check_in: currentPunch.checkInTime || currentPunch.check_in || existingRow.check_in || existingRow.check_in_time,
+        check_out: currentPunch.checkOutTime || currentPunch.check_out || existingRow.check_out || existingRow.check_out_time,
+        notes: currentPunch.notes || existingRow.notes,
+      };
+
+      if (existingIdx >= 0) {
+        rowsList[existingIdx] = mergedRecord;
+      } else {
+        rowsList.push(mergedRecord);
+      }
+    }
 
     return generateCumulativeStaffAttendancePdf(
       staff || { id: verifiedStaffId, full_name: fallbackName, role: "Faculty" },
-      attRows || [],
-      activeDate
+      rowsList,
+      activeDate,
+      activeSettings
     );
   }
 
@@ -1735,12 +1778,14 @@ _Superior College Jahanian Official LMS_`;
     }
 
     const currentMonth = new Date().toISOString().slice(0, 7);
-    const todayStr = this.getPktDate().dateStr;
+    const startDate = `${currentMonth}-01`;
+    const endDate = `${currentMonth}-31`;
     const { data: att } = await supabase
       .from("staff_attendance")
       .select("*")
       .eq("staff_id", staffId)
-      .ilike("date", `${currentMonth}%`)
+      .gte("date", startDate)
+      .lte("date", endDate)
       .order("date", { ascending: false });
 
     const present = (att || []).filter((a: any) => a.status === "Present").length;
@@ -6975,7 +7020,9 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
         supabase,
         payload.staffId,
         st?.full_name || "Faculty Member",
-        payload.monthStr
+        payload.monthStr,
+        payload.currentPunch,
+        payload.settings
       );
       if (!pdfObj) return { success: false, error: "Could not build Staff Attendance PDF." };
       const res = await this.sendDocument(targetPhone, pdfObj);

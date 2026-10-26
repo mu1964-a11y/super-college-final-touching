@@ -444,6 +444,10 @@ export default function BiometricAttendanceDesk({
         staff_id: matchedStaff.id,
         date: todayStr,
         status: computedStatus,
+        check_in: nextCheckIn,
+        check_out: nextCheckOut,
+        check_in_time: nextCheckIn,
+        check_out_time: nextCheckOut,
         notes: notesJson,
       };
 
@@ -460,6 +464,10 @@ export default function BiometricAttendanceDesk({
                   staff_id: matchedStaff.id,
                   date: todayStr,
                   status: computedStatus,
+                  check_in: nextCheckIn,
+                  check_out: nextCheckOut,
+                  check_in_time: nextCheckIn,
+                  check_out_time: nextCheckOut,
                   notes: notesJson,
                 },
               ],
@@ -580,7 +588,11 @@ export default function BiometricAttendanceDesk({
                 : 'Biometric Thumb Scanner',
             notes: notesJson,
           },
-          { silent: true, alsoSendPdf: stageAction === 'checkin' || stageAction === 'checkout' }
+          {
+            silent: true,
+            alsoSendPdf: stageAction === 'checkin' || stageAction === 'checkout',
+            settings: settingsProp || settings,
+          }
         ).catch(() => {});
       }
     },

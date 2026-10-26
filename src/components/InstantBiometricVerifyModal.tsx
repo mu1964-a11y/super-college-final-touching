@@ -484,6 +484,10 @@ export default function InstantBiometricVerifyModal({
         staff_id: teacher.id,
         date: todayStr,
         status: computedStatus,
+        check_in: nextCheckIn,
+        check_out: nextCheckOut,
+        check_in_time: nextCheckIn,
+        check_out_time: nextCheckOut,
         notes: notesJson,
       };
 
@@ -500,6 +504,10 @@ export default function InstantBiometricVerifyModal({
                   staff_id: teacher.id,
                   date: todayStr,
                   status: computedStatus,
+                  check_in: nextCheckIn,
+                  check_out: nextCheckOut,
+                  check_in_time: nextCheckIn,
+                  check_out_time: nextCheckOut,
                   notes: notesJson,
                 },
               ],
@@ -641,7 +649,11 @@ export default function InstantBiometricVerifyModal({
             mode: `Biometric Thumb (${campusState})`,
             notes: notesJson,
           },
-          { silent: true, alsoSendPdf: action === 'checkin' || action === 'checkout' }
+          {
+            silent: true,
+            alsoSendPdf: action === 'checkin' || action === 'checkout',
+            settings: data?.settings,
+          }
         ).catch(() => {});
       }
     },
