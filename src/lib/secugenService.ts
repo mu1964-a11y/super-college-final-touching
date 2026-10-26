@@ -543,64 +543,23 @@ class SecuGenService {
 
   /**
    * Matches a single scanned template against a single stored template.
+   * Instant (< 0.2ms) rotation- and translation-invariant ISO 19794-2 (FMR 20) minutiae match.
    */
-  private async matchSingleTemplatePair(
+  public matchSingleTemplatePair(
     clean1: string,
     clean2: string,
-    templateFormat: 'ISO' | 'ANSI' = 'ISO'
-  ): Promise<number> {
+    _templateFormat: 'ISO' | 'ANSI' = 'ISO'
+  ): number {
     if (!clean1 || !clean2) return 0;
     if (clean1 === clean2) return 199;
-
-    // 1. Instant (< 0.2ms) ISO 19794-2 FMR 20 geometric minutiae match
-    const isoScore = this.matchIsoFmr20(clean1, clean2);
-
-    // 2. If activeEndpoint is available and ISO score shows potential alignment (or templates aren't ISO),
-    // query SecuGen's native /SGIMatchScore endpoint with a fast timeout.
-    let hwScore = 0;
-    if (this.activeEndpoint && this.hwMatchEndpointWorks !== false && (isoScore >= 42 || isoScore === 0)) {
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 500);
-        const bodyStr =
-          `Template1=${encodeURIComponent(clean1)}` +
-          `&Template2=${encodeURIComponent(clean2)}` +
-          `&template1=${encodeURIComponent(clean1)}` +
-          `&template2=${encodeURIComponent(clean2)}` +
-          `&templateFormat=${templateFormat}`;
-
-        const res = await fetch(`${this.activeEndpoint}/SGIMatchScore`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-          body: bodyStr,
-          signal: controller.signal,
-        });
-        clearTimeout(timer);
-
-        if (res.ok) {
-          const data = await res.json().catch(() => null);
-          if (data && data.ErrorCode === 0 && typeof data.MatchingScore !== 'undefined') {
-            this.hwMatchEndpointWorks = true;
-            hwScore = Number(data.MatchingScore || 0);
-          } else if (data && data.ErrorCode && data.ErrorCode !== 0) {
-            this.hwMatchEndpointWorks = false;
-          }
-        } else {
-          this.hwMatchEndpointWorks = false;
-        }
-      } catch {
-        this.hwMatchEndpointWorks = false;
-      }
-    }
-
-    return Math.max(isoScore, hwScore);
+    return this.matchIsoFmr20(clean1, clean2);
   }
 
   /**
    * Matches a scanned template against a person's stored template field (which may contain 1 finger
    * like Right Thumb OR 2+ fingers like Right Thumb + Right Index).
-   * If the person enrolled 2 fingers, scanning EITHER finger will match and return the highest score!
-   * If the person only enrolled 1 finger, only that enrolled finger is compared.
+   * Runs in milliseconds entirely in memory without blocking HTTP calls.
+   * If the person enrolled 2 fingers, scanning EITHER finger matches and returns the highest score.
    */
   async matchTemplates(
     template1: string,
@@ -623,7 +582,7 @@ class SecuGenService {
 
     for (const scanned of scannedEntries) {
       for (const stored of storedEntries) {
-        const score = await this.matchSingleTemplatePair(
+        const score = this.matchSingleTemplatePair(
           scanned.template,
           stored.template,
           templateFormat
@@ -635,10 +594,10 @@ class SecuGenService {
       }
     }
 
-    // Match threshold: 80 on SecuGen 0..199 scale
+    // Match threshold: 78 on SecuGen 0..199 scale (self-match gives ~180-199)
     return {
       success: true,
-      matched: bestScore >= 80,
+      matched: bestScore >= 78,
       score: bestScore,
       matchedFinger: bestFinger,
     };

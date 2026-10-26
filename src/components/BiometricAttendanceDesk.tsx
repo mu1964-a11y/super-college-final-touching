@@ -105,31 +105,8 @@ function playKioskSound(type: 'checkin' | 'checkout' | 'duplicate' | 'error') {
   } catch {}
 }
 
-function speakKioskAnnouncement(text: string, enabled: boolean) {
-  if (!enabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-  try {
-    window.speechSynthesis.cancel();
-    const naturalText = text
-      .replace(/\b0?(\d{1,2}):(\d{2}):\d{2}\s*(AM|PM)\b/gi, '$1:$2 $3')
-      .replace(/\b0(\d):(\d{2})\s*(AM|PM)\b/gi, '$1:$2 $3');
-    const utter = new SpeechSynthesisUtterance(naturalText);
-    const voices = window.speechSynthesis.getVoices?.() || [];
-    const preferredVoice =
-      voices.find((v) => /natural|online/i.test(v.name) && /en/i.test(v.lang)) ||
-      voices.find((v) => /Google UK English Female|Google US English/i.test(v.name)) ||
-      voices.find((v) => /Samantha|Daniel|Karen|Moira|Aria|Jenny|Zira/i.test(v.name)) ||
-      voices.find((v) => /^en(-|_)/i.test(v.lang));
-    if (preferredVoice) {
-      utter.voice = preferredVoice;
-      utter.lang = preferredVoice.lang;
-    } else {
-      utter.lang = 'en-GB';
-    }
-    utter.rate = 0.96;
-    utter.pitch = 1.0;
-    utter.volume = 1;
-    window.speechSynthesis.speak(utter);
-  } catch {}
+function speakKioskAnnouncement(_text: string, _enabled: boolean) {
+  // Voice name/time announcements disabled per user instruction for millisecond-fast biometric check-ins with zero voice lag
 }
 
 function getTodayDateStr(): string {
@@ -439,40 +416,40 @@ export default function BiometricAttendanceDesk({
         score: bestScore,
       });
 
-      const basePayload = {
-        id: existingRec?.id || `${matchedStaff.id}-${todayStr}`,
+      const isValidUuid = (val?: string) =>
+        Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
+
+      const assignedId = isValidUuid(existingRec?.id)
+        ? existingRec.id
+        : typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : undefined;
+
+      const basePayload: any = {
         staff_id: matchedStaff.id,
         date: todayStr,
         status: computedStatus,
-        check_in: nextCheckIn,
-        check_out: nextCheckOut,
-        check_in_time: nextCheckIn,
-        check_out_time: nextCheckOut,
+        verification_method: 'secugen_fingerprint',
         notes: notesJson,
       };
+      if (assignedId) {
+        basePayload.id = assignedId;
+      }
 
       if (isSupabaseConfigured) {
         const { error } = await supabase
           .from('staff_attendance')
-          .upsert([basePayload], { onConflict: 'id' });
+          .upsert([basePayload], { onConflict: 'staff_id,date' });
         if (error) {
-          await supabase
-            .from('staff_attendance')
-            .upsert(
-              [
-                {
-                  staff_id: matchedStaff.id,
-                  date: todayStr,
-                  status: computedStatus,
-                  check_in: nextCheckIn,
-                  check_out: nextCheckOut,
-                  check_in_time: nextCheckIn,
-                  check_out_time: nextCheckOut,
-                  notes: notesJson,
-                },
-              ],
-              { onConflict: 'staff_id,date' }
-            );
+          console.error('[BiometricDesk] Supabase upsert error:', error);
+          const fallback = {
+            staff_id: matchedStaff.id,
+            date: todayStr,
+            status: computedStatus,
+            verification_method: 'secugen_fingerprint',
+            notes: notesJson,
+          };
+          await supabase.from('staff_attendance').upsert([fallback], { onConflict: 'staff_id,date' });
         }
       }
 
