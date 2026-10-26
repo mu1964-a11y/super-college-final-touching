@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Staff } from '../types';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,21 +9,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { 
   Clock, 
   Search, 
-  Building2, 
   Download, 
   Send, 
   Save, 
   Sparkles, 
-  CheckCircle2, 
-  Printer, 
   FileText, 
-  Users, 
+  GraduationCap, 
   SlidersHorizontal, 
-  AlertCircle,
-  Copy,
-  Check,
-  ShieldCheck,
-  CalendarCheck
+  Copy, 
+  Check, 
+  BookOpen
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { safeLocalStorage } from '../utils/safeStorage';
@@ -43,12 +38,48 @@ interface LocalRosterState {
   dutyStartTime: string;
   dutyEndTime: string;
   graceMinutes: number;
-  campusShift: string;
   isModified?: boolean;
 }
 
-const COMMON_START_TIMES = ['08:00', '08:15', '08:20', '08:30', '08:40', '09:00', '09:20', '09:40', '10:00'];
-const COMMON_END_TIMES = ['11:30', '12:00', '12:45', '01:00', '01:15', '01:30', '01:45', '02:00', '02:30'];
+// Function to strictly determine if a staff member is a Lecturer / Teacher
+export function isTeachingFaculty(st: Staff): boolean {
+  const role = (st.role || '').trim().toLowerCase();
+  const designation = (st.designation || '').trim().toLowerCase();
+
+  // Explicitly block non-teaching staff (receptionists, guards, sweepers, etc.)
+  const nonTeachingKeywords = [
+    'receptionist',
+    'guard',
+    'gardener',
+    'sweeper',
+    'office boy',
+    'accountant',
+    'admin officer',
+    'lab attendant',
+    'driver',
+    'security',
+    'peon',
+  ];
+  if (nonTeachingKeywords.some((kw) => role.includes(kw) || designation.includes(kw))) {
+    return false;
+  }
+
+  // Allow Lecturers, Faculty, Professors, or staff with assigned subjects
+  if (
+    role.includes('lecturer') ||
+    role.includes('faculty') ||
+    role.includes('professor') ||
+    role.includes('teacher') ||
+    designation.includes('lecturer') ||
+    designation.includes('faculty') ||
+    (Array.isArray(st.subjects) && st.subjects.length > 0)
+  ) {
+    return true;
+  }
+
+  // If role is explicitly 'Lecturer' or 'Faculty'
+  return st.role === 'Lecturer' || st.role === 'Faculty';
+}
 
 export default function StaffDutyRoster({
   staffList,
@@ -58,20 +89,22 @@ export default function StaffDutyRoster({
   collegeName = 'Superior College Jahanian',
 }: StaffDutyRosterProps) {
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [campusFilter, setCampusFilter] = useState<string>('all');
-  const [roleFilter, setRoleFilter] = useState<string>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [isBulkSaving, setIsBulkSaving] = useState<boolean>(false);
 
-  // Maintain local editable state per staff ID
+  // Filter staffList down to ONLY Lecturers / Teachers
+  const lecturersList = useMemo(() => {
+    return staffList.filter(isTeachingFaculty);
+  }, [staffList]);
+
+  // Maintain local editable state per lecturer ID
   const [rosterMap, setRosterMap] = useState<Record<string, LocalRosterState>>(() => {
     const initMap: Record<string, LocalRosterState> = {};
-    staffList.forEach((st) => {
+    lecturersList.forEach((st) => {
       let inTime = st.dutyStartTime || st.duty_start_time || '';
       let outTime = st.dutyEndTime || st.duty_end_time || '';
       let grace = st.graceMinutes !== undefined ? st.graceMinutes : (st.grace_minutes !== undefined ? st.grace_minutes : 5);
-      let shift = st.campusShift || st.campus_shift || (st.role === 'Faculty' ? 'Boys Campus' : 'Both');
 
       // Check local cache if not set in object
       if (!inTime) {
@@ -82,31 +115,25 @@ export default function StaffDutyRoster({
             inTime = parsed.dutyStartTime || inTime;
             outTime = parsed.dutyEndTime || outTime;
             if (parsed.graceMinutes !== undefined) grace = parsed.graceMinutes;
-            if (parsed.campusShift) shift = parsed.campusShift;
           }
         } catch {}
       }
 
       // Default smart values if still blank
-      if (!inTime) {
-        inTime = shift.includes('Girl') ? '08:00' : '08:30';
-      }
-      if (!outTime) {
-        outTime = shift.includes('Girl') ? '01:00' : '01:30';
-      }
+      if (!inTime) inTime = '08:30';
+      if (!outTime) outTime = '01:30';
 
       initMap[st.id] = {
         dutyStartTime: inTime,
         dutyEndTime: outTime,
         graceMinutes: Number(grace) || 5,
-        campusShift: shift,
         isModified: false,
       };
     });
     return initMap;
   });
 
-  // Calculate lecture timetable range for a staff member
+  // Calculate lecture timetable range for a lecturer
   const getTimetableRange = useCallback(
     (staffId: string) => {
       const entries = (staffTimetable || []).filter((t: any) => (t.staff_id || t.staffId) === staffId);
@@ -137,7 +164,6 @@ export default function StaffDutyRoster({
           dutyStartTime: '08:30',
           dutyEndTime: '01:30',
           graceMinutes: 5,
-          campusShift: 'Boys Campus',
         }),
         [field]: value,
         isModified: true,
@@ -165,16 +191,16 @@ export default function StaffDutyRoster({
     toast.success(`Synced ${range.count} lecture periods! (Arrival: ${range.start} - Departure: ${range.end})`);
   };
 
-  // Bulk sync all teachers who have timetable records
+  // Bulk sync all lecturers from Timetable
   const handleBulkSyncAll = () => {
     let syncedCount = 0;
     setRosterMap((prev) => {
       const nextMap = { ...prev };
-      staffList.forEach((st) => {
+      lecturersList.forEach((st) => {
         const range = getTimetableRange(st.id);
         if (range) {
           nextMap[st.id] = {
-            ...(nextMap[st.id] || { graceMinutes: 5, campusShift: 'Boys Campus' }),
+            ...(nextMap[st.id] || { graceMinutes: 5 }),
             dutyStartTime: range.start,
             dutyEndTime: range.end,
             isModified: true,
@@ -188,36 +214,25 @@ export default function StaffDutyRoster({
     if (syncedCount > 0) {
       toast.success(`Successfully synced lecture timings for ${syncedCount} teachers from Timetable!`);
     } else {
-      toast.info('No timetable lectures found for active faculty.');
+      toast.info('No timetable lectures found for active lecturers.');
     }
   };
 
-  // Quick preset apply
-  const handleApplyPreset = (targetCampus: 'Girls Campus' | 'Boys Campus', start: string, end: string) => {
-    let count = 0;
+  // Quick preset apply for all teachers
+  const handleApplyPreset = (start: string, end: string) => {
     setRosterMap((prev) => {
       const nextMap = { ...prev };
-      staffList.forEach((st) => {
-        const currentShift = prev[st.id]?.campusShift || st.campusShift || '';
-        const matchesCampus =
-          targetCampus === 'Girls Campus'
-            ? currentShift.includes('Girl') || (st as any).campus === 'Girls' || (st as any).gender === 'Female'
-            : currentShift.includes('Boy') || (st as any).campus === 'Boys' || (st as any).gender === 'Male';
-
-        if (matchesCampus) {
-          nextMap[st.id] = {
-            ...(nextMap[st.id] || { graceMinutes: 5, campusShift: targetCampus }),
-            dutyStartTime: start,
-            dutyEndTime: end,
-            campusShift: targetCampus,
-            isModified: true,
-          };
-          count++;
-        }
+      lecturersList.forEach((st) => {
+        nextMap[st.id] = {
+          ...(nextMap[st.id] || { graceMinutes: 5 }),
+          dutyStartTime: start,
+          dutyEndTime: end,
+          isModified: true,
+        };
       });
       return nextMap;
     });
-    toast.success(`Applied ${start} - ${end} to ${count} ${targetCampus} faculty members.`);
+    toast.success(`Applied ${start} - ${end} to all ${lecturersList.length} teachers.`);
   };
 
   // Save single teacher's schedule
@@ -232,7 +247,6 @@ export default function StaffDutyRoster({
           dutyStartTime: config.dutyStartTime,
           dutyEndTime: config.dutyEndTime,
           graceMinutes: Number(config.graceMinutes),
-          campusShift: config.campusShift,
         });
       }
 
@@ -243,7 +257,6 @@ export default function StaffDutyRoster({
           dutyStartTime: config.dutyStartTime,
           dutyEndTime: config.dutyEndTime,
           graceMinutes: Number(config.graceMinutes),
-          campusShift: config.campusShift,
         })
       );
 
@@ -255,7 +268,7 @@ export default function StaffDutyRoster({
         },
       }));
 
-      toast.success(`Duty timing saved for ${st.fullName}!`);
+      toast.success(`Lecture duty timing saved for ${st.fullName}!`);
     } catch (err: any) {
       toast.error('Failed to save timing: ' + (err?.message || 'Database error'));
     } finally {
@@ -267,7 +280,7 @@ export default function StaffDutyRoster({
   const handleSaveAll = async () => {
     const modifiedEntries = Object.entries(rosterMap).filter(([_, val]) => val.isModified);
     if (modifiedEntries.length === 0) {
-      toast.info('No unsaved changes in duty roster.');
+      toast.info('No unsaved changes in teachers roster.');
       return;
     }
 
@@ -280,7 +293,6 @@ export default function StaffDutyRoster({
             dutyStartTime: conf.dutyStartTime,
             dutyEndTime: conf.dutyEndTime,
             graceMinutes: Number(conf.graceMinutes),
-            campusShift: conf.campusShift,
           });
         }
         safeLocalStorage.setItem(
@@ -289,7 +301,6 @@ export default function StaffDutyRoster({
             dutyStartTime: conf.dutyStartTime,
             dutyEndTime: conf.dutyEndTime,
             graceMinutes: Number(conf.graceMinutes),
-            campusShift: conf.campusShift,
           })
         );
         successCount++;
@@ -303,7 +314,7 @@ export default function StaffDutyRoster({
         return updated;
       });
 
-      toast.success(`Successfully saved duty timings for all ${successCount} teachers!`);
+      toast.success(`Successfully saved lecture duty timings for ${successCount} teachers!`);
     } catch (err: any) {
       toast.error('Error during bulk save: ' + (err?.message || ''));
     } finally {
@@ -311,29 +322,18 @@ export default function StaffDutyRoster({
     }
   };
 
-  // Filtered staff list
-  const filteredStaff = useMemo(() => {
-    return staffList.filter((st) => {
+  // Filtered teachers list (by search term)
+  const filteredLecturers = useMemo(() => {
+    return lecturersList.filter((st) => {
       const name = (st.fullName || '').toLowerCase();
       const id = (st.id || '').toLowerCase();
-      const matchesSearch = name.includes(searchTerm.toLowerCase()) || id.includes(searchTerm.toLowerCase());
+      const sub = (st.subjects || []).join(' ').toLowerCase();
+      const des = (st.designation || st.role || '').toLowerCase();
+      const q = searchTerm.toLowerCase();
 
-      const stShift = rosterMap[st.id]?.campusShift || st.campusShift || '';
-      let matchesCampus = true;
-      if (campusFilter === 'girls') {
-        matchesCampus = stShift.includes('Girl') || (st as any).gender === 'Female';
-      } else if (campusFilter === 'boys') {
-        matchesCampus = stShift.includes('Boy') || (st as any).gender === 'Male';
-      }
-
-      let matchesRole = true;
-      if (roleFilter !== 'all') {
-        matchesRole = st.role === roleFilter;
-      }
-
-      return matchesSearch && matchesCampus && matchesRole;
+      return name.includes(q) || id.includes(q) || sub.includes(q) || des.includes(q);
     });
-  }, [staffList, searchTerm, campusFilter, roleFilter, rosterMap]);
+  }, [lecturersList, searchTerm]);
 
   // Compute late cutoff label
   const getCutoffLabel = (startTime: string, grace: number) => {
@@ -350,19 +350,20 @@ export default function StaffDutyRoster({
   // WhatsApp text notice
   const buildWhatsAppMessage = (st: Staff, conf: LocalRosterState) => {
     const cutoffStr = getCutoffLabel(conf.dutyStartTime, conf.graceMinutes);
+    const subjectList = st.subjects && st.subjects.length > 0 ? st.subjects.join(', ') : 'Academic Faculty';
+
     return `🏛️ *SUPERIOR COLLEGE JAHANIAN*
-📋 *OFFICIAL FACULTY DUTY & LECTURE SCHEDULE*
+📋 *OFFICIAL TEACHER LECTURE DUTY SCHEDULE*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Respected *Prof. ${st.fullName}* (${st.role || 'Faculty'}, ID: *${st.id}*),
+Respected *Prof. ${st.fullName}* (${subjectList}, ID: *${st.id}*),
 
 Your official daily lecture duty timing has been scheduled as follows:
 
-• 🏫 *Campus / Shift:* ${conf.campusShift}
-• ⏰ *Lecture Arrival Time:* *${conf.dutyStartTime}*
-• 🚪 *Lecture Off / Departure:* *${conf.dutyEndTime}*
+• ⏰ *First Lecture Arrival:* *${conf.dutyStartTime}*
+• 🚪 *Last Lecture Off / Departure:* *${conf.dutyEndTime}*
 • ⏳ *Late Cutoff (With ${conf.graceMinutes}m Grace):* *${cutoffStr}*
 
-⚠️ *Biometric Hazri Note:* Kindly mark your thumb attendance on the biometric kiosk before *${cutoffStr}* each morning to ensure On-Time hazri.
+⚠️ *Biometric Hazri Note:* Kindly mark your thumb attendance on the biometric machine before *${cutoffStr}* each morning to ensure On-Time hazri.
 
 _Superior College Jahanian Administration_
 _Canal Road Campus, Jahanian_`;
@@ -374,7 +375,6 @@ _Canal Road Campus, Jahanian_`;
       dutyStartTime: '08:30',
       dutyEndTime: '01:30',
       graceMinutes: 5,
-      campusShift: 'Boys Campus',
     };
     const phone = st.contact || (st as any).phone;
     if (!phone) {
@@ -396,7 +396,6 @@ _Canal Road Campus, Jahanian_`;
       dutyStartTime: '08:30',
       dutyEndTime: '01:30',
       graceMinutes: 5,
-      campusShift: 'Boys Campus',
     };
     const text = buildWhatsAppMessage(st, conf);
     navigator.clipboard.writeText(text);
@@ -411,9 +410,9 @@ _Canal Road Campus, Jahanian_`;
       dutyStartTime: '08:30',
       dutyEndTime: '01:30',
       graceMinutes: 5,
-      campusShift: 'Boys Campus',
     };
     const cutoffStr = getCutoffLabel(conf.dutyStartTime, conf.graceMinutes);
+    const subjectsStr = st.subjects && st.subjects.length > 0 ? st.subjects.join(', ') : 'Academic Faculty';
 
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a5' });
 
@@ -428,7 +427,7 @@ _Canal Road Campus, Jahanian_`;
 
     doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
-    doc.text('OFFICIAL FACULTY DUTY & LECTURE TIMING PASS', 74, 18, { align: 'center' });
+    doc.text('OFFICIAL TEACHER LECTURE TIMING & DUTY PASS', 74, 18, { align: 'center' });
     doc.text('Session 2026-28 • Canal Road Campus, Jahanian', 74, 23, { align: 'center' });
 
     // Golden separator line
@@ -449,9 +448,9 @@ _Canal Road Campus, Jahanian_`;
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 116, 139);
     doc.text(`Staff ID: ${st.id}`, 16, 51);
-    doc.text(`Designation: ${st.role || 'Faculty'}`, 16, 57);
-    doc.text(`Contact: ${st.contact || 'N/A'}`, 16, 63);
-    doc.text(`Campus / Shift: ${conf.campusShift}`, 16, 69);
+    doc.text(`Designation: Lecturer / Faculty`, 16, 57);
+    doc.text(`Subjects: ${subjectsStr}`, 16, 63);
+    doc.text(`Contact: ${st.contact || 'N/A'}`, 16, 69);
 
     // Assigned Duty Schedule Table
     autoTable(doc, {
@@ -499,14 +498,14 @@ _Canal Road Campus, Jahanian_`;
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(71, 85, 105);
-    doc.text('Faculty Signature', 35, finalY + 41, { align: 'center' });
+    doc.text('Teacher Signature', 35, finalY + 41, { align: 'center' });
     doc.text('Principal / Campus Head', 113, finalY + 41, { align: 'center' });
 
-    doc.save(`SCJ_Duty_Pass_${st.id}_${st.fullName.replace(/\s+/g, '_')}.pdf`);
+    doc.save(`SCJ_Teacher_Pass_${st.id}_${st.fullName.replace(/\s+/g, '_')}.pdf`);
     toast.success(`Duty Pass PDF downloaded for ${st.fullName}!`);
   };
 
-  // Generate Master College Faculty Duty Roster PDF (Landscape)
+  // Generate Master College Teachers Duty Roster PDF (Landscape - Lecturers Only)
   const handleDownloadMasterRoster = () => {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
@@ -519,36 +518,40 @@ _Canal Road Campus, Jahanian_`;
     doc.setFontSize(16);
     doc.text(collegeName.toUpperCase(), 148.5, 11, { align: 'center' });
 
-    doc.setFontSize(9);
+    doc.setFontSize(9.5);
     doc.setFont('helvetica', 'normal');
     doc.text(
-      'FACULTY LECTURE TIMINGS & DAILY DUTY ROSTER (MASTER SCHEDULE)',
+      'TEACHERS / LECTURERS DUTY TIMINGS & LECTURE SCHEDULE (MASTER ROSTER)',
       148.5,
       17,
       { align: 'center' }
     );
-    doc.text(`Generated on: ${new Date().toLocaleDateString('en-PK')} • Total Faculty: ${staffList.length}`, 148.5, 22, {
-      align: 'center',
-    });
+    doc.text(
+      `Generated on: ${new Date().toLocaleDateString('en-PK')} • Total Teachers: ${filteredLecturers.length}`,
+      148.5,
+      22,
+      { align: 'center' }
+    );
 
     // Gold stripe
     doc.setFillColor(212, 175, 55);
     doc.rect(0, 26, 297, 1.5, 'F');
 
-    const tableRows = filteredStaff.map((st, idx) => {
+    const tableRows = filteredLecturers.map((st, idx) => {
       const conf = rosterMap[st.id] || {
         dutyStartTime: '08:30',
         dutyEndTime: '01:30',
         graceMinutes: 5,
-        campusShift: 'Boys Campus',
       };
       const cutoff = getCutoffLabel(conf.dutyStartTime, conf.graceMinutes);
+      const subjectsStr = st.subjects && st.subjects.length > 0 ? st.subjects.join(', ') : 'Faculty';
+
       return [
         String(idx + 1),
         st.id,
         st.fullName,
-        st.role || 'Faculty',
-        conf.campusShift,
+        'Lecturer',
+        subjectsStr,
         conf.dutyStartTime || '08:30',
         `${conf.graceMinutes}m (${cutoff})`,
         conf.dutyEndTime || '01:30',
@@ -560,7 +563,7 @@ _Canal Road Campus, Jahanian_`;
       startY: 32,
       margin: { left: 12, right: 12 },
       head: [
-        ['SR#', 'STAFF ID', 'TEACHER NAME', 'ROLE', 'CAMPUS/SHIFT', 'ARRIVAL (IN)', 'GRACE / CUTOFF', 'OFF (OUT)', 'PHONE CONTACT'],
+        ['SR#', 'STAFF ID', 'TEACHER NAME', 'DESIGNATION', 'TEACHING SUBJECTS', 'ARRIVAL (IN)', 'GRACE / CUTOFF', 'OFF (OUT)', 'PHONE CONTACT'],
       ],
       body: tableRows,
       headStyles: {
@@ -597,8 +600,8 @@ _Canal Road Campus, Jahanian_`;
       doc.text('Principal / Director Approval', 252, finalY + 22, { align: 'center' });
     }
 
-    doc.save('SCJ_Faculty_Duty_Master_Roster.pdf');
-    toast.success('Faculty Master Duty Roster PDF downloaded successfully!');
+    doc.save('SCJ_Teachers_Duty_Master_Roster.pdf');
+    toast.success('Teachers Master Duty Roster PDF downloaded successfully!');
   };
 
   const modifiedCount = useMemo(() => {
@@ -614,10 +617,13 @@ _Canal Road Campus, Jahanian_`;
             <div>
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="p-2 rounded-xl bg-white/10 backdrop-blur-md border border-white/20">
-                  <Clock className="w-5 h-5 text-superior-gold" />
+                  <GraduationCap className="w-5 h-5 text-superior-gold" />
                 </span>
                 <Badge className="bg-superior-gold/20 text-superior-gold border border-superior-gold/30 text-[10px] font-bold">
-                  Lecture Timing Engine
+                  Lecturers Only
+                </Badge>
+                <Badge className="bg-white/15 text-white border-white/20 text-[10px] font-mono">
+                  {lecturersList.length} Teachers Enrolled
                 </Badge>
                 {modifiedCount > 0 && (
                   <Badge className="bg-amber-400 text-slate-950 font-black text-[10px] animate-pulse">
@@ -625,9 +631,9 @@ _Canal Road Campus, Jahanian_`;
                   </Badge>
                 )}
               </div>
-              <h2 className="text-xl sm:text-2xl font-black tracking-tight">Faculty Duty Timings & Lecture Schedule</h2>
+              <h2 className="text-xl sm:text-2xl font-black tracking-tight">Teachers Lecture Timings & Duty Roster</h2>
               <p className="text-xs sm:text-sm text-emerald-100/80 mt-1 max-w-2xl">
-                Configure personalized arrival and departure times per teacher. Biometric attendance marks staff as On-Time or Late dynamically against their individual lecture start.
+                Set custom arrival and off times for each lecturer. Non-teaching staff (guards, sweepers, receptionists) are excluded.
               </p>
             </div>
 
@@ -638,7 +644,7 @@ _Canal Road Campus, Jahanian_`;
                 variant="outline"
                 onClick={handleBulkSyncAll}
                 className="h-9 rounded-xl bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs font-bold gap-1.5 cursor-pointer"
-                title="Autofill arrival/off times from existing Timetable lecture slots"
+                title="Autofill arrival and off times from existing timetable lecture periods"
               >
                 <Sparkles size={14} className="text-superior-gold" />
                 <span>Sync from Timetable</span>
@@ -649,7 +655,7 @@ _Canal Road Campus, Jahanian_`;
                 variant="outline"
                 onClick={handleDownloadMasterRoster}
                 className="h-9 rounded-xl bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs font-bold gap-1.5 cursor-pointer"
-                title="Export complete printable PDF schedule of all faculty"
+                title="Export clean printable PDF schedule of all teachers"
               >
                 <FileText size={14} className="text-emerald-300" />
                 <span>Master PDF Roster</span>
@@ -677,75 +683,69 @@ _Canal Road Campus, Jahanian_`;
         <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-bold">
             <SlidersHorizontal size={13} className="text-superior-teal" />
-            <span>Quick Presets:</span>
+            <span>Quick Timing Presets for Teachers:</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
               variant="outline"
-              onClick={() => handleApplyPreset('Girls Campus', '08:00', '01:00')}
+              onClick={() => handleApplyPreset('08:00', '01:00')}
               className="h-7 text-[11px] rounded-lg border-emerald-200 hover:bg-emerald-50 text-emerald-800 font-semibold"
             >
-              Girls Campus (08:00 AM - 01:00 PM)
+              08:00 AM - 01:00 PM
             </Button>
             <Button
               size="sm"
               variant="outline"
-              onClick={() => handleApplyPreset('Boys Campus', '08:30', '01:30')}
+              onClick={() => handleApplyPreset('08:20', '01:15')}
               className="h-7 text-[11px] rounded-lg border-teal-200 hover:bg-teal-50 text-teal-800 font-semibold"
             >
-              Boys Campus (08:30 AM - 01:30 PM)
+              08:20 AM - 01:15 PM
             </Button>
             <Button
               size="sm"
               variant="outline"
-              onClick={() => handleApplyPreset('Boys Campus', '08:40', '01:45')}
+              onClick={() => handleApplyPreset('08:30', '01:30')}
               className="h-7 text-[11px] rounded-lg border-indigo-200 hover:bg-indigo-50 text-indigo-800 font-semibold"
             >
-              Late Shift (08:40 AM - 01:45 PM)
+              08:30 AM - 01:30 PM
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleApplyPreset('08:40', '01:45')}
+              className="h-7 text-[11px] rounded-lg border-purple-200 hover:bg-purple-50 text-purple-800 font-semibold"
+            >
+              08:40 AM - 01:45 PM
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleApplyPreset('09:00', '02:00')}
+              className="h-7 text-[11px] rounded-lg border-amber-200 hover:bg-amber-50 text-amber-800 font-semibold"
+            >
+              09:00 AM - 02:00 PM
             </Button>
           </div>
         </div>
 
-        {/* Filters Bar */}
-        <div className="p-4 flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800">
-          <div className="relative w-full sm:w-72">
+        {/* Search Bar */}
+        <div className="p-4 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="relative w-full sm:w-80">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search faculty name or ID..."
+              placeholder="Search teacher by name, ID, or subject..."
               className="pl-9 h-9 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200"
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Select value={campusFilter} onValueChange={setCampusFilter}>
-              <SelectTrigger className="h-9 text-xs rounded-xl w-36">
-                <SelectValue placeholder="Campus Shift" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-xs">All Campuses</SelectItem>
-                <SelectItem value="girls" className="text-xs">Girls Campus</SelectItem>
-                <SelectItem value="boys" className="text-xs">Boys Campus</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={roleFilter} onValueChange={setRoleFilter}>
-              <SelectTrigger className="h-9 text-xs rounded-xl w-36">
-                <SelectValue placeholder="Role" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-xs">All Roles</SelectItem>
-                <SelectItem value="Lecturer" className="text-xs">Lecturer</SelectItem>
-                <SelectItem value="Faculty" className="text-xs">Faculty</SelectItem>
-                <SelectItem value="Principal" className="text-xs">Principal</SelectItem>
-                <SelectItem value="Vice Principal" className="text-xs">Vice Principal</SelectItem>
-                <SelectItem value="Admin Officer" className="text-xs">Admin Officer</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <p className="text-xs text-slate-500 font-medium">
+            Showing <span className="font-bold text-slate-900 dark:text-white">{filteredLecturers.length}</span> of{' '}
+            <span className="font-bold text-slate-900 dark:text-white">{lecturersList.length}</span> Lecturers
+          </p>
         </div>
 
         {/* Table Content */}
@@ -753,32 +753,30 @@ _Canal Road Campus, Jahanian_`;
           <Table>
             <TableHeader className="bg-slate-50 dark:bg-slate-800/80">
               <TableRow className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                <TableHead className="w-[220px]">Teacher & Profile</TableHead>
-                <TableHead className="w-[140px]">Campus / Shift</TableHead>
-                <TableHead className="w-[150px]">Lecture Arrival (In)</TableHead>
+                <TableHead className="w-[260px]">Teacher / Lecturer</TableHead>
+                <TableHead className="w-[180px]">Teaching Subjects</TableHead>
+                <TableHead className="w-[160px]">Lecture Arrival (In)</TableHead>
                 <TableHead className="w-[140px]">Grace (Margin)</TableHead>
-                <TableHead className="w-[130px]">Late Cutoff</TableHead>
-                <TableHead className="w-[150px]">Departure (Off)</TableHead>
+                <TableHead className="w-[140px]">Late Cutoff</TableHead>
+                <TableHead className="w-[160px]">Departure (Off)</TableHead>
                 <TableHead className="text-right pr-5">Quick Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredStaff.length === 0 ? (
+              {filteredLecturers.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-12 text-slate-400 text-xs">
-                    No faculty found matching search filters.
+                    No lecturers found matching "{searchTerm}".
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredStaff.map((st) => {
+                filteredLecturers.map((st) => {
                   const conf = rosterMap[st.id] || {
                     dutyStartTime: '08:30',
                     dutyEndTime: '01:30',
                     graceMinutes: 5,
-                    campusShift: 'Boys Campus',
                   };
                   const cutoffStr = getCutoffLabel(conf.dutyStartTime, conf.graceMinutes);
-                  const isSaved = !conf.isModified;
                   const isSavingThis = savingId === st.id;
                   const ttRange = getTimetableRange(st.id);
 
@@ -807,15 +805,15 @@ _Canal Road Campus, Jahanian_`;
                             <div className="flex items-center gap-1.5 mt-0.5">
                               <span className="text-[10px] font-mono font-bold text-slate-500">{st.id}</span>
                               <span className="text-[10px] text-slate-400">•</span>
-                              <span className="text-[10px] text-slate-500 font-medium truncate max-w-[100px]">
-                                {st.role || 'Faculty'}
+                              <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                                Lecturer
                               </span>
                             </div>
                             {ttRange && (
                               <button
                                 onClick={() => handleSyncFromTimetable(st.id)}
-                                className="text-[9px] font-bold text-teal-700 hover:text-teal-900 underline mt-0.5 flex items-center gap-1"
-                                title="Click to apply this timetable range to duty timing"
+                                className="text-[9px] font-bold text-teal-700 hover:text-teal-900 underline mt-0.5 flex items-center gap-1 cursor-pointer"
+                                title="Click to autofill arrival & off times from class timetable"
                               >
                                 <Sparkles size={10} className="text-amber-500" />
                                 <span>Timetable: {ttRange.start} - {ttRange.end}</span>
@@ -825,21 +823,23 @@ _Canal Road Campus, Jahanian_`;
                         </div>
                       </TableCell>
 
-                      {/* Campus Shift */}
+                      {/* Teaching Subjects */}
                       <TableCell>
-                        <Select
-                          value={conf.campusShift}
-                          onValueChange={(val) => handleFieldChange(st.id, 'campusShift', val)}
-                        >
-                          <SelectTrigger className="h-8 text-xs rounded-xl bg-white dark:bg-slate-800">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Girls Campus" className="text-xs">Girls Campus</SelectItem>
-                            <SelectItem value="Boys Campus" className="text-xs">Boys Campus</SelectItem>
-                            <SelectItem value="Both" className="text-xs">Both Campuses</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        {st.subjects && st.subjects.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 max-w-[170px]">
+                            {st.subjects.map((sub, sIdx) => (
+                              <Badge
+                                key={sIdx}
+                                variant="outline"
+                                className="text-[9px] font-bold bg-slate-100 text-slate-800 border-slate-300 px-1.5 py-0"
+                              >
+                                {sub}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 font-medium">Faculty Member</span>
+                        )}
                       </TableCell>
 
                       {/* In Time (Arrival) */}
@@ -902,7 +902,7 @@ _Canal Road Campus, Jahanian_`;
                             onClick={() => handleSaveStaffRoster(st)}
                             disabled={isSavingThis}
                             className={cn(
-                              'h-8 px-2 rounded-lg text-xs font-bold transition-all',
+                              'h-8 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer',
                               conf.isModified
                                 ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
                                 : 'text-slate-400 hover:text-emerald-700'
@@ -920,8 +920,8 @@ _Canal Road Campus, Jahanian_`;
                             size="sm"
                             variant="ghost"
                             onClick={() => handleSendWhatsApp(st)}
-                            className="h-8 w-8 p-0 rounded-lg text-emerald-600 hover:bg-emerald-50"
-                            title="Send Duty Timing Notice on WhatsApp"
+                            className="h-8 w-8 p-0 rounded-lg text-emerald-600 hover:bg-emerald-50 cursor-pointer"
+                            title="Send Lecture Timing Notice on WhatsApp"
                           >
                             <Send size={13} />
                           </Button>
@@ -931,7 +931,7 @@ _Canal Road Campus, Jahanian_`;
                             size="sm"
                             variant="ghost"
                             onClick={() => handleCopyNotice(st)}
-                            className="h-8 w-8 p-0 rounded-lg text-slate-500 hover:bg-slate-100"
+                            className="h-8 w-8 p-0 rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer"
                             title="Copy Schedule Notice to Clipboard"
                           >
                             {copiedId === st.id ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
@@ -942,8 +942,8 @@ _Canal Road Campus, Jahanian_`;
                             size="sm"
                             variant="ghost"
                             onClick={() => handleDownloadSingleSlip(st)}
-                            className="h-8 w-8 p-0 rounded-lg text-teal-700 hover:bg-teal-50"
-                            title="Download Official Duty Pass PDF"
+                            className="h-8 w-8 p-0 rounded-lg text-teal-700 hover:bg-teal-50 cursor-pointer"
+                            title="Download Teacher Duty Pass PDF"
                           >
                             <Download size={13} />
                           </Button>

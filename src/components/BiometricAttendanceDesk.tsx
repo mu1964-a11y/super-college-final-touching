@@ -376,9 +376,7 @@ export default function BiometricAttendanceDesk({
       let teacherGrace = Number(matchedStaff.graceMinutes ?? matchedStaff.grace_minutes ?? 5);
 
       if (!teacherDutyStart) {
-        // Fallback to campus or college settings
-        const isGirls = matchedStaff.campusShift === 'Girls Campus' || (matchedStaff.campus && String(matchedStaff.campus).toLowerCase().includes('girl'));
-        teacherDutyStart = isGirls ? '08:00' : (settings?.collegeStartTime || '08:30');
+        teacherDutyStart = settings?.collegeStartTime || '08:00';
       }
 
       const [cutH, cutM] = teacherDutyStart.split(':').map(Number);
