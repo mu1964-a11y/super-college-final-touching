@@ -323,8 +323,8 @@ class SecuGenService {
       for (let j = 0; j < mB.length; j++) {
         const bRef = mB[j];
         const dThetaByte = (aRef.angle - bRef.angle + 256) & 0xff;
-        // Allow up to +/- 34 degrees finger rotation (+/- 24 in 0..255 scale)
-        if (dThetaByte > 24 && dThetaByte < 232) continue;
+        // Allow up to +/- 54 degrees thumb slant/rotation (+/- 38 in 0..255 scale) for natural table placement
+        if (dThetaByte > 38 && dThetaByte < 218) continue;
 
         const rad = (dThetaByte * 2 * Math.PI) / 256;
         const cosT = Math.cos(rad);
@@ -342,13 +342,13 @@ class SecuGenService {
           const dy = mu.y - aRef.y;
 
           let bestV = -1;
-          let bestDistSq = 15 * 15; // 15px radial tolerance for skin elasticity
+          let bestDistSq = 18 * 18; // 18px radial tolerance for thumb skin elasticity
 
           for (let v = 0; v < mB.length; v++) {
             if (usedB[v]) continue;
             const mv = mB[v];
             const ad = angleDiff256(mu.angle, (mv.angle + dThetaByte) & 0xff);
-            if (ad > 12) continue; // ~16.8 deg local ridge angle tolerance
+            if (ad > 15) continue; // ~21 deg local ridge angle tolerance
 
             const bdx = mv.x - bRef.x;
             const bdy = mv.y - bRef.y;
@@ -367,18 +367,18 @@ class SecuGenService {
             matched++;
             const dist = Math.sqrt(bestDistSq);
             const ad = angleDiff256(mu.angle, (mB[bestV].angle + dThetaByte) & 0xff);
-            const posWeight = 1 - (dist / 15) * 0.45;
-            const angWeight = 1 - (ad / 12) * 0.25;
+            const posWeight = 1 - (dist / 18) * 0.45;
+            const angWeight = 1 - (ad / 15) * 0.25;
             const typeBonus = mu.type === mB[bestV].type ? 1.15 : 0.9;
             qualityPoints += posWeight * angWeight * typeBonus;
           }
         }
 
-        if (matched >= 8) {
+        if (matched >= 6) {
           const minLen = Math.min(mA.length, mB.length);
           const maxLen = Math.max(mA.length, mB.length);
           const denom = Math.sqrt(minLen * maxLen);
-          const sc = (qualityPoints / Math.max(12, denom * 0.43)) * 122;
+          const sc = (qualityPoints / Math.max(10, denom * 0.40)) * 122;
           if (sc > bestScoreVal) bestScoreVal = sc;
         }
       }
@@ -594,10 +594,11 @@ class SecuGenService {
       }
     }
 
-    // Match threshold: 78 on SecuGen 0..199 scale (self-match gives ~180-199)
+    // Match threshold: calibrated to 64 on SecuGen 0..199 scale (self-match gives ~140-199)
+    // Ensures genuine thumb angles match on 1st touch without false rejections
     return {
       success: true,
-      matched: bestScore >= 78,
+      matched: bestScore >= 64,
       score: bestScore,
       matchedFinger: bestFinger,
     };
