@@ -417,11 +417,12 @@ export interface FeeVoucherOptions {
 }
 
 /**
- * Draws a single landscape fee voucher (width 138mm x height 95mm).
+ * Draws a single full-width horizontal fee voucher row (width 200mm x height 67mm).
  * Strictly College Branded (Superior College Jahanian).
- * High focus on College Branding, Student Details, Total Remaining Balance, and Monthly Installment.
+ * 4 horizontal rows fit perfectly on 1 standard A4 sheet without column squishing.
+ * High-contrast, pitch-dark, large bold fonts for crystal-clear printing on any laser printer/photocopier.
  */
-function drawSingleCollegeSlipLandscape(
+function drawSingleCollegeSlipRow(
   doc: jsPDF,
   student: any,
   x: number,
@@ -451,11 +452,7 @@ function drawSingleCollegeSlipLandscape(
   const paidSoFar = Number(student?.feeReceived || student?.fee_received || 0);
   const totalRemaining = Math.max(0, totalPkg - paidSoFar);
 
-  // Installment amount logic:
-  // If user specified fixed installment (e.g. 5000):
-  // - If student's total remaining balance <= fixed installment: charge actual remaining balance!
-  // - If student owes more: charge fixed installment!
-  // If full_balance mode: charge total remaining balance!
+  // Installment calculation with smart fallback:
   let currentPayable = 0;
   let installmentSubtext = '';
 
@@ -481,241 +478,272 @@ function drawSingleCollegeSlipLandscape(
   const totalAfterDue = currentPayable + (currentPayable > 0 ? lateFee : 0);
   const voucherNo = `SCJ-${new Date().getFullYear()}-${String(studentIdx + 1).padStart(3, '0')}${String(rollNo).replace(/[^0-9]/g, '').slice(-4) || '101'}`;
 
-  // 1. Outer Card Rounded Box (138mm x 95mm)
-  doc.setDrawColor(8, 90, 78); // Superior Teal
-  doc.setLineWidth(0.35);
+  // 1. Outer Card Rounded Box (200mm wide x 67mm tall)
+  doc.setDrawColor(6, 78, 59); // Deep Emerald Border
+  doc.setLineWidth(0.4);
   doc.setFillColor(255, 255, 255);
-  doc.roundedRect(x, y, 138, 95, 2, 2, 'FD');
+  doc.roundedRect(x, y, 200, 67, 2, 2, 'FD');
 
   // 2. Top Header Banner (Superior Emerald Green + Gold accent)
   doc.setFillColor(6, 78, 59); // Emerald-900
-  doc.rect(x + 0.3, y + 0.3, 137.4, 13.5, 'F');
+  doc.rect(x + 0.3, y + 0.3, 199.4, 11, 'F');
   // Gold accent line
   doc.setFillColor(217, 119, 6); // Superior Gold
-  doc.rect(x + 0.3, y + 13.8, 137.4, 0.8, 'F');
+  doc.rect(x + 0.3, y + 11.3, 199.4, 0.8, 'F');
 
-  // College Name & Subtitle
+  // College Name (Large Bold 12pt White Font)
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.5);
-  doc.text(collegeName, x + 5, y + 5.5);
+  doc.setFontSize(12);
+  doc.text(collegeName, x + 4, y + 5.5);
 
-  doc.setFontSize(6.5);
+  // Subtitle / Fee Head
+  doc.setFontSize(7.5);
   doc.setTextColor(254, 240, 138); // Soft Gold
   const voucherTitle = copyBadgeText
-    ? `OFFICIAL STUDENT FEE VOUCHER (${copyBadgeText.toUpperCase()})`
+    ? `OFFICIAL STUDENT FEE VOUCHER • ${copyBadgeText.toUpperCase()}`
     : `OFFICIAL STUDENT FEE VOUCHER • ${feeMonth.toUpperCase()}`;
-  doc.text(voucherTitle, x + 5, y + 9.2);
+  doc.text(voucherTitle, x + 4, y + 9.5);
 
+  // Campus Address & Contact
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(5);
-  doc.setTextColor(226, 232, 240);
-  doc.text(`${collegeAddress} • ${collegeContact}`, x + 5, y + 12.3);
+  doc.setFontSize(6.5);
+  doc.setTextColor(241, 245, 249);
+  doc.text(`${collegeAddress} • ${collegeContact}`, x + 88, y + 5.5);
 
-  // Top-Right Metadata Badge (Dates & Voucher #)
+  // Right-side Metadata Strip inside Header
   doc.setFillColor(4, 120, 87);
-  doc.roundedRect(x + 92, y + 1.8, 43, 10.5, 1, 1, 'F');
+  doc.roundedRect(x + 144, y + 1.2, 53, 9, 1, 1, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5.5);
+  doc.setFontSize(6.5);
   doc.setTextColor(255, 255, 255);
-  doc.text(`Vch: ${voucherNo}`, x + 94, y + 5);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(5);
-  doc.text(`Issue: ${issueDateStr}`, x + 94, y + 8);
+  doc.text(`Vch: ${voucherNo}`, x + 146, y + 4.2);
+  doc.setFontSize(6);
+  doc.text(`Issue: ${issueDateStr}`, x + 146, y + 8);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(254, 202, 202); // Light red
-  doc.text(`Due: ${dueDateStr}`, x + 94, y + 11);
+  doc.setFontSize(6.8);
+  doc.setTextColor(254, 240, 138); // Light Gold for due date
+  doc.text(`Due: ${dueDateStr}`, x + 195, y + 6.2, { align: 'right' });
 
-  // 3. Sub-strip bar (Shift & Session)
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.rect(x + 1, y + 15, 136, 4.5, 'FD');
+  // 3. Main Row Content: 3 Horizontal Panels across 200mm
+  const contentY = y + 13.5;
+  const panelHeight = 44.5;
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5.2);
-  doc.setTextColor(8, 90, 78);
-  doc.text(`CAMPUS: ${shift.toUpperCase()}`, x + 3, y + 18.2);
-  doc.setTextColor(71, 85, 105);
-  doc.text(`SESSION: ${session}`, x + 50, y + 18.2);
-  doc.setTextColor(15, 23, 42);
-  doc.text('PAYMENT MODE: CASH AT ACCOUNTS DESK', x + 135, y + 18.2, { align: 'right' });
-
-  // 4. Two Clean Columns (Left: Student Details | Right: Fee & Balance Details)
-  const contentY = y + 21;
-  const colHeight = 58;
-
-  // --- LEFT COLUMN: STUDENT INFORMATION ---
-  const leftColW = 65;
+  // --- PANEL 1: STUDENT PARTICULARS (Width: 68mm) ---
+  const p1X = x + 1.5;
+  const p1W = 67;
   doc.setFillColor(255, 255, 255);
-  doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(x + 1.5, contentY, leftColW, colHeight, 1.2, 1.2, 'FD');
+  doc.setDrawColor(100, 116, 139); // Dark slate border
+  doc.setLineWidth(0.3);
+  doc.roundedRect(p1X, contentY, p1W, panelHeight, 1.2, 1.2, 'FD');
 
-  // Left Column Title Strip
+  // Title Strip
   doc.setFillColor(241, 245, 249);
-  doc.rect(x + 1.5, contentY, leftColW, 5, 'F');
+  doc.rect(p1X, contentY, p1W, 4.5, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5.8);
-  doc.setTextColor(8, 90, 78);
-  doc.text('STUDENT INFORMATION', x + 3.5, contentY + 3.5);
+  doc.setFontSize(6.5);
+  doc.setTextColor(6, 78, 59);
+  doc.text('STUDENT INFORMATION', p1X + 2.5, contentY + 3.2);
 
-  // Roll Number Badge (Prominent top right of student card)
-  doc.setFillColor(8, 90, 78);
-  doc.roundedRect(x + leftColW - 25, contentY + 1, 24, 4.2, 0.8, 0.8, 'F');
+  // Roll Number Badge
+  doc.setFillColor(6, 78, 59);
+  doc.roundedRect(p1X + p1W - 25, contentY + 0.8, 23.5, 3.8, 0.8, 0.8, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5.5);
+  doc.setFontSize(6.2);
   doc.setTextColor(255, 255, 255);
-  doc.text(`Roll: ${rollNo}`, x + leftColW - 13, contentY + 3.8, { align: 'center' });
+  doc.text(`Roll: ${rollNo}`, p1X + p1W - 13.2, contentY + 3.4, { align: 'center' });
 
-  // Student Particulars Rows
-  let sY = contentY + 9;
-  const drawStudentRow = (label: string, value: string, isBoldVal = false) => {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(5.3);
-    doc.setTextColor(100, 116, 139);
-    doc.text(label, x + 3.5, sY);
+  // Student Particulars Rows (Large, Dark, Bold)
+  let sY = contentY + 8.5;
+  const drawStudentRow = (label: string, value: string, isBig = false) => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(isBig ? 6.5 : 6);
+    doc.setTextColor(30, 41, 59); // Dark slate
+    doc.text(label, p1X + 2.5, sY);
 
-    doc.setFont('helvetica', isBoldVal ? 'bold' : 'normal');
-    doc.setFontSize(isBoldVal ? 6.8 : 5.8);
-    doc.setTextColor(15, 23, 42);
-    doc.text(value.slice(0, 28), x + 20, sY);
-    sY += 5.2;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(isBig ? 9.5 : 7.2);
+    doc.setTextColor(0, 0, 0); // Pure pitch-black for maximum contrast!
+    doc.text(value.slice(0, 30), p1X + 22, sY);
+    sY += isBig ? 5.5 : 4.8;
   };
 
-  drawStudentRow('Student Name:', sName, true);
-  drawStudentRow('Father Name:', fName);
-  drawStudentRow('Class/Group:', prog);
-  drawStudentRow('Section:', `Section ${sec}`);
-  drawStudentRow('Campus Shift:', shift);
+  drawStudentRow('Student:', sName, true);
+  drawStudentRow('Father:', fName);
+  drawStudentRow('Class/Grp:', prog);
+  drawStudentRow('Section:', `Sec ${sec} • ${shift}`);
   drawStudentRow('Session:', session);
 
-  // Student Signature Box at bottom of left column
-  const sigBoxY = contentY + 44;
-  doc.setDrawColor(203, 213, 225);
+  // Depositor signature line in student panel bottom
+  doc.setDrawColor(100, 116, 139);
   doc.setLineDashPattern([1, 1], 0);
-  doc.line(x + 4, sigBoxY + 8, x + 38, sigBoxY + 8);
+  doc.line(p1X + 3, contentY + 37, p1X + 38, contentY + 37);
   doc.setLineDashPattern([], 0);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(4.8);
-  doc.setTextColor(100, 116, 139);
-  doc.text('Student / Depositor Signature', x + 21, sigBoxY + 11.5, { align: 'center' });
-
-  // --- RIGHT COLUMN: FEE & REMAINING DUES ---
-  const rightColX = x + 68;
-  const rightColW = 68.5;
-  doc.setFillColor(255, 255, 255);
-  doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(rightColX, contentY, rightColW, colHeight, 1.2, 1.2, 'FD');
-
-  // Right Column Title Strip
-  doc.setFillColor(241, 245, 249);
-  doc.rect(rightColX, contentY, rightColW, 5, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5.8);
-  doc.setTextColor(8, 90, 78);
-  doc.text('FEE DETAILS & REMAINING BALANCE', rightColX + 2.5, contentY + 3.5);
-
-  let fY = contentY + 9;
-  // Row 1: Total Course Package
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(5.3);
-  doc.setTextColor(100, 116, 139);
-  doc.text('Total Course Package:', rightColX + 2.5, fY);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(15, 23, 42);
-  doc.text(`Rs. ${totalPkg.toLocaleString()}`, rightColX + rightColW - 2.5, fY, { align: 'right' });
-
-  // Row 2: Total Received Till Date
-  fY += 4.5;
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(100, 116, 139);
-  doc.text('Total Paid (Till Date):', rightColX + 2.5, fY);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(5, 150, 105);
-  doc.text(`Rs. ${paidSoFar.toLocaleString()}`, rightColX + rightColW - 2.5, fY, { align: 'right' });
-
-  // Row 3: Total Remaining Amount (Highlight Rose/Red)
-  fY += 4.5;
-  doc.setFillColor(255, 241, 242);
-  doc.setDrawColor(254, 205, 211);
-  doc.roundedRect(rightColX + 1.5, fY - 3.2, rightColW - 3, 5, 0.8, 0.8, 'FD');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(5.5);
-  doc.setTextColor(190, 18, 60);
-  doc.text('TOTAL REMAINING BALANCE:', rightColX + 2.5, fY + 0.3);
-  doc.setFontSize(6.8);
-  doc.text(`Rs. ${totalRemaining.toLocaleString()}`, rightColX + rightColW - 2.5, fY + 0.3, { align: 'right' });
+  doc.setTextColor(30, 41, 59);
+  doc.text('Depositor / Student Sign', p1X + 20.5, contentY + 41, { align: 'center' });
 
-  // Big Highlight Box: Current Payable Amount / Installment (The core focus)
-  const payableBoxY = fY + 3.5;
-  doc.setFillColor(236, 253, 245); // Emerald-50
-  doc.setDrawColor(5, 150, 105); // Emerald-600
-  doc.setLineWidth(0.35);
-  doc.roundedRect(rightColX + 1.5, payableBoxY, rightColW - 3, 14.5, 1, 1, 'FD');
+  // --- PANEL 2: FEE DETAILS & REMAINING DUES (Width: 80mm) ---
+  const p2X = x + 70;
+  const p2W = 79;
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(100, 116, 139);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(p2X, contentY, p2W, panelHeight, 1.2, 1.2, 'FD');
 
+  // Title Strip
+  doc.setFillColor(241, 245, 249);
+  doc.rect(p2X, contentY, p2W, 4.5, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5.6);
-  doc.setTextColor(6, 95, 70);
-  const payableTitle = options.installmentMode === 'fixed_installment'
-    ? 'CURRENT PAYABLE INSTALLMENT:'
-    : 'PAYABLE AMOUNT (THIS VOUCHER):';
-  doc.text(payableTitle, rightColX + 3.5, payableBoxY + 4.2);
+  doc.setFontSize(6.5);
+  doc.setTextColor(6, 78, 59);
+  doc.text('FEE SUMMARY & TOTAL REMAINING DUES', p2X + 2.5, contentY + 3.2);
 
-  doc.setFontSize(11);
+  let fY = contentY + 8.5;
+  // Row 1: Course Package
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.5);
+  doc.setTextColor(30, 41, 59);
+  doc.text('Total Course Package:', p2X + 2.5, fY);
+  doc.setFontSize(7.5);
+  doc.setTextColor(0, 0, 0);
+  doc.text(`Rs. ${totalPkg.toLocaleString()}`, p2X + p2W - 2.5, fY, { align: 'right' });
+
+  // Row 2: Total Paid
+  fY += 4.5;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.5);
+  doc.setTextColor(30, 41, 59);
+  doc.text('Total Paid Till Date:', p2X + 2.5, fY);
+  doc.setFontSize(7.5);
   doc.setTextColor(4, 120, 87);
-  doc.text(`Rs. ${currentPayable.toLocaleString()}/-`, rightColX + rightColW - 3.5, payableBoxY + 5.5, { align: 'right' });
+  doc.text(`Rs. ${paidSoFar.toLocaleString()}`, p2X + p2W - 2.5, fY, { align: 'right' });
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(4.7);
-  doc.setTextColor(15, 118, 110);
-  doc.text(installmentSubtext.slice(0, 48), rightColX + 3.5, payableBoxY + 11.8);
-
-  // Late Fee Box (After Due Date)
-  const lateBoxY = payableBoxY + 16;
+  // Row 3: Total Remaining Balance (Highlighted Rose Box - Crystal Clear!)
+  fY += 4.5;
   doc.setFillColor(254, 242, 242);
   doc.setDrawColor(248, 113, 113);
-  doc.roundedRect(rightColX + 1.5, lateBoxY, rightColW - 3, 6, 0.8, 0.8, 'FD');
-
+  doc.roundedRect(p2X + 1.5, fY - 3.2, p2W - 3, 5.2, 0.8, 0.8, 'FD');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5);
-  doc.setTextColor(185, 28, 28);
-  doc.text(`After Due Date (+Rs. ${lateFee} Late Fine):`, rightColX + 3.5, lateBoxY + 4);
   doc.setFontSize(6.5);
-  doc.text(`Rs. ${totalAfterDue.toLocaleString()}/-`, rightColX + rightColW - 3.5, lateBoxY + 4.2, { align: 'right' });
+  doc.setTextColor(153, 27, 27); // Dark Crimson Red
+  doc.text('TOTAL REMAINING BALANCE:', p2X + 3, fY + 0.4);
+  doc.setFontSize(8.5);
+  doc.text(`Rs. ${totalRemaining.toLocaleString()}`, p2X + p2W - 3, fY + 0.4, { align: 'right' });
 
-  // Cash Desk Stamp Box in Right Column Bottom
-  const stampBoxY = lateBoxY + 7.5;
-  doc.setDrawColor(8, 90, 78);
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(rightColX + 1.5, stampBoxY, rightColW - 3, 10.5, 1, 1, 'D');
+  // Big Highlight Box: Current Payable Amount / Installment
+  const payableBoxY = fY + 3.8;
+  doc.setFillColor(236, 253, 245); // Light Emerald
+  doc.setDrawColor(4, 120, 87); // Solid Emerald Border
+  doc.setLineWidth(0.4);
+  doc.roundedRect(p2X + 1.5, payableBoxY, p2W - 3, 13.5, 1, 1, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5);
-  doc.setTextColor(8, 90, 78);
-  doc.text('ACCOUNTS CASH DESK • SUPERIOR COLLEGE', rightColX + rightColW / 2, stampBoxY + 3.8, { align: 'center' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(4.2);
-  doc.setTextColor(100, 116, 139);
-  doc.text('Fee Received & Verified Stamp Box', rightColX + rightColW / 2, stampBoxY + 8, { align: 'center' });
+  doc.setFontSize(6.8);
+  doc.setTextColor(6, 78, 59);
+  const payableTitle = options.installmentMode === 'fixed_installment'
+    ? 'PAYABLE THIS MONTH (INSTALLMENT):'
+    : 'PAYABLE AMOUNT (THIS VOUCHER):';
+  doc.text(payableTitle, p2X + 3, payableBoxY + 4.2);
 
-  // 5. Very Bottom Footer Note inside card
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(4.5);
-  doc.setTextColor(148, 163, 184);
-  doc.text('Note: Please deposit fee in cash at college accounts counter on or before due date.', x + 69, y + 92, { align: 'center' });
+  doc.setFontSize(13);
+  doc.setTextColor(4, 120, 87);
+  doc.text(`Rs. ${currentPayable.toLocaleString()}/-`, p2X + p2W - 3, payableBoxY + 5.5, { align: 'right' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(5.5);
+  doc.setTextColor(6, 95, 70);
+  doc.text(installmentSubtext.slice(0, 56), p2X + 3, payableBoxY + 10.8);
+
+  // Late Fee Row
+  const lateBoxY = payableBoxY + 14.8;
+  doc.setFillColor(255, 241, 242);
+  doc.setDrawColor(251, 113, 133);
+  doc.roundedRect(p2X + 1.5, lateBoxY, p2W - 3, 5, 0.8, 0.8, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(5.8);
+  doc.setTextColor(159, 18, 57);
+  doc.text(`After Due Date (+Rs. ${lateFee} Late Fine):`, p2X + 3, lateBoxY + 3.5);
+  doc.setFontSize(7.5);
+  doc.text(`Rs. ${totalAfterDue.toLocaleString()}/-`, p2X + p2W - 3, lateBoxY + 3.5, { align: 'right' });
+
+  // --- PANEL 3: ACCOUNTS CASH DESK & VERIFICATION (Width: 48mm) ---
+  const p3X = x + 150.5;
+  const p3W = 48;
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(100, 116, 139);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(p3X, contentY, p3W, panelHeight, 1.2, 1.2, 'FD');
+
+  // Title Strip
+  doc.setFillColor(241, 245, 249);
+  doc.rect(p3X, contentY, p3W, 4.5, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.5);
+  doc.setTextColor(6, 78, 59);
+  doc.text('ACCOUNTS VERIFICATION', p3X + 2.5, contentY + 3.2);
+
+  // Campus Badge
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(p3X + 2.5, contentY + 6.5, p3W - 5, 8.5, 0.8, 0.8, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6);
+  doc.setTextColor(0, 0, 0);
+  doc.text(`Shift: ${shift}`, p3X + 4, contentY + 10);
+  doc.setTextColor(6, 78, 59);
+  doc.text(`Session: ${session}`, p3X + 4, contentY + 13.5);
+
+  // Cash Desk Stamp Box
+  const stampY = contentY + 17;
+  doc.setDrawColor(6, 78, 59);
+  doc.setLineWidth(0.35);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(p3X + 2.5, stampY, p3W - 5, 24, 1.2, 1.2, 'D');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.5);
+  doc.setTextColor(6, 78, 59);
+  doc.text('ACCOUNTS CASH DESK', p3X + p3W / 2, stampY + 4.5, { align: 'center' });
+  doc.setFontSize(5.8);
+  doc.setTextColor(0, 0, 0);
+  doc.text('Superior College Jahanian', p3X + p3W / 2, stampY + 8.5, { align: 'center' });
+  doc.setFontSize(5.2);
+  doc.setTextColor(71, 85, 105);
+  doc.text('Received & Verified Official Stamp', p3X + p3W / 2, stampY + 14, { align: 'center' });
+  doc.text('Officer Sign: ________________', p3X + p3W / 2, stampY + 20, { align: 'center' });
+
+  // 4. Bottom Instructions Note (Crisp Dark Text)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(5.5);
+  doc.setTextColor(15, 23, 42); // Dark slate
+  doc.text('• Fee is payable strictly in Cash at College Accounts Desk on or before due date.', x + 4, y + 63);
+  doc.text('• Stamped voucher must be preserved for semester clearance.', x + 4, y + 65.5);
+
+  if (copyBadgeText) {
+    doc.setFillColor(6, 78, 59);
+    doc.roundedRect(x + 160, y + 61, 38, 4.5, 0.8, 0.8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.2);
+    doc.setTextColor(255, 255, 255);
+    doc.text(copyBadgeText.toUpperCase(), x + 179, y + 64.2, { align: 'center' });
+  }
 }
 
 /**
- * Generates an A4 Landscape document containing 4 vouchers per page (2x2 grid) with dashed cut lines.
- * Strictly in Landscape orientation (297mm x 210mm).
+ * Generates an A4 Portrait document containing 4 FULL-WIDTH HORIZONTAL ROWS per page.
+ * Format: 4 rows stacked vertically on A4 page (width 200mm x height 67mm each).
+ * Dashed cut lines with scissors between every voucher row.
  */
 export function generate4VouchersPerPageDoc(
   students: any[],
   options: FeeVoucherOptions = {}
 ): jsPDF {
   const JsPdfCtor: any = (jsPDF as any).default || jsPDF;
-  // A4 Landscape: Width = 297mm, Height = 210mm
+  // A4 Portrait: Width = 210mm, Height = 297mm
   const doc: jsPDF = new JsPdfCtor({
-    orientation: 'landscape',
+    orientation: 'portrait',
     unit: 'mm',
     format: 'a4',
     compress: true,
@@ -726,83 +754,76 @@ export function generate4VouchersPerPageDoc(
 
   const singleCopyBadges = ['College Copy', 'Accounts Copy', 'Student Copy', 'Admin Record'];
 
-  // Coords for 2x2 grid on A4 Landscape (297mm x 210mm)
-  // Col 0: x = 7, Width = 138 -> ends at 145mm
-  // Center cut line: x = 148.5mm
-  // Col 1: x = 152, Width = 138 -> ends at 290mm
-  // Row 0: y = 6, Height = 95 -> ends at 101mm
-  // Center cut line: y = 105mm
-  // Row 1: y = 108, Height = 95 -> ends at 203mm
-  const quadCoords = [
-    { x: 7, y: 6 },
-    { x: 152, y: 6 },
-    { x: 7, y: 108 },
-    { x: 152, y: 108 },
+  // Coordinates for 4 horizontal rows on A4 Portrait:
+  // Available height = 297mm. Available width = 200mm (margins: 5mm left/right).
+  // Row height = 67mm.
+  // Row 0: y = 5mm (ends at 72mm)
+  // Cut 1: y = 73.5mm
+  // Row 1: y = 75.5mm (ends at 142.5mm)
+  // Cut 2: y = 144mm
+  // Row 2: y = 146mm (ends at 213mm)
+  // Cut 3: y = 214.5mm
+  // Row 3: y = 216.5mm (ends at 283.5mm)
+  const rowCoords = [
+    { x: 5, y: 5 },
+    { x: 5, y: 75.5 },
+    { x: 5, y: 146 },
+    { x: 5, y: 216.5 },
   ];
 
-  const drawCutLines = () => {
-    doc.setDrawColor(148, 163, 184);
-    doc.setLineWidth(0.25);
-    doc.setLineDashPattern([2, 2], 0);
+  const cutLineYPositions = [73.5, 144, 214.5];
 
-    // Vertical cut line (X = 148.5mm)
-    doc.line(148.5, 3, 148.5, 207);
+  const drawRowCutLines = () => {
+    cutLineYPositions.forEach((cutY) => {
+      doc.setDrawColor(100, 116, 139);
+      doc.setLineWidth(0.25);
+      doc.setLineDashPattern([2, 2], 0);
+      doc.line(4, cutY, 206, cutY);
+      doc.setLineDashPattern([], 0);
 
-    // Horizontal cut line (Y = 105mm)
-    doc.line(3, 105, 294, 105);
-
-    doc.setLineDashPattern([], 0);
-
-    // Scissors glyphs & instructions on center lines
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(5);
-    doc.setTextColor(148, 163, 184);
-
-    // Top vertical guide
-    doc.text('-- ✂ CUT HERE --', 148.5, 4.5, { align: 'center' });
-    // Center vertical guide
-    doc.text('-- ✂ --', 148.5, 104, { align: 'center' });
-    // Bottom vertical guide
-    doc.text('-- ✂ CUT HERE --', 148.5, 208.5, { align: 'center' });
-
-    // Horizontal guide left & right
-    doc.text('✂ CUT', 4.5, 104);
-    doc.text('CUT ✂', 288, 104);
+      // Scissors marks and guide text
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text('✂ CUT', 5, cutY - 1);
+      doc.text('-- ✂ CUT ALONG DASHED LINE TO SEPARATE VOUCHER ✂ --', 105, cutY - 1, { align: 'center' });
+      doc.text('CUT ✂', 205, cutY - 1, { align: 'right' });
+    });
   };
 
   if (isSingleStudentQuad) {
-    // Single student with 4 copies on 1 Landscape A4 sheet
+    // Single student with 4 copies on 1 A4 sheet
     const student = studentList[0];
-    quadCoords.forEach((c, idx) => {
-      drawSingleCollegeSlipLandscape(doc, student, c.x, c.y, 0, options, singleCopyBadges[idx]);
+    rowCoords.forEach((c, idx) => {
+      drawSingleCollegeSlipRow(doc, student, c.x, c.y, 0, options, singleCopyBadges[idx]);
     });
-    drawCutLines();
+    drawRowCutLines();
     return doc;
   }
 
-  // Multi-student batch layout: 4 students per Landscape A4 page
+  // Multi-student batch layout: 4 students (4 full-width rows) per A4 page
   const totalPages = Math.ceil(studentList.length / 4);
 
   for (let p = 0; p < totalPages; p++) {
     if (p > 0) {
-      doc.addPage('a4', 'landscape');
+      doc.addPage('a4', 'portrait');
     }
 
     const pageStudents = studentList.slice(p * 4, p * 4 + 4);
 
     pageStudents.forEach((student, idx) => {
       const overallIdx = p * 4 + idx;
-      drawSingleCollegeSlipLandscape(doc, student, quadCoords[idx].x, quadCoords[idx].y, overallIdx, options);
+      drawSingleCollegeSlipRow(doc, student, rowCoords[idx].x, rowCoords[idx].y, overallIdx, options);
     });
 
-    drawCutLines();
+    drawRowCutLines();
   }
 
   return doc;
 }
 
 /**
- * Triggers instant vector PDF download for 4-per-page College Fee Vouchers in Landscape.
+ * Triggers instant vector PDF download for 4-per-page College Fee Vouchers in 4 Full-Width Horizontal Rows.
  */
 export async function download4VouchersPerPagePdf(
   students: any[],
@@ -817,14 +838,14 @@ export async function download4VouchersPerPagePdf(
 
     const doc = generate4VouchersPerPageDoc(list, options);
 
-    let defaultName = 'SCJ_Fee_Vouchers_4perPage_Landscape.pdf';
+    let defaultName = 'SCJ_Fee_Vouchers_4Rows_A4.pdf';
     if (list.length === 1) {
       const s = list[0];
       const roll = String(s?.collegeNo || s?.studentId || s?.id || 'Student').replace(/[^a-zA-Z0-9_-]/g, '_');
       const name = String(s?.fullName || s?.name || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 20);
       defaultName = `SCJ_Fee_Voucher_${roll}${name ? `_${name}` : ''}.pdf`;
     } else {
-      defaultName = `SCJ_Fee_Vouchers_${list.length}_Students_Landscape.pdf`;
+      defaultName = `SCJ_Fee_Vouchers_${list.length}_Students_4Rows.pdf`;
     }
 
     const finalName = filename || defaultName;
