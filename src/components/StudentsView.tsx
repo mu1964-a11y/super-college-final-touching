@@ -2257,7 +2257,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                             </div>
                             <div className="flex items-center gap-1.5 min-w-0">
                                <User size={10} className="text-slate-400 shrink-0" />
-                               <span className="text-[9px] font-bold text-slate-400 uppercase truncate max-w-[120px]" title={`Father / Guardian: ${student.fatherName}`}>{student.fatherName.split(' ')[0]}</span>
+                               <span className="text-[9px] font-bold text-slate-400 uppercase truncate max-w-[120px]" title={`Father / Guardian: ${student.fatherName || 'N/A'}`}>{(student.fatherName || 'N/A').split(' ')[0]}</span>
                             </div>
                             {student.email && (
                              <div className="flex items-center gap-1.5 min-w-0">

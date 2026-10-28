@@ -400,3 +400,386 @@ export async function downloadBankChallanPdf(
     throw err;
   }
 }
+
+export interface FeeVoucherOptions {
+  collegeName?: string;
+  collegeAddress?: string;
+  collegeContact?: string;
+  issueDate?: string;
+  dueDate?: string;
+  lateSurcharge?: number;
+  feeMonth?: string;
+  singleStudentMode?: 'quad_copies' | 'single_slip';
+  challanTitle?: string;
+}
+
+/**
+ * Draws a single compact, high-density College Fee Voucher (width 97mm x height 140mm).
+ * Strictly College Branded (Superior College Jahanian) with zero bank references.
+ */
+function drawSingleCollegeSlip(
+  doc: jsPDF,
+  student: any,
+  x: number,
+  y: number,
+  studentIdx: number,
+  options: FeeVoucherOptions = {},
+  copyBadgeText?: string
+) {
+  const collegeName = 'SUPERIOR COLLEGE JAHANIAN';
+  const collegeAddress = options.collegeAddress || 'Canal Road Campus, Jahanian';
+  const collegeContact = options.collegeContact || 'Accounts Desk: 0331-2211147';
+  const issueDateStr = options.issueDate || formatDate(new Date());
+  const dueDateStr = options.dueDate || getDefaultDueDate();
+  const lateFee = typeof options.lateSurcharge === 'number' ? options.lateSurcharge : 500;
+  const feeMonth = options.feeMonth || 'Term Installment / Dues';
+
+  const sName = String(student?.fullName || student?.full_name || student?.name || 'Verified Student');
+  const fName = String(student?.fatherName || student?.father_name || 'N/A');
+  const rollNo = String(student?.collegeNo || student?.studentId || student?.rollNumber || student?.id || 'SCJ-0000');
+  const prog = String(student?.group || student?.program || student?.currentClass || student?.category || 'Intermediate');
+  const sec = String(student?.section || 'A');
+  const shift = student?.gender === 'Female' ? 'Girls Campus' : 'Boys Campus';
+  const session = String(student?.session || '2026-28');
+
+  // Financial breakdown
+  const totalPkg = Number(student?.totalPackage || student?.total_package || 0);
+  const paidSoFar = Number(student?.feeReceived || student?.fee_received || 0);
+  const totalRemaining = Math.max(0, totalPkg - paidSoFar);
+
+  const monthlyInstallment = Number(
+    student?.monthlyFee ||
+      student?.monthly_fee ||
+      student?.feeLedger?.monthlyFee ||
+      (student?.totalInstallments && student.totalInstallments > 0
+        ? Math.round(totalRemaining / student.totalInstallments)
+        : Math.min(totalRemaining, 12000))
+  );
+
+  const tuitionDue = Math.min(monthlyInstallment || 12000, totalRemaining || 12000);
+  const arrears = Number(student?.previousArrears || student?.arrears || 0);
+  const examMisc = Number(student?.miscFunds || student?.examFee || 0);
+  const totalPayableNow = tuitionDue + arrears + examMisc;
+  const totalAfterDue = totalPayableNow + lateFee;
+
+  const voucherNo = `SCJ-${new Date().getFullYear()}-${String(studentIdx + 1).padStart(3, '0')}${String(rollNo).replace(/[^0-9]/g, '').slice(-4) || '101'}`;
+
+  // 1. Outer Card Rounded Box
+  doc.setDrawColor(8, 90, 78); // Superior Teal
+  doc.setLineWidth(0.35);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(x, y, 97, 140, 2, 2, 'FD');
+
+  // 2. Top Header Banner
+  doc.setFillColor(8, 90, 78);
+  doc.rect(x + 0.3, y + 0.3, 96.4, 13.5, 'F');
+  // Golden accent bar
+  doc.setFillColor(201, 168, 76); // Superior Gold
+  doc.rect(x + 0.3, y + 13.8, 96.4, 0.7, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.text(collegeName, x + 48.5, y + 5.2, { align: 'center' });
+
+  doc.setFontSize(6.2);
+  doc.setTextColor(254, 240, 138); // Light Gold
+  const slipTitle = copyBadgeText ? `STUDENT FEE VOUCHER (${copyBadgeText.toUpperCase()})` : 'STUDENT FEE VOUCHER (COLLEGE DESK)';
+  doc.text(slipTitle, x + 48.5, y + 9.0, { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(4.8);
+  doc.setTextColor(226, 232, 240);
+  doc.text(`${collegeAddress} • ${collegeContact}`, x + 48.5, y + 12.3, { align: 'center' });
+
+  // 3. Metadata Bar (Voucher No, Issue Date, Due Date)
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.rect(x + 1.2, y + 15, 94.6, 6, 'FD');
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(5.5);
+  doc.text(`Vch: ${voucherNo}`, x + 2.5, y + 19.2);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Issue: ${issueDateStr}`, x + 46, y + 19.2);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(185, 28, 28); // Bold red for due date
+  doc.text(`Due: ${dueDateStr}`, x + 94.5, y + 19.2, { align: 'right' });
+
+  // 4. Student Academic & Profile Details Box
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(x + 1.2, y + 22, 94.6, 23, 1.2, 1.2, 'FD');
+
+  // Mini label strip
+  doc.setFillColor(241, 245, 249);
+  doc.rect(x + 1.2, y + 22, 94.6, 4.8, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(5.5);
+  doc.setTextColor(8, 90, 78);
+  doc.text('STUDENT ENROLLMENT PARTICULARS', x + 2.5, y + 25.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`Roll No: ${rollNo}`, x + 94.5, y + 25.5, { align: 'right' });
+
+  // Row 1: Student Name & Father Name
+  let dy = y + 30;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(5.2);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Student:', x + 2.5, dy);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(sName.slice(0, 25), x + 13, dy);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);
+  doc.text('Father:', x + 50, dy);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(fName.slice(0, 22), x + 61, dy);
+
+  // Row 2: Program / Group & Section
+  dy += 4.5;
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);
+  doc.text('Class/Grp:', x + 2.5, dy);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(prog.slice(0, 24), x + 13, dy);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);
+  doc.text('Sec/Shift:', x + 50, dy);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(`Sec ${sec} • ${shift}`, x + 61, dy);
+
+  // Row 3: Session & Fee Head
+  dy += 4.5;
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);
+  doc.text('Session:', x + 2.5, dy);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(8, 90, 78);
+  doc.text(session, x + 13, dy);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);
+  doc.text('Fee Head:', x + 50, dy);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(8, 90, 78);
+  doc.text(feeMonth.slice(0, 22), x + 61, dy);
+
+  // 5. Fee Particulars Table
+  const tableTopY = y + 46;
+  doc.setFillColor(8, 90, 78);
+  doc.rect(x + 1.2, tableTopY, 94.6, 4.5, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(5.2);
+  doc.text('SR#   FEE PARTICULARS / HEADS', x + 2.5, tableTopY + 3.2);
+  doc.text('AMOUNT (PKR)', x + 94.5, tableTopY + 3.2, { align: 'right' });
+
+  const rows = [
+    { num: '1', title: 'Tuition Fee / Term Installment', amount: tuitionDue },
+    { num: '2', title: 'Previous Arrears / Pending Dues', amount: arrears },
+    { num: '3', title: 'Examination & Laboratory Charges', amount: examMisc },
+    { num: '4', title: 'College Development & Security Fund', amount: 0 },
+  ];
+
+  let rY = tableTopY + 4.5;
+  rows.forEach((r, idx) => {
+    doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 252);
+    doc.rect(x + 1.2, rY, 94.6, 4.2, 'F');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5);
+    doc.setTextColor(51, 65, 85);
+    doc.text(`${r.num}.  ${r.title}`, x + 2.5, rY + 3);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text(`Rs. ${r.amount.toLocaleString()}`, x + 94.5, rY + 3, { align: 'right' });
+    rY += 4.2;
+  });
+
+  // 6. Highlight Total Boxes
+  // Total Within Due Date Box
+  const totalBoxY = rY + 1.2;
+  doc.setFillColor(236, 253, 245); // Emerald-50
+  doc.setDrawColor(5, 150, 105);
+  doc.roundedRect(x + 1.2, totalBoxY, 94.6, 7.5, 1, 1, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.2);
+  doc.setTextColor(6, 95, 70);
+  doc.text('TOTAL PAYABLE WITHIN DUE DATE:', x + 2.5, totalBoxY + 5);
+  doc.setFontSize(8.5);
+  doc.setTextColor(4, 120, 87);
+  doc.text(`Rs. ${totalPayableNow.toLocaleString()}/-`, x + 94.5, totalBoxY + 5.2, { align: 'right' });
+
+  // Total After Due Date Box
+  const afterBoxY = totalBoxY + 8.5;
+  doc.setFillColor(255, 241, 242); // Rose-50
+  doc.setDrawColor(225, 29, 72);
+  doc.roundedRect(x + 1.2, afterBoxY, 94.6, 6.8, 1, 1, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(5.2);
+  doc.setTextColor(159, 18, 57);
+  doc.text(`AFTER DUE DATE (Inc. Rs ${lateFee} Late Fine):`, x + 2.5, afterBoxY + 4.5);
+  doc.setFontSize(7.5);
+  doc.setTextColor(190, 18, 60);
+  doc.text(`Rs. ${totalAfterDue.toLocaleString()}/-`, x + 94.5, afterBoxY + 4.7, { align: 'right' });
+
+  // 7. Important Instructions Box
+  const notesBoxY = afterBoxY + 8;
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(x + 1.2, notesBoxY, 94.6, 12, 1, 1, 'FD');
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(4.3);
+  doc.setTextColor(71, 85, 105);
+  doc.text('• Fee is payable strictly in Cash at College Accounts Desk on or before due date.', x + 2.5, notesBoxY + 3.2);
+  doc.text('• Stamped voucher must be preserved by student for semester exam & roll clearance.', x + 2.5, notesBoxY + 6.2);
+  doc.text(`• After due date, late arrival fine of Rs. ${lateFee} will be charged without exception.`, x + 2.5, notesBoxY + 9.2);
+
+  // 8. Signatures & Stamp Area
+  const sigY = notesBoxY + 13.5;
+  // Left: Depositor signature line
+  doc.setDrawColor(148, 163, 184);
+  doc.setLineDashPattern([1, 1], 0);
+  doc.line(x + 3, sigY + 9, x + 40, sigY + 9);
+  doc.setLineDashPattern([], 0);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(4.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Student / Depositor Signature', x + 21.5, sigY + 12.5, { align: 'center' });
+
+  // Right: Accounts Counter Stamp Box
+  doc.setDrawColor(8, 90, 78);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(x + 45, sigY, 50.8, 14, 1.2, 1.2, 'D');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(4.8);
+  doc.setTextColor(8, 90, 78);
+  doc.text('ACCOUNTS CASH DESK', x + 70.4, sigY + 3.8, { align: 'center' });
+  doc.setFontSize(4.2);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);
+  doc.text('Superior College Jahanian', x + 70.4, sigY + 6.8, { align: 'center' });
+  doc.text('Received & Verified Stamp', x + 70.4, sigY + 11.5, { align: 'center' });
+}
+
+/**
+ * Generates an A4 portrait document containing 4 vouchers per page (2x2 grid) with dashed cut lines.
+ */
+export function generate4VouchersPerPageDoc(
+  students: any[],
+  options: FeeVoucherOptions = {}
+): jsPDF {
+  const JsPdfCtor: any = (jsPDF as any).default || jsPDF;
+  const doc: jsPDF = new JsPdfCtor({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+    compress: true,
+  });
+
+  const studentList = Array.isArray(students) && students.length > 0 ? students : [{}];
+  const isSingleStudentQuad = studentList.length === 1 && options.singleStudentMode === 'quad_copies';
+
+  const singleCopyBadges = ['College Copy', 'Accounts Copy', 'Student Copy', 'Admin Record'];
+
+  if (isSingleStudentQuad) {
+    // Exactly 1 page with 4 copies for this single student
+    const student = studentList[0];
+    const coords = [
+      { x: 6, y: 6 },
+      { x: 107, y: 6 },
+      { x: 6, y: 151 },
+      { x: 107, y: 151 },
+    ];
+    coords.forEach((c, idx) => {
+      drawSingleCollegeSlip(doc, student, c.x, c.y, 0, options, singleCopyBadges[idx]);
+    });
+
+    // Draw Perforated / Cut Lines (Center Vertical and Center Horizontal)
+    doc.setDrawColor(148, 163, 184);
+    doc.setLineWidth(0.25);
+    doc.setLineDashPattern([2, 2], 0);
+    doc.line(105, 3, 105, 294);
+    doc.line(3, 148.5, 207, 148.5);
+    doc.setLineDashPattern([], 0);
+
+    return doc;
+  }
+
+  // Multi-student batch layout: 4 students per A4 page
+  const totalPages = Math.ceil(studentList.length / 4);
+
+  for (let p = 0; p < totalPages; p++) {
+    if (p > 0) {
+      doc.addPage('a4', 'portrait');
+    }
+
+    const pageStudents = studentList.slice(p * 4, p * 4 + 4);
+    const coords = [
+      { x: 6, y: 6 },
+      { x: 107, y: 6 },
+      { x: 6, y: 151 },
+      { x: 107, y: 151 },
+    ];
+
+    pageStudents.forEach((student, idx) => {
+      const overallIdx = p * 4 + idx;
+      drawSingleCollegeSlip(doc, student, coords[idx].x, coords[idx].y, overallIdx, options);
+    });
+
+    // Draw Perforated / Cut Lines between quadrants
+    doc.setDrawColor(148, 163, 184);
+    doc.setLineWidth(0.25);
+    doc.setLineDashPattern([2, 2], 0);
+    doc.line(105, 3, 105, 294);
+    doc.line(3, 148.5, 207, 148.5);
+    doc.setLineDashPattern([], 0);
+  }
+
+  return doc;
+}
+
+/**
+ * Triggers instant vector PDF download for 4-per-page College Fee Vouchers.
+ */
+export async function download4VouchersPerPagePdf(
+  students: any[],
+  filename?: string,
+  options: FeeVoucherOptions = {}
+): Promise<{ success: boolean; count: number; filename: string }> {
+  try {
+    const list = Array.isArray(students) ? students : [students];
+    if (list.length === 0) {
+      throw new Error('No student data provided for fee voucher generation.');
+    }
+
+    const doc = generate4VouchersPerPageDoc(list, options);
+
+    let defaultName = 'SCJ_Fee_Vouchers_4perPage.pdf';
+    if (list.length === 1) {
+      const s = list[0];
+      const roll = String(s?.collegeNo || s?.studentId || s?.id || 'Student').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const name = String(s?.fullName || s?.name || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 20);
+      defaultName = `SCJ_Fee_Voucher_${roll}${name ? `_${name}` : ''}.pdf`;
+    } else {
+      defaultName = `SCJ_Fee_Vouchers_${list.length}_Students.pdf`;
+    }
+
+    const finalName = filename || defaultName;
+    doc.save(finalName.endsWith('.pdf') ? finalName : `${finalName}.pdf`);
+
+    return { success: true, count: list.length, filename: finalName };
+  } catch (err: any) {
+    console.error('[Fee Voucher PDF Generator Error]:', err);
+    throw err;
+  }
+}

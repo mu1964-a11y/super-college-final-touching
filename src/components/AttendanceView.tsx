@@ -201,20 +201,21 @@ export default function AttendanceView({ data }: { data: any }) {
     }
   }
 
-  function isPunchLate(isoString?: string | null, collegeStartTime = '07:54'): boolean {
+  function isPunchLate(isoString?: string | null, collegeStartTime: string | null = '07:54'): boolean {
     if (!isoString) return false;
+    const safeStartTime = (collegeStartTime && typeof collegeStartTime === 'string') ? collegeStartTime : '07:54';
     try {
       const d = new Date(isoString);
       if (!isNaN(d.getTime())) {
         const punchMinutes = d.getHours() * 60 + d.getMinutes();
-        const [h, m] = collegeStartTime.split(':').map(Number);
+        const [h, m] = safeStartTime.split(':').map(Number);
         const startMinutes = (h || 7) * 60 + (m || 54);
         return punchMinutes > startMinutes;
       }
       if (typeof isoString === 'string' && isoString.includes(':')) {
         const [ph, pm] = isoString.split(':').map(Number);
         const punchMinutes = (ph || 0) * 60 + (pm || 0);
-        const [h, m] = collegeStartTime.split(':').map(Number);
+        const [h, m] = safeStartTime.split(':').map(Number);
         const startMinutes = (h || 7) * 60 + (m || 54);
         return punchMinutes > startMinutes;
       }

@@ -179,6 +179,12 @@ export default function BiometricAttendanceDesk({
   const isScanningLockRef = useRef<boolean>(false);
   const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // 5-minute memory cooldown map: staffId -> { timestamp, displayTime, stageAction }
+  // Prevents repeated punches and duplicate WhatsApp dispatches when finger is held or pressed multiple times
+  const recentPunchesRef = useRef<Map<string, { timestamp: number; displayTime: string; stageAction: string }>>(new Map());
+  // Single check-in WhatsApp notification per staff member per day
+  const whatsappDispatchedTodayRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     autoLoopActiveRef.current = autoLoopEnabled;
   }, [autoLoopEnabled]);
@@ -350,34 +356,27 @@ export default function BiometricAttendanceDesk({
 
       if (stageAction === 'duplicate') {
         if (soundEnabled) playKioskSound('duplicate');
-        speakKioskAnnouncement(
-          `${matchedStaff.fullName}, your punch is already recorded.`,
-          voiceEnabled
-        );
         setVerifiedCard({
           type: 'duplicate',
           person: matchedStaff,
           status: existingRec?.status || 'Present',
           punchTime: displayTime,
           score: bestScore,
-          message: `Duplicate Scan Guard — Already Punched Recently (${existingCheckIn || displayTime})`,
+          message: `Already Recorded at ${existingCheckIn || displayTime} — Kindly proceed to your lecture!`,
           thumbBmp: thumbDataUrl,
           checkIn: existingCheckIn,
           breakOut: existingBreakOut,
           breakIn: existingBreakIn,
           checkOut: existingCheckOut,
-          campusState: parsedExisting.campusState || 'in_campus',
+          campusState: (parsedExisting.campusState as 'in_campus' | 'on_break' | 'checked_out') || 'in_campus',
         });
         return;
       }
 
       // Determine cutoff time dynamically for this teacher's lecture schedule
-      let teacherDutyStart = matchedStaff.dutyStartTime || matchedStaff.duty_start_time;
+      let rawStart = matchedStaff.dutyStartTime || matchedStaff.duty_start_time || settings?.collegeStartTime || '08:00';
+      const teacherDutyStart = (typeof rawStart === 'string' && rawStart.includes(':')) ? rawStart : '08:00';
       let teacherGrace = Number(matchedStaff.graceMinutes ?? matchedStaff.grace_minutes ?? 5);
-
-      if (!teacherDutyStart) {
-        teacherDutyStart = settings?.collegeStartTime || '08:00';
-      }
 
       const [cutH, cutM] = teacherDutyStart.split(':').map(Number);
       const nowMins = now.getHours() * 60 + now.getMinutes();
@@ -424,54 +423,67 @@ export default function BiometricAttendanceDesk({
         score: bestScore,
       });
 
-      const isValidUuid = (val?: string) =>
-        Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
+      // Update 5-minute cooldown cache immediately
+      recentPunchesRef.current.set(matchedStaff.id, {
+        timestamp: Date.now(),
+        displayTime,
+        stageAction,
+      });
 
-      const assignedId = isValidUuid(existingRec?.id)
-        ? existingRec.id
-        : typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID()
-        : undefined;
+      let statusLabel = computedStatus;
+      let cardMessage = `On-Time Biometric Check-In Recorded at ${displayTime}!`;
 
-      const basePayload: any = {
-        staff_id: matchedStaff.id,
-        date: todayStr,
-        status: computedStatus,
-        verification_method: 'secugen_fingerprint',
-        notes: notesJson,
-      };
-      if (assignedId) {
-        basePayload.id = assignedId;
+      if (stageAction === 'checkin') {
+        if (soundEnabled) playKioskSound('checkin');
+        cardMessage =
+          computedStatus === 'Late'
+            ? `Morning Check-In Recorded at ${displayTime} (Late Arrival after ${teacherDutyStart})`
+            : `On-Time Morning Check-In Recorded at ${displayTime}!`;
+      } else if (stageAction === 'breakout') {
+        if (soundEnabled) playKioskSound('checkout');
+        statusLabel = 'Break / Free-Period Out';
+        cardMessage = `Mid-Day Break / Free-Period Exit Recorded at ${displayTime}`;
+      } else if (stageAction === 'breakin') {
+        if (soundEnabled) playKioskSound('checkin');
+        statusLabel = 'Returned from Break';
+        cardMessage = `Mid-Day Break Return Recorded at ${displayTime} (Out: ${nextBreakOut})`;
+      } else if (stageAction === 'checkout') {
+        if (soundEnabled) playKioskSound('checkout');
+        statusLabel = 'Checked Out';
+        cardMessage = `Final Off-Duty Check-Out Recorded at ${displayTime}!`;
       }
 
-      if (isSupabaseConfigured) {
-        const { error } = await supabase
-          .from('staff_attendance')
-          .upsert([basePayload], { onConflict: 'staff_id,date' });
-        if (error) {
-          console.error('[BiometricDesk] Supabase upsert error:', error);
-          const fallback = {
-            staff_id: matchedStaff.id,
-            date: todayStr,
-            status: computedStatus,
-            verification_method: 'secugen_fingerprint',
-            notes: notesJson,
-          };
-          await supabase.from('staff_attendance').upsert([fallback], { onConflict: 'staff_id,date' });
-        }
-      }
-
-      const updatedStaffRecord = {
-        ...existingRec,
-        ...basePayload,
-        staffId: matchedStaff.id,
+      // 1. INSTANT UI DISPLAY (< 0.1s Touch & Go): Render verified card and audio without network wait
+      setVerifiedCard({
+        type: stageAction,
+        person: matchedStaff,
+        status: statusLabel,
+        punchTime: displayTime,
+        score: bestScore,
+        message: cardMessage,
+        thumbBmp: thumbDataUrl,
         checkIn: nextCheckIn,
         breakOut: nextBreakOut,
         breakIn: nextBreakIn,
         checkOut: nextCheckOut,
+        campusState: nextCampusState,
+      });
+
+      const updatedStaffRecord = {
+        ...existingRec,
+        staffId: matchedStaff.id,
+        staff_id: matchedStaff.id,
+        date: todayStr,
+        status: computedStatus,
+        checkIn: nextCheckIn,
+        breakOut: nextBreakOut,
+        breakIn: nextBreakIn,
+        checkOut: nextCheckOut,
+        notes: notesJson,
         verificationMethod: 'secugen_fingerprint',
       };
 
+      // 2. INSTANT LOCAL STATE UPDATE
       setTodayAttendance((prev) => {
         const others = prev.filter(
           (r: any) => (r.staff_id || r.staffId) !== matchedStaff.id
@@ -508,80 +520,80 @@ export default function BiometricAttendanceDesk({
 
       onAttendanceMarked?.();
 
-      let statusLabel = computedStatus;
-      let cardMessage = `On-Time Biometric Check-In Recorded at ${displayTime}!`;
-      let voiceText = `Thank you ${matchedStaff.fullName}. Check in marked at ${displayTime}.`;
+      // 3. ASYNCHRONOUS NON-BLOCKING BACKGROUND DATABASE & WHATSAPP TASK
+      (async () => {
+        const isValidUuid = (val?: string) =>
+          Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
 
-      if (stageAction === 'checkin') {
-        if (soundEnabled) playKioskSound('checkin');
-        cardMessage =
-          computedStatus === 'Late'
-            ? `Morning Check-In Recorded at ${displayTime} (Late Arrival after ${cutoffTime} AM)`
-            : `On-Time Morning Check-In Recorded at ${displayTime}!`;
-      } else if (stageAction === 'breakout') {
-        if (soundEnabled) playKioskSound('checkout');
-        statusLabel = 'Break / Free-Period Out';
-        cardMessage = `Mid-Day Break / Free-Period Exit Recorded at ${displayTime}`;
-        voiceText = `${matchedStaff.fullName}, mid day break out recorded at ${displayTime}.`;
-      } else if (stageAction === 'breakin') {
-        if (soundEnabled) playKioskSound('checkin');
-        statusLabel = 'Returned from Break';
-        cardMessage = `Mid-Day Break Return Recorded at ${displayTime} (Out: ${nextBreakOut})`;
-        voiceText = `Welcome back ${matchedStaff.fullName}. Break return recorded at ${displayTime}.`;
-      } else if (stageAction === 'checkout') {
-        if (soundEnabled) playKioskSound('checkout');
-        statusLabel = 'Checked Out';
-        cardMessage = `Final Off-Duty Check-Out Recorded at ${displayTime}!`;
-        voiceText = `Goodbye ${matchedStaff.fullName}. Final check out recorded at ${displayTime}.`;
-      }
+        const assignedId = isValidUuid(existingRec?.id)
+          ? existingRec.id
+          : typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : undefined;
 
-      speakKioskAnnouncement(voiceText, voiceEnabled);
+        const basePayload: any = {
+          staff_id: matchedStaff.id,
+          date: todayStr,
+          status: computedStatus,
+          verification_method: 'secugen_fingerprint',
+          notes: notesJson,
+        };
+        if (assignedId) {
+          basePayload.id = assignedId;
+        }
 
-      setVerifiedCard({
-        type: stageAction,
-        person: matchedStaff,
-        status: statusLabel,
-        punchTime: displayTime,
-        score: bestScore,
-        message: cardMessage,
-        thumbBmp: thumbDataUrl,
-        checkIn: nextCheckIn,
-        breakOut: nextBreakOut,
-        breakIn: nextBreakIn,
-        checkOut: nextCheckOut,
-        campusState: nextCampusState,
-      });
-
-      if (matchedStaff.contact) {
-        sendAutoStaffDailyCheckInNotice(
-          matchedStaff,
-          {
-            date: todayStr,
-            status: computedStatus,
-            checkInTime: nextCheckIn,
-            breakOutTime: nextBreakOut || undefined,
-            breakInTime: nextBreakIn || undefined,
-            checkOutTime: nextCheckOut || undefined,
-            punchEventLabel: statusLabel,
-            mode:
-              stageAction === 'breakout'
-                ? 'Biometric Scanner (Mid-Day Break Out)'
-                : stageAction === 'breakin'
-                ? 'Biometric Scanner (Break Return In)'
-                : stageAction === 'checkout'
-                ? 'Biometric Scanner (Final Check-Out)'
-                : 'Biometric Thumb Scanner',
-            notes: notesJson,
-          },
-          {
-            silent: true,
-            alsoSendPdf: stageAction === 'checkin' || stageAction === 'checkout',
-            settings: settingsProp || settings,
+        if (isSupabaseConfigured) {
+          try {
+            await supabase
+              .from('staff_attendance')
+              .upsert([basePayload], { onConflict: 'staff_id,date' });
+          } catch (err) {
+            console.error('[BiometricDesk] Background Supabase error:', err);
           }
-        ).catch(() => {});
-      }
+        }
+
+        // WhatsApp Single-Dispatch Lock: Only 1 check-in WhatsApp message per staff member per day
+        if (matchedStaff.contact) {
+          const alreadySentCheckIn = whatsappDispatchedTodayRef.current.has(matchedStaff.id);
+          if (stageAction === 'checkin' && alreadySentCheckIn) {
+            // Already sent today - skip to avoid spamming teacher
+            return;
+          }
+
+          if (stageAction === 'checkin') {
+            whatsappDispatchedTodayRef.current.add(matchedStaff.id);
+          }
+
+          sendAutoStaffDailyCheckInNotice(
+            matchedStaff,
+            {
+              date: todayStr,
+              status: computedStatus,
+              checkInTime: nextCheckIn,
+              breakOutTime: nextBreakOut || undefined,
+              breakInTime: nextBreakIn || undefined,
+              checkOutTime: nextCheckOut || undefined,
+              punchEventLabel: statusLabel,
+              mode:
+                stageAction === 'breakout'
+                  ? 'Biometric Scanner (Mid-Day Break Out)'
+                  : stageAction === 'breakin'
+                  ? 'Biometric Scanner (Break Return In)'
+                  : stageAction === 'checkout'
+                  ? 'Biometric Scanner (Final Check-Out)'
+                  : 'Biometric Thumb Scanner',
+              notes: notesJson,
+            },
+            {
+              silent: true,
+              alsoSendPdf: stageAction === 'checkin' || stageAction === 'checkout',
+              settings: settingsProp || settings,
+            }
+          ).catch(() => {});
+        }
+      })();
     },
-    [todayAttendance, settings, soundEnabled, voiceEnabled, onAttendanceMarked]
+    [todayAttendance, settings, soundEnabled, onAttendanceMarked]
   );
 
   // Core 1:N Biometric Scan & Instant Attendance Processor
@@ -618,8 +630,9 @@ export default function BiometricAttendanceDesk({
         setScannerStatus({ connected: true, deviceFound: true });
 
         // 1:N Fast Template Matching against Enrolled Staff (31+ Faculty, supports 1 or 2 fingers per teacher)
-        let matchedStaff: any = null;
-        let bestScore = 0;
+        let topStaff: any = null;
+        let topStaffScore = 0;
+        let runnerUpStaffScore = 0;
 
         for (const teacher of enrolledStaff) {
           const tpl = teacher.fingerprintTemplate || teacher.fingerprint_template;
@@ -630,15 +643,38 @@ export default function BiometricAttendanceDesk({
             'ISO',
             teacher.fingerprintFinger || teacher.fingerprint_finger
           );
-          if (m.matched && m.score > bestScore) {
-            bestScore = m.score;
-            matchedStaff = teacher;
+          if (m.score > topStaffScore) {
+            runnerUpStaffScore = topStaffScore;
+            topStaffScore = m.score;
+            topStaff = teacher;
+          } else if (m.score > runnerUpStaffScore) {
+            runnerUpStaffScore = m.score;
           }
+        }
+
+        // STRICT BIOMETRIC FALSE-POSITIVE & AMBIGUITY GUARDS:
+        // 1. Biological match threshold: >= 95 (self-match scores 120-199; cross-person random overlap peaks at 79).
+        // 2. Candidate Margin Guard: #1 candidate must lead runner-up by >= 25 points if runner-up >= 55.
+        let matchedStaff: any = null;
+        let bestScore = 0;
+
+        const isUnambiguousStaff =
+          topStaff &&
+          topStaffScore >= 95 &&
+          (runnerUpStaffScore < 55 || topStaffScore - runnerUpStaffScore >= 25);
+
+        if (isUnambiguousStaff) {
+          matchedStaff = topStaff;
+          bestScore = topStaffScore;
         }
 
         // Also check enrolled students if no staff matched
         let matchedStudent: any = null;
         if (!matchedStaff && enrolledStudents.length > 0) {
+          let topStu: any = null;
+          let topStuScore = 0;
+          let runnerUpStuScore = 0;
+
           for (const stu of enrolledStudents) {
             const tpl = stu.fingerprintTemplate || stu.fingerprint_template;
             if (!tpl) continue;
@@ -648,10 +684,18 @@ export default function BiometricAttendanceDesk({
               'ISO',
               stu.fingerprintFinger || stu.fingerprint_finger
             );
-            if (m.matched && m.score > bestScore) {
-              bestScore = m.score;
-              matchedStudent = stu;
+            if (m.score > topStuScore) {
+              runnerUpStuScore = topStuScore;
+              topStuScore = m.score;
+              topStu = stu;
+            } else if (m.score > runnerUpStuScore) {
+              runnerUpStuScore = m.score;
             }
+          }
+
+          if (topStu && topStuScore >= 95 && (runnerUpStuScore < 55 || topStuScore - runnerUpStuScore >= 25)) {
+            matchedStudent = topStu;
+            bestScore = topStuScore;
           }
         }
 
@@ -661,10 +705,13 @@ export default function BiometricAttendanceDesk({
 
         if (!matchedStaff && !matchedStudent) {
           if (soundEnabled) playKioskSound('error');
-          speakKioskAnnouncement('Finger not recognized. Please place thumb flat on sensor.', voiceEnabled);
+          // If a finger scored borderline (e.g. 70-94) or ambiguous, provide clear guidance
+          const isBorderline = topStaffScore >= 70;
           setVerifiedCard({
             type: 'unrecognized',
-            message: 'Fingerprint Not Recognized — Please Place Enrolled Finger Flat on Sensor',
+            message: isBorderline
+              ? 'Fingerprint Unclear or Partial — Please Center Finger Firmly on Sensor'
+              : 'Fingerprint Not Recognized — Please Place Enrolled Finger Flat on Sensor',
             thumbBmp: thumbDataUrl,
           });
           if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
@@ -675,6 +722,31 @@ export default function BiometricAttendanceDesk({
         }
 
         if (matchedStaff) {
+          // 5-Minute Anti-Bounce & Cooldown Guard:
+          // If teacher already punched within 5 mins (e.g. holds finger or taps 2-4 times),
+          // show soft confirmation card without re-saving or sending duplicate WhatsApp messages!
+          const lastPunch = recentPunchesRef.current.get(matchedStaff.id);
+          const nowMs = Date.now();
+          const COOLDOWN_MS = 5 * 60 * 1000;
+
+          if (lastPunch && nowMs - lastPunch.timestamp < COOLDOWN_MS) {
+            if (soundEnabled) playKioskSound('duplicate');
+            setVerifiedCard({
+              type: 'duplicate',
+              person: matchedStaff,
+              status: 'Already Marked',
+              punchTime: lastPunch.displayTime,
+              score: bestScore,
+              message: `Already Marked at ${lastPunch.displayTime} — Kindly proceed to your lecture!`,
+              thumbBmp: thumbDataUrl,
+            });
+            if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+            resetTimerRef.current = setTimeout(() => {
+              if (isMountedRef.current) setVerifiedCard(null);
+            }, 3000);
+            return;
+          }
+
           if (res.bmpBase64) {
             secugenService.saveFingerprintThumbnail(matchedStaff.id, res.bmpBase64);
           }
@@ -717,7 +789,7 @@ export default function BiometricAttendanceDesk({
             // Before 12:45 PM (765 mins), 2nd scan defaults to Mid-Day Break / Free-Period Out
             const isMidDayWindow = nowTotalMins < 12 * 60 + 45;
 
-            if (minsSinceLastPunch < 3) {
+            if (minsSinceLastPunch < 4) {
               actionType = 'duplicate';
             } else if (parsedExisting.campusState === 'on_break' || (existingBreakOut && !existingBreakIn)) {
               actionType = 'breakin';

@@ -374,12 +374,18 @@ class SecuGenService {
           }
         }
 
-        if (matched >= 6) {
+        if (matched >= 7) {
           const minLen = Math.min(mA.length, mB.length);
           const maxLen = Math.max(mA.length, mB.length);
           const denom = Math.sqrt(minLen * maxLen);
-          const sc = (qualityPoints / Math.max(10, denom * 0.40)) * 122;
+          const sc = (qualityPoints / Math.max(12, denom * 0.42)) * 120;
           if (sc > bestScoreVal) bestScoreVal = sc;
+        } else if (matched === 6) {
+          // Low minutiae overlap - damp score to prevent false positives across different people
+          const minLen = Math.min(mA.length, mB.length);
+          const denom = Math.max(14, minLen * 0.5);
+          const sc = (qualityPoints / denom) * 75;
+          if (sc > bestScoreVal) bestScoreVal = Math.min(65, sc);
         }
       }
     }
@@ -594,11 +600,12 @@ class SecuGenService {
       }
     }
 
-    // Match threshold: calibrated to 64 on SecuGen 0..199 scale (self-match gives ~140-199)
-    // Ensures genuine thumb angles match on 1st touch without false rejections
+    // Match threshold: calibrated to 95 on SecuGen 0..199 scale
+    // Coincidental overlaps across different people peak around 60-80 (Score 79).
+    // Genuine biological self-matches score 110-199. Threshold >= 95 prevents cross-matching.
     return {
       success: true,
-      matched: bestScore >= 64,
+      matched: bestScore >= 95,
       score: bestScore,
       matchedFinger: bestFinger,
     };

@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Lead, Admission, Student, Staff, Expense, Income, AppSettings, UserPermission, Notification, AcademicRecord, SalaryPayment, FeePayment, Installment, FeeTransaction , AdmissionStatus } from '../../types';
 import { diffObjects, STAFF_FIELD_LABELS } from '../../utils/changeTracker';
 import { sendStaffEnrollmentNotice } from '../../lib/whatsappAutomation';
+import { safeLocalStorage } from '../../utils/safeStorage';
 
 export function useStaffOperations(ctx: any) {
   const { generateStudentId, user, staff, setStaff, staffAttendance, setStaffAttendance, staffTimetable, setStaffTimetable, staffAdvances, setStaffAdvances, isBulkOperatingRef, logActivity, fetchData, settings } = ctx;

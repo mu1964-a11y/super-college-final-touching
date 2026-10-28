@@ -414,7 +414,8 @@ export default function InstantBiometricVerifyModal({
         return;
       }
 
-      const [cutH, cutM] = cutoffTime.split(':').map(Number);
+      const safeCutoff = (cutoffTime && typeof cutoffTime === 'string' && cutoffTime.includes(':')) ? cutoffTime : '07:54';
+      const [cutH, cutM] = safeCutoff.split(':').map(Number);
       const nowMins = now.getHours() * 60 + now.getMinutes();
       const cutMins = (cutH || 7) * 60 + (cutM || 54);
       const computedStatus = existingRec?.status || (nowMins > cutMins ? 'Late' : 'Present');

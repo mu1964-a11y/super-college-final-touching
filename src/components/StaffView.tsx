@@ -120,8 +120,8 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
   const [selectedDossierStaff, setSelectedDossierStaff] = useState<Staff | null>(null);
   const [isDossierOpen, setIsDossierOpen] = useState(false);
 
-  const [activeModule, setActiveModule] = useState<'directory' | 'attendance' | 'payroll' | 'timetable' | 'subjects'>(
-    ['directory', 'attendance', 'payroll', 'timetable', 'subjects'].includes(initialFilter as string) 
+  const [activeModule, setActiveModule] = useState<'directory' | 'attendance' | 'payroll' | 'timetable' | 'subjects' | 'roster'>(
+    ['directory', 'attendance', 'payroll', 'timetable', 'subjects', 'roster'].includes(initialFilter as string) 
       ? (initialFilter as any) 
       : 'directory'
   );
@@ -2133,7 +2133,7 @@ function StaffProfile({
                         {q}
                       </span>
                     ))
-                  ) : member.qualification ? (
+                  ) : typeof member.qualification === 'string' && member.qualification.trim() ? (
                     member.qualification.split(',').map(q => q.trim()).filter(Boolean).map(q => (
                       <span key={q} className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-900 border border-blue-300">
                         {q}

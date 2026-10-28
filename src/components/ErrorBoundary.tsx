@@ -84,7 +84,12 @@ class ErrorBoundary extends React.Component<Props, State> {
               </Button>
               <Button 
                 variant="outline" 
-                onClick={() => this.setState({ hasError: false, error: null })}
+                onClick={() => {
+                  try {
+                    sessionStorage.clear();
+                  } catch {}
+                  this.setState({ hasError: false, error: null });
+                }}
                 className="w-full"
               >
                 Try to Recover

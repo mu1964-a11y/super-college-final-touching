@@ -401,7 +401,8 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
 
   const isPunchLate = (isoString?: string | null, collegeStartTime = '07:54', staffObj?: Staff): boolean => {
     if (!isoString) return false;
-    let targetStartTime = staffObj?.dutyStartTime || staffObj?.duty_start_time || collegeStartTime;
+    const rawTarget = staffObj?.dutyStartTime || staffObj?.duty_start_time || collegeStartTime || '08:00';
+    const targetStartTime = typeof rawTarget === 'string' ? rawTarget : '08:00';
     let grace = Number(staffObj?.graceMinutes ?? staffObj?.grace_minutes ?? 5);
     try {
       const d = new Date(isoString);

@@ -364,7 +364,17 @@ export async function sendAutoStaffDailyCheckInNotice(
     timingBlock += `\n🏁 *Final Duty Check-Out:* *${checkOut}*`;
   }
 
-  const msg = `🏛️ *SUPERIOR COLLEGE JAHANIAN*\n✅ *STAFF ATTENDANCE & MOVEMENT LOG*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 *Faculty:* *${staffName}* (${role} • ID: *${staffId}*)\n📅 *Date:* *${attendance.date}*\n📌 *Status:* *${(attendance.punchEventLabel || attendance.status).toUpperCase()}*\n${timingBlock}\n🔐 *Mode:* ${attendance.mode || parsed.cleanRemarks || 'Biometric Verified'}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n_HR & Attendance Desk — Superior College Jahanian_`;
+  const dutyStart = staff?.dutyStartTime || staff?.duty_start_time;
+  const dutyEnd = staff?.dutyEndTime || staff?.duty_end_time;
+  const grace = staff?.graceMinutes ?? staff?.grace_minutes ?? 5;
+  const isCustomLecturer = Boolean(dutyStart && dutyEnd);
+
+  let msg = '';
+  if (isCustomLecturer) {
+    msg = `🏛️ *SUPERIOR COLLEGE JAHANIAN*\n👨‍🏫 *FACULTY LECTURE ATTENDANCE*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 *Lecturer:* *${staffName}* (${role} • ID: *${staffId}*)\n📅 *Date:* *${attendance.date}*\n📌 *Status:* *${(attendance.punchEventLabel || attendance.status).toUpperCase()}*\n📖 *Scheduled Duty:* *${dutyStart}* to *${dutyEnd}* (Grace: ${grace}m)\n${timingBlock}\n🔐 *Mode:* ${attendance.mode || parsed.cleanRemarks || 'Biometric Verified'}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n_Academic Directorate & HR — Superior College Jahanian_`;
+  } else {
+    msg = `🏛️ *SUPERIOR COLLEGE JAHANIAN*\n🏢 *OFFICIAL STAFF ATTENDANCE LOG*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 *Staff:* *${staffName}* (${role} • ID: *${staffId}*)\n📅 *Date:* *${attendance.date}*\n📌 *Status:* *${(attendance.punchEventLabel || attendance.status).toUpperCase()}*\n⏰ *College Hours:* 08:00 AM – 02:00 PM\n${timingBlock}\n🔐 *Mode:* ${attendance.mode || parsed.cleanRemarks || 'Biometric Verified'}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n_HR & Administration — Superior College Jahanian_`;
+  }
 
   const res = await dispatchWhatsAppMessage(cleanPhone, msg, { silent: options?.silent ?? true });
   return res.success;

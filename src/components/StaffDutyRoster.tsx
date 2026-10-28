@@ -336,10 +336,10 @@ export default function StaffDutyRoster({
   }, [lecturersList, searchTerm]);
 
   // Compute late cutoff label
-  const getCutoffLabel = (startTime: string, grace: number) => {
-    if (!startTime) return 'N/A';
+  const getCutoffLabel = (startTime?: string | null, grace: number = 5) => {
+    if (!startTime || typeof startTime !== 'string' || !startTime.includes(':')) return 'N/A';
     const [h, m] = startTime.split(':').map(Number);
-    const totalMins = (h || 8) * 60 + (m || 0) + grace;
+    const totalMins = (h || 8) * 60 + (m || 0) + (Number(grace) || 0);
     const finalH = Math.floor(totalMins / 60);
     const finalM = totalMins % 60;
     const period = finalH >= 12 ? 'PM' : 'AM';
@@ -771,10 +771,12 @@ _Canal Road Campus, Jahanian_`;
                 </TableRow>
               ) : (
                 filteredLecturers.map((st) => {
-                  const conf = rosterMap[st.id] || {
-                    dutyStartTime: '08:30',
-                    dutyEndTime: '01:30',
-                    graceMinutes: 5,
+                  const existingConf = rosterMap[st.id];
+                  const conf = {
+                    dutyStartTime: existingConf?.dutyStartTime || st.dutyStartTime || st.duty_start_time || '08:30',
+                    dutyEndTime: existingConf?.dutyEndTime || st.dutyEndTime || st.duty_end_time || '01:30',
+                    graceMinutes: Number(existingConf?.graceMinutes ?? st.graceMinutes ?? st.grace_minutes ?? 5),
+                    isModified: Boolean(existingConf?.isModified),
                   };
                   const cutoffStr = getCutoffLabel(conf.dutyStartTime, conf.graceMinutes);
                   const isSavingThis = savingId === st.id;

@@ -1484,23 +1484,19 @@ export default function FeeManagementView({
             <Button
               onClick={() => {
                 if (!filteredStudents || filteredStudents.length === 0) {
-                  toast.error("No students found in current filter to generate challans.");
+                  toast.error("No students found in current filter to generate vouchers.");
                   return;
                 }
-                const toPrint = filteredStudents.slice(0, 100);
-                if (filteredStudents.length > 100) {
-                  toast.info(`Generating challans for the first 100 of ${filteredStudents.length} filtered students.`);
-                }
-                setChallanStudents(toPrint);
+                setChallanStudents(filteredStudents);
                 setIsChallanModalOpen(true);
               }}
               variant="outline"
               size="sm"
-              className="h-7.5 px-2.5 rounded-lg border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-[11px] flex items-center gap-1 hover:bg-slate-50 cursor-pointer"
-              title="Generate 3-Copy Bank Challan Vouchers for Filtered Students"
+              className="h-7.5 px-2.5 rounded-lg border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-bold text-[11px] flex items-center gap-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 cursor-pointer shadow-2xs"
+              title="Generate College Fee Vouchers (4 Per Page A4 Grid)"
             >
               <Building2 size={13} className="text-emerald-600" />
-              <span>Challans ({filteredStudents.length})</span>
+              <span>Fee Vouchers (4/Page)</span>
             </Button>
 
             <Button
@@ -1768,7 +1764,7 @@ export default function FeeManagementView({
                             </TableCell>
                             <TableCell className="text-right pr-6 py-4">
                               <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                                {/* Direct 1-Click 3-Copy Bank Challan */}
+                                {/* Direct 1-Click 4-Per-Page College Fee Voucher */}
                                 <Button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -1776,11 +1772,11 @@ export default function FeeManagementView({
                                     setIsChallanModalOpen(true);
                                   }}
                                   size="sm"
-                                  title="Print 3-Copy Bank Challan Voucher"
-                                  className="h-8 px-2.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-800 border border-indigo-200/80 font-black uppercase tracking-wider text-[10px] flex items-center gap-1.5 shadow-xs transition-all hover:scale-105 active:scale-95"
+                                  title="Generate College Fee Voucher (4-Per-Page A4 Grid)"
+                                  className="h-8 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 hover:text-emerald-900 border border-emerald-200/80 font-black uppercase tracking-wider text-[10px] flex items-center gap-1.5 shadow-xs transition-all hover:scale-105 active:scale-95"
                                 >
-                                  <Building2 size={13} className="text-indigo-600 shrink-0" />
-                                  <span className="hidden xl:inline">Challan</span>
+                                  <Building2 size={13} className="text-emerald-600 shrink-0" />
+                                  <span className="hidden xl:inline">Voucher (4/P)</span>
                                 </Button>
 
                                 {/* Direct 1-Click Latest Receipt */}
@@ -2396,7 +2392,7 @@ _Accounts & Finance Department, SGC Jahanian_`;
         }}
       />
 
-      {/* 3-Copy Bank Challan Modal */}
+      {/* College Fee Voucher Modal (4 Vouchers / Page A4 Grid) */}
       {challanStudents && (
         <BankChallanModal
           isOpen={isChallanModalOpen}
@@ -2405,6 +2401,7 @@ _Accounts & Finance Department, SGC Jahanian_`;
             setChallanStudents(null);
           }}
           students={challanStudents}
+          allStudents={data?.students || []}
           settings={data?.settings}
         />
       )}
