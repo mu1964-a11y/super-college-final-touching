@@ -1230,17 +1230,24 @@ export default function FeeManagementView({
   }, [data?.settings?.predefinedSections, groupFilter, genderFilter, students]);
 
   const filteredStudents = useMemo(() => {
+    const rawSearch = debouncedSearch.trim().toLowerCase();
+    const vchMatch = rawSearch.match(/vch-[0-9]+-([a-z0-9_-]+)/i);
+    const searchKey = vchMatch ? vchMatch[1].toLowerCase() : rawSearch;
+
     return students.filter((s: any) => {
       const nameMatch = (s.fullName || s.full_name || "")
         .toLowerCase()
-        .includes(debouncedSearch.toLowerCase());
+        .includes(searchKey);
       const idMatch = (s.id || "")
         .toLowerCase()
-        .includes(debouncedSearch.toLowerCase());
+        .includes(searchKey);
+      const rollMatch = (s.collegeNo || s.studentId || "")
+        .toLowerCase()
+        .includes(searchKey);
       const fatherMatch = (s.fatherName || s.father_name || "")
         .toLowerCase()
-        .includes(debouncedSearch.toLowerCase());
-      const matchesSearch = nameMatch || idMatch || fatherMatch;
+        .includes(searchKey);
+      const matchesSearch = nameMatch || idMatch || rollMatch || fatherMatch;
 
       const balance = (s.totalPackage || 0) - (s.feeReceived || 0);
       const received = s.feeReceived || 0;
@@ -1516,7 +1523,7 @@ export default function FeeManagementView({
               className="h-7.5 px-2.5 rounded-lg border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-[11px] flex items-center gap-1 hover:bg-slate-50"
             >
               <Building2 size={13} className="text-emerald-600" />
-              <span>Challans</span>
+              <span>Fee Vouchers</span>
             </Button>
 
             <Button
@@ -1792,11 +1799,11 @@ export default function FeeManagementView({
                                     setIsChallanModalOpen(true);
                                   }}
                                   size="sm"
-                                  title="Print 3-Copy Bank Challan Voucher"
+                                  title="Print Student Fee Voucher (Quad A4)"
                                   className="h-8 px-2.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-800 border border-indigo-200/80 font-black uppercase tracking-wider text-[10px] flex items-center gap-1.5 shadow-xs transition-all hover:scale-105 active:scale-95"
                                 >
-                                  <Building2 size={13} className="text-indigo-600 shrink-0" />
-                                  <span className="hidden xl:inline">Challan</span>
+                                  <Receipt size={13} className="text-indigo-600 shrink-0" />
+                                  <span className="hidden xl:inline">Voucher</span>
                                 </Button>
 
                                 {/* Direct 1-Click Latest Receipt */}
@@ -1928,7 +1935,7 @@ export default function FeeManagementView({
                                       }}
                                       className="gap-3 p-3 rounded-xl font-black text-xs text-indigo-700 cursor-pointer hover:bg-indigo-50 focus:bg-indigo-50 uppercase tracking-widest italic"
                                     >
-                                      <Building2 size={14} /> 3-Copy Bank Challan
+                                      <Receipt size={14} /> Fee Voucher (Quad A4)
                                     </DropdownMenuItem>
                                     {getUnifiedTransactions(student) &&
                                       getUnifiedTransactions(student).length >
@@ -2379,7 +2386,7 @@ _Accounts & Finance Department, SGC Jahanian_`;
         }}
       />
 
-      {/* 3-Copy Bank Challan Modal */}
+      {/* Official College Fee Voucher Modal (Quad A4) */}
       {challanStudents && (
         <BankChallanModal
           isOpen={isChallanModalOpen}
@@ -2388,7 +2395,16 @@ _Accounts & Finance Department, SGC Jahanian_`;
             setChallanStudents(null);
           }}
           students={challanStudents}
+          allStudents={allEnrolled}
           settings={data?.settings}
+          onQuickCollect={(student, vchId, amount, month) => {
+            setIsChallanModalOpen(false);
+            setChallanStudents(null);
+            setSelectedStudent(student);
+            setPaymentAmount(String(amount));
+            setPaymentType(`Tuition Fee Installment (${month} • Ref: ${vchId})`);
+            setIsPaymentOpen(true);
+          }}
         />
       )}
 

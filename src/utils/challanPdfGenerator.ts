@@ -57,6 +57,68 @@ export function numberToEnglishWords(num: number): string {
   return `${inWords(Math.floor(num))} Rupees Only`;
 }
 
+export function numberToUrduWords(num: number): string {
+  if (!num || num <= 0) return 'صفر روپے فقط';
+
+  const urduUnits = [
+    '', 'ایک', 'دو', 'تین', 'چار', 'پانچ', 'چھ', 'سات', 'آٹھ', 'نو',
+    'دس', 'گیارہ', 'بارہ', 'تیرہ', 'چودہ', 'پندرہ', 'سولہ', 'سترہ', 'اٹھارہ', 'انیس',
+  ];
+
+  const urduNumbers: Record<number, string> = {
+    20: 'بیس', 21: 'اکیس', 22: 'بائیس', 23: 'تیئیس', 24: 'چوبیس', 25: 'پچیس', 26: 'چھبیس', 27: 'ستائیس', 28: 'اٹھائیس', 29: 'انتیس',
+    30: 'تیس', 31: 'اکتیس', 32: 'بتیس', 33: 'تینتیس', 34: 'چونتیس', 35: 'پینتیس', 36: 'چھتیس', 37: 'سینتیس', 38: 'اڑتیس', 39: 'انتالیس',
+    40: 'چالیس', 41: 'اکتالیس', 42: 'بیالیس', 43: 'تینتالیس', 44: 'چوالیس', 45: 'پینتالیس', 46: 'چھیالیس', 47: 'سینتالیس', 48: 'اڑتالیس', 49: 'انچاس',
+    50: 'پچاس', 51: 'اکیاون', 52: 'باون', 53: 'ترپن', 54: 'چون', 55: 'پچپن', 56: 'چھپن', 57: 'ستتاون', 58: 'اٹھاون', 59: 'انسٹھ',
+    60: 'ساٹھ', 61: 'اکسٹھ', 62: 'باسٹھ', 63: 'تریسٹھ', 64: 'چونسٹھ', 65: 'پینسٹھ', 66: 'چھیاسٹھ', 67: 'سڑسٹھ', 68: 'اڑسٹھ', 69: 'انہتر',
+    70: 'ستر', 71: 'اکہتر', 72: 'بہتر', 73: 'تہتر', 74: 'چوہتر', 75: 'پچہتر', 76: 'چھہتر', 77: 'ستتر', 78: 'اٹھہتر', 79: 'اناسی',
+    80: 'اسی', 81: 'اکیاسی', 82: 'بیاسی', 83: 'تراسی', 84: 'چوراسی', 85: 'پچاسی', 86: 'چھیاسی', 87: 'ستاسی', 88: 'اٹھاسی', 89: 'نواسی',
+    90: 'نوے', 91: 'اکیانوے', 92: 'بانوے', 93: 'ترانوے', 94: 'چورانوے', 95: 'پچانوے', 96: 'چھیانوے', 97: 'ستانوے', 98: 'اٹھانوے', 99: 'ننانوے',
+  };
+
+  function convertTwoDigits(n: number): string {
+    if (n < 20) return urduUnits[n] || '';
+    return urduNumbers[n] || '';
+  }
+
+  function convertThreeDigits(n: number): string {
+    let str = '';
+    const hundreds = Math.floor(n / 100);
+    const rest = n % 100;
+    if (hundreds > 0) {
+      str += `${urduUnits[hundreds]} سو `;
+    }
+    if (rest > 0) {
+      str += convertTwoDigits(rest);
+    }
+    return str.trim();
+  }
+
+  let result = '';
+  const n = Math.floor(num);
+
+  const crores = Math.floor(n / 10000000);
+  const lakhs = Math.floor((n % 10000000) / 100000);
+  const thousands = Math.floor((n % 100000) / 1000);
+  const remainder = n % 1000;
+
+  if (crores > 0) {
+    result += `${convertTwoDigits(crores)} کروڑ `;
+  }
+  if (lakhs > 0) {
+    result += `${convertTwoDigits(lakhs)} لاکھ `;
+  }
+  if (thousands > 0) {
+    result += `${convertTwoDigits(thousands)} ہزار `;
+  }
+  if (remainder > 0) {
+    result += convertThreeDigits(remainder);
+  }
+
+  return `${result.trim()} روپے فقط`;
+}
+
+
 function formatDate(dateObj: Date): string {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const dd = String(dateObj.getDate()).padStart(2, '0');
@@ -511,7 +573,11 @@ function drawSingleCollegeSlipRow(
   }
 
   const totalAfterDue = currentPayable + (currentPayable > 0 ? lateFee : 0);
-  const voucherNo = `SCJ-${new Date().getFullYear()}-${String(studentIdx + 1).padStart(3, '0')}${String(rollNo).replace(/[^0-9]/g, '').slice(-4) || '101'}`;
+  const issueDateParts = (options.issueDate || '').split('-');
+  const yStr = issueDateParts[0] ? issueDateParts[0].slice(-2) : '26';
+  const mStr = issueDateParts[1] || '11';
+  const cleanRoll = String(rollNo).replace(/[^a-zA-Z0-9]/g, '');
+  const voucherNo = options.voucherNumber || `VCH-${yStr}${mStr}-${cleanRoll || '101'}`;
 
   // 1. Outer Card Rounded Box (200mm wide x 67mm tall)
   doc.setDrawColor(6, 78, 59); // Deep Emerald Border
