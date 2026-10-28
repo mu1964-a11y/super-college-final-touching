@@ -1329,6 +1329,20 @@ export default function FeeManagementView({
     stageFilter,
   ]);
 
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(30);
+
+  // Reset page when filter changes
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, statusFilter, activeTab, groupFilter, sectionFilter, stageFilter]);
+
+  const totalPages = Math.ceil(filteredStudents.length / pageSize) || 1;
+  const paginatedStudents = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredStudents.slice(start, start + pageSize);
+  }, [filteredStudents, currentPage, pageSize]);
+
 
 
   const isSuperAdmin = data.user?.email === "mughalazam1964@gmail.com";
@@ -1687,7 +1701,7 @@ export default function FeeManagementView({
                     </TableRow>
                   ) : (
                     <>
-                      {filteredStudents.map((student: any) => {
+                      {paginatedStudents.map((student: any) => {
                         const balance =
                           (student.totalPackage || 0) -
                           (student.feeReceived || 0);
@@ -1967,6 +1981,57 @@ export default function FeeManagementView({
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Bar for 0ms Instant Response */}
+            {filteredStudents.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-slate-500 font-medium">
+                    Showing <strong className="text-slate-800 dark:text-slate-200">{(currentPage - 1) * pageSize + 1}</strong> to <strong className="text-slate-800 dark:text-slate-200">{Math.min(currentPage * pageSize, filteredStudents.length)}</strong> of <strong className="text-slate-800 dark:text-slate-200">{filteredStudents.length}</strong> students
+                  </span>
+                  <div className="flex items-center gap-1.5 ml-2">
+                    <span className="text-[11px] text-slate-400 font-medium">Rows:</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => {
+                        setPageSize(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                      className="text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:border-slate-300 transition-colors"
+                    >
+                      <option value={20}>20</option>
+                      <option value={30}>30</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    className="h-8 px-3 text-xs font-semibold rounded-lg border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer disabled:opacity-40"
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-xs font-bold px-2.5 py-1 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 rounded-md border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    className="h-8 px-3 text-xs font-semibold rounded-lg border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer disabled:opacity-40"
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

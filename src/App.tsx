@@ -63,36 +63,48 @@ import { cn } from "@/lib/utils";
 
 import DashboardView from "./components/DashboardView";
 
-import AdmissionsView from "./components/AdmissionsView";
-import StudentsView from "./components/StudentsView";
-import StaffView from "./components/StaffView";
-import AccountsView from "./components/AccountsView";
-import ReportsView from "./components/ReportsView";
-import LeadsManagementView from "./components/LeadsManagementView";
-import FeeManagementView from "./components/FeeManagementView";
-import AttendanceView from "./components/AttendanceView";
-import SettingsView from "./components/SettingsView";
-import AcademicView from "./components/AcademicView";
-import WhatsAppCenterView from "./components/WhatsAppCenterView";
-import DeletedArchiveView from "./components/DeletedArchiveView";
-import GlobalCommandPalette from "./components/GlobalCommandPalette";
-import StudentDossier360 from "./components/StudentDossier360";
-import PublicVerificationView from "./components/PublicVerificationView";
-import FaceAttendanceKiosk from "./components/FaceAttendanceKiosk";
-import BiometricAttendanceDesk from "./components/BiometricAttendanceDesk";
-import StudentPortal from "./components/StudentPortal";
-import StaffPortal from "./components/StaffPortal";
-import PortalGatewayView from "./components/PortalGatewayView";
+// Lazy-loaded Views for Instant Initial Load & Memory Efficiency
+const AdmissionsView = React.lazy(() => import("./components/AdmissionsView"));
+const StudentsView = React.lazy(() => import("./components/StudentsView"));
+const StaffView = React.lazy(() => import("./components/StaffView"));
+const AccountsView = React.lazy(() => import("./components/AccountsView"));
+const ReportsView = React.lazy(() => import("./components/ReportsView"));
+const LeadsManagementView = React.lazy(() => import("./components/LeadsManagementView"));
+const FeeManagementView = React.lazy(() => import("./components/FeeManagementView"));
+const AttendanceView = React.lazy(() => import("./components/AttendanceView"));
+const SettingsView = React.lazy(() => import("./components/SettingsView"));
+const AcademicView = React.lazy(() => import("./components/AcademicView"));
+const WhatsAppCenterView = React.lazy(() => import("./components/WhatsAppCenterView"));
+const DeletedArchiveView = React.lazy(() => import("./components/DeletedArchiveView"));
+const GlobalCommandPalette = React.lazy(() => import("./components/GlobalCommandPalette"));
+const StudentDossier360 = React.lazy(() => import("./components/StudentDossier360"));
+const PublicVerificationView = React.lazy(() => import("./components/PublicVerificationView"));
+const FaceAttendanceKiosk = React.lazy(() => import("./components/FaceAttendanceKiosk"));
+const BiometricAttendanceDesk = React.lazy(() => import("./components/BiometricAttendanceDesk"));
+const StudentPortal = React.lazy(() => import("./components/StudentPortal"));
+const StaffPortal = React.lazy(() => import("./components/StaffPortal"));
+const PortalGatewayView = React.lazy(() => import("./components/PortalGatewayView"));
+const AccessControlDialog = React.lazy(() => import("./components/AccessControl"));
+const NotificationPanel = React.lazy(() => import("./components/NotificationPanel"));
+
 import WelcomeScreen from "./components/WelcomeScreen";
 import AcademicCanvasBackground from "./components/AcademicCanvasBackground";
 import PortalAuthCard from "./components/PortalAuthCard";
 import PremiumLoadingScreen from "./components/PremiumLoadingScreen";
 import { SpatialCard } from "./components/SpatialCanvasCard";
 import { Search } from "lucide-react";
-
 import { Settings as SettingsIcon } from "lucide-react";
-import AccessControlDialog from "./components/AccessControl";
-import NotificationPanel from "./components/NotificationPanel";
+
+// Lightweight Module Loader Fallback
+const ViewLoader = () => (
+  <div className="w-full min-h-[50vh] flex flex-col items-center justify-center gap-3 py-16">
+    <div className="relative w-10 h-10 flex items-center justify-center">
+      <div className="absolute inset-0 rounded-full border-2 border-emerald-500/20 animate-ping" />
+      <div className="w-8 h-8 rounded-full border-2 border-superior-teal/30 border-t-superior-teal animate-spin" />
+    </div>
+    <span className="text-[11px] font-bold text-slate-400 tracking-wider uppercase">Loading Module...</span>
+  </div>
+);
 
 type Page =
   | "dashboard"
@@ -343,19 +355,24 @@ export default function App() {
       try {
         const res = await secugenService.getStatus();
         if (isMounted) {
-          setLocalBiometricStatus({
-            connected: !!res.connected,
-            deviceFound: !!res.deviceFound,
+          setLocalBiometricStatus(prev => {
+            const nextConn = !!res.connected;
+            const nextDev = !!res.deviceFound;
+            if (prev.connected === nextConn && prev.deviceFound === nextDev) return prev;
+            return { connected: nextConn, deviceFound: nextDev };
           });
         }
       } catch {
         if (isMounted) {
-          setLocalBiometricStatus({ connected: false, deviceFound: false });
+          setLocalBiometricStatus(prev => {
+            if (!prev.connected && !prev.deviceFound) return prev;
+            return { connected: false, deviceFound: false };
+          });
         }
       }
     };
     checkBio();
-    const bioInterval = setInterval(checkBio, 8000);
+    const bioInterval = setInterval(checkBio, 12000);
     return () => {
       isMounted = false;
       clearInterval(bioInterval);
@@ -372,20 +389,31 @@ export default function App() {
           const json = await res.json();
           if (isMounted) {
             const isConn = Boolean(json.connected || json.status === "connected");
-            setWhatsAppStatus({
-              connected: isConn,
-              phone: json.connectedPhone || json.phone,
+            const phone = json.connectedPhone || json.phone;
+            setWhatsAppStatus(prev => {
+              if (prev.connected === isConn && prev.phone === phone) return prev;
+              return { connected: isConn, phone };
             });
           }
         } else {
-          if (isMounted) setWhatsAppStatus({ connected: false });
+          if (isMounted) {
+            setWhatsAppStatus(prev => {
+              if (!prev.connected && !prev.phone) return prev;
+              return { connected: false };
+            });
+          }
         }
       } catch {
-        if (isMounted) setWhatsAppStatus({ connected: false });
+        if (isMounted) {
+          setWhatsAppStatus(prev => {
+            if (!prev.connected && !prev.phone) return prev;
+            return { connected: false };
+          });
+        }
       }
     };
     checkWA();
-    const waInterval = setInterval(checkWA, 15000);
+    const waInterval = setInterval(checkWA, 20000);
     return () => {
       isMounted = false;
       clearInterval(waInterval);
@@ -1239,11 +1267,13 @@ export default function App() {
 
   if (isVerifyMode) {
     return (
-      <PublicVerificationView 
-        onGoToAdmin={() => {
-          window.location.href = window.location.origin + window.location.pathname;
-        }} 
-      />
+      <React.Suspense fallback={<PremiumLoadingScreen brandingSettings={brandingSettings} authLoading={true} customMessage="Loading Verification Engine..." />}>
+        <PublicVerificationView 
+          onGoToAdmin={() => {
+            window.location.href = window.location.origin + window.location.pathname;
+          }} 
+        />
+      </React.Suspense>
     );
   }
 
@@ -1257,14 +1287,16 @@ export default function App() {
 
   if (isGateKioskMode) {
     return (
-      <FaceAttendanceKiosk 
-        standalone={true}
-        collegeLogo={brandingSettings.logo || "/superior-logo.png"}
-        collegeName={brandingSettings.name || "Superior College Jahanian"}
-        onBackToApp={() => {
-          window.location.href = window.location.origin + window.location.pathname;
-        }} 
-      />
+      <React.Suspense fallback={<PremiumLoadingScreen brandingSettings={brandingSettings} authLoading={true} customMessage="Loading Face Biometrics & Gate Station..." />}>
+        <FaceAttendanceKiosk 
+          standalone={true}
+          collegeLogo={brandingSettings.logo || "/superior-logo.png"}
+          collegeName={brandingSettings.name || "Superior College Jahanian"}
+          onBackToApp={() => {
+            window.location.href = window.location.origin + window.location.pathname;
+          }} 
+        />
+      </React.Suspense>
     );
   }
 
@@ -1278,14 +1310,16 @@ export default function App() {
 
   if (isBiometricDeskMode) {
     return (
-      <BiometricAttendanceDesk
-        standalone={true}
-        collegeLogo={brandingSettings.logo || "/superior-logo.png"}
-        collegeName={brandingSettings.name || "Superior College Jahanian"}
-        onBackToApp={() => {
-          window.location.href = window.location.origin + window.location.pathname;
-        }}
-      />
+      <React.Suspense fallback={<PremiumLoadingScreen brandingSettings={brandingSettings} authLoading={true} customMessage="Loading Biometric Desk..." />}>
+        <BiometricAttendanceDesk
+          standalone={true}
+          collegeLogo={brandingSettings.logo || "/superior-logo.png"}
+          collegeName={brandingSettings.name || "Superior College Jahanian"}
+          onBackToApp={() => {
+            window.location.href = window.location.origin + window.location.pathname;
+          }}
+        />
+      </React.Suspense>
     );
   }
 
@@ -1304,35 +1338,39 @@ export default function App() {
     if (portalSession.type === "student") {
       const liveStudent = (data.students || []).find((s) => s.id === portalSession.data?.id) || portalSession.data;
       return (
-        <StudentPortal
-          student={liveStudent}
-          academicRecords={data.academicRecords || []}
-          staffTimetable={data.staffTimetable || []}
-          studentAttendance={data.studentAttendance || []}
-          collegeSettings={brandingSettings}
-          onLogout={() => {
-            safeLocalStorage.removeItem("scj_portal_user");
-            setPortalSession(null);
-            toast.info("Logged out from Student Portal");
-          }}
-        />
+        <React.Suspense fallback={<PremiumLoadingScreen brandingSettings={brandingSettings} authLoading={true} customMessage="Accessing Student Portal..." />}>
+          <StudentPortal
+            student={liveStudent}
+            academicRecords={data.academicRecords || []}
+            staffTimetable={data.staffTimetable || []}
+            studentAttendance={data.studentAttendance || []}
+            collegeSettings={brandingSettings}
+            onLogout={() => {
+              safeLocalStorage.removeItem("scj_portal_user");
+              setPortalSession(null);
+              toast.info("Logged out from Student Portal");
+            }}
+          />
+        </React.Suspense>
       );
     } else if (portalSession.type === "staff") {
       const liveStaff = (data.staff || []).find((st) => st.id === portalSession.data?.id) || portalSession.data;
       return (
-        <StaffPortal
-          staff={liveStaff}
-          staffTimetable={data.staffTimetable || []}
-          staffAttendance={data.staffAttendance || []}
-          salaryPayments={data.salaryPayments || []}
-          staffAdvances={data.staffAdvances || []}
-          collegeSettings={brandingSettings}
-          onLogout={() => {
-            safeLocalStorage.removeItem("scj_portal_user");
-            setPortalSession(null);
-            toast.info("Logged out from Faculty Portal");
-          }}
-        />
+        <React.Suspense fallback={<PremiumLoadingScreen brandingSettings={brandingSettings} authLoading={true} customMessage="Accessing Faculty Portal..." />}>
+          <StaffPortal
+            staff={liveStaff}
+            staffTimetable={data.staffTimetable || []}
+            staffAttendance={data.staffAttendance || []}
+            salaryPayments={data.salaryPayments || []}
+            staffAdvances={data.staffAdvances || []}
+            collegeSettings={brandingSettings}
+            onLogout={() => {
+              safeLocalStorage.removeItem("scj_portal_user");
+              setPortalSession(null);
+              toast.info("Logged out from Faculty Portal");
+            }}
+          />
+        </React.Suspense>
       );
     }
   }
@@ -1978,45 +2016,19 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#fcfdfd] dark:bg-slate-950 relative">
-        {/* Global VisionOS Volumetric Spatial Ambient Atmosphere */}
-        <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-          <motion.div
-            animate={{
-              x: [0, 50, -20, 0],
-              y: [0, 30, -30, 0],
-              scale: [1, 1.1, 0.95, 1],
-            }}
-            transition={{ duration: 25, repeat: Infinity, ease: "easeInOut" }}
-            className="absolute top-[5%] -left-32 w-[550px] h-[550px] bg-superior-teal/10 dark:bg-emerald-500/10 rounded-full blur-[140px]"
-          />
-          <motion.div
-            animate={{
-              x: [0, -40, 30, 0],
-              y: [0, 50, -20, 0],
-              scale: [1, 1.15, 0.9, 1],
-            }}
-            transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
-            className="absolute top-[30%] -right-28 w-[500px] h-[500px] bg-superior-gold/10 dark:bg-amber-500/10 rounded-full blur-[130px]"
-          />
-          <motion.div
-            animate={{
-              x: [0, 30, -30, 0],
-              y: [0, -30, 30, 0],
-              scale: [1, 1.08, 1],
-            }}
-            transition={{ duration: 28, repeat: Infinity, ease: "easeInOut" }}
-            className="absolute bottom-[20%] left-[25%] w-[480px] h-[480px] bg-cyan-500/8 dark:bg-blue-600/10 rounded-full blur-[140px]"
-          />
-          <motion.div
-            animate={{
-              x: [0, -25, 25, 0],
-              y: [0, 40, -25, 0],
-              scale: [1, 1.12, 1],
-            }}
-            transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
-            className="absolute bottom-[5%] right-[15%] w-[420px] h-[420px] bg-rose-500/8 dark:bg-purple-600/8 rounded-full blur-[130px]"
-          />
-        </div>
+        {/* Hardware-Accelerated Ambient Atmosphere (Static GPU Shaders - 0% CPU Overhead) */}
+        <div 
+          className="fixed inset-0 pointer-events-none z-0 opacity-40 dark:opacity-20"
+          style={{
+            backgroundImage: `
+              radial-gradient(circle at 8% 12%, rgba(8, 90, 78, 0.15) 0%, transparent 40%),
+              radial-gradient(circle at 92% 25%, rgba(201, 168, 76, 0.12) 0%, transparent 35%),
+              radial-gradient(circle at 35% 85%, rgba(6, 182, 212, 0.08) 0%, transparent 45%),
+              radial-gradient(circle at 80% 90%, rgba(244, 63, 94, 0.06) 0%, transparent 40%)
+            `,
+            willChange: 'transform'
+          }}
+        />
 
         {/* Header - VisionOS Floating Spatial Navigation Dock */}
         <header className="mx-3 sm:mx-6 mt-2 mb-1.5 h-14 sm:h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl flex items-center justify-between px-3 sm:px-5 rounded-2xl sm:rounded-3xl border border-slate-200/80 dark:border-white/10 sticky top-2 z-30 shadow-[0_8px_30px_rgba(0,0,0,0.05)] before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-white/60 before:to-transparent overflow-hidden">
@@ -2184,11 +2196,13 @@ export default function App() {
 
             {/* Notifications */}
             {isSuperAdmin && (
-              <NotificationPanel
-                notifications={data.notifications}
-                onMarkRead={data.markNotificationRead}
-                onClearAll={data.clearAllNotifications}
-              />
+              <React.Suspense fallback={null}>
+                <NotificationPanel
+                  notifications={data.notifications}
+                  onMarkRead={data.markNotificationRead}
+                  onClearAll={data.clearAllNotifications}
+                />
+              </React.Suspense>
             )}
 
             {/* Executive User Profile Badge */}
@@ -2351,23 +2365,20 @@ export default function App() {
           </div>
         )}
 
-        {/* Content Area with Spatial 3D Perspective Transition */}
-        <div className="flex-1 overflow-auto relative z-10" style={{ perspective: 1200 }}>
+        {/* Content Area with High-Performance Hardware Acceleration */}
+        <div className="flex-1 overflow-auto relative z-10">
           <div className="w-full max-w-full px-3 sm:px-6 pt-1 pb-6">
-            <AnimatePresence mode="wait">
-              
+            <React.Suspense fallback={<ViewLoader />}>
+              <AnimatePresence mode="wait">
                 <motion.div
                   key={`${activePage}-${activeFilter}`}
-                  initial={{ opacity: 0, rotateX: 6, scale: 0.985, y: 10 }}
-                  animate={{ opacity: 1, rotateX: 0, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, rotateX: -6, scale: 0.985, y: -10 }}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
                   transition={{
-                    type: "spring",
-                    stiffness: 380,
-                    damping: 30,
-                    mass: 0.8
+                    duration: 0.15,
+                    ease: "easeOut"
                   }}
-                  style={{ transformStyle: "preserve-3d", transformOrigin: "top center" }}
                 >
                   {activePage === "dashboard" && (
                     <DashboardView
@@ -2473,44 +2484,46 @@ export default function App() {
                   />
                 )}
               </motion.div>
-              
             </AnimatePresence>
+            </React.Suspense>
           </div>
         </div>
       </main>
 
-      <AccessControlDialog
-        open={isAccessDialogOpen}
-        onOpenChange={setIsAccessDialogOpen}
-        permissions={data.permissions}
-        onUpdate={data.updatePermission}
-        onDelete={data.deletePermission}
-        settings={data.settings}
-      />
+      <React.Suspense fallback={null}>
+        <AccessControlDialog
+          open={isAccessDialogOpen}
+          onOpenChange={setIsAccessDialogOpen}
+          permissions={data.permissions}
+          onUpdate={data.updatePermission}
+          onDelete={data.deletePermission}
+          settings={data.settings}
+        />
 
-      {/* Global Spotlight Search (Ctrl + K) */}
-      <GlobalCommandPalette
-        isOpen={isCommandPaletteOpen}
-        onClose={() => setIsCommandPaletteOpen(false)}
-        data={filteredData}
-        onSelectStudent={(student, tab) => {
-          setDossierInitialTab(tab || 'profile');
-          setDossierStudent(student);
-        }}
-        onNavigate={(page, filter) => handleNavClick(page as Page, filter)}
-      />
+        {/* Global Spotlight Search (Ctrl + K) */}
+        <GlobalCommandPalette
+          isOpen={isCommandPaletteOpen}
+          onClose={() => setIsCommandPaletteOpen(false)}
+          data={filteredData}
+          onSelectStudent={(student, tab) => {
+            setDossierInitialTab(tab || 'profile');
+            setDossierStudent(student);
+          }}
+          onNavigate={(page, filter) => handleNavClick(page as Page, filter)}
+        />
 
-      {/* Universal Student 360° Dossier View */}
-      <StudentDossier360
-        student={dossierStudent}
-        isOpen={Boolean(dossierStudent)}
-        onClose={() => setDossierStudent(null)}
-        data={filteredData}
-        initialTab={dossierInitialTab}
-        onOpenWhatsApp={(phone) => {
-          handleNavClick("whatsapp-center");
-        }}
-      />
+        {/* Universal Student 360° Dossier View */}
+        <StudentDossier360
+          student={dossierStudent}
+          isOpen={Boolean(dossierStudent)}
+          onClose={() => setDossierStudent(null)}
+          data={filteredData}
+          initialTab={dossierInitialTab}
+          onOpenWhatsApp={(phone) => {
+            handleNavClick("whatsapp-center");
+          }}
+        />
+      </React.Suspense>
 
       {/* Universal Biometric Spot-Check Scanner Modal */}
       <InstantBiometricVerifyModal

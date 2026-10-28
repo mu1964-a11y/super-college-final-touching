@@ -565,10 +565,52 @@ export default function AttendanceView({ data }: { data: any }) {
     }));
   };
 
-  const getMonthlyStats = (studentId: string, targetMonth?: string) => {
-    const m = targetMonth || (activeTab === 'report' ? reportMonth : selectedDate.slice(0, 7));
-    const monthRecords = records.filter((r: any) => r.studentId === studentId && r.date && r.date.startsWith(m));
-    const stats = {
+  // High-performance O(1) indexed lookup for today's attendance records
+  const todayRecordsByStudentId = useMemo(() => {
+    const map = new Map<string, any>();
+    if (!Array.isArray(records)) return map;
+    for (let i = 0; i < records.length; i++) {
+      const r: any = records[i];
+      if (r && r.date === selectedDate) {
+        if (r.studentId) map.set(r.studentId, r);
+        if (r.student_id) map.set(r.student_id, r);
+        if (r.admissionId) map.set(r.admissionId, r);
+      }
+    }
+    return map;
+  }, [records, selectedDate]);
+
+  // High-performance pre-computed monthly stats map (avoids 2.5 million nested filter checks)
+  const monthlyStatsMap = useMemo(() => {
+    const m = activeTab === 'report' ? reportMonth : selectedDate.slice(0, 7);
+    const map = new Map<string, { present: number; absent: number; late: number; leave: number; holiday: number; totalWorkingDays: number }>();
+    if (!Array.isArray(records)) return map;
+
+    for (let i = 0; i < records.length; i++) {
+      const r: any = records[i];
+      if (r && r.date && r.date.startsWith(m)) {
+        const sId = r.studentId || r.student_id;
+        if (!sId) continue;
+        let s = map.get(sId);
+        if (!s) {
+          s = { present: 0, absent: 0, late: 0, leave: 0, holiday: 0, totalWorkingDays: 0 };
+          map.set(sId, s);
+        }
+        if (['Present', 'Late'].includes(r.status)) s.totalWorkingDays++;
+        switch(r.status) {
+          case 'Present': s.present++; break;
+          case 'Absent': s.absent++; break;
+          case 'Late': s.late++; break;
+          case 'Leave': s.leave++; break;
+          case 'Holiday': s.holiday++; break;
+        }
+      }
+    }
+    return map;
+  }, [records, activeTab, reportMonth, selectedDate]);
+
+  const getMonthlyStats = useCallback((studentId: string) => {
+    return monthlyStatsMap.get(studentId) || {
       present: 0,
       absent: 0,
       late: 0,
@@ -576,21 +618,7 @@ export default function AttendanceView({ data }: { data: any }) {
       holiday: 0,
       totalWorkingDays: 0
     };
-
-    monthRecords.forEach((r: any) => {
-      if (['Present', 'Late'].includes(r.status)) stats.totalWorkingDays++;
-      
-      switch(r.status) {
-        case 'Present': stats.present++; break;
-        case 'Absent': stats.absent++; break;
-        case 'Late': stats.late++; break;
-        case 'Leave': stats.leave++; break;
-        case 'Holiday': stats.holiday++; break;
-      }
-    });
-
-    return stats;
-  };
+  }, [monthlyStatsMap]);
 
   const dispatchStudentAttendanceWhatsApp = async (
     student: any,
@@ -1335,15 +1363,10 @@ export default function AttendanceView({ data }: { data: any }) {
                    ) : (
                      filteredStudents.map((student: any) => {
                       const entry = dailyEntries[student.id];
-                      const existing = records.find((r: any) => 
-                        r.date === selectedDate && (
-                          r.studentId === student.id || 
-                          r.student_id === student.id ||
-                          (student.studentId && (r.studentId === student.studentId || r.student_id === student.studentId)) ||
-                          (student.collegeNo && (r.studentId === student.collegeNo || r.student_id === student.collegeNo)) ||
-                          (student.admissionId && (r.admissionId === student.admissionId || r.studentId === student.admissionId || r.student_id === student.admissionId))
-                        )
-                      );
+                      const existing = todayRecordsByStudentId.get(student.id) || 
+                        (student.studentId && todayRecordsByStudentId.get(student.studentId)) || 
+                        (student.collegeNo && todayRecordsByStudentId.get(student.collegeNo)) || 
+                        (student.admissionId && todayRecordsByStudentId.get(student.admissionId));
                       const bio = getStudentBiometrics(entry, existing);
                       const entrySnapshot = bio.entrySnapshot;
                       const exitSnapshot = bio.exitSnapshot;
