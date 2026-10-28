@@ -3,7 +3,137 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Superior College Jahanian - Portal</title>
+    <title>SCJ Management System lms final</title>
+    <meta name="description" content="A comprehensive college management system for Superior College Jahanian, featuring admissions, student management, staff management, and financial tracking." />
+    <meta property="og:title" content="SCJ Management System lms final" />
+    <meta property="og:description" content="A comprehensive college management system for Superior College Jahanian, featuring admissions, student management, staff management, and financial tracking." />
+    <script>
+      // Prevent "TypeError: Cannot set property fetch of #<Window> which has only a getter"
+      // caused by browser extensions (e.g. request interceptors) attempting to overwrite window.fetch
+      (function() {
+        try {
+          var origDefineProperty = Object.defineProperty;
+          Object.defineProperty = function(obj, prop, descriptor) {
+            if ((obj === window || obj === Window.prototype || obj === globalThis) && prop === 'fetch' && descriptor && descriptor.get && !descriptor.set) {
+              var getter = descriptor.get;
+              var overrideFn = null;
+              return origDefineProperty.call(Object, obj, prop, {
+                configurable: true,
+                enumerable: descriptor.enumerable !== false,
+                get: function() {
+                  return overrideFn || getter.call(this);
+                },
+                set: function(fn) {
+                  if (typeof fn === 'function') {
+                    overrideFn = fn;
+                  }
+                }
+              });
+            }
+            return origDefineProperty.call(Object, obj, prop, descriptor);
+          };
+
+          var currentFetch = window.fetch ? window.fetch.bind(window) : undefined;
+          var desc = Object.getOwnPropertyDescriptor(window, 'fetch') || Object.getOwnPropertyDescriptor(Window.prototype, 'fetch');
+          if (!desc || desc.configurable !== false) {
+            origDefineProperty.call(Object, window, 'fetch', {
+              configurable: true,
+              enumerable: true,
+              get: function() { return currentFetch; },
+              set: function(fn) {
+                if (typeof fn === 'function') {
+                  currentFetch = fn;
+                }
+              }
+            });
+          }
+        } catch (_) {}
+
+        function clearStaleAuthStorage() {
+          try {
+            window.localStorage.removeItem('scj-auth');
+            window.localStorage.removeItem('scj-auth-user');
+            window.localStorage.removeItem('scj-auth-code-verifier');
+            for (var i = window.localStorage.length - 1; i >= 0; i--) {
+              var k = window.localStorage.key(i);
+              if (k && (k.indexOf('scj-auth') !== -1 || k.indexOf('sb-') === 0 || k.indexOf('supabase.auth') !== -1)) {
+                window.localStorage.removeItem(k);
+              }
+            }
+          } catch (_) {}
+        }
+
+        function isRefreshTokenErrorString(str) {
+          if (!str) return false;
+          var lower = String(str).toLowerCase();
+          return (
+            lower.indexOf('refresh token') !== -1 ||
+            lower.indexOf('refresh_token') !== -1 ||
+            lower.indexOf('invalid_grant') !== -1 ||
+            lower.indexOf('session_not_found') !== -1
+          );
+        }
+
+        try {
+          var rawConsoleError = console.error.bind(console);
+          console.error = function() {
+            try {
+              var argsStr = Array.prototype.slice.call(arguments).map(function(a) {
+                if (!a) return '';
+                if (typeof a === 'string') return a;
+                return (a.name || '') + ' ' + (a.message || '') + ' ' + (a.code || '') + ' ' + (a.stack || '');
+              }).join(' ');
+              if (isRefreshTokenErrorString(argsStr)) {
+                clearStaleAuthStorage();
+                return;
+              }
+            } catch (_) {}
+            return rawConsoleError.apply(console, arguments);
+          };
+        } catch (_) {}
+
+        window.addEventListener('error', function(event) {
+          var msg = (event && event.message) ? String(event.message) : '';
+          var file = (event && event.filename) ? String(event.filename) : '';
+          var errObjStr = (event && event.error) ? String(event.error.message || event.error) : '';
+          var combined = msg + ' ' + errObjStr;
+          if (isRefreshTokenErrorString(combined)) {
+            clearStaleAuthStorage();
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return false;
+          }
+          if (
+            msg.indexOf('Cannot set property fetch') !== -1 ||
+            file.indexOf('chrome-extension://') !== -1 ||
+            file.indexOf('moz-extension://') !== -1
+          ) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return false;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event && event.reason ? String(event.reason.stack || event.reason.message || event.reason) : '';
+          if (isRefreshTokenErrorString(reason)) {
+            clearStaleAuthStorage();
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return false;
+          }
+          if (
+            reason.indexOf('Cannot set property fetch') !== -1 ||
+            reason.indexOf('chrome-extension://') !== -1 ||
+            reason.indexOf('moz-extension://') !== -1
+          ) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return false;
+          }
+        }, true);
+      })();
+    </script>
     <link rel="icon" type="image/png" href="/superior-logo.png" />
     <link rel="shortcut icon" type="image/png" href="/superior-logo.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
@@ -22,11 +152,11 @@
         window.dispatchEvent(new CustomEvent('pwa-prompt-available', { detail: e }));
       });
     </script>
-    <script type="module" crossorigin src="/assets/index-mklG3UDE.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-B3WK6qIS.css">
+    <script type="module" crossorigin src="/assets/index-RGUaNR-C.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-C7rCZDZC.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"></div>
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {

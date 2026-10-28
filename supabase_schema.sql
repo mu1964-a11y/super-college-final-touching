@@ -303,6 +303,10 @@ ALTER TABLE "staff" ADD COLUMN IF NOT EXISTS "base_salary" NUMERIC DEFAULT 0;
 ALTER TABLE "staff" ADD COLUMN IF NOT EXISTS "fingerprint_template" TEXT;
 ALTER TABLE "staff" ADD COLUMN IF NOT EXISTS "fingerprint_finger" TEXT;
 ALTER TABLE "staff" ADD COLUMN IF NOT EXISTS "fingerprint_enrolled_at" TIMESTAMP WITH TIME ZONE;
+ALTER TABLE "staff" ADD COLUMN IF NOT EXISTS "duty_start_time" TEXT;
+ALTER TABLE "staff" ADD COLUMN IF NOT EXISTS "duty_end_time" TEXT;
+ALTER TABLE "staff" ADD COLUMN IF NOT EXISTS "grace_minutes" INTEGER DEFAULT 5;
+ALTER TABLE "staff" ADD COLUMN IF NOT EXISTS "campus_shift" TEXT DEFAULT 'Boys Campus';
 
 -- ==============================================================================
 -- 7. STAFF ATTENDANCE

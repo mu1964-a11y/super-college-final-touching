@@ -98,6 +98,7 @@ import BiometricEnrollmentModal from './BiometricEnrollmentModal';
 import InstantBiometricVerifyModal from './InstantBiometricVerifyModal';
 import StaffSalarySlipModal from './StaffSalarySlipModal';
 import StaffJoiningDossierModal from './StaffJoiningDossierModal';
+import StaffDutyRoster from './StaffDutyRoster';
 
 export default function StaffView({ data, initialFilter, title, hideNavigation }: { data: any, initialFilter?: string | null, title?: string, hideNavigation?: boolean }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -119,8 +120,8 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
   const [selectedDossierStaff, setSelectedDossierStaff] = useState<Staff | null>(null);
   const [isDossierOpen, setIsDossierOpen] = useState(false);
 
-  const [activeModule, setActiveModule] = useState<'directory' | 'attendance' | 'payroll' | 'timetable' | 'subjects'>(
-    ['directory', 'attendance', 'payroll', 'timetable', 'subjects'].includes(initialFilter as string) 
+  const [activeModule, setActiveModule] = useState<'directory' | 'attendance' | 'payroll' | 'timetable' | 'subjects' | 'roster'>(
+    ['directory', 'attendance', 'payroll', 'timetable', 'subjects', 'roster'].includes(initialFilter as string) 
       ? (initialFilter as any) 
       : 'directory'
   );
@@ -280,7 +281,7 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(15);
       doc.setTextColor(255, 255, 255);
-      const collegeTitle = (data?.settings?.collegeName || "SUPERIOR GROUP OF COLLEGES JAHANIAN").toUpperCase();
+      const collegeTitle = (data?.settings?.collegeName || "SUPERIOR COLLEGE JAHANIAN").toUpperCase();
       doc.text(collegeTitle, textStartX, 22);
 
       // Document Subtitle
@@ -801,7 +802,7 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
       } else if (initialFilter === 'directory') {
         setActiveModule('directory');
         setRoleFilter('all');
-      } else if (['attendance', 'payroll', 'timetable', 'subjects'].includes(initialFilter)) {
+      } else if (['attendance', 'payroll', 'timetable', 'subjects', 'roster'].includes(initialFilter)) {
         setActiveModule(initialFilter as any);
         setRoleFilter('all');
       }
@@ -956,6 +957,19 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                 )}
               >
                 <GraduationCap size={13} /> Subjects
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveModule('roster')}
+                className={cn(
+                  "px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                  activeModule === 'roster'
+                    ? "bg-white dark:bg-slate-700 text-superior-teal dark:text-emerald-300 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                )}
+                title="Teacher-wise Lecture Timings & Biometric Duty Roster"
+              >
+                <Clock size={13} className="text-amber-500" /> Duty Roster
               </button>
             </div>
           )}
@@ -1745,6 +1759,7 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
       <TabsContent value="timetable" className="space-y-8 mt-0 focus-visible:outline-none">
         <StaffTimetable 
           staffList={data.staff || filteredStaff} 
+          students={data.students || []}
           timetableRecords={data.staffTimetable || []} 
           onAddEntry={data.addTimetableEntry} 
           onRemoveEntry={data.removeTimetableEntry} 
@@ -1755,6 +1770,16 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
 
       <TabsContent value="subjects" className="space-y-8 mt-0 focus-visible:outline-none">
         <StaffSubjects staffList={data.staff || filteredStaff} onUpdateStaff={data.updateStaff} />
+      </TabsContent>
+
+      <TabsContent value="roster" className="space-y-8 mt-0 focus-visible:outline-none">
+        <StaffDutyRoster 
+          staffList={data.staff || filteredStaff} 
+          staffTimetable={data.staffTimetable || []} 
+          onUpdateStaff={data.updateStaff} 
+          settings={data?.settings}
+          collegeName={data?.settings?.collegeName || 'Superior College Jahanian'}
+        />
       </TabsContent>
       </Tabs>
 
@@ -2108,7 +2133,7 @@ function StaffProfile({
                         {q}
                       </span>
                     ))
-                  ) : member.qualification ? (
+                  ) : typeof member.qualification === 'string' && member.qualification.trim() ? (
                     member.qualification.split(',').map(q => q.trim()).filter(Boolean).map(q => (
                       <span key={q} className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-900 border border-blue-300">
                         {q}

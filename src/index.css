@@ -537,3 +537,58 @@
 .dark table thead th { background-color: var(--card) !important; border-bottom-color: rgba(255, 255, 255, 0.1) !important; }
 .dark table tbody tr { border-bottom-color: rgba(255, 255, 255, 0.1) !important; }
 .dark table tbody tr:hover { background-color: rgba(255, 255, 255, 0.03) !important; }
+
+/* Fast, Clean, Single-Slot Toast Notifications with Right-Aligned '×' Cut Button */
+[data-sonner-toaster] {
+  z-index: 999999 !important;
+}
+
+[data-sonner-toast].scj-toast-item,
+[data-sonner-toast] {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-radius: 14px !important;
+  padding: 12px 42px 12px 14px !important;
+  box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.18), 0 4px 10px -2px rgba(15, 23, 42, 0.08) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+  backdrop-filter: blur(12px) !important;
+  transition: transform 0.15s ease, opacity 0.15s ease !important;
+}
+
+[data-sonner-toast] [data-close-button],
+.scj-toast-close-btn {
+  position: absolute !important;
+  left: auto !important;
+  right: 10px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 7px !important;
+  border: 1px solid rgba(15, 23, 42, 0.15) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  color: #334155 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  z-index: 30 !important;
+  transition: background-color 0.12s ease, transform 0.12s ease !important;
+}
+
+[data-sonner-toast] [data-close-button]:hover,
+.scj-toast-close-btn:hover {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.3) !important;
+  transform: translateY(-50%) scale(1.06) !important;
+}
+

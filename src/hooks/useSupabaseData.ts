@@ -15,6 +15,7 @@ import {
 } from '../types';
 import { toast } from 'sonner';
 import { safeLocalStorage } from '../utils/safeStorage';
+import { secugenService } from '../lib/secugenService';
 
 function safeParseArray(val: any): string[] {
   if (Array.isArray(val)) return val;
@@ -105,7 +106,7 @@ export function useSupabaseData(user: any) {
     return allData;
   };
 
-  const fetchData = useCallback(async (silent = false) => {
+  const runFullFetchData = useCallback(async (silent = false) => {
     // Prevent overlapping fetches or fetches during bulk operations
     if (isFetchingRef.current || isBulkOperatingRef.current || !isSupabaseConfigured) return;
     
@@ -307,9 +308,46 @@ export function useSupabaseData(user: any) {
             transactions: s.fee_ledger?.transactions || []
           },
           feeHistory: s.fee_history || [],
-          fingerprintTemplate: s.fingerprint_template || linkedAdmission?.fingerprint_template || (s as any).fingerprintTemplate || undefined,
-          fingerprintFinger: s.fingerprint_finger || linkedAdmission?.fingerprint_finger || (s as any).fingerprintFinger || undefined,
-          fingerprintEnrolledAt: s.fingerprint_enrolled_at || linkedAdmission?.fingerprint_enrolled_at || (s as any).fingerprintEnrolledAt || undefined
+          ...(() => {
+            const isFpDeleted =
+              safeLocalStorage.getItem(`scj_fp_deleted_${s.id}`) === 'true' ||
+              (s.admission_id && safeLocalStorage.getItem(`scj_fp_deleted_${s.admission_id}`) === 'true') ||
+              (linkedAdmission?.id && safeLocalStorage.getItem(`scj_fp_deleted_${linkedAdmission.id}`) === 'true');
+
+            if (isFpDeleted) {
+              if (s.fingerprint_template) {
+                supabase.from('students').update({
+                  fingerprint_template: null,
+                  fingerprint_finger: null,
+                  fingerprint_enrolled_at: null,
+                }).eq('id', s.id).then(() => {});
+              }
+              if (linkedAdmission?.fingerprint_template && linkedAdmission?.id) {
+                supabase.from('admissions').update({
+                  fingerprint_template: null,
+                  fingerprint_finger: null,
+                  fingerprint_enrolled_at: null,
+                }).eq('id', linkedAdmission.id).then(() => {});
+              }
+              return {
+                fingerprintTemplate: undefined,
+                fingerprintFinger: undefined,
+                fingerprintEnrolledAt: undefined,
+              };
+            }
+
+            const rawTpl = s.fingerprint_template || linkedAdmission?.fingerprint_template || (s as any).fingerprintTemplate || undefined;
+            const rawFgr = s.fingerprint_finger || linkedAdmission?.fingerprint_finger || (s as any).fingerprintFinger || undefined;
+            const cleanFgr = rawFgr
+              ? rawFgr.split(/\s*(?:\|\|\||\+)\s*/).map((f: string) => secugenService.cleanFingerLabel(f)).join(' + ')
+              : undefined;
+
+            return {
+              fingerprintTemplate: rawTpl,
+              fingerprintFinger: cleanFgr,
+              fingerprintEnrolledAt: s.fingerprint_enrolled_at || linkedAdmission?.fingerprint_enrolled_at || (s as any).fingerprintEnrolledAt || undefined,
+            };
+          })()
         };
         });
 
@@ -397,9 +435,23 @@ export function useSupabaseData(user: any) {
                 academicPart: a.academic_part || 'Part-1',
                 programType: a.program_type || 'Yearly',
                 currentSemester: a.current_semester || 0,
-                fingerprintTemplate: a.fingerprint_template || (a as any).fingerprintTemplate || undefined,
-                fingerprintFinger: a.fingerprint_finger || (a as any).fingerprintFinger || undefined,
-                fingerprintEnrolledAt: a.fingerprint_enrolled_at || (a as any).fingerprintEnrolledAt || undefined
+                fingerprintTemplate:
+                  safeLocalStorage.getItem(`scj_fp_deleted_${studentId}`) === 'true' ||
+                  safeLocalStorage.getItem(`scj_fp_deleted_${a.id}`) === 'true'
+                    ? undefined
+                    : (a.fingerprint_template || (a as any).fingerprintTemplate || undefined),
+                fingerprintFinger:
+                  safeLocalStorage.getItem(`scj_fp_deleted_${studentId}`) === 'true' ||
+                  safeLocalStorage.getItem(`scj_fp_deleted_${a.id}`) === 'true'
+                    ? undefined
+                    : (a.fingerprint_finger
+                        ? String(a.fingerprint_finger).split(/\s*(?:\|\|\||\+)\s*/).map((f: string) => secugenService.cleanFingerLabel(f)).join(' + ')
+                        : ((a as any).fingerprintFinger || undefined)),
+                fingerprintEnrolledAt:
+                  safeLocalStorage.getItem(`scj_fp_deleted_${studentId}`) === 'true' ||
+                  safeLocalStorage.getItem(`scj_fp_deleted_${a.id}`) === 'true'
+                    ? undefined
+                    : (a.fingerprint_enrolled_at || (a as any).fingerprintEnrolledAt || undefined)
               } as any);
             }
           });
@@ -409,33 +461,104 @@ export function useSupabaseData(user: any) {
         // Run promotion check
         autoPromoteStudents(mappedStudents);
       }
-      if (staffData) setStaff(staffData.map(st => ({
-        ...st,
-        fullName: st.full_name,
-        fatherName: st.father_name,
-        joinDate: st.join_date,
-        designation: st.designation || undefined,
-        secondaryRole: (st as any).secondary_role || (st.designation && st.designation.includes('&') ? st.designation.split('&')[1].trim() : undefined),
-        baseSalary: st.base_salary,
-        salary: st.salary,
-        photo: st.photo_url || st.photo,
-        photo_url: st.photo_url || st.photo,
-        dob: st.dob,
-        cnic: st.cnic,
-        qualification: st.qualification,
-        specialization: st.specialization,
-        subjects: st.subjects,
-        fingerprintTemplate: st.fingerprint_template || (st as any).fingerprintTemplate || undefined,
-        fingerprintFinger: st.fingerprint_finger || (st as any).fingerprintFinger || undefined,
-        fingerprintEnrolledAt: st.fingerprint_enrolled_at || (st as any).fingerprintEnrolledAt || undefined
-      })));
+      if (staffData) setStaff(staffData.map(st => {
+        const isStaffFpDeleted = safeLocalStorage.getItem(`scj_fp_deleted_${st.id}`) === 'true';
+        let dbTemplate = isStaffFpDeleted ? undefined : (st.fingerprint_template || (st as any).fingerprintTemplate || undefined);
+        let rawDbFinger = isStaffFpDeleted ? undefined : (st.fingerprint_finger || (st as any).fingerprintFinger || undefined);
+        let dbFinger = rawDbFinger
+          ? String(rawDbFinger).split(/\s*(?:\|\|\||\+)\s*/).map((f: string) => secugenService.cleanFingerLabel(f)).join(' + ')
+          : undefined;
+        let dbEnrolledAt = isStaffFpDeleted ? undefined : (st.fingerprint_enrolled_at || (st as any).fingerprintEnrolledAt || undefined);
+
+        try {
+          const vaultKey = `scj_fp_vault_${st.id}`;
+          if (isStaffFpDeleted) {
+            safeLocalStorage.removeItem(vaultKey);
+          } else if (dbTemplate) {
+            safeLocalStorage.setItem(vaultKey, JSON.stringify({
+              personId: st.id,
+              personType: 'staff',
+              template: dbTemplate,
+              finger: dbFinger || 'Right Thumb',
+              enrolledAt: dbEnrolledAt || new Date().toISOString()
+            }));
+          } else {
+            const cachedVault = safeLocalStorage.getItem(vaultKey);
+            if (cachedVault) {
+              const parsed = JSON.parse(cachedVault);
+              if (parsed?.template) {
+                dbTemplate = parsed.template;
+                dbFinger = parsed.finger
+                  ? String(parsed.finger).split(/\s*(?:\|\|\||\+)\s*/).map((f: string) => secugenService.cleanFingerLabel(f)).join(' + ')
+                  : 'Right Thumb';
+                dbEnrolledAt = parsed.enrolledAt || new Date().toISOString();
+                // Push recovered template back to Supabase silently
+                supabase.from('staff').update({
+                  fingerprint_template: dbTemplate,
+                  fingerprint_finger: dbFinger,
+                  fingerprint_enrolled_at: dbEnrolledAt,
+                }).eq('id', st.id).then(() => {});
+              }
+            }
+          }
+        } catch {}
+
+        return {
+          ...st,
+          fullName: st.full_name,
+          fatherName: st.father_name,
+          joinDate: st.join_date,
+          designation: st.designation || undefined,
+          secondaryRole: (st as any).secondary_role || (st.designation && st.designation.includes('&') ? st.designation.split('&')[1].trim() : undefined),
+          baseSalary: st.base_salary,
+          salary: st.salary,
+          photo: st.photo_url || st.photo,
+          photo_url: st.photo_url || st.photo,
+          dob: st.dob,
+          cnic: st.cnic,
+          qualification: st.qualification,
+          specialization: st.specialization,
+          subjects: st.subjects,
+          fingerprintTemplate: dbTemplate,
+          fingerprintFinger: dbFinger,
+          fingerprintEnrolledAt: dbEnrolledAt,
+          ...(() => {
+            let dutyIn = st.duty_start_time || (st as any).dutyStartTime;
+            let dutyOut = st.duty_end_time || (st as any).dutyEndTime;
+            let grace = st.grace_minutes !== undefined && st.grace_minutes !== null ? Number(st.grace_minutes) : ((st as any).graceMinutes !== undefined ? Number((st as any).graceMinutes) : 5);
+            let shift = st.campus_shift || (st as any).campusShift;
+            try {
+              const cached = safeLocalStorage.getItem(`scj_staff_duty_${st.id}`);
+              if (cached) {
+                const parsed = JSON.parse(cached);
+                if (!dutyIn && parsed.dutyStartTime) dutyIn = parsed.dutyStartTime;
+                if (!dutyOut && parsed.dutyEndTime) dutyOut = parsed.dutyEndTime;
+                if (grace === undefined && parsed.graceMinutes !== undefined) grace = Number(parsed.graceMinutes);
+                if (!shift && parsed.campusShift) shift = parsed.campusShift;
+              }
+            } catch {}
+            return {
+              dutyStartTime: dutyIn || undefined,
+              dutyEndTime: dutyOut || undefined,
+              duty_start_time: dutyIn || undefined,
+              duty_end_time: dutyOut || undefined,
+              graceMinutes: grace ?? 5,
+              grace_minutes: grace ?? 5,
+              campusShift: shift || 'Boys Campus',
+              campus_shift: shift || 'Boys Campus',
+            };
+          })()
+        };
+      }));
       if (staffAttendanceData) setStaffAttendance(staffAttendanceData.map(a => {
         let parsedNotes: any = null;
         if (a.notes && typeof a.notes === 'string' && a.notes.startsWith('{')) {
           try { parsedNotes = JSON.parse(a.notes); } catch {}
         }
-        const checkIn = a.check_in || a.check_in_time || parsedNotes?.check_in_time || null;
-        const checkOut = a.check_out || a.check_out_time || parsedNotes?.check_out_time || null;
+        const checkIn = a.check_in || a.check_in_time || parsedNotes?.checkIn || parsedNotes?.check_in || parsedNotes?.check_in_time || null;
+        const breakOut = parsedNotes?.breakOut || parsedNotes?.break_out || null;
+        const breakIn = parsedNotes?.breakIn || parsedNotes?.break_in || null;
+        const checkOut = a.check_out || a.check_out_time || parsedNotes?.checkOut || parsedNotes?.check_out || parsedNotes?.check_out_time || null;
         let entrySnap: string | null = null;
         let exitSnap: string | null = null;
         if (parsedNotes) {
@@ -450,18 +573,21 @@ export function useSupabaseData(user: any) {
           }
         }
         const isBio = a.verification_method === 'face_biometric' || parsedNotes?.verification_method === 'face_biometric' || Boolean(entrySnap || exitSnap);
+        const isSecuGen = a.verification_method === 'secugen_fingerprint' || parsedNotes?.method === 'biometric_fingerprint' || parsedNotes?.Verify?.includes('SecuGen') || parsedNotes?.Verify?.includes('Biometric');
 
         return {
           ...a,
           staffId: a.staff_id,
           checkIn,
+          breakOut,
+          breakIn,
           checkOut,
           checkInTime: checkIn,
           checkOutTime: checkOut,
           snapshotUrl: entrySnap || exitSnap || null,
           entrySnapshotUrl: entrySnap,
           exitSnapshotUrl: exitSnap,
-          verificationMethod: isBio ? 'face_biometric' : (a.verification_method || 'manual'),
+          verificationMethod: isSecuGen ? 'secugen_fingerprint' : isBio ? 'face_biometric' : (a.verification_method || 'manual'),
           parsedNotes
         };
       }));
@@ -478,8 +604,8 @@ export function useSupabaseData(user: any) {
         if (a.notes && typeof a.notes === 'string' && a.notes.startsWith('{')) {
           try { parsedNotes = JSON.parse(a.notes); } catch {}
         }
-        const checkIn = a.check_in_time || parsedNotes?.check_in_time || null;
-        const checkOut = a.check_out_time || parsedNotes?.check_out_time || null;
+        const checkIn = a.check_in_time || parsedNotes?.checkIn || parsedNotes?.check_in || parsedNotes?.check_in_time || null;
+        const checkOut = a.check_out_time || parsedNotes?.checkOut || parsedNotes?.check_out || parsedNotes?.check_out_time || null;
         let entrySnap: string | null = null;
         let exitSnap: string | null = null;
         if (parsedNotes) {
@@ -494,16 +620,19 @@ export function useSupabaseData(user: any) {
           }
         }
         const isBio = a.verification_method === 'face_biometric' || parsedNotes?.verification_method === 'face_biometric' || Boolean(entrySnap || exitSnap);
+        const isSecuGen = a.verification_method === 'secugen_fingerprint' || parsedNotes?.method === 'biometric_fingerprint' || parsedNotes?.Verify?.includes('SecuGen') || parsedNotes?.Verify?.includes('Biometric');
 
         return {
           ...a,
           studentId: a.student_id,
+          checkIn,
+          checkOut,
           checkInTime: checkIn,
           checkOutTime: checkOut,
           snapshotUrl: entrySnap || exitSnap || null,
           entrySnapshotUrl: entrySnap,
           exitSnapshotUrl: exitSnap,
-          verificationMethod: isBio ? 'face_biometric' : (a.verification_method || 'manual'),
+          verificationMethod: isSecuGen ? 'secugen_fingerprint' : isBio ? 'face_biometric' : (a.verification_method || 'manual'),
           parsedNotes
         };
       }));
@@ -531,10 +660,13 @@ export function useSupabaseData(user: any) {
         if (settingsData.config?.deletedArchive && Array.isArray(settingsData.config.deletedArchive)) {
           setDeletedArchive(settingsData.config.deletedArchive);
         }
+        const normalizedCollegeName = (settingsData.college_name || 'Superior College Jahanian')
+          .replace(/Superior Group of Colleges\s*,?\s*Jahanian/gi, 'Superior College Jahanian')
+          .replace(/Superior Group of Colleges/gi, 'Superior College Jahanian');
         setSettings({
         id: settingsData.id,
-        collegeName: settingsData.college_name,
-        campusName: settingsData.campus_name,
+        collegeName: normalizedCollegeName,
+        campusName: (settingsData.campus_name || '').replace(/Superior Group of Colleges/gi, 'Superior College Jahanian'),
         logo: settingsData.logo_url || settingsData.logo || settingsData.config?.logo,
         address: settingsData.address,
         contactNumber: settingsData.contact_number,
@@ -612,9 +744,114 @@ export function useSupabaseData(user: any) {
   const debouncedFetchData = useCallback(() => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
-      fetchData(true);
-    }, 1500); // 1.5 second debounce to bundle realtime events during bulk operations
-  }, [fetchData]);
+      runFullFetchData(true);
+    }, 1200);
+  }, [runFullFetchData]);
+
+  // Fast non-blocking fetchData:
+  // - Initial load (silent === false) awaits full dataset
+  // - Post-mutation silent sync (silent === true) schedules background refresh and resolves in 0ms
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) {
+      await runFullFetchData(false);
+      return;
+    }
+    debouncedFetchData();
+  }, [runFullFetchData, debouncedFetchData]);
+
+  const refreshStudentAttendanceOnly = useCallback(async () => {
+    if (!isSupabaseConfigured || isBulkOperatingRef.current) return;
+    try {
+      const { data: studentAttendanceData } = await supabase
+        .from('student_attendance')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(3000);
+      if (studentAttendanceData) {
+        setStudentAttendance(studentAttendanceData.map(a => {
+          let parsedNotes: any = null;
+          if (a.notes && typeof a.notes === 'string' && a.notes.startsWith('{')) {
+            try { parsedNotes = JSON.parse(a.notes); } catch {}
+          }
+          const checkIn = a.check_in_time || parsedNotes?.check_in_time || null;
+          const checkOut = a.check_out_time || parsedNotes?.check_out_time || null;
+          let entrySnap: string | null = null;
+          let exitSnap: string | null = null;
+          if (parsedNotes) {
+            entrySnap = parsedNotes.entry_snapshot || null;
+            exitSnap = parsedNotes.exit_snapshot || null;
+          }
+          if (!entrySnap && !exitSnap && a.snapshot_url) {
+            if (checkOut && !checkIn) {
+              exitSnap = a.snapshot_url;
+            } else {
+              entrySnap = a.snapshot_url;
+            }
+          }
+          const isBio = a.verification_method === 'face_biometric' || parsedNotes?.verification_method === 'face_biometric' || Boolean(entrySnap || exitSnap);
+          return {
+            ...a,
+            studentId: a.student_id,
+            checkInTime: checkIn,
+            checkOutTime: checkOut,
+            snapshotUrl: entrySnap || exitSnap || null,
+            entrySnapshotUrl: entrySnap,
+            exitSnapshotUrl: exitSnap,
+            verificationMethod: isBio ? 'face_biometric' : (a.verification_method || 'manual'),
+            parsedNotes
+          };
+        }));
+      }
+    } catch {}
+  }, []);
+
+  const refreshStaffAttendanceOnly = useCallback(async () => {
+    if (!isSupabaseConfigured || isBulkOperatingRef.current) return;
+    try {
+      const { data: staffAttendanceData } = await supabase
+        .from('staff_attendance')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(2000);
+      if (staffAttendanceData) {
+        setStaffAttendance(staffAttendanceData.map(a => {
+          let parsedNotes: any = null;
+          if (a.notes && typeof a.notes === 'string' && a.notes.startsWith('{')) {
+            try { parsedNotes = JSON.parse(a.notes); } catch {}
+          }
+          const checkIn = a.check_in || a.check_in_time || parsedNotes?.check_in_time || null;
+          const checkOut = a.check_out || a.check_out_time || parsedNotes?.check_out_time || null;
+          let entrySnap: string | null = null;
+          let exitSnap: string | null = null;
+          if (parsedNotes) {
+            entrySnap = parsedNotes.entry_snapshot || null;
+            exitSnap = parsedNotes.exit_snapshot || null;
+          }
+          if (!entrySnap && !exitSnap && a.snapshot_url) {
+            if (checkOut && !checkIn) {
+              exitSnap = a.snapshot_url;
+            } else {
+              entrySnap = a.snapshot_url;
+            }
+          }
+          const isBio = a.verification_method === 'face_biometric' || parsedNotes?.verification_method === 'face_biometric' || Boolean(entrySnap || exitSnap);
+          return {
+            ...a,
+            staffId: a.staff_id,
+            checkIn,
+            checkOut,
+            checkInTime: checkIn,
+            checkOutTime: checkOut,
+            snapshotUrl: entrySnap || exitSnap || null,
+            entrySnapshotUrl: entrySnap,
+            exitSnapshotUrl: exitSnap,
+            verificationMethod: isBio ? 'face_biometric' : (a.verification_method || 'manual'),
+            parsedNotes
+          };
+        }));
+      }
+    } catch {}
+  }, []);
 
   const userId = user?.id;
 
@@ -624,7 +861,7 @@ export function useSupabaseData(user: any) {
       return;
     }
 
-    fetchData();
+    runFullFetchData(false);
 
     const leadsSubscription = supabase.channel('leads-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => debouncedFetchData())
@@ -632,16 +869,28 @@ export function useSupabaseData(user: any) {
 
     const notifSubscription = supabase.channel('notifications-changes')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
-        const newNotif = payload.new;
+        const newNotif: any = payload.new;
+        if (newNotif) {
+          setNotifications(prev => [
+            {
+              ...newNotif,
+              actorName: newNotif.actor_name,
+              isRead: newNotif.is_read,
+              timestamp: newNotif.created_at,
+            },
+            ...prev.filter(n => n.id !== newNotif.id).slice(0, 199),
+          ]);
+        }
+
         const msgOpts = {
           description: `${newNotif.message} (by ${newNotif.actor_name || 'Admin'})`,
-          duration: 6000,
+          duration: 2500,
         };
         
         // Define priority - only show global toasts for important things to avoid spam
-        const isUpdateOrDelete = newNotif.title.toLowerCase().includes('delete') || 
-                                 newNotif.title.toLowerCase().includes('update') || 
-                                 newNotif.title.toLowerCase().includes('remove') ||
+        const isUpdateOrDelete = (newNotif.title || '').toLowerCase().includes('delete') || 
+                                 (newNotif.title || '').toLowerCase().includes('update') || 
+                                 (newNotif.title || '').toLowerCase().includes('remove') ||
                                  newNotif.type === 'alert' ||
                                  newNotif.type === 'warning';
                                  
@@ -668,21 +917,18 @@ export function useSupabaseData(user: any) {
               toast.info(`${newNotif.title}`, msgOpts);
           }
         }
-        
-        // Always fetch the notifications silently so the notification panel stays updated
-        debouncedFetchData();
       })
       .subscribe();
 
     const studentAttSubscription = supabase.channel('student-attendance-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'student_attendance' }, () => {
-        debouncedFetchData();
+        refreshStudentAttendanceOnly();
       })
       .subscribe();
 
     const staffAttSubscription = supabase.channel('staff-attendance-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_attendance' }, () => {
-        debouncedFetchData();
+        refreshStaffAttendanceOnly();
       })
       .subscribe();
 
@@ -693,22 +939,22 @@ export function useSupabaseData(user: any) {
       supabase.removeChannel(staffAttSubscription);
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
-  }, [userId, fetchData, debouncedFetchData]);
+  }, [userId, runFullFetchData, debouncedFetchData, refreshStudentAttendanceOnly, refreshStaffAttendanceOnly]);
 
-  const logActivity = async (title: string, message: string | object, type: 'info' | 'alert' | 'success' | 'warning' = 'info') => {
+  const logActivity = (title: string, message: string | object, type: 'info' | 'alert' | 'success' | 'warning' = 'info') => {
     if (!user) return;
-    try {
-      const finalMessage = typeof message === 'object' && message !== null ? JSON.stringify(message) : String(message);
-      await supabase.from('notifications').insert({
+    const finalMessage = typeof message === 'object' && message !== null ? JSON.stringify(message) : String(message);
+    Promise.resolve(
+      supabase.from('notifications').insert({
         title,
         message: finalMessage,
         type,
         actor_name: user.displayName || user.email,
         is_read: false
-      });
-    } catch (e) {
-      console.error('Failed to log activity', e);
-    }
+      })
+    ).catch((e) => {
+      console.warn('Failed to log activity', e);
+    });
   };
 
   async function autoPromoteStudents(studentsList: Student[]) {
@@ -880,7 +1126,9 @@ export function useSupabaseData(user: any) {
       const { admission: admSnap, student: stuSnap } = snap;
 
       const resolvedStudentId = stuSnap?.id || admSnap?.student_id || admSnap?.studentId || item.studentId || item.originalId;
-      const resolvedAdmId = admSnap?.id || stuSnap?.admission_id || stuSnap?.admissionId || `adm-res-${Date.now()}`;
+      const rawAdmId = admSnap?.id || stuSnap?.admission_id || stuSnap?.admissionId;
+      const isUuid = typeof rawAdmId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawAdmId);
+      const resolvedAdmId = isUuid ? rawAdmId : crypto.randomUUID();
       const feePkg = Number(item.totalPackage || stuSnap?.totalPackage || stuSnap?.total_package || admSnap?.total_package || admSnap?.totalPackage || 0);
       const feeRec = Number(item.feeReceived || stuSnap?.feeReceived || stuSnap?.fee_received || admSnap?.fee_received || admSnap?.feeReceived || 0);
       const feeRem = Math.max(0, feePkg - feeRec);
@@ -1057,18 +1305,115 @@ export function useSupabaseData(user: any) {
     }
   };
 
-  const updateFingerprintRecord = useCallback((personId: string, personType: 'student' | 'staff', template: string, finger: string) => {
+  const updateFingerprintRecord = useCallback(async (
+    personId: string,
+    personType: 'student' | 'staff',
+    template: string,
+    finger: string,
+    mode: 'merge' | 'replace_all' = 'merge'
+  ) => {
     const isRemoving = !template || template.trim() === '';
-    const enrolledAt = isRemoving ? undefined : new Date().toISOString();
-    const finalTemplate = isRemoving ? undefined : template;
-    const finalFinger = isRemoving ? undefined : finger;
+    const enrolledAt = isRemoving ? null : new Date().toISOString();
 
+    let finalTemplate: string | null = isRemoving ? null : template;
+    let finalFinger: string | null = isRemoving ? null : finger;
+
+    if (!isRemoving && mode === 'merge') {
+      let existingTpl: string | null = null;
+      let existingFinger: string | null = null;
+
+      try {
+        const cached = safeLocalStorage.getItem(`scj_fp_vault_${personId}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed?.template) {
+            existingTpl = parsed.template;
+            existingFinger = parsed.finger;
+          }
+        }
+      } catch {}
+
+      if (personType === 'staff') {
+        const found = staff.find(s => s.id === personId);
+        if (found?.fingerprintTemplate) {
+          existingTpl = found.fingerprintTemplate;
+          existingFinger = found.fingerprintFinger || existingFinger;
+        }
+      } else {
+        const foundStu = students.find(s =>
+          s.id === personId ||
+          (s as any).studentId === personId ||
+          (s as any).collegeNo === personId ||
+          s.admissionId === personId
+        );
+        if (foundStu?.fingerprintTemplate) {
+          existingTpl = foundStu.fingerprintTemplate;
+          existingFinger = foundStu.fingerprintFinger || existingFinger;
+        }
+      }
+
+      if (existingTpl) {
+        const merged = secugenService.mergeFingerTemplate(
+          existingTpl,
+          existingFinger,
+          template,
+          finger,
+          'merge'
+        );
+        finalTemplate = merged.templateField;
+        finalFinger = merged.fingerField;
+      }
+    }
+
+    const matchedStu = personType === 'student'
+      ? students.find(s =>
+          s.id === personId ||
+          (s as any).studentId === personId ||
+          (s as any).collegeNo === personId ||
+          s.admissionId === personId
+        )
+      : undefined;
+
+    // 1. Save redundant local backup vault so templates are never lost even offline, or mark tombstone when removing
+    try {
+      if (isRemoving) {
+        safeLocalStorage.removeItem(`scj_fp_vault_${personId}`);
+        safeLocalStorage.removeItem(`scj_fp_thumb_${personId}`);
+        safeLocalStorage.setItem(`scj_fp_deleted_${personId}`, 'true');
+        if (matchedStu?.id) {
+          safeLocalStorage.removeItem(`scj_fp_vault_${matchedStu.id}`);
+          safeLocalStorage.removeItem(`scj_fp_thumb_${matchedStu.id}`);
+          safeLocalStorage.setItem(`scj_fp_deleted_${matchedStu.id}`, 'true');
+        }
+        if (matchedStu?.admissionId) {
+          safeLocalStorage.removeItem(`scj_fp_vault_${matchedStu.admissionId}`);
+          safeLocalStorage.removeItem(`scj_fp_thumb_${matchedStu.admissionId}`);
+          safeLocalStorage.setItem(`scj_fp_deleted_${matchedStu.admissionId}`, 'true');
+        }
+      } else {
+        safeLocalStorage.removeItem(`scj_fp_deleted_${personId}`);
+        if (matchedStu?.id) safeLocalStorage.removeItem(`scj_fp_deleted_${matchedStu.id}`);
+        if (matchedStu?.admissionId) safeLocalStorage.removeItem(`scj_fp_deleted_${matchedStu.admissionId}`);
+        safeLocalStorage.setItem(
+          `scj_fp_vault_${personId}`,
+          JSON.stringify({
+            personId,
+            personType,
+            template: finalTemplate,
+            finger: finalFinger,
+            enrolledAt,
+          })
+        );
+      }
+    } catch {}
+
+    // 2. Optimistic React state update
     if (personType === 'staff') {
       setStaff(prev => prev.map(s => s.id === personId ? {
         ...s,
-        fingerprintTemplate: finalTemplate,
-        fingerprintFinger: finalFinger,
-        fingerprintEnrolledAt: enrolledAt
+        fingerprintTemplate: finalTemplate || undefined,
+        fingerprintFinger: finalFinger || undefined,
+        fingerprintEnrolledAt: enrolledAt || undefined
       } : s));
     } else {
       setStudents(prev => prev.map(s => (
@@ -1078,22 +1423,79 @@ export function useSupabaseData(user: any) {
         s.admissionId === personId
       ) ? {
         ...s,
-        fingerprintTemplate: finalTemplate,
-        fingerprintFinger: finalFinger,
-        fingerprintEnrolledAt: enrolledAt
+        fingerprintTemplate: finalTemplate || undefined,
+        fingerprintFinger: finalFinger || undefined,
+        fingerprintEnrolledAt: enrolledAt || undefined
       } : s));
       setAdmissions(prev => prev.map(a => (
         a.id === personId || 
         a.studentId === personId || 
+        (matchedStu?.admissionId && a.id === matchedStu.admissionId) ||
+        (matchedStu?.collegeNo && (a as any).collegeNo === matchedStu.collegeNo) ||
         (a as any).collegeNo === personId
       ) ? {
         ...a,
-        fingerprintTemplate: finalTemplate,
-        fingerprintFinger: finalFinger,
-        fingerprintEnrolledAt: enrolledAt
+        fingerprintTemplate: finalTemplate || undefined,
+        fingerprintFinger: finalFinger || undefined,
+        fingerprintEnrolledAt: enrolledAt || undefined
       } : a));
     }
-  }, []);
+
+    // 3. Persist directly to Supabase database using safe individual queries so non-UUID roll numbers never fail
+    if (isSupabaseConfigured) {
+      try {
+        if (personType === 'staff') {
+          const { error } = await supabase
+            .from('staff')
+            .update({
+              fingerprint_template: finalTemplate,
+              fingerprint_finger: finalFinger,
+              fingerprint_enrolled_at: enrolledAt,
+            })
+            .eq('id', personId);
+          if (error) {
+            console.error('Supabase staff fingerprint update error:', error);
+            toast.error(`Database sync warning: ${error.message}`);
+          }
+        } else {
+          const payload = {
+            fingerprint_template: finalTemplate,
+            fingerprint_finger: finalFinger,
+            fingerprint_enrolled_at: enrolledAt,
+          };
+
+          const updateOps: any[] = [
+            supabase.from('students').update(payload).eq('id', personId),
+            supabase.from('admissions').update(payload).eq('student_id', personId),
+          ];
+
+          if (matchedStu?.id && matchedStu.id !== personId) {
+            updateOps.push(supabase.from('students').update(payload).eq('id', matchedStu.id));
+            updateOps.push(supabase.from('admissions').update(payload).eq('student_id', matchedStu.id));
+          }
+
+          if (matchedStu?.admissionId) {
+            updateOps.push(supabase.from('students').update(payload).eq('admission_id', matchedStu.admissionId));
+            updateOps.push(supabase.from('admissions').update(payload).eq('id', matchedStu.admissionId));
+          }
+
+          if (matchedStu?.collegeNo) {
+            updateOps.push(supabase.from('students').update(payload).eq('college_no', matchedStu.collegeNo));
+            updateOps.push(supabase.from('admissions').update(payload).eq('college_no', matchedStu.collegeNo));
+          }
+
+          // If personId itself is a UUID or matches admissions.id, try updating by id safely
+          updateOps.push(
+            Promise.resolve(supabase.from('admissions').update(payload).eq('id', personId)).catch(() => {})
+          );
+
+          await Promise.allSettled(updateOps);
+        }
+      } catch (err: any) {
+        console.error('Failed to persist fingerprint to Supabase:', err);
+      }
+    }
+  }, [staff, students]);
 
   const ctx = { user, generateStudentId, generateBatchStudentIds, leads, setLeads, admissions, setAdmissions, students, setStudents, staff, setStaff, staffAttendance, setStaffAttendance, staffTimetable, setStaffTimetable, staffAdvances, setStaffAdvances, expenses, setExpenses, incomes, setIncomes, academicRecords, setAcademicRecords, salaryPayments, setSalaryPayments, studentAttendance, setStudentAttendance, settings, setSettings, permissions, setPermissions, notifications, setNotifications, isBulkOperatingRef, logActivity, fetchData, archiveRecords, deletedArchive, setDeletedArchive };
   const leadsOps = useLeadsOperations(ctx);
@@ -1145,5 +1547,7 @@ export function useSupabaseData(user: any) {
     setStudents,
     setAdmissions,
     setLeads,
+    setStaffAttendance,
+    setStudentAttendance,
   };
 }

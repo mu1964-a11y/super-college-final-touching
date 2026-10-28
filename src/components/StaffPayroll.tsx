@@ -104,9 +104,25 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
     });
   }, [staffList, searchQuery]);
 
+  // Dynamic scheduled daily duty hours for selected staff (e.g. 4.5 hrs for custom lecturer vs 8 hrs for full-day)
+  const scheduledHours = useMemo(() => {
+    if (!selectedStaff) return hoursPerDay;
+    const startStr = selectedStaff.dutyStartTime || selectedStaff.duty_start_time;
+    const endStr = selectedStaff.dutyEndTime || selectedStaff.duty_end_time;
+    if (startStr && endStr && typeof startStr === 'string' && typeof endStr === 'string' && startStr.includes(':') && endStr.includes(':')) {
+      const [sH, sM] = startStr.split(':').map(Number);
+      const [eH, eM] = endStr.split(':').map(Number);
+      const diffMins = (eH * 60 + eM) - (sH * 60 + sM);
+      if (diffMins >= 60) {
+        return Math.round((diffMins / 60) * 10) / 10;
+      }
+    }
+    return hoursPerDay;
+  }, [selectedStaff, hoursPerDay]);
+
   const baseSalary = selectedStaff?.baseSalary || selectedStaff?.salary || 0;
   const computedDailyRate = baseSalary / monthDays;
-  const computedHourlyRate = computedDailyRate / hoursPerDay;
+  const computedHourlyRate = computedDailyRate / scheduledHours;
   const computedMinuteRate = computedHourlyRate / 60;
 
   const leaveDeduction = leavesTaken * computedDailyRate;
@@ -146,12 +162,31 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
     let regularLecs = 0;
     let totalLecs = 0;
 
-    // Parse the start time config
-    const [startH, startM] = collegeStartTime.split(':').map(Number);
-    const startMinsConfig = (startH || 0) * 60 + (startM || 0);
+    // Check if staff has custom lecture duty schedule
+    const customStart = selectedStaff.dutyStartTime || selectedStaff.duty_start_time;
+    const customEnd = selectedStaff.dutyEndTime || selectedStaff.duty_end_time;
+    const graceMins = Number(selectedStaff.graceMinutes ?? selectedStaff.grace_minutes ?? 5);
 
-    // Calculate expected checkout time based on hours per day
-    const endMinsConfig = startMinsConfig + (hoursPerDay * 60);
+    let startMinsConfig = 8 * 60;
+    let endMinsConfig = startMinsConfig + (hoursPerDay * 60);
+
+    if (customStart && typeof customStart === 'string' && customStart.includes(':')) {
+      const [cH, cM] = customStart.split(':').map(Number);
+      startMinsConfig = (cH || 8) * 60 + (cM || 0);
+    } else {
+      const safeCollegeStart = (collegeStartTime && typeof collegeStartTime === 'string' && collegeStartTime.includes(':')) ? collegeStartTime : '08:00';
+      const [startH, startM] = safeCollegeStart.split(':').map(Number);
+      startMinsConfig = (startH || 0) * 60 + (startM || 0);
+    }
+
+    if (customEnd && typeof customEnd === 'string' && customEnd.includes(':')) {
+      const [eH, eM] = customEnd.split(':').map(Number);
+      endMinsConfig = (eH || 14) * 60 + (eM || 0);
+    } else {
+      endMinsConfig = startMinsConfig + (hoursPerDay * 60);
+    }
+
+    const lateCutoffMins = startMinsConfig + graceMins;
 
     monthRecords.forEach(r => {
       // Leaves computation
@@ -163,17 +198,17 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
 
       // Late/Short minutes computation
       // Only penalize if status is Present or Late
-      if ((r.status === 'Present' || r.status === 'Late') && r.checkIn) {
+      if ((r.status === 'Present' || r.status === 'Late') && r.checkIn && typeof r.checkIn === 'string' && r.checkIn.includes(':')) {
         const [inH, inM] = r.checkIn.split(':').map(Number);
         const checkInMins = inH * 60 + inM;
         
-        if (checkInMins > startMinsConfig) {
+        if (checkInMins > lateCutoffMins) {
           totalLateMins += (checkInMins - startMinsConfig);
         }
       }
 
-      // If they check out early, count as late/short minutes as well
-      if ((r.status === 'Present' || r.status === 'Late') && r.checkOut) {
+      // If they check out early before scheduled duty ends, count as short minutes
+      if ((r.status === 'Present' || r.status === 'Late') && r.checkOut && typeof r.checkOut === 'string' && r.checkOut.includes(':')) {
         const [outH, outM] = r.checkOut.split(':').map(Number);
         const checkOutMins = outH * 60 + outM;
         
@@ -418,15 +453,26 @@ export default function StaffPayroll({ staffList, advances = [], staffTimetable 
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">College Hours / Day</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Daily Scheduled Hours</label>
+                    {(selectedStaff?.dutyStartTime || selectedStaff?.duty_start_time) && (
+                      <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
+                        Roster: {selectedStaff.dutyStartTime || selectedStaff.duty_start_time} - {selectedStaff.dutyEndTime || selectedStaff.duty_end_time || '13:30'} ({scheduledHours}h)
+                      </span>
+                    )}
+                  </div>
                   <Input 
                     type="number"
-                    value={hoursPerDay}
+                    value={scheduledHours}
                     onChange={(e) => setHoursPerDay(Number(e.target.value) || 1)}
                     className="h-12 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 font-medium"
                     step="0.5"
                   />
-                  <p className="text-[10px] text-slate-400">Determines expected check-out time.</p>
+                  <p className="text-[10px] text-slate-400">
+                    {(selectedStaff?.dutyStartTime || selectedStaff?.duty_start_time)
+                      ? `Auto-derived from ${selectedStaff.fullName}'s lecture roster (${selectedStaff.dutyStartTime || selectedStaff.duty_start_time} to ${selectedStaff.dutyEndTime || selectedStaff.duty_end_time || '13:30'}).`
+                      : 'Determines expected check-out time and hourly rate calculation.'}
+                  </p>
                 </div>
               </div>
             </CardContent>

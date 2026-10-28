@@ -1,232 +1,227 @@
-import React, { useState, useEffect } from "react";
-import { Fingerprint, Eye, Sparkles } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import React, { useState, useEffect, useMemo } from 'react';
+import { Fingerprint, CheckCircle2, X, ShieldCheck } from 'lucide-react';
+import { secugenService } from '../lib/secugenService';
+import { safeLocalStorage } from '../utils/safeStorage';
 
 interface FingerprintThumbnailProps {
   personId?: string;
   altId?: string;
   template?: string;
   fingerLabel?: string;
-  bmpBase64?: string;
-  size?: "xs" | "sm" | "md" | "lg";
-  className?: string;
+  size?: 'xs' | 'sm' | 'md';
   showBadge?: boolean;
-  onClick?: () => void;
   allowInspect?: boolean;
+  onClick?: () => void;
 }
 
 export default function FingerprintThumbnail({
   personId,
   altId,
   template,
-  fingerLabel = "Right Thumb",
-  bmpBase64,
-  size = "sm",
-  className,
+  fingerLabel = 'Right Thumb',
+  size = 'sm',
   showBadge = false,
+  allowInspect = false,
   onClick,
-  allowInspect = true,
 }: FingerprintThumbnailProps) {
-  const [thumbSrc, setThumbSrc] = useState<string | null>(bmpBase64 || null);
-  const [isInspectOpen, setIsInspectOpen] = useState(false);
+  const [bmpSrc, setBmpSrc] = useState<string | null>(null);
+  const [inspectOpen, setInspectOpen] = useState(false);
+
+  const isEnrolled = Boolean(template && String(template).trim().length > 10);
+  const cleanLabel = useMemo(
+    () =>
+      isEnrolled
+        ? secugenService.formatFingerBadge(fingerLabel, template)
+        : secugenService.cleanFingerLabel(fingerLabel),
+    [fingerLabel, template, isEnrolled]
+  );
+
+  const minutiaePoints = useMemo(() => {
+    if (!isEnrolled || !template || template === 'enrolled') return [];
+    return secugenService.parseIsoMinutiae(template);
+  }, [isEnrolled, template]);
 
   useEffect(() => {
-    if (bmpBase64) {
-      setThumbSrc(bmpBase64);
+    if (!personId && !altId) {
+      setBmpSrc(null);
       return;
     }
+    const cached =
+      (personId ? safeLocalStorage.getItem(`scj_fp_thumb_${personId}`) : null) ||
+      (altId ? safeLocalStorage.getItem(`scj_fp_thumb_${altId}`) : null);
 
-    // Check localStorage cache
-    if (typeof window !== "undefined") {
-      if (personId) {
-        const cached = localStorage.getItem(`scj_fp_thumb_${personId}`);
-        if (cached) {
-          setThumbSrc(cached);
-          return;
-        }
-      }
-      if (altId) {
-        const cachedAlt = localStorage.getItem(`scj_fp_thumb_${altId}`);
-        if (cachedAlt) {
-          setThumbSrc(cachedAlt);
-          return;
-        }
-      }
+    if (cached && cached.length > 80 && !cached.includes('undefined')) {
+      setBmpSrc(cached.startsWith('data:') ? cached : `data:image/bmp;base64,${cached}`);
+    } else {
+      setBmpSrc(null);
     }
+  }, [personId, altId, template]);
 
-    // Fallback: check if static uploaded impression file exists on server
-    const candidateId = personId || altId;
-    if (candidateId) {
-      const safeId = String(candidateId).replace(/[^a-zA-Z0-9_-]/g, "_");
-      const img = new Image();
-      img.src = `/uploads/fingerprints/${safeId}.bmp`;
-      img.onload = () => setThumbSrc(`/uploads/fingerprints/${safeId}.bmp`);
-    }
-  }, [personId, altId, bmpBase64]);
-
-  const hasEnrollment = Boolean(template || thumbSrc);
-
-  const sizeClasses = {
-    xs: "w-5 h-6 rounded-md",
-    sm: "w-7 h-8.5 rounded-lg",
-    md: "w-10 h-12 rounded-xl",
-    lg: "w-14 h-16 rounded-2xl",
-  };
-
-  const iconSizes = {
-    xs: 12,
-    sm: 15,
-    md: 20,
-    lg: 28,
-  };
+  const sizeClasses =
+    size === 'xs'
+      ? 'w-6 h-7 rounded-md'
+      : size === 'md'
+      ? 'w-12 h-14 rounded-xl'
+      : 'w-8 h-9 rounded-lg';
 
   const handleClick = (e: React.MouseEvent) => {
     if (onClick) {
-      onClick();
-    } else if (allowInspect && hasEnrollment) {
       e.stopPropagation();
-      setIsInspectOpen(true);
+      onClick();
+      return;
+    }
+    if (allowInspect && isEnrolled) {
+      e.stopPropagation();
+      setInspectOpen(true);
     }
   };
 
-  if (!hasEnrollment) {
-    return (
-      <div
-        className={cn(
-          sizeClasses[size],
-          "border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-center text-slate-300 dark:text-slate-600 transition-colors",
-          className
-        )}
-        title="Fingerprint missing"
-      >
-        <Fingerprint size={iconSizes[size]} className="opacity-40" />
-      </div>
-    );
-  }
-
   return (
     <>
-      <div
-        onClick={handleClick}
-        className={cn(
-          sizeClasses[size],
-          "relative overflow-hidden group cursor-pointer border transition-all shrink-0",
-          "border-emerald-500/40 bg-slate-950 shadow-xs hover:border-emerald-400 hover:shadow-emerald-500/20 hover:scale-105",
-          className
-        )}
-        title={`${fingerLabel} Impression (SecuGen) — Click to inspect`}
-      >
-        {thumbSrc ? (
-          <img
-            src={thumbSrc}
-            alt={`${fingerLabel} Impression`}
-            className="w-full h-full object-contain p-0.5 filter contrast-125 brightness-110 drop-shadow-[0_0_2px_rgba(16,185,129,0.4)]"
-          />
-        ) : (
-          /* High-fidelity Biometric Ridge Preview Vector */
-          <div className="w-full h-full flex flex-col items-center justify-center relative p-0.5 bg-gradient-to-b from-slate-950 to-slate-900">
+      <div className="inline-flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={handleClick}
+          title={
+            isEnrolled
+              ? `Biometric Enrolled (${cleanLabel}${
+                  minutiaePoints.length > 0 ? ` • ${minutiaePoints.length} Minutiae` : ''
+                })`
+              : 'Fingerprint Not Enrolled — Click to Scan'
+          }
+          className={`relative inline-flex items-center justify-center overflow-hidden border transition-all shrink-0 cursor-pointer ${sizeClasses} ${
+            isEnrolled
+              ? 'bg-slate-950 border-emerald-500/80 text-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.25)] hover:scale-105'
+              : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-400 hover:border-amber-400 hover:text-amber-500'
+          }`}
+        >
+          {bmpSrc ? (
+            <img
+              src={bmpSrc}
+              alt={cleanLabel}
+              className="w-full h-full object-contain p-0.5 filter contrast-125 brightness-110"
+              onError={() => setBmpSrc(null)}
+            />
+          ) : isEnrolled ? (
             <svg
               viewBox="0 0 40 48"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
-              className="w-full h-full text-emerald-400 stroke-current opacity-90 drop-shadow-[0_0_3px_rgba(52,211,153,0.5)]"
-              strokeWidth="1.6"
+              className="w-full h-full p-1 text-emerald-400 stroke-current"
+              strokeWidth="1.8"
               strokeLinecap="round"
             >
-              {/* Outer Loop */}
               <path d="M7 26 C7 14, 33 14, 33 26 C33 34, 28 40, 26 43" />
-              {/* Middle Ridge */}
               <path d="M12 26 C12 18, 28 18, 28 26 C28 35, 23 38, 20 44" />
-              {/* Inner Loop */}
               <path d="M16 26 C16 21, 24 21, 24 26 C24 33, 21 37, 20 40" />
-              {/* Core Whorl */}
               <path d="M19 26 C19 23, 21 23, 21 26 C21 30, 20 33, 20 36" />
-              {/* Left Delta Ridge */}
               <path d="M4 29 C4 18, 12 8, 20 8 C28 8, 36 18, 36 29" />
-              <path d="M4 35 C5 39, 9 43, 15 44" />
-              <path d="M36 35 C35 39, 31 43, 25 44" />
             </svg>
-            <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/10 via-transparent to-transparent pointer-events-none" />
-          </div>
-        )}
-
-        {/* Micro Green Active Biometric Pulse Indicator */}
-        <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_4px_rgba(52,211,153,0.9)]" />
-
-        {/* Hover Inspect Icon Overlay */}
-        <div className="absolute inset-0 bg-slate-950/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-emerald-300">
-          <Eye size={iconSizes[size]} />
-        </div>
+          ) : (
+            <Fingerprint size={size === 'xs' ? 13 : size === 'md' ? 20 : 15} />
+          )}
+          {isEnrolled && (
+            <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_#34d399]" />
+          )}
+        </button>
 
         {showBadge && (
-          <span className="absolute bottom-0 inset-x-0 bg-emerald-950/90 text-[7px] font-mono font-black text-emerald-300 text-center uppercase tracking-tight py-0.2">
-            Thumb
+          <span
+            className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+              isEnrolled
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-amber-50 text-amber-700 border-amber-200'
+            }`}
+          >
+            {isEnrolled ? cleanLabel : 'No Thumb'}
           </span>
         )}
       </div>
 
-      {/* Enlarged Biometric Inspection Modal */}
-      {isInspectOpen && (
-        <Dialog open={isInspectOpen} onOpenChange={setIsInspectOpen}>
-          <DialogContent className="max-w-xs p-0 overflow-hidden bg-slate-950 border border-emerald-500/40 rounded-3xl text-white shadow-2xl">
-            <div className="bg-gradient-to-b from-[#085a4e] to-slate-950 p-4 border-b border-white/10 text-center relative">
-              <div className="flex items-center justify-center gap-1.5 text-amber-300 text-xs font-mono font-bold uppercase tracking-wider mb-1">
-                <Sparkles size={13} />
-                <span>SecuGen Biometric Archive</span>
+      {inspectOpen && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            setInspectOpen(false);
+          }}
+          className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-sm w-full overflow-hidden"
+          >
+            <div className="bg-gradient-to-r from-[#064e43] to-[#085a4e] text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={18} className="text-emerald-300" />
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-wider">
+                    SecuGen Biometric Record
+                  </h4>
+                  <p className="text-[10px] text-emerald-200 font-mono">
+                    ID: {altId || personId || 'Verified'}
+                  </p>
+                </div>
               </div>
-              <DialogTitle className="text-base font-black text-white">
-                {fingerLabel} Impression
-              </DialogTitle>
-              <p className="text-[10px] text-emerald-200 mt-0.5 font-mono">
-                {personId ? `ID: ${personId}` : "Biometric Verified"}
-              </p>
+              <button
+                type="button"
+                onClick={() => setInspectOpen(false)}
+                className="p-1 rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+              >
+                <X size={15} />
+              </button>
             </div>
 
-            <div className="p-6 flex flex-col items-center justify-center gap-4">
-              <div className="w-48 h-60 rounded-2xl bg-black border-2 border-emerald-500/50 shadow-[0_0_25px_rgba(16,185,129,0.25)] flex items-center justify-center p-2 relative overflow-hidden">
-                {thumbSrc ? (
+            <div className="p-5 flex flex-col items-center text-center space-y-4">
+              <div className="w-36 h-44 rounded-2xl bg-slate-950 border-2 border-emerald-500 shadow-inner flex flex-col items-center justify-center relative overflow-hidden p-2">
+                {bmpSrc ? (
                   <img
-                    src={thumbSrc}
-                    alt="High-Res Biometric Impression"
-                    className="w-full h-full object-contain filter contrast-125 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]"
+                    src={bmpSrc}
+                    alt={cleanLabel}
+                    className="w-full h-full object-contain filter contrast-125 brightness-110"
                   />
                 ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center relative p-3">
-                    <svg
-                      viewBox="0 0 40 48"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="w-full h-full text-emerald-400 stroke-current opacity-95 drop-shadow-[0_0_10px_rgba(52,211,153,0.7)]"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                    >
-                      <path d="M7 26 C7 14, 33 14, 33 26 C33 34, 28 40, 26 43" />
-                      <path d="M12 26 C12 18, 28 18, 28 26 C28 35, 23 38, 20 44" />
-                      <path d="M16 26 C16 21, 24 21, 24 26 C24 33, 21 37, 20 40" />
-                      <path d="M19 26 C19 23, 21 23, 21 26 C21 30, 20 33, 20 36" />
-                      <path d="M4 29 C4 18, 12 8, 20 8 C28 8, 36 18, 36 29" />
-                      <path d="M4 35 C5 39, 9 43, 15 44" />
-                      <path d="M36 35 C35 39, 31 43, 25 44" />
-                    </svg>
-                  </div>
+                  <svg
+                    viewBox="0 0 300 400"
+                    className="w-full h-full"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    {/* Subtle biometric ridge contours */}
+                    <g stroke="rgba(16,185,129,0.28)" strokeWidth="3" fill="none" strokeLinecap="round">
+                      <path d="M55 220 C55 110, 245 110, 245 220 C245 290, 210 340, 190 365" />
+                      <path d="M85 220 C85 140, 215 140, 215 220 C215 280, 185 320, 165 350" />
+                      <path d="M115 220 C115 170, 185 170, 185 220 C185 265, 165 295, 150 325" />
+                      <path d="M35 240 C35 140, 95 65, 150 65 C205 65, 265 140, 265 240" />
+                    </g>
+                    {/* Plotted real ISO 19794-2 minutiae coordinates */}
+                    {minutiaePoints.map((pt, idx) => (
+                      <g key={idx}>
+                        <circle
+                          cx={Math.max(15, Math.min(285, pt.x))}
+                          cy={Math.max(15, Math.min(385, pt.y))}
+                          r={pt.type === 2 ? 4.5 : 3.5}
+                          fill={pt.type === 2 ? '#34d399' : '#fbbf24'}
+                        />
+                      </g>
+                    ))}
+                  </svg>
                 )}
-                {/* Visual Laser Scan Effect */}
-                <div className="absolute inset-x-0 h-0.5 bg-emerald-400 opacity-60 shadow-[0_0_8px_#34d399] animate-pulse top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
 
-              <div className="w-full bg-slate-900/90 rounded-xl p-3 border border-slate-800 text-center space-y-1">
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                  Live ANSI/ISO Biometric Template Enrolled
-                </span>
-                <p className="text-[11px] text-slate-400 font-sans">
-                  Optical 500 DPI SecuGen Hamster Pro 20 scan verified for gate attendance.
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-black">
+                  <CheckCircle2 size={13} className="text-emerald-600" />
+                  <span>{cleanLabel}</span>
+                </div>
+                <p className="text-[11px] text-slate-500 font-mono">
+                  ISO/IEC 19794-2 (FMR 20) •{' '}
+                  {minutiaePoints.length > 0
+                    ? `${minutiaePoints.length} Minutiae Points Extracted`
+                    : 'Cloud Template Active'}
                 </p>
               </div>
             </div>
-          </DialogContent>
-        </Dialog>
+          </div>
+        </div>
       )}
     </>
   );

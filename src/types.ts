@@ -139,6 +139,10 @@ export interface Student {
   fingerprintTemplate?: string;
   fingerprintFinger?: string;
   fingerprintEnrolledAt?: string;
+  studentId?: string; // Fallback / legacy alias for id
+  phone?: string;     // Alias for contact
+  mobile?: string;    // Alias for contact
+  reference?: string;
   subjects: string[];
   classTeacherId?: string;
   admissionFee: number;
@@ -269,6 +273,8 @@ export interface AppSettings {
   gateExitStartTime?: string;  // e.g. '13:30'
   gateExitCutoffTime?: string; // e.g. '15:30'
   allowOffHoursScan?: boolean; // allow admin to scan outside window with override
+  autoWhatsAppAdmission?: boolean;
+  autoWhatsAppFeePayment?: boolean;
 }
 
 export interface Staff {
@@ -296,6 +302,14 @@ export interface Staff {
   fingerprintFinger?: string;
   fingerprintEnrolledAt?: string;
   assignedStudentIds?: string[];
+  dutyStartTime?: string;     // e.g. '08:20' (First Lecture / Expected Arrival)
+  dutyEndTime?: string;       // e.g. '13:15' (Last Lecture / Expected Off)
+  duty_start_time?: string;
+  duty_end_time?: string;
+  graceMinutes?: number;      // e.g. 5 or 10 mins margin before marking Late
+  grace_minutes?: number;
+  campusShift?: 'Boys Campus' | 'Girls Campus' | 'Both' | string;
+  campus_shift?: string;
   notes?: { date: string; content: string; type: 'Award' | 'Warning' | 'General' }[];
 }
 

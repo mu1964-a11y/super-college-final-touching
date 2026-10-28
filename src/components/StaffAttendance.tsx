@@ -14,6 +14,8 @@ import { safeLocalStorage } from '../utils/safeStorage';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import BiometricEnrollmentModal from './BiometricEnrollmentModal';
+import BiometricAttendanceDesk from './BiometricAttendanceDesk';
+import { sendAutoStaffAttendancePdfNotice, parseAttendanceNotesAndTime } from '../lib/whatsappAutomation';
 
 interface StaffAttendanceProps {
   staffList: Staff[];
@@ -109,6 +111,29 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
   const [auditSnapshot, setAuditSnapshot] = useState<AuditSnapshotData | null>(null);
   const [selectedDossierStaff, setSelectedDossierStaff] = useState<Staff | null>(null);
   
+  // Helper to convert "07:50:12 AM" or ISO or "08:00:00" into 24-hour "HH:MM" for <input type="time">
+  const toTimeInputHHMM = (raw?: string | null): string => {
+    if (!raw || typeof raw !== 'string') return '';
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    // Match 12-hour format e.g. "07:50:12 AM" or "2:15 PM"
+    const ampmMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
+    if (ampmMatch) {
+      let h = parseInt(ampmMatch[1], 10);
+      const m = ampmMatch[2];
+      const period = ampmMatch[3].toUpperCase();
+      if (period === 'PM' && h < 12) h += 12;
+      if (period === 'AM' && h === 12) h = 0;
+      return `${String(h).padStart(2, '0')}:${m}`;
+    }
+    // Match 24-hour HH:MM or HH:MM:SS
+    const hhmmMatch = trimmed.match(/^(\d{2}):(\d{2})/);
+    if (hhmmMatch) {
+      return `${hhmmMatch[1]}:${hhmmMatch[2]}`;
+    }
+    return '';
+  };
+
   // Local state for attendance records
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
 
@@ -127,9 +152,28 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
     }
   }, [attendanceRecords]);
 
+  // Listen for live biometric punches from InstantBiometricVerifyModal or BiometricAttendanceDesk
+  React.useEffect(() => {
+    const handleLivePunch = (e: Event) => {
+      const custom = e as CustomEvent;
+      const rec = custom.detail?.record;
+      const staffId = custom.detail?.staffId;
+      const date = custom.detail?.date;
+      if (!rec || !staffId || !date) return;
+
+      setRecords((prev) => [
+        rec,
+        ...prev.filter((r: any) => !((r.staffId || r.staff_id) === staffId && r.date === date)),
+      ]);
+    };
+    window.addEventListener('scj-biometric-attendance-updated', handleLivePunch);
+    return () => window.removeEventListener('scj-biometric-attendance-updated', handleLivePunch);
+  }, []);
+
   // Daily Attendance State overrides
   const [dailyEntries, setDailyEntries] = useState<Record<string, Partial<AttendanceRecord>>>({});
   const [isBiometricEnrollOpen, setIsBiometricEnrollOpen] = useState(false);
+  const [isBiometricDeskOpen, setIsBiometricDeskOpen] = useState(false);
   const [biometricTargetStaff, setBiometricTargetStaff] = useState<any | null>(null);
 
   // Initialize or update daily entries when selected date changes or staff list changes
@@ -138,9 +182,19 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
     
     const newEntries: Record<string, Partial<AttendanceRecord>> = {};
     staffList.forEach(staff => {
-      const existing = existingForDate.find(r => r.staffId === staff.id);
+      const existing = existingForDate.find(r => (r.staffId || (r as any).staff_id) === staff.id);
       if (existing) {
-        newEntries[staff.id] = { ...existing };
+        const parsed = parseAttendanceNotesAndTime(
+          existing.notes,
+          existing.checkIn || (existing as any).check_in || existing.checkInTime || (existing as any).check_in_time,
+          existing.checkOut || (existing as any).check_out || existing.checkOutTime || (existing as any).check_out_time
+        );
+        newEntries[staff.id] = {
+          ...existing,
+          staffId: staff.id,
+          checkIn: toTimeInputHHMM(parsed.checkIn || existing.checkIn) || '08:00',
+          checkOut: toTimeInputHHMM(parsed.checkOut || existing.checkOut) || '',
+        };
       } else {
         newEntries[staff.id] = {
           staffId: staff.id,
@@ -197,16 +251,30 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
         staffId: e.staffId!,
         date: e.date!,
         status: e.status as AttendanceStatus,
-        checkIn: entry.checkIn || '',
-        checkOut: entry.checkOut || '',
-        notes: entry.notes || '',
-        snapshotUrl: entry.snapshotUrl || entry.snapshot_url,
-        snapshot_url: entry.snapshotUrl || entry.snapshot_url,
-        verificationMethod: entry.verificationMethod || entry.verification_method,
-        checkInTime: entry.checkInTime || entry.check_in_time,
-        checkOutTime: entry.checkOutTime || entry.check_out_time,
+        checkIn: e.checkIn || '',
+        checkOut: e.checkOut || '',
+        notes: e.notes || '',
+        snapshotUrl: e.snapshotUrl || e.snapshot_url,
+        snapshot_url: e.snapshotUrl || e.snapshot_url,
+        verificationMethod: e.verificationMethod || e.verification_method,
+        checkInTime: e.checkInTime || e.check_in_time,
+        checkOutTime: e.checkOutTime || e.check_out_time,
       }));
       onSaveAttendance(batchForDate);
+
+      // Automatically dispatch updated Cumulative Day-by-Day Attendance PDFs on WhatsApp
+      const targetMonth = selectedDate.slice(0, 7);
+      setTimeout(() => {
+        batchForDate.forEach((rec, idx) => {
+          const staffObj = staffList.find(s => s.id === rec.staffId);
+          const phone = staffObj?.contact || (staffObj as any)?.phone;
+          if (phone) {
+            setTimeout(() => {
+              sendAutoStaffAttendancePdfNotice(rec.staffId, phone, targetMonth, { silent: true });
+            }, idx * 1200);
+          }
+        });
+      }, 1500);
     } else {
       toast.success(`Attendance saved locally for ${selectedDate}`);
     }
@@ -331,21 +399,24 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
     }
   };
 
-  const isPunchLate = (isoString?: string | null, collegeStartTime = '07:54'): boolean => {
+  const isPunchLate = (isoString?: string | null, collegeStartTime = '07:54', staffObj?: Staff): boolean => {
     if (!isoString) return false;
+    const rawTarget = staffObj?.dutyStartTime || staffObj?.duty_start_time || collegeStartTime || '08:00';
+    const targetStartTime = typeof rawTarget === 'string' ? rawTarget : '08:00';
+    let grace = Number(staffObj?.graceMinutes ?? staffObj?.grace_minutes ?? 5);
     try {
       const d = new Date(isoString);
       if (!isNaN(d.getTime())) {
         const punchMinutes = d.getHours() * 60 + d.getMinutes();
-        const [h, m] = collegeStartTime.split(':').map(Number);
-        const startMinutes = (h || 7) * 60 + (m || 54);
+        const [h, m] = targetStartTime.split(':').map(Number);
+        const startMinutes = (h || 8) * 60 + (m || 0) + grace;
         return punchMinutes > startMinutes;
       }
       if (typeof isoString === 'string' && isoString.includes(':')) {
         const [ph, pm] = isoString.split(':').map(Number);
         const punchMinutes = (ph || 0) * 60 + (pm || 0);
-        const [h, m] = collegeStartTime.split(':').map(Number);
-        const startMinutes = (h || 7) * 60 + (m || 54);
+        const [h, m] = targetStartTime.split(':').map(Number);
+        const startMinutes = (h || 8) * 60 + (m || 0) + grace;
         return punchMinutes > startMinutes;
       }
     } catch {}
@@ -433,11 +504,11 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              onClick={() => window.open('/?biometric=true', '_blank')}
+              onClick={() => setIsBiometricDeskOpen(true)}
               className="rounded-xl border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold"
-              title="Open SecuGen HU20-A Biometric Attendance Desk"
+              title="Open Fast-Boost SecuGen HU20 Biometric Attendance Desk"
             >
-              <Fingerprint size={16} className="mr-1.5 text-amber-600" /> Biometric Desk
+              <Fingerprint size={16} className="mr-1.5 text-amber-600" /> Fast Biometric Desk
             </Button>
             <Button
               variant="outline"
@@ -671,13 +742,23 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                                   <CheckCircle2 size={9} className="text-emerald-600" /> {exitSnap ? 'In+Out' : 'Match'}
                                 </span>
                               </div>
-                            ) : (entry?.verificationMethod === 'secugen_fingerprint' || entry?.verification_method === 'secugen_fingerprint' || entry?.notes?.includes('SecuGen')) ? (
-                              <div className="flex items-center gap-1.5">
-                                <span className="inline-flex items-center gap-1 font-bold text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 shadow-2xs">
-                                  <Fingerprint size={12} className="text-amber-600" />
-                                  <span>SecuGen Thumb</span>
-                                </span>
-                              </div>
+                            ) : (entry?.verificationMethod === 'secugen_fingerprint' || entry?.verification_method === 'secugen_fingerprint' || entry?.notes?.includes('SecuGen') || entry?.notes?.includes('biometric_fingerprint') || entry?.notes?.includes('Biometric')) ? (
+                              (() => {
+                                const parsed = parseAttendanceNotesAndTime(entry?.notes, entry?.checkIn, entry?.checkOut);
+                                return (
+                                  <div className="space-y-1">
+                                    <span className="inline-flex items-center gap-1 font-black text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-300 shadow-2xs">
+                                      <CheckCircle2 size={11} className="text-emerald-600" />
+                                      <span>Biometric Marked {parsed.checkIn ? `• ${parsed.checkIn}` : ''}</span>
+                                    </span>
+                                    {parsed.breakOut && (
+                                      <div className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50/70 px-1.5 py-0.5 rounded border border-amber-200/70">
+                                        Break: {parsed.breakOut} &rarr; {parsed.breakIn || 'Out'}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()
                             ) : isBiometric ? (
                               <div className="flex items-center gap-2">
                                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
@@ -791,15 +872,26 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                           <TableCell className="text-center font-bold text-purple-600 bg-purple-50/30">{stats.collegeHoliday > 0 ? stats.collegeHoliday : '-'}</TableCell>
                           <TableCell className="text-center font-bold text-indigo-600 bg-indigo-50/30">{stats.publicHoliday > 0 ? stats.publicHoliday : '-'}</TableCell>
                           <TableCell className="text-right pr-8">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 rounded-lg text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100 font-bold text-xs gap-1 shadow-2xs cursor-pointer"
-                              onClick={() => setSelectedDossierStaff(staff)}
-                              title="Open 30-Day Biometric Attendance Dossier & Photo Audit"
-                            >
-                              <Eye size={13} /> Dossier 👁️
-                            </Button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 rounded-lg text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100 font-bold text-xs gap-1 shadow-2xs cursor-pointer"
+                                onClick={() => sendAutoStaffAttendancePdfNotice(staff.id, staff.contact, reportMonth)}
+                                title="Send Updated Day-by-Day Cumulative Attendance PDF on WhatsApp"
+                              >
+                                📄 WhatsApp PDF
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 rounded-lg text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100 font-bold text-xs gap-1 shadow-2xs cursor-pointer"
+                                onClick={() => setSelectedDossierStaff(staff)}
+                                title="Open 30-Day Biometric Attendance Dossier & Photo Audit"
+                              >
+                                <Eye size={13} /> Dossier 👁️
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -1154,7 +1246,23 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                             )}
                           </TableCell>
                           <TableCell className="text-xs text-slate-500 max-w-xs truncate">
-                            {rec?.notes || <span className="text-slate-300">—</span>}
+                            {rec?.notes ? (
+                              (() => {
+                                const parsed = parseAttendanceNotesAndTime(rec.notes, cin, cout);
+                                return (
+                                  <div className="space-y-0.5">
+                                    {parsed.breakOut && (
+                                      <span className="inline-block mr-2 px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-[10px] font-mono font-bold text-amber-800">
+                                        Break: {parsed.breakOut} &rarr; {parsed.breakIn || 'Out'}
+                                      </span>
+                                    )}
+                                    <span>{parsed.cleanRemarks || 'Verified'}</span>
+                                  </div>
+                                );
+                              })()
+                            ) : (
+                              <span className="text-slate-300">—</span>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
@@ -1196,6 +1304,26 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
             data?.fetchData?.(true);
           }}
         />
+      )}
+
+      {/* Fast-Boost Zero-Click Biometric Attendance Kiosk Overlay */}
+      {isBiometricDeskOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950">
+          <BiometricAttendanceDesk
+            collegeLogo={data?.settings?.logo || '/superior-logo.png'}
+            collegeName={data?.settings?.collegeName || 'Superior College Jahanian'}
+            staffListProp={staffList}
+            staffAttendanceProp={records}
+            settingsProp={data?.settings}
+            onAttendanceMarked={() => {
+              data?.fetchData?.(true);
+            }}
+            onBackToApp={() => {
+              setIsBiometricDeskOpen(false);
+              data?.fetchData?.(true);
+            }}
+          />
+        </div>
       )}
     </div>
   );

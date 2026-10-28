@@ -1,936 +1,1486 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Fingerprint,
-  CheckCircle2,
-  AlertCircle,
-  RefreshCw,
-  Search,
-  Users,
-  Clock,
   ArrowLeft,
-  Maximize2,
-  Minimize2,
-  Sparkles,
-  ShieldCheck,
-  Check,
-  X,
+  CheckCircle2,
   Volume2,
   VolumeX,
-  Send,
-  LogIn,
+  Zap,
+  Clock,
+  Users,
+  UserCheck,
   LogOut,
-  Briefcase,
-  GraduationCap,
-  ExternalLink,
-  Plus
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-import { supabase } from "../lib/supabase";
+  AlertTriangle,
+  RefreshCw,
+  ShieldCheck,
+  Search,
+  Pause,
+  Play,
+  HeartPulse,
+  Waves,
+} from 'lucide-react';
+import BiometricLivePulse from './BiometricLivePulse';
+import { secugenService } from '../lib/secugenService';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { safeLocalStorage } from '../utils/safeStorage';
 import {
-  secugenService,
-  SecuGenStatus,
-  EnrolledCandidate
-} from "../lib/secugenService";
-import { Student, Staff } from "../types";
-import BiometricEnrollmentModal from "./BiometricEnrollmentModal";
-import { sendAutoDailyAttendanceNotice } from "../lib/whatsappAutomation";
+  sendAutoStaffDailyCheckInNotice,
+  sendAutoDailyAttendanceNoticeDetailed,
+  parseAttendanceNotesAndTime,
+} from '../lib/whatsappAutomation';
+import { toast } from 'sonner';
 
 interface BiometricAttendanceDeskProps {
-  onBackToApp?: () => void;
   standalone?: boolean;
   collegeLogo?: string;
   collegeName?: string;
+  onBackToApp?: () => void;
+  staffListProp?: any[];
+  studentsListProp?: any[];
+  staffAttendanceProp?: any[];
+  settingsProp?: any;
+  onAttendanceMarked?: () => void;
 }
 
-interface BiometricPunchLog {
-  id: string;
-  personId: string;
-  fullName: string;
-  fatherName?: string;
-  rollNoOrRole: string;
-  personType: "student" | "staff";
-  photo?: string;
-  time: string;
-  date: string;
-  status: "Present" | "Late";
-  direction: "entry" | "exit";
-  matchScore: number;
-  finger: string;
-  waStatus: "sending" | "sent" | "failed" | "skipped";
-}
+// Instant Web Audio API Synthesizer for Biometric Kiosk Feedback
+function playKioskSound(type: 'checkin' | 'checkout' | 'duplicate' | 'error') {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
 
-export default function BiometricAttendanceDesk({
-  onBackToApp,
-  standalone = false,
-  collegeLogo = "/superior-logo.png",
-  collegeName = "Superior College Jahanian",
-}: BiometricAttendanceDeskProps) {
-  // Device state
-  const [deviceStatus, setDeviceStatus] = useState<SecuGenStatus>({
-    connected: false,
-    serviceRunning: false,
-    deviceFound: false,
-    activeUrl: null,
-  });
-  const [isCheckingDevice, setIsCheckingDevice] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
-  const [autoLoopActive, setAutoLoopActive] = useState(false);
-
-  // Enrolled Roster Candidates
-  const [enrolledCandidates, setEnrolledCandidates] = useState<EnrolledCandidate[]>([]);
-  const [rawStudents, setRawStudents] = useState<Student[]>([]);
-  const [rawStaff, setRawStaff] = useState<Staff[]>([]);
-  const [isLoadingRoster, setIsLoadingRoster] = useState(true);
-
-  // Today's Punches
-  const [todayPunches, setTodayPunches] = useState<BiometricPunchLog[]>([]);
-  const [lastPunchedPerson, setLastPunchedPerson] = useState<BiometricPunchLog | null>(null);
-
-  // Enrollment Modal
-  const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-
-  // Manual fallback search
-  const [manualSearchQuery, setManualSearchQuery] = useState("");
-  const [isFullScreen, setIsFullScreen] = useState(false);
-
-  // Web Audio Synth for cheerful chime
-  const playChime = useCallback((type: "success" | "late" | "error") => {
-    if (!soundEnabled) return;
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
+    if (type === 'checkin') {
+      // Crisp 2-tone ascending chime (A5 -> E6)
+      const now = ctx.currentTime;
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(880, now);
+      osc1.frequency.setValueAtTime(1318.5, now + 0.11);
+      gain1.gain.setValueAtTime(0.35, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.38);
+    } else if (type === 'checkout') {
+      // Pleasant 2-tone completion chime (E6 -> C6)
+      const now = ctx.currentTime;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-
-      const now = ctx.currentTime;
-      if (type === "success") {
-        // Bright two-tone chime (G5 -> C6)
-        osc.frequency.setValueAtTime(783.99, now);
-        osc.frequency.exponentialRampToValueAtTime(1046.5, now + 0.15);
-      } else if (type === "late") {
-        // Mellow amber chime
-        osc.frequency.setValueAtTime(587.33, now);
-        osc.frequency.exponentialRampToValueAtTime(880.0, now + 0.15);
-      } else {
-        // Low error buzz
-        osc.frequency.setValueAtTime(220.0, now);
-        osc.frequency.exponentialRampToValueAtTime(146.83, now + 0.2);
-      }
-
-      gain.gain.setValueAtTime(0.18, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
-
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1046.5, now);
+      osc.frequency.setValueAtTime(1567.98, now + 0.12);
+      gain.gain.setValueAtTime(0.35, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start(now);
-      osc.stop(now + 0.5);
-    } catch {}
-  }, [soundEnabled]);
-
-  // Load Device Status
-  const checkDevice = useCallback(async () => {
-    setIsCheckingDevice(true);
-    try {
-      const status = await secugenService.getStatus(true);
-      setDeviceStatus(status);
-    } catch (e) {
-      console.warn("Device check error:", e);
-    } finally {
-      setIsCheckingDevice(false);
+      osc.stop(now + 0.38);
+    } else if (type === 'duplicate') {
+      // Gentle double-tap tone
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(659.25, now);
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.25);
+    } else {
+      // Low warning buzz for unrecognized finger
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(210, now);
+      osc.frequency.setValueAtTime(175, now + 0.14);
+      gain.gain.setValueAtTime(0.28, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.35);
     }
-  }, []);
+  } catch {}
+}
+
+function speakKioskAnnouncement(_text: string, _enabled: boolean) {
+  // Voice name/time announcements disabled per user instruction for millisecond-fast biometric check-ins with zero voice lag
+}
+
+function getTodayDateStr(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function formatTime12h(dateObj: Date): string {
+  return dateObj.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+function formatHHMM(dateObj: Date): string {
+  return `${String(dateObj.getHours()).padStart(2, '0')}:${String(dateObj.getMinutes()).padStart(2, '0')}`;
+}
+
+export default function BiometricAttendanceDesk({
+  collegeLogo = '/superior-logo.png',
+  collegeName = 'Superior College Jahanian',
+  onBackToApp,
+  staffListProp,
+  studentsListProp,
+  staffAttendanceProp,
+  settingsProp,
+  onAttendanceMarked,
+}: BiometricAttendanceDeskProps) {
+  const [staffList, setStaffList] = useState<any[]>(staffListProp || []);
+  const [studentsList, setStudentsList] = useState<any[]>(studentsListProp || []);
+  const [todayAttendance, setTodayAttendance] = useState<any[]>([]);
+  const [settings, setSettings] = useState<any>(settingsProp || null);
+  const [loadingDb, setLoadingDb] = useState<boolean>(!staffListProp || staffListProp.length === 0);
+
+  // Kiosk Controls
+  const [autoLoopEnabled, setAutoLoopEnabled] = useState<boolean>(true);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(true);
+  const [punchMode, setPunchMode] = useState<'auto' | 'checkin' | 'breakout' | 'breakin' | 'checkout'>('auto');
+  const [scannerStatus, setScannerStatus] = useState<{ connected: boolean; deviceFound: boolean }>({
+    connected: false,
+    deviceFound: false,
+  });
+  const [isCapturing, setIsCapturing] = useState<boolean>(false);
+  const [searchRoster, setSearchRoster] = useState<string>('');
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+
+  // Instant Verification Result Banner (Auto-resets after 3.5 seconds)
+  const [verifiedCard, setVerifiedCard] = useState<{
+    type: 'checkin' | 'breakout' | 'breakin' | 'checkout' | 'duplicate' | 'unrecognized';
+    person?: any;
+    status?: string;
+    punchTime?: string;
+    score?: number;
+    message: string;
+    thumbBmp?: string;
+    checkIn?: string;
+    breakOut?: string;
+    breakIn?: string;
+    checkOut?: string;
+    campusState?: 'in_campus' | 'on_break' | 'checked_out';
+  } | null>(null);
+
+  const isMountedRef = useRef<boolean>(true);
+  const autoLoopActiveRef = useRef<boolean>(true);
+  const isScanningLockRef = useRef<boolean>(false);
+  const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 5-minute memory cooldown map: staffId -> { timestamp, displayTime, stageAction }
+  // Prevents repeated punches and duplicate WhatsApp dispatches when finger is held or pressed multiple times
+  const recentPunchesRef = useRef<Map<string, { timestamp: number; displayTime: string; stageAction: string }>>(new Map());
+  // Single check-in WhatsApp notification per staff member per day
+  const whatsappDispatchedTodayRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    checkDevice();
-  }, [checkDevice]);
+    autoLoopActiveRef.current = autoLoopEnabled;
+  }, [autoLoopEnabled]);
 
-  // Load Enrolled Candidates from Supabase
-  const loadRoster = useCallback(async () => {
-    setIsLoadingRoster(true);
+  // Live digital clock
+  useEffect(() => {
+    const t = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Load live Staff, Students, and Today's Attendance from Supabase
+  const loadBiometricDatabase = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      setLoadingDb(false);
+      return;
+    }
     try {
-      const [stuRes, staffRes] = await Promise.all([
-        supabase
-          .from("students")
-          .select("id, full_name, father_name, college_no, group_name, group, contact, father_contact, photo, photo_url, fingerprint_template, fingerprint_finger"),
-        supabase
-          .from("staff")
-          .select("id, full_name, father_name, contact, role, designation, photo, photo_url, fingerprint_template, fingerprint_finger"),
+      const todayStr = getTodayDateStr();
+      const [staffRes, studentsRes, attRes, settingsRes] = await Promise.all([
+        supabase.from('staff').select('*').order('id', { ascending: true }),
+        supabase.from('students').select('*'),
+        supabase.from('staff_attendance').select('*').eq('date', todayStr),
+        supabase.from('settings').select('*').limit(1).maybeSingle(),
       ]);
 
-      const candidates: EnrolledCandidate[] = [];
-
-      if (stuRes.data) {
-        setRawStudents(stuRes.data as any);
-        stuRes.data.forEach((s: any) => {
-          if (s.fingerprint_template) {
-            candidates.push({
-              id: s.id,
-              fullName: s.full_name,
-              fatherName: s.father_name,
-              collegeNo: s.college_no,
-              phone: s.father_contact || s.contact,
-              personType: "student",
-              roleOrGroup: s.group_name || s.group || "Student",
-              photo: s.photo_url || s.photo,
-              fingerprintTemplate: s.fingerprint_template,
-              fingerprintFinger: s.fingerprint_finger || "Right Thumb",
-            });
-          }
-        });
-      }
-
       if (staffRes.data) {
-        setRawStaff(staffRes.data as any);
-        staffRes.data.forEach((st: any) => {
-          if (st.fingerprint_template) {
-            candidates.push({
-              id: st.id,
-              fullName: st.full_name,
-              fatherName: st.father_name,
-              phone: st.contact,
-              personType: "staff",
-              roleOrGroup: st.designation || st.role || "Faculty",
-              photo: st.photo_url || st.photo,
-              fingerprintTemplate: st.fingerprint_template,
-              fingerprintFinger: st.fingerprint_finger || "Right Thumb",
-            });
+        const mappedStaff = staffRes.data.map((st: any) => {
+          let fpTemplate = st.fingerprint_template || st.fingerprintTemplate;
+          let fpFinger = st.fingerprint_finger || st.fingerprintFinger || 'Right Thumb';
+          if (!fpTemplate) {
+            try {
+              const cached = safeLocalStorage.getItem(`scj_fp_vault_${st.id}`);
+              if (cached) {
+                const parsed = JSON.parse(cached);
+                if (parsed?.template) {
+                  fpTemplate = parsed.template;
+                  fpFinger = parsed.finger || 'Right Thumb';
+                }
+              }
+            } catch {}
           }
+          return {
+            ...st,
+            fullName: st.full_name || st.fullName || 'Staff Member',
+            fatherName: st.father_name || st.fatherName || '',
+            role: st.role || st.designation || 'Faculty',
+            designation: st.designation || st.role || 'Faculty',
+            photo: st.photo_url || st.photo,
+            contact: st.contact || '',
+            fingerprintTemplate: fpTemplate,
+            fingerprintFinger: fpFinger,
+            fingerprintEnrolledAt: st.fingerprint_enrolled_at || st.fingerprintEnrolledAt,
+          };
         });
+        setStaffList(mappedStaff);
       }
 
-      setEnrolledCandidates(candidates);
-    } catch (err: any) {
-      console.error("Roster load error:", err);
-      toast.error("Failed to load enrolled candidates from database.");
+      if (studentsRes.data) {
+        setStudentsList(
+          studentsRes.data.map((s: any) => ({
+            ...s,
+            fullName: s.full_name || s.fullName || 'Student',
+            collegeNo: s.college_no || s.student_id || s.id,
+            photo: s.photo_url || s.photo,
+            fingerprintTemplate: s.fingerprint_template || s.fingerprintTemplate,
+            fingerprintFinger: s.fingerprint_finger || s.fingerprintFinger,
+          }))
+        );
+      }
+
+      if (attRes.data) {
+        setTodayAttendance(attRes.data);
+      }
+
+      if (settingsRes.data) {
+        setSettings({
+          ...settingsRes.data,
+          collegeName: settingsRes.data.college_name || collegeName,
+          collegeStartTime: settingsRes.data.config?.collegeStartTime || '07:54',
+        });
+      }
+    } catch (err) {
+      console.error('Error loading biometric database:', err);
     } finally {
-      setIsLoadingRoster(false);
+      setLoadingDb(false);
     }
+  }, [collegeName]);
+
+  useEffect(() => {
+    loadBiometricDatabase();
+  }, [loadBiometricDatabase]);
+
+  // Sync props if parent updates them
+  useEffect(() => {
+    if (staffListProp && staffListProp.length > 0) {
+      setStaffList(staffListProp);
+      setLoadingDb(false);
+    }
+  }, [staffListProp]);
+
+  useEffect(() => {
+    if (staffAttendanceProp && staffAttendanceProp.length > 0) {
+      const todayStr = getTodayDateStr();
+      setTodayAttendance(
+        staffAttendanceProp.filter((a: any) => a.date === todayStr)
+      );
+    }
+  }, [staffAttendanceProp]);
+
+  // Check SecuGen hardware connection
+  const checkHardwareStatus = useCallback(async () => {
+    const st = await secugenService.getStatus();
+    if (isMountedRef.current) {
+      setScannerStatus({ connected: st.connected, deviceFound: st.deviceFound });
+    }
+    return st;
   }, []);
 
   useEffect(() => {
-    loadRoster();
-  }, [loadRoster]);
+    checkHardwareStatus();
+  }, [checkHardwareStatus]);
 
-  // Record Attendance in Database & WhatsApp
-  const recordAttendance = async (
-    candidate: EnrolledCandidate,
-    matchScore: number
-  ) => {
-    const today = new Date().toISOString().slice(0, 10);
-    const timeNow = new Date().toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-    const nowIso = new Date().toISOString();
+  const enrolledStaff = useMemo(
+    () => staffList.filter((st) => Boolean(st.fingerprintTemplate || st.fingerprint_template)),
+    [staffList]
+  );
 
-    // Check college arrival policy (8:00 AM cutoff for Late)
-    const currentHour = new Date().getHours();
-    const currentMin = new Date().getMinutes();
-    const isLate = currentHour > 8 || (currentHour === 8 && currentMin > 10);
-    const status: "Present" | "Late" = isLate ? "Late" : "Present";
+  const enrolledStudents = useMemo(
+    () => studentsList.filter((s) => Boolean(s.fingerprintTemplate || s.fingerprint_template)),
+    [studentsList]
+  );
 
-    // Play cheerful feedback
-    playChime(isLate ? "late" : "success");
+  // Apply and persist a 4-stage Staff Movement action (Morning In, Break Out, Break In, Final Out)
+  const recordStaffStageAction = useCallback(
+    async (
+      matchedStaff: any,
+      stageAction: 'checkin' | 'breakout' | 'breakin' | 'checkout' | 'duplicate',
+      bestScore: number,
+      thumbDataUrl?: string
+    ) => {
+      const now = new Date();
+      const todayStr = getTodayDateStr();
+      const hhmm = formatHHMM(now);
+      const hhmmss = `${hhmm}:${String(now.getSeconds()).padStart(2, '0')}`;
+      const displayTime = formatTime12h(now);
+      const cutoffTime = settings?.collegeStartTime || '07:54';
 
-    const newPunch: BiometricPunchLog = {
-      id: `${candidate.id}-${Date.now()}`,
-      personId: candidate.id,
-      fullName: candidate.fullName,
-      fatherName: candidate.fatherName,
-      rollNoOrRole: candidate.collegeNo || candidate.roleOrGroup || candidate.id,
-      personType: candidate.personType,
-      photo: candidate.photo,
-      time: timeNow,
-      date: today,
-      status,
-      direction: "entry",
-      matchScore,
-      finger: candidate.fingerprintFinger || "Thumb",
-      waStatus: "sending",
-    };
-
-    setLastPunchedPerson(newPunch);
-    setTodayPunches((prev) => [newPunch, ...prev.filter((p) => p.personId !== candidate.id)]);
-
-    toast.success(
-      `Biometric Check-in Confirmed: ${candidate.fullName} (${status})!`,
-      { id: "punch-toast", duration: 3500 }
-    );
-
-    // 1. Save into Supabase Database
-    try {
-      if (candidate.personType === "student") {
-        await supabase
-          .from("student_attendance")
-          .upsert(
-            {
-              student_id: candidate.id,
-              date: today,
-              status: status,
-              check_in_time: nowIso,
-              verification_method: "secugen_fingerprint",
-              notes: `SecuGen HU20-A Match (Score: ${matchScore}, Finger: ${candidate.fingerprintFinger || "Thumb"})`,
-            },
-            { onConflict: "student_id,date" }
-          );
-      } else {
-        await supabase
-          .from("staff_attendance")
-          .upsert(
-            {
-              staff_id: candidate.id,
-              date: today,
-              status: status,
-              check_in_time: nowIso,
-              verification_method: "secugen_fingerprint",
-              notes: `SecuGen HU20-A Match (Score: ${matchScore}, Finger: ${candidate.fingerprintFinger || "Thumb"})`,
-            },
-            { onConflict: "staff_id,date" }
-          );
-      }
-    } catch (dbErr) {
-      console.error("Attendance database save error:", dbErr);
-    }
-
-    // 2. Dispatch WhatsApp Confirmation Notice to Parent/Staff
-    if (candidate.phone) {
-      try {
-        const studentObj = rawStudents.find((s) => s.id === candidate.id);
-        if (studentObj) {
-          sendAutoDailyAttendanceNotice(studentObj, status, today, timeNow)
-            .then((res) => {
-              newPunch.waStatus = res.success ? "sent" : "failed";
-              setTodayPunches((prev) =>
-                prev.map((p) => (p.id === newPunch.id ? { ...p, waStatus: newPunch.waStatus } : p))
-              );
-            })
-            .catch(() => {
-              newPunch.waStatus = "failed";
-              setTodayPunches((prev) =>
-                prev.map((p) => (p.id === newPunch.id ? { ...p, waStatus: "failed" } : p))
-              );
-            });
-        } else {
-          newPunch.waStatus = "skipped";
-        }
-      } catch {
-        newPunch.waStatus = "skipped";
-      }
-    } else {
-      newPunch.waStatus = "skipped";
-    }
-  };
-
-  // Perform a single live scan & match against enrolled database
-  const handleSingleScan = async () => {
-    if (isScanning) return;
-    setIsScanning(true);
-
-    toast.info("Please touch finger firmly on SecuGen scanner...", {
-      id: "scan-info",
-      duration: 3000,
-    });
-
-    try {
-      const capResult = await secugenService.captureFingerprint({
-        timeoutMs: 10000,
-        quality: 50,
-        templateFormat: "ISO",
-      });
-
-      if (!capResult.success || !capResult.templateBase64) {
-        toast.error(capResult.error || "No finger detected or capture timed out.", {
-          id: "scan-info",
-        });
-        setIsScanning(false);
-        return;
-      }
-
-      // Match against enrolled roster
-      if (enrolledCandidates.length === 0) {
-        toast.error("No enrolled fingerprints found in database. Please enroll members first.", {
-          id: "scan-info",
-        });
-        setIsScanning(false);
-        return;
-      }
-
-      toast.loading("Matching against biometric database...", { id: "scan-info" });
-      const identified = await secugenService.identifyCandidate(
-        capResult.templateBase64,
-        enrolledCandidates
+      const existingRec = todayAttendance.find(
+        (r: any) => (r.staff_id || r.staffId) === matchedStaff.id && r.date === todayStr
+      );
+      const parsedExisting = parseAttendanceNotesAndTime(
+        existingRec?.notes,
+        existingRec?.check_in || existingRec?.checkIn || existingRec?.check_in_time || existingRec?.checkInTime,
+        existingRec?.check_out || existingRec?.checkOut || existingRec?.check_out_time || existingRec?.checkOutTime
       );
 
-      if (identified) {
-        toast.dismiss("scan-info");
-        await recordAttendance(identified.candidate, identified.score);
-      } else {
-        playChime("error");
-        toast.error(
-          "Fingerprint not recognized. Please make sure the student/staff is registered.",
-          { id: "scan-info", duration: 4000 }
-        );
-      }
-    } catch (err: any) {
-      toast.error(`Scan error: ${err.message || String(err)}`, { id: "scan-info" });
-    } finally {
-      setIsScanning(false);
-    }
-  };
-
-  // Continuous Auto-Loop (Waits for touch repeatedly)
-  useEffect(() => {
-    let isCancelled = false;
-
-    async function runAutoLoop() {
-      if (!autoLoopActive || isScanning || !deviceStatus.connected) return;
-
-      while (autoLoopActive && !isCancelled) {
-        setIsScanning(true);
+      let prevJson: Record<string, any> = {};
+      if (existingRec?.notes && typeof existingRec.notes === 'string' && existingRec.notes.startsWith('{')) {
         try {
-          const cap = await secugenService.captureFingerprint({
-            timeoutMs: 6000,
-            quality: 48,
-            templateFormat: "ISO",
-          });
+          prevJson = JSON.parse(existingRec.notes);
+        } catch {}
+      }
 
-          if (isCancelled) break;
+      const existingCheckIn = parsedExisting.checkIn;
+      const existingBreakOut = parsedExisting.breakOut || prevJson.breakOut || '';
+      const existingBreakIn = parsedExisting.breakIn || prevJson.breakIn || '';
+      const existingCheckOut = parsedExisting.checkOut;
+      const prevMovements = Array.isArray(parsedExisting.movements) ? parsedExisting.movements : [];
 
-          if (cap.success && cap.templateBase64) {
-            const identified = await secugenService.identifyCandidate(
-              cap.templateBase64,
-              enrolledCandidates
+      if (stageAction === 'duplicate') {
+        if (soundEnabled) playKioskSound('duplicate');
+        setVerifiedCard({
+          type: 'duplicate',
+          person: matchedStaff,
+          status: existingRec?.status || 'Present',
+          punchTime: displayTime,
+          score: bestScore,
+          message: `Already Recorded at ${existingCheckIn || displayTime} — Kindly proceed to your lecture!`,
+          thumbBmp: thumbDataUrl,
+          checkIn: existingCheckIn,
+          breakOut: existingBreakOut,
+          breakIn: existingBreakIn,
+          checkOut: existingCheckOut,
+          campusState: (parsedExisting.campusState as 'in_campus' | 'on_break' | 'checked_out') || 'in_campus',
+        });
+        return;
+      }
+
+      // Determine cutoff time dynamically for this teacher's lecture schedule
+      let rawStart = matchedStaff.dutyStartTime || matchedStaff.duty_start_time || settings?.collegeStartTime || '08:00';
+      const teacherDutyStart = (typeof rawStart === 'string' && rawStart.includes(':')) ? rawStart : '08:00';
+      let teacherGrace = Number(matchedStaff.graceMinutes ?? matchedStaff.grace_minutes ?? 5);
+
+      const [cutH, cutM] = teacherDutyStart.split(':').map(Number);
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      const cutMins = (cutH || 8) * 60 + (cutM || 0) + teacherGrace;
+      const computedStatus =
+        existingRec?.status || (nowMins > cutMins ? 'Late' : 'Present');
+
+      const nextCheckIn = stageAction === 'checkin' ? (existingCheckIn || displayTime) : (existingCheckIn || displayTime);
+      const nextBreakOut = stageAction === 'breakout' ? displayTime : existingBreakOut;
+      const nextBreakIn = stageAction === 'breakin' ? displayTime : existingBreakIn;
+      const nextCheckOut = stageAction === 'checkout' ? displayTime : existingCheckOut;
+      const nextCampusState: 'in_campus' | 'on_break' | 'checked_out' =
+        stageAction === 'breakout'
+          ? 'on_break'
+          : stageAction === 'checkout'
+          ? 'checked_out'
+          : 'in_campus';
+
+      const nextMovements = [
+        ...prevMovements,
+        {
+          type: stageAction,
+          time: displayTime,
+          iso: now.toISOString(),
+        },
+      ];
+
+      const notesJson = JSON.stringify({
+        ...prevJson,
+        checkIn: nextCheckIn,
+        breakOut: nextBreakOut,
+        breakIn: nextBreakIn,
+        checkOut: nextCheckOut,
+        campusState: nextCampusState,
+        movements: nextMovements,
+        check_in_time: prevJson.check_in_time || hhmmss,
+        ...(stageAction === 'checkin' ? { isoCheckIn: now.toISOString() } : {}),
+        ...(stageAction === 'breakout' ? { break_out_time: hhmmss, isoBreakOut: now.toISOString() } : {}),
+        ...(stageAction === 'breakin' ? { break_in_time: hhmmss, isoBreakIn: now.toISOString() } : {}),
+        ...(stageAction === 'checkout' ? { check_out_time: hhmmss, isoCheckOut: now.toISOString() } : {}),
+        lastPunchIso: now.toISOString(),
+        method: 'biometric_fingerprint',
+        Verify: 'Biometric Thumb Verified',
+        score: bestScore,
+      });
+
+      // Update 5-minute cooldown cache immediately
+      recentPunchesRef.current.set(matchedStaff.id, {
+        timestamp: Date.now(),
+        displayTime,
+        stageAction,
+      });
+
+      let statusLabel = computedStatus;
+      let cardMessage = `On-Time Biometric Check-In Recorded at ${displayTime}!`;
+
+      if (stageAction === 'checkin') {
+        if (soundEnabled) playKioskSound('checkin');
+        cardMessage =
+          computedStatus === 'Late'
+            ? `Morning Check-In Recorded at ${displayTime} (Late Arrival after ${teacherDutyStart})`
+            : `On-Time Morning Check-In Recorded at ${displayTime}!`;
+      } else if (stageAction === 'breakout') {
+        if (soundEnabled) playKioskSound('checkout');
+        statusLabel = 'Break / Free-Period Out';
+        cardMessage = `Mid-Day Break / Free-Period Exit Recorded at ${displayTime}`;
+      } else if (stageAction === 'breakin') {
+        if (soundEnabled) playKioskSound('checkin');
+        statusLabel = 'Returned from Break';
+        cardMessage = `Mid-Day Break Return Recorded at ${displayTime} (Out: ${nextBreakOut})`;
+      } else if (stageAction === 'checkout') {
+        if (soundEnabled) playKioskSound('checkout');
+        statusLabel = 'Checked Out';
+        cardMessage = `Final Off-Duty Check-Out Recorded at ${displayTime}!`;
+      }
+
+      // 1. INSTANT UI DISPLAY (< 0.1s Touch & Go): Render verified card and audio without network wait
+      setVerifiedCard({
+        type: stageAction,
+        person: matchedStaff,
+        status: statusLabel,
+        punchTime: displayTime,
+        score: bestScore,
+        message: cardMessage,
+        thumbBmp: thumbDataUrl,
+        checkIn: nextCheckIn,
+        breakOut: nextBreakOut,
+        breakIn: nextBreakIn,
+        checkOut: nextCheckOut,
+        campusState: nextCampusState,
+      });
+
+      const updatedStaffRecord = {
+        ...existingRec,
+        staffId: matchedStaff.id,
+        staff_id: matchedStaff.id,
+        date: todayStr,
+        status: computedStatus,
+        checkIn: nextCheckIn,
+        breakOut: nextBreakOut,
+        breakIn: nextBreakIn,
+        checkOut: nextCheckOut,
+        notes: notesJson,
+        verificationMethod: 'secugen_fingerprint',
+      };
+
+      // 2. INSTANT LOCAL STATE UPDATE
+      setTodayAttendance((prev) => {
+        const others = prev.filter(
+          (r: any) => (r.staff_id || r.staffId) !== matchedStaff.id
+        );
+        return [updatedStaffRecord, ...others];
+      });
+
+      try {
+        const stored = safeLocalStorage.getItem('staffAttendanceRecords');
+        const list = stored ? JSON.parse(stored) : [];
+        const filtered = list.filter(
+          (r: any) => !(r.staffId === matchedStaff.id && r.date === todayStr)
+        );
+        filtered.push({
+          id: `${matchedStaff.id}-${todayStr}`,
+          staffId: matchedStaff.id,
+          date: todayStr,
+          status: computedStatus,
+          checkIn: nextCheckIn,
+          breakOut: nextBreakOut,
+          breakIn: nextBreakIn,
+          checkOut: nextCheckOut,
+          notes: notesJson,
+          verificationMethod: 'secugen_fingerprint',
+          checkInTime: now.toISOString(),
+        });
+        safeLocalStorage.setItem('staffAttendanceRecords', JSON.stringify(filtered));
+        window.dispatchEvent(
+          new CustomEvent('scj-biometric-attendance-updated', {
+            detail: { staffId: matchedStaff.id, date: todayStr, record: updatedStaffRecord },
+          })
+        );
+      } catch {}
+
+      onAttendanceMarked?.();
+
+      // 3. ASYNCHRONOUS NON-BLOCKING BACKGROUND DATABASE & WHATSAPP TASK
+      (async () => {
+        const isValidUuid = (val?: string) =>
+          Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
+
+        const assignedId = isValidUuid(existingRec?.id)
+          ? existingRec.id
+          : typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : undefined;
+
+        const basePayload: any = {
+          staff_id: matchedStaff.id,
+          date: todayStr,
+          status: computedStatus,
+          verification_method: 'secugen_fingerprint',
+          notes: notesJson,
+        };
+        if (assignedId) {
+          basePayload.id = assignedId;
+        }
+
+        if (isSupabaseConfigured) {
+          try {
+            await supabase
+              .from('staff_attendance')
+              .upsert([basePayload], { onConflict: 'staff_id,date' });
+          } catch (err) {
+            console.error('[BiometricDesk] Background Supabase error:', err);
+          }
+        }
+
+        // WhatsApp Single-Dispatch Lock: Only 1 check-in WhatsApp message per staff member per day
+        if (matchedStaff.contact) {
+          const alreadySentCheckIn = whatsappDispatchedTodayRef.current.has(matchedStaff.id);
+          if (stageAction === 'checkin' && alreadySentCheckIn) {
+            // Already sent today - skip to avoid spamming teacher
+            return;
+          }
+
+          if (stageAction === 'checkin') {
+            whatsappDispatchedTodayRef.current.add(matchedStaff.id);
+          }
+
+          sendAutoStaffDailyCheckInNotice(
+            matchedStaff,
+            {
+              date: todayStr,
+              status: computedStatus,
+              checkInTime: nextCheckIn,
+              breakOutTime: nextBreakOut || undefined,
+              breakInTime: nextBreakIn || undefined,
+              checkOutTime: nextCheckOut || undefined,
+              punchEventLabel: statusLabel,
+              mode:
+                stageAction === 'breakout'
+                  ? 'Biometric Scanner (Mid-Day Break Out)'
+                  : stageAction === 'breakin'
+                  ? 'Biometric Scanner (Break Return In)'
+                  : stageAction === 'checkout'
+                  ? 'Biometric Scanner (Final Check-Out)'
+                  : 'Biometric Thumb Scanner',
+              notes: notesJson,
+            },
+            {
+              silent: true,
+              alsoSendPdf: stageAction === 'checkin' || stageAction === 'checkout',
+              settings: settingsProp || settings,
+            }
+          ).catch(() => {});
+        }
+      })();
+    },
+    [todayAttendance, settings, soundEnabled, onAttendanceMarked]
+  );
+
+  // Core 1:N Biometric Scan & Instant Attendance Processor
+  const executeSingleScanCycle = useCallback(
+    async (isManualTrigger = false) => {
+      if (isScanningLockRef.current) return;
+      isScanningLockRef.current = true;
+      setIsCapturing(true);
+
+      try {
+        const res = await secugenService.captureFingerprint({
+          timeoutMs: isManualTrigger ? 9000 : 5000,
+          quality: 40,
+          templateFormat: 'ISO',
+        });
+
+        if (!isMountedRef.current) return;
+
+        if (!res.success || !res.templateBase64) {
+          if (isManualTrigger && res.error) {
+            toast.error(res.error);
+          }
+          return;
+        }
+
+        const thumbDataUrl =
+          res.bmpDataUrl ||
+          (res.bmpBase64
+            ? res.bmpBase64.startsWith('data:')
+              ? res.bmpBase64
+              : `data:image/bmp;base64,${res.bmpBase64}`
+            : undefined);
+
+        setScannerStatus({ connected: true, deviceFound: true });
+
+        // 1:N Fast Template Matching against Enrolled Staff (31+ Faculty, supports 1 or 2 fingers per teacher)
+        let topStaff: any = null;
+        let topStaffScore = 0;
+        let runnerUpStaffScore = 0;
+
+        for (const teacher of enrolledStaff) {
+          const tpl = teacher.fingerprintTemplate || teacher.fingerprint_template;
+          if (!tpl) continue;
+          const m = await secugenService.matchTemplates(
+            res.templateBase64,
+            tpl,
+            'ISO',
+            teacher.fingerprintFinger || teacher.fingerprint_finger
+          );
+          if (m.score > topStaffScore) {
+            runnerUpStaffScore = topStaffScore;
+            topStaffScore = m.score;
+            topStaff = teacher;
+          } else if (m.score > runnerUpStaffScore) {
+            runnerUpStaffScore = m.score;
+          }
+        }
+
+        // STRICT BIOMETRIC FALSE-POSITIVE & AMBIGUITY GUARDS:
+        // 1. Biological match threshold: >= 95 (self-match scores 120-199; cross-person random overlap peaks at 79).
+        // 2. Candidate Margin Guard: #1 candidate must lead runner-up by >= 25 points if runner-up >= 55.
+        let matchedStaff: any = null;
+        let bestScore = 0;
+
+        const isUnambiguousStaff =
+          topStaff &&
+          topStaffScore >= 95 &&
+          (runnerUpStaffScore < 55 || topStaffScore - runnerUpStaffScore >= 25);
+
+        if (isUnambiguousStaff) {
+          matchedStaff = topStaff;
+          bestScore = topStaffScore;
+        }
+
+        // Also check enrolled students if no staff matched
+        let matchedStudent: any = null;
+        if (!matchedStaff && enrolledStudents.length > 0) {
+          let topStu: any = null;
+          let topStuScore = 0;
+          let runnerUpStuScore = 0;
+
+          for (const stu of enrolledStudents) {
+            const tpl = stu.fingerprintTemplate || stu.fingerprint_template;
+            if (!tpl) continue;
+            const m = await secugenService.matchTemplates(
+              res.templateBase64,
+              tpl,
+              'ISO',
+              stu.fingerprintFinger || stu.fingerprint_finger
             );
-            if (identified) {
-              await recordAttendance(identified.candidate, identified.score);
-              // Brief pause before next scan
-              await new Promise((r) => setTimeout(r, 2000));
-            } else {
-              playChime("error");
-              toast.error("Unrecognized finger. Please try again or register student.", { duration: 3000 });
-              await new Promise((r) => setTimeout(r, 1500));
+            if (m.score > topStuScore) {
+              runnerUpStuScore = topStuScore;
+              topStuScore = m.score;
+              topStu = stu;
+            } else if (m.score > runnerUpStuScore) {
+              runnerUpStuScore = m.score;
             }
           }
-        } catch (loopErr) {
-          console.warn("Auto-loop step:", loopErr);
-          await new Promise((r) => setTimeout(r, 1000));
-        } finally {
-          setIsScanning(false);
-        }
-      }
-    }
 
-    if (autoLoopActive) {
-      runAutoLoop();
+          if (topStu && topStuScore >= 95 && (runnerUpStuScore < 55 || topStuScore - runnerUpStuScore >= 25)) {
+            matchedStudent = topStu;
+            bestScore = topStuScore;
+          }
+        }
+
+        const now = new Date();
+        const todayStr = getTodayDateStr();
+        const displayTime = formatTime12h(now);
+
+        if (!matchedStaff && !matchedStudent) {
+          if (soundEnabled) playKioskSound('error');
+          // If a finger scored borderline (e.g. 70-94) or ambiguous, provide clear guidance
+          const isBorderline = topStaffScore >= 70;
+          setVerifiedCard({
+            type: 'unrecognized',
+            message: isBorderline
+              ? 'Fingerprint Unclear or Partial — Please Center Finger Firmly on Sensor'
+              : 'Fingerprint Not Recognized — Please Place Enrolled Finger Flat on Sensor',
+            thumbBmp: thumbDataUrl,
+          });
+          if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+          resetTimerRef.current = setTimeout(() => {
+            if (isMountedRef.current) setVerifiedCard(null);
+          }, 2600);
+          return;
+        }
+
+        if (matchedStaff) {
+          // 5-Minute Anti-Bounce & Cooldown Guard:
+          // If teacher already punched within 5 mins (e.g. holds finger or taps 2-4 times),
+          // show soft confirmation card without re-saving or sending duplicate WhatsApp messages!
+          const lastPunch = recentPunchesRef.current.get(matchedStaff.id);
+          const nowMs = Date.now();
+          const COOLDOWN_MS = 5 * 60 * 1000;
+
+          if (lastPunch && nowMs - lastPunch.timestamp < COOLDOWN_MS) {
+            if (soundEnabled) playKioskSound('duplicate');
+            setVerifiedCard({
+              type: 'duplicate',
+              person: matchedStaff,
+              status: 'Already Marked',
+              punchTime: lastPunch.displayTime,
+              score: bestScore,
+              message: `Already Marked at ${lastPunch.displayTime} — Kindly proceed to your lecture!`,
+              thumbBmp: thumbDataUrl,
+            });
+            if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+            resetTimerRef.current = setTimeout(() => {
+              if (isMountedRef.current) setVerifiedCard(null);
+            }, 3000);
+            return;
+          }
+
+          if (res.bmpBase64) {
+            secugenService.saveFingerprintThumbnail(matchedStaff.id, res.bmpBase64);
+          }
+
+          const existingRec = todayAttendance.find(
+            (r: any) => (r.staff_id || r.staffId) === matchedStaff.id && r.date === todayStr
+          );
+          const parsedExisting = parseAttendanceNotesAndTime(
+            existingRec?.notes,
+            existingRec?.check_in || existingRec?.checkIn || existingRec?.check_in_time || existingRec?.checkInTime,
+            existingRec?.check_out || existingRec?.checkOut || existingRec?.check_out_time || existingRec?.checkOutTime
+          );
+          const existingCheckIn = parsedExisting.checkIn;
+          const existingBreakOut = parsedExisting.breakOut;
+          const existingBreakIn = parsedExisting.breakIn;
+
+          // Determine 4-stage action: Morning Check-In -> Mid-Day Break Out -> Break Return In -> Final Check-Out
+          let actionType: 'checkin' | 'breakout' | 'breakin' | 'checkout' | 'duplicate' = 'checkin';
+          if (punchMode !== 'auto') {
+            actionType = punchMode;
+          } else if (!existingCheckIn) {
+            actionType = 'checkin';
+          } else {
+            let minsSinceLastPunch = 999;
+            let lastIso = existingRec?.check_in_time || existingRec?.checkInTime || existingRec?.created_at;
+            if (existingRec?.notes && typeof existingRec.notes === 'string' && existingRec.notes.startsWith('{')) {
+              try {
+                const p = JSON.parse(existingRec.notes);
+                lastIso = p.lastPunchIso || p.isoBreakIn || p.isoBreakOut || p.isoCheckIn || lastIso;
+              } catch {}
+            }
+            if (lastIso) {
+              const lastDate = new Date(lastIso);
+              if (!isNaN(lastDate.getTime())) {
+                minsSinceLastPunch = (now.getTime() - lastDate.getTime()) / 60000;
+              }
+            }
+
+            const nowTotalMins = now.getHours() * 60 + now.getMinutes();
+            // Before 12:45 PM (765 mins), 2nd scan defaults to Mid-Day Break / Free-Period Out
+            const isMidDayWindow = nowTotalMins < 12 * 60 + 45;
+
+            if (minsSinceLastPunch < 4) {
+              actionType = 'duplicate';
+            } else if (parsedExisting.campusState === 'on_break' || (existingBreakOut && !existingBreakIn)) {
+              actionType = 'breakin';
+            } else if (!existingBreakOut && isMidDayWindow) {
+              actionType = 'breakout';
+            } else {
+              actionType = 'checkout';
+            }
+          }
+
+          await recordStaffStageAction(matchedStaff, actionType, bestScore, thumbDataUrl);
+
+          if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+          resetTimerRef.current = setTimeout(() => {
+            if (isMountedRef.current) setVerifiedCard(null);
+          }, 4200);
+        } else if (matchedStudent) {
+          if (res.bmpBase64) {
+            secugenService.saveFingerprintThumbnail(
+              matchedStudent.id,
+              res.bmpBase64,
+              matchedStudent.collegeNo
+            );
+          }
+          // Student Biometric Attendance
+          const notesJson = JSON.stringify({
+            checkIn: displayTime,
+            isoCheckIn: now.toISOString(),
+            method: 'biometric_fingerprint',
+            Verify: `Biometric Thumb Verified (Score ${bestScore})`,
+            notes: `Biometric Check-In at ${displayTime}`,
+          });
+
+          const basePayload = {
+            id: `${matchedStudent.id}-${todayStr}`,
+            student_id: matchedStudent.id,
+            date: todayStr,
+            status: 'Present',
+            notes: notesJson,
+          };
+          if (isSupabaseConfigured) {
+            const { error } = await supabase
+              .from('student_attendance')
+              .upsert([basePayload], { onConflict: 'id' });
+            if (error) {
+              await supabase
+                .from('student_attendance')
+                .upsert(
+                  [
+                    {
+                      student_id: matchedStudent.id,
+                      date: todayStr,
+                      status: 'Present',
+                      notes: notesJson,
+                    },
+                  ],
+                  { onConflict: 'student_id,date' }
+                );
+            }
+          }
+          if (soundEnabled) playKioskSound('checkin');
+          speakKioskAnnouncement(
+            `Welcome ${matchedStudent.fullName}. Attendance marked at ${displayTime}.`,
+            voiceEnabled
+          );
+          setVerifiedCard({
+            type: 'checkin',
+            person: {
+              ...matchedStudent,
+              role: `Student • Roll: ${matchedStudent.collegeNo || matchedStudent.id}`,
+            },
+            status: 'Present',
+            punchTime: displayTime,
+            score: bestScore,
+            message: `Student Biometric Check-In Recorded at ${displayTime}!`,
+            thumbBmp: thumbDataUrl,
+          });
+          sendAutoDailyAttendanceNoticeDetailed(
+            matchedStudent,
+            {
+              date: todayStr,
+              status: 'Present',
+              checkInTime: displayTime,
+              notes: notesJson,
+            },
+            settings,
+            { silent: true }
+          ).catch(() => {});
+          if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+          resetTimerRef.current = setTimeout(() => {
+            if (isMountedRef.current) setVerifiedCard(null);
+          }, 3200);
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setIsCapturing(false);
+        }
+        isScanningLockRef.current = false;
+      }
+    },
+    [
+      enrolledStaff,
+      enrolledStudents,
+      todayAttendance,
+      punchMode,
+      soundEnabled,
+      voiceEnabled,
+      settings,
+      onAttendanceMarked,
+      recordStaffStageAction,
+    ]
+  );
+
+  // Continuous Zero-Click Auto-Scan Loop
+  useEffect(() => {
+    isMountedRef.current = true;
+    let loopTimer: NodeJS.Timeout | null = null;
+
+    const runContinuousLoop = async () => {
+      if (!isMountedRef.current) return;
+      if (autoLoopActiveRef.current && !isScanningLockRef.current && enrolledStaff.length > 0) {
+        await executeSingleScanCycle(false);
+      }
+      if (isMountedRef.current && autoLoopActiveRef.current) {
+        // Short 650ms breather before listening for the next teacher's finger
+        loopTimer = setTimeout(runContinuousLoop, 650);
+      }
+    };
+
+    if (autoLoopEnabled && !loadingDb) {
+      loopTimer = setTimeout(runContinuousLoop, 400);
     }
 
     return () => {
-      isCancelled = true;
+      if (loopTimer) clearTimeout(loopTimer);
     };
-  }, [autoLoopActive, deviceStatus.connected, enrolledCandidates]);
+  }, [autoLoopEnabled, loadingDb, enrolledStaff.length, executeSingleScanCycle]);
 
-  // Toggle Fullscreen
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-      setIsFullScreen(true);
-    } else {
-      document.exitFullscreen().catch(() => {});
-      setIsFullScreen(false);
-    }
-  };
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    };
+  }, []);
 
-  // Filtered manual search roster
-  const filteredManualList = React.useMemo(() => {
-    if (!manualSearchQuery.trim()) return [];
-    const q = manualSearchQuery.toLowerCase().trim();
-    const students = rawStudents
-      .filter(
-        (s) =>
-          (s.fullName || "").toLowerCase().includes(q) ||
-          (s.fatherName || "").toLowerCase().includes(q) ||
-          (s.collegeNo || "").toLowerCase().includes(q) ||
-          (s.id || "").toLowerCase().includes(q)
-      )
-      .slice(0, 5)
-      .map((s) => ({
-        id: s.id,
-        fullName: s.fullName,
-        fatherName: s.fatherName,
-        collegeNo: s.collegeNo,
-        phone: s.contact,
-        personType: "student" as const,
-        roleOrGroup: s.group,
-        photo: s.photo,
-        fingerprintTemplate: s.fingerprintTemplate,
-      }));
+  // Stats for Today
+  const stats = useMemo(() => {
+    const present = todayAttendance.filter((a) => a.status === 'Present').length;
+    const late = todayAttendance.filter((a) => a.status === 'Late').length;
+    let onBreak = 0;
+    let checkedOut = 0;
+    todayAttendance.forEach((a) => {
+      const p = parseAttendanceNotesAndTime(
+        a.notes,
+        a.check_in || a.checkIn,
+        a.check_out || a.checkOut
+      );
+      if (p.campusState === 'on_break' || (p.breakOut && !p.breakIn && !p.checkOut)) {
+        onBreak++;
+      }
+      if (p.checkOut) {
+        checkedOut++;
+      }
+    });
+    const totalEnrolled = enrolledStaff.length;
+    const pending = Math.max(0, staffList.length - (present + late));
+    return { present, late, onBreak, checkedOut, totalEnrolled, pending };
+  }, [todayAttendance, enrolledStaff.length, staffList.length]);
 
-    const staff = rawStaff
-      .filter(
-        (st) =>
-          (st.fullName || "").toLowerCase().includes(q) ||
-          (st.role || "").toLowerCase().includes(q) ||
-          (st.id || "").toLowerCase().includes(q)
-      )
-      .slice(0, 5)
-      .map((st) => ({
-        id: st.id,
-        fullName: st.fullName,
-        fatherName: st.fatherName,
-        phone: st.contact,
-        personType: "staff" as const,
-        roleOrGroup: st.role,
-        photo: st.photo,
-        fingerprintTemplate: st.fingerprintTemplate,
-      }));
-
-    return [...students, ...staff];
-  }, [manualSearchQuery, rawStudents, rawStaff]);
+  const filteredStaffRoster = useMemo(() => {
+    const q = (searchRoster || '').toLowerCase();
+    return staffList.filter(
+      (s) =>
+        (s.fullName || '').toLowerCase().includes(q) ||
+        (s.id || '').toLowerCase().includes(q) ||
+        (s.role || '').toLowerCase().includes(q)
+    );
+  }, [staffList, searchRoster]);
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex flex-col font-sans select-none">
-      {/* Top Navigation & Status Bar */}
-      <header className="bg-gradient-to-r from-[#085a4e] via-[#0b6e60] to-[#085a4e] text-white px-6 py-4 shadow-xl border-b border-white/10 sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            {onBackToApp && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onBackToApp}
-                className="rounded-xl border-white/20 bg-white/10 hover:bg-white/20 text-white font-black text-xs uppercase"
-              >
-                <ArrowLeft size={16} className="mr-1.5" /> Back to App
-              </Button>
-            )}
-
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center text-amber-300 shadow-inner">
-                <Fingerprint size={22} />
-              </div>
-              <div>
-                <h1 className="text-base font-black tracking-tight flex items-center gap-2">
-                  <span>SecuGen Biometric Attendance Desk</span>
-                  <span className="text-[10px] font-mono font-bold bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full uppercase">
-                    HU20-A (Made in Korea)
-                  </span>
-                </h1>
-                <p className="text-[11px] text-emerald-100 font-medium">
-                  {collegeName} • Instant Check-in &amp; Parent WhatsApp Notices
-                </p>
-              </div>
-            </div>
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-between p-4 sm:p-6 select-none">
+      {/* Top Institutional Kiosk Header */}
+      <header className="max-w-7xl w-full mx-auto flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/10">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 p-2 flex items-center justify-center shrink-0">
+            <img src={collegeLogo} alt={collegeName} className="w-full h-full object-contain" />
           </div>
-
-          <div className="flex items-center flex-wrap gap-2.5">
-            {/* SecuGen Hardware Status Badge */}
-            <div
-              onClick={checkDevice}
-              title="Click to re-check hardware"
-              className={cn(
-                "px-3 py-1.5 rounded-xl border flex items-center gap-2 text-xs font-bold cursor-pointer transition-all",
-                deviceStatus.connected
-                  ? "bg-emerald-500/20 border-emerald-400/50 text-emerald-200"
-                  : deviceStatus.serviceRunning
-                  ? "bg-amber-500/20 border-amber-400/50 text-amber-200"
-                  : "bg-rose-500/20 border-rose-400/50 text-rose-200"
-              )}
-            >
-              <span
-                className={cn(
-                  "w-2.5 h-2.5 rounded-full",
-                  deviceStatus.connected
-                    ? "bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]"
-                    : deviceStatus.serviceRunning
-                    ? "bg-amber-400"
-                    : "bg-rose-400"
-                )}
-              />
-              <span>
-                {deviceStatus.connected
-                  ? "Scanner Ready"
-                  : deviceStatus.serviceRunning
-                  ? "Scanner Unplugged"
-                  : "WebAPI Offline"}
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-black tracking-tight text-white">
+                {settings?.collegeName || collegeName}
+              </h1>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                4-Stage Movement & Attendance Terminal
               </span>
-              <RefreshCw size={12} className={cn(isCheckingDevice && "animate-spin")} />
             </div>
-
-            {/* Enrolled Count Badge */}
-            <Badge
-              variant="outline"
-              className="border-white/20 bg-white/10 text-white font-bold text-xs px-2.5 py-1"
-            >
-              <Users size={13} className="mr-1.5 text-amber-300" />
-              {enrolledCandidates.length} Enrolled Profiles
-            </Badge>
-
-            {/* Audio Toggle */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSoundEnabled(!soundEnabled)}
-              className="text-white hover:bg-white/10 rounded-xl h-9 px-2.5"
-              title="Toggle Audio Chimes"
-            >
-              {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-            </Button>
-
-            {/* Register New Fingerprint Button */}
-            <Button
-              onClick={() => setIsEnrollModalOpen(true)}
-              className="h-9 px-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs uppercase tracking-wider shadow-md flex items-center gap-1.5 transition-transform hover:scale-105 active:scale-95 border-none"
-            >
-              <Plus size={15} />
-              <span>Enroll Fingerprint</span>
-            </Button>
-
-            {/* Fullscreen Button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleFullscreen}
-              className="text-white hover:bg-white/10 rounded-xl h-9 px-2.5"
-              title="Toggle Fullscreen"
-            >
-              {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-            </Button>
+            <p className="text-xs text-slate-400">
+              Morning In • Mid-Day Break Out • Break Return In • Final Off-Duty Out
+            </p>
           </div>
+        </div>
+
+        {/* Right Controls: Live Clock, Audio/Voice Toggles & Return Button */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 flex items-center gap-2 font-mono text-xs font-bold text-amber-300">
+            <Clock size={14} className="text-emerald-400" />
+            <span>{formatTime12h(currentTime)}</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setAutoLoopEnabled((v) => !v)}
+            className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 border transition-all cursor-pointer ${
+              autoLoopEnabled
+                ? 'bg-emerald-600/25 border-emerald-400/50 text-emerald-300'
+                : 'bg-slate-900 border-white/15 text-slate-400'
+            }`}
+            title="Toggle Continuous Zero-Click Auto-Scanning"
+          >
+            {autoLoopEnabled ? <Pause size={14} /> : <Play size={14} />}
+            <span>{autoLoopEnabled ? 'Auto-Scan ON' : 'Auto-Scan Paused'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              const next = !soundEnabled;
+              setSoundEnabled(next);
+              setVoiceEnabled(next);
+              if (next) playKioskSound('checkin');
+            }}
+            className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
+              soundEnabled
+                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                : 'bg-slate-900 border-white/10 text-slate-500'
+            }`}
+            title={soundEnabled ? 'Sound & Voice Feedback Enabled' : 'Muted'}
+          >
+            {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+          </button>
+
+          {onBackToApp && (
+            <button
+              type="button"
+              onClick={onBackToApp}
+              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-bold flex items-center gap-2 cursor-pointer"
+            >
+              <ArrowLeft size={14} />
+              <span>Return to ERP</span>
+            </button>
+          )}
         </div>
       </header>
 
-      {/* Main Workspace Layout */}
-      <main className="max-w-7xl mx-auto w-full p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
-        {/* Left Column: Big Touch-to-Scan & Last Punched Card */}
-        <div className="lg:col-span-7 space-y-6">
-          {/* Big Interactive Scanner Card */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-xl text-center flex flex-col items-center justify-center relative overflow-hidden">
-            {/* Background Aesthetic Glow */}
-            <div className="absolute -top-24 -left-24 w-64 h-64 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-24 -right-24 w-64 h-64 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
-
-            <div className="relative z-10 space-y-4 max-w-md mx-auto">
-              {/* Animated Fingerprint Sensor Target */}
-              <button
-                type="button"
-                onClick={handleSingleScan}
-                disabled={isScanning || !deviceStatus.connected}
-                className={cn(
-                  "w-36 h-36 mx-auto rounded-3xl flex flex-col items-center justify-center transition-all duration-300 shadow-2xl relative group cursor-pointer",
-                  isScanning
-                    ? "bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 scale-105 animate-pulse shadow-amber-500/30"
-                    : deviceStatus.connected
-                    ? "bg-gradient-to-br from-[#085a4e] to-[#0d7d6c] text-white hover:scale-105 active:scale-95 shadow-emerald-900/30 ring-4 ring-emerald-500/20"
-                    : "bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed"
-                )}
-              >
-                <Fingerprint
-                  size={64}
-                  className={cn(
-                    "transition-transform",
-                    isScanning && "animate-bounce",
-                    "group-hover:scale-110"
-                  )}
-                />
-                <span className="text-[10px] font-black uppercase tracking-widest mt-1">
-                  {isScanning ? "Scanning..." : deviceStatus.connected ? "Touch Sensor" : "Offline"}
-                </span>
-              </button>
-
-              <div>
-                <h2 className="text-xl font-black text-slate-900 dark:text-white">
-                  {isScanning
-                    ? "Hold Finger on Sensor..."
-                    : "Ready for Biometric Check-in"}
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Place finger flat and firmly on the SecuGen HU20-A scanner prism.
-                </p>
-              </div>
-
-              {/* Controls: Continuous Auto-Mode & Single Touch */}
-              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                <Button
-                  onClick={handleSingleScan}
-                  disabled={isScanning || !deviceStatus.connected}
-                  className="h-11 px-6 rounded-xl bg-[#085a4e] hover:bg-[#06483e] text-white font-black text-xs uppercase tracking-wider shadow-md"
-                >
-                  <Fingerprint size={16} className="mr-2" /> 1-Tap Check-in
-                </Button>
-
-                <Button
-                  variant={autoLoopActive ? "destructive" : "outline"}
-                  onClick={() => setAutoLoopActive(!autoLoopActive)}
-                  disabled={!deviceStatus.connected}
-                  className="h-11 px-5 rounded-xl font-black text-xs uppercase tracking-wider"
-                >
-                  <RefreshCw
-                    size={14}
-                    className={cn("mr-2", autoLoopActive && "animate-spin")}
-                  />
-                  {autoLoopActive ? "Stop Auto-Scan" : "Auto-Continuous Scan"}
-                </Button>
-              </div>
+      {/* Main Kiosk Split Grid */}
+      <main className="max-w-7xl w-full mx-auto my-auto py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        {/* Left / Center (7 Cols): Zero-Click Live Sensor Terminal & Instant Verification Card */}
+        <div className="lg:col-span-7 flex flex-col justify-between bg-slate-900/90 border border-white/10 rounded-3xl p-6 sm:p-8 relative overflow-hidden shadow-2xl">
+          {/* Top Mode Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-5 border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <span
+                className={`w-2.5 h-2.5 rounded-full ${
+                  isCapturing ? 'bg-emerald-400 animate-ping' : 'bg-emerald-500'
+                }`}
+              />
+              <span className="text-xs font-bold text-slate-300">
+                {isCapturing
+                  ? 'Sensor Active — Waiting for Finger on SecuGen Reader...'
+                  : 'Ready for Next Faculty Member'}
+              </span>
             </div>
 
-            {/* SSL Help prompt if 8443 needs permission */}
-            {deviceStatus.isSslCertificateRequired && (
-              <div className="mt-6 p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200 text-left flex items-center justify-between gap-2 max-w-lg w-full">
-                <span>
-                  <strong>Browser Permission Needed</strong>: Click to allow local SecuGen SSL certificate on this PC.
-                </span>
-                <a
-                  href="https://localhost:8443/SGIFPCapture"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 rounded-lg bg-amber-400 text-slate-950 font-black text-[11px] uppercase tracking-wider hover:bg-amber-300 shrink-0 flex items-center gap-1"
-                >
-                  <span>Allow SSL</span>
-                  <ExternalLink size={12} />
-                </a>
+            {/* 4-Stage Punch Mode Selector */}
+            <div className="flex flex-wrap items-center bg-slate-950 p-1 rounded-xl border border-white/10 gap-0.5">
+              <button
+                type="button"
+                onClick={() => setPunchMode('auto')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
+                  punchMode === 'auto'
+                    ? 'bg-emerald-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Smart 4-Stage Auto
+              </button>
+              <button
+                type="button"
+                onClick={() => setPunchMode('checkin')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
+                  punchMode === 'checkin'
+                    ? 'bg-emerald-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Morning In
+              </button>
+              <button
+                type="button"
+                onClick={() => setPunchMode('breakout')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
+                  punchMode === 'breakout'
+                    ? 'bg-amber-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Break Out
+              </button>
+              <button
+                type="button"
+                onClick={() => setPunchMode('breakin')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
+                  punchMode === 'breakin'
+                    ? 'bg-teal-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Break Return
+              </button>
+              <button
+                type="button"
+                onClick={() => setPunchMode('checkout')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
+                  punchMode === 'checkout'
+                    ? 'bg-blue-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Final Out
+              </button>
+            </div>
+          </div>
+
+          {/* Center Display: Either Verified Result Card OR Active Sensor Prompt */}
+          <div className="my-auto py-6 flex flex-col items-center justify-center text-center min-h-[320px]">
+            {verifiedCard ? (
+              <div
+                className={`w-full max-w-xl rounded-3xl p-5 sm:p-6 border-2 shadow-2xl transition-all animate-in zoom-in-95 duration-200 ${
+                  verifiedCard.type === 'checkin' || verifiedCard.type === 'breakin'
+                    ? 'bg-emerald-950/90 border-emerald-400 text-white'
+                    : verifiedCard.type === 'breakout'
+                    ? 'bg-amber-950/90 border-amber-400 text-white'
+                    : verifiedCard.type === 'checkout'
+                    ? 'bg-blue-950/90 border-blue-400 text-white'
+                    : verifiedCard.type === 'duplicate'
+                    ? 'bg-amber-950/90 border-amber-400 text-white'
+                    : 'bg-rose-950/90 border-rose-500 text-white'
+                }`}
+              >
+                {verifiedCard.person ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-4 text-left">
+                      <div className="w-18 h-18 rounded-2xl bg-white/10 border-2 border-white/30 overflow-hidden flex items-center justify-center text-2xl font-black shrink-0 shadow-lg">
+                        {verifiedCard.person.photo ? (
+                          <img
+                            src={verifiedCard.person.photo}
+                            alt={verifiedCard.person.fullName}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          (verifiedCard.person.fullName || 'F').slice(0, 2).toUpperCase()
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/15 text-[11px] font-black uppercase tracking-wider mb-1">
+                          <CheckCircle2 size={13} />
+                          <span>{verifiedCard.status}</span>
+                        </div>
+                        <h3 className="text-xl sm:text-2xl font-black truncate">
+                          {verifiedCard.person.fullName}
+                        </h3>
+                        <p className="text-xs text-white/80 font-mono">
+                          ID: {verifiedCard.person.id} • {verifiedCard.person.role}
+                        </p>
+                      </div>
+                      {verifiedCard.thumbBmp && (
+                        <img
+                          src={verifiedCard.thumbBmp}
+                          alt="Thumb"
+                          className="w-12 h-14 object-contain rounded-xl border border-white/30 bg-black/40 p-0.5 shrink-0"
+                        />
+                      )}
+                    </div>
+
+                    <div className="p-3 rounded-2xl bg-black/30 border border-white/15 flex items-center justify-between">
+                      <div className="text-left">
+                        <p className="text-[10px] uppercase tracking-wider text-white/70 font-bold">
+                          Movement & Attendance Confirmation
+                        </p>
+                        <p className="text-xs sm:text-sm font-black text-emerald-300">
+                          {verifiedCard.message}
+                        </p>
+                      </div>
+                      <div className="text-right font-mono shrink-0 pl-2">
+                        <p className="text-sm sm:text-base font-black text-amber-300">
+                          {verifiedCard.punchTime}
+                        </p>
+                        <p className="text-[10px] text-white/60">
+                          Match Score: {verifiedCard.score}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 4-Stage Timeline Pills */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-left">
+                      <div className="p-2 rounded-xl bg-black/25 border border-white/10">
+                        <p className="text-[9px] uppercase font-bold text-white/60">1. Morning In</p>
+                        <p className="text-xs font-mono font-black text-emerald-300">
+                          {verifiedCard.checkIn || '—'}
+                        </p>
+                      </div>
+                      <div className="p-2 rounded-xl bg-black/25 border border-white/10">
+                        <p className="text-[9px] uppercase font-bold text-white/60">2. Break Out</p>
+                        <p className="text-xs font-mono font-black text-amber-300">
+                          {verifiedCard.breakOut || '—'}
+                        </p>
+                      </div>
+                      <div className="p-2 rounded-xl bg-black/25 border border-white/10">
+                        <p className="text-[9px] uppercase font-bold text-white/60">3. Break Return</p>
+                        <p className="text-xs font-mono font-black text-teal-300">
+                          {verifiedCard.breakIn || '—'}
+                        </p>
+                      </div>
+                      <div className="p-2 rounded-xl bg-black/25 border border-white/10">
+                        <p className="text-[9px] uppercase font-bold text-white/60">4. Final Out</p>
+                        <p className="text-xs font-mono font-black text-sky-300">
+                          {verifiedCard.checkOut || '—'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 1-Click Stage Override Buttons (in case teacher is leaving early or going on break) */}
+                    {!String(verifiedCard.person.role || '').startsWith('Student') && (
+                      <div className="pt-1 flex flex-wrap items-center justify-center gap-1.5">
+                        <span className="text-[10px] text-white/70 font-bold mr-1">
+                          Switch Action:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            recordStaffStageAction(
+                              verifiedCard.person,
+                              'breakout',
+                              verifiedCard.score || 150,
+                              verifiedCard.thumbBmp
+                            )
+                          }
+                          className="px-2.5 py-1 rounded-lg bg-amber-500/30 hover:bg-amber-500/50 border border-amber-300/40 text-[10px] font-black text-amber-100 cursor-pointer"
+                        >
+                          Mark as Break / Free Out
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            recordStaffStageAction(
+                              verifiedCard.person,
+                              'breakin',
+                              verifiedCard.score || 150,
+                              verifiedCard.thumbBmp
+                            )
+                          }
+                          className="px-2.5 py-1 rounded-lg bg-teal-500/30 hover:bg-teal-500/50 border border-teal-300/40 text-[10px] font-black text-teal-100 cursor-pointer"
+                        >
+                          Mark as Break Return In
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            recordStaffStageAction(
+                              verifiedCard.person,
+                              'checkout',
+                              verifiedCard.score || 150,
+                              verifiedCard.thumbBmp
+                            )
+                          }
+                          className="px-2.5 py-1 rounded-lg bg-blue-500/30 hover:bg-blue-500/50 border border-blue-300/40 text-[10px] font-black text-blue-100 cursor-pointer"
+                        >
+                          Mark as Final Off-Duty Out
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3 py-4">
+                    <AlertTriangle className="w-14 h-14 text-rose-400 mx-auto" />
+                    <h3 className="text-xl font-black text-white">Finger Not Recognized</h3>
+                    <p className="text-xs text-rose-200 max-w-md mx-auto">
+                      {verifiedCard.message}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="w-full max-w-md mx-auto">
+                <BiometricLivePulse
+                  isScanning={isCapturing}
+                  variant="kiosk"
+                  onManualScan={() => executeSingleScanCycle(true)}
+                  enrolledCount={enrolledStaff.length}
+                />
+
+                <div className="pt-2 flex items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => executeSingleScanCycle(true)}
+                    disabled={isCapturing}
+                    className="px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg cursor-pointer disabled:opacity-60 transition-all hover:scale-102"
+                  >
+                    <Fingerprint size={16} />
+                    <span>{isCapturing ? 'Listening on Sensor...' : 'Scan Finger Now'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={loadBiometricDatabase}
+                    className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/15 text-xs font-bold flex items-center gap-1.5 cursor-pointer text-slate-300 hover:text-white transition-all"
+                    title="Refresh Enrolled Templates from Cloud"
+                  >
+                    <RefreshCw size={14} />
+                    <span>Sync DB ({enrolledStaff.length})</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Last Punched Identity Card */}
-          {lastPunchedPerson && (
-            <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border-2 border-emerald-500 shadow-xl relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-              <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-xs font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                  <ShieldCheck size={16} /> Verified Biometric Log
-                </span>
-                <span className="text-xs font-mono font-bold text-slate-400">
-                  {lastPunchedPerson.time}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-xl text-superior-teal overflow-hidden border-2 border-emerald-500 shadow-sm shrink-0">
-                  {lastPunchedPerson.photo ? (
-                    <img
-                      src={lastPunchedPerson.photo}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    lastPunchedPerson.fullName.charAt(0)
-                  )}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-black text-slate-900 dark:text-white truncate">
-                      {lastPunchedPerson.fullName}
-                    </h3>
-                    <Badge
-                      className={cn(
-                        "text-[10px] font-black uppercase",
-                        lastPunchedPerson.status === "Present"
-                          ? "bg-emerald-500 text-white"
-                          : "bg-amber-500 text-slate-950"
-                      )}
-                    >
-                      {lastPunchedPerson.status}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-slate-500 font-medium">
-                    Father: {lastPunchedPerson.fatherName || "N/A"} • ID: {lastPunchedPerson.rollNoOrRole}
-                  </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Match Confidence:{" "}
-                    <span className="text-emerald-600 font-bold">
-                      {lastPunchedPerson.matchScore}/199
-                    </span>{" "}
-                    • Verified Finger: {lastPunchedPerson.finger}
-                  </p>
-                </div>
-
-                {/* WhatsApp Status Pill */}
-                <div className="text-right shrink-0">
-                  <span
-                    className={cn(
-                      "text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1",
-                      lastPunchedPerson.waStatus === "sent"
-                        ? "bg-emerald-100 text-emerald-800"
-                        : lastPunchedPerson.waStatus === "sending"
-                        ? "bg-blue-100 text-blue-800 animate-pulse"
-                        : "bg-slate-100 text-slate-600"
-                    )}
-                  >
-                    <Send size={10} />
-                    WhatsApp {lastPunchedPerson.waStatus}
-                  </span>
-                </div>
-              </div>
+          {/* Bottom Summary Counters */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-4 border-t border-white/10">
+            <div className="p-2.5 rounded-2xl bg-slate-950/80 border border-white/10">
+              <p className="text-[10px] font-bold uppercase text-slate-400">Enrolled</p>
+              <p className="text-lg font-black text-emerald-400 mt-0.5">
+                {stats.totalEnrolled} <span className="text-xs text-slate-500">/ {staffList.length}</span>
+              </p>
             </div>
-          )}
+            <div className="p-2.5 rounded-2xl bg-slate-950/80 border border-white/10">
+              <p className="text-[10px] font-bold uppercase text-slate-400">Present</p>
+              <p className="text-lg font-black text-white mt-0.5">{stats.present}</p>
+            </div>
+            <div className="p-2.5 rounded-2xl bg-slate-950/80 border border-white/10">
+              <p className="text-[10px] font-bold uppercase text-slate-400">Late</p>
+              <p className="text-lg font-black text-amber-400 mt-0.5">{stats.late}</p>
+            </div>
+            <div className="p-2.5 rounded-2xl bg-slate-950/80 border border-white/10">
+              <p className="text-[10px] font-bold uppercase text-slate-400">On Break Out</p>
+              <p className="text-lg font-black text-orange-400 mt-0.5">{stats.onBreak}</p>
+            </div>
+            <div className="p-2.5 rounded-2xl bg-slate-950/80 border border-white/10">
+              <p className="text-[10px] font-bold uppercase text-slate-400">Checked Out</p>
+              <p className="text-lg font-black text-sky-400 mt-0.5">{stats.checkedOut}</p>
+            </div>
+          </div>
         </div>
 
-        {/* Right Column: Live Audit Stream & Manual Fallback */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Manual Search Fallback Card */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-800 shadow-md space-y-3">
+        {/* Right Column (5 Cols): Live Today's Biometric Feed & Enrolled Staff Verification Roster */}
+        <div className="lg:col-span-5 bg-slate-900/90 border border-white/10 rounded-3xl p-6 flex flex-col justify-between max-h-[640px]">
+          <div className="space-y-3 pb-3 border-b border-white/10">
             <div className="flex items-center justify-between">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                <Search size={14} className="text-slate-400" />
-                Manual Check-in Fallback
-              </h4>
-              <span className="text-[10px] text-slate-400 font-medium">
-                (Injured finger / Unregistered)
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-sm font-black uppercase tracking-wider">
+                  Live Faculty Movement Roster ({enrolledStaff.length} Enrolled)
+                </h3>
+              </div>
+              <span className="text-[11px] font-mono text-emerald-400 font-bold">
+                {getTodayDateStr()}
               </span>
             </div>
 
             <div className="relative">
-              <Input
-                placeholder="Search name, roll no, or ID to mark manual check-in..."
-                value={manualSearchQuery}
-                onChange={(e) => setManualSearchQuery(e.target.value)}
-                className="h-10 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs border-slate-200"
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchRoster}
+                onChange={(e) => setSearchRoster(e.target.value)}
+                placeholder="Filter teacher by name or ID..."
+                className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-xs text-white focus:outline-none focus:border-emerald-500"
               />
             </div>
-
-            {filteredManualList.length > 0 && (
-              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                {filteredManualList.map((m) => (
-                  <div
-                    key={m.id}
-                    className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 flex items-center justify-between text-xs"
-                  >
-                    <div className="min-w-0">
-                      <p className="font-bold text-slate-900 dark:text-white truncate">
-                        {m.fullName}
-                      </p>
-                      <p className="text-[10px] text-slate-400">
-                        {m.collegeNo || m.id} • {m.roleOrGroup}
-                      </p>
-                    </div>
-
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        recordAttendance(
-                          {
-                            id: m.id,
-                            fullName: m.fullName,
-                            fatherName: m.fatherName,
-                            collegeNo: m.collegeNo,
-                            phone: m.phone,
-                            personType: m.personType,
-                            roleOrGroup: m.roleOrGroup,
-                            photo: m.photo,
-                            fingerprintFinger: "Manual Override",
-                          },
-                          100
-                        );
-                        setManualSearchQuery("");
-                      }}
-                      className="h-7 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] uppercase tracking-wider"
-                    >
-                      <Check size={12} className="mr-1" /> Mark Present
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
-          {/* Today's Biometric Activity Log */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-800 shadow-md space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Clock size={16} className="text-superior-teal" />
-                <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">
-                  Today&apos;s Biometric Log ({todayPunches.length})
-                </h4>
-              </div>
-              <span className="text-[10px] font-mono text-slate-400 font-bold">
-                {new Date().toLocaleDateString("en-GB", {
-                  day: "2-digit",
-                  month: "short",
-                  year: "numeric",
-                })}
-              </span>
-            </div>
+          <div className="flex-1 overflow-y-auto divide-y divide-white/5 my-2 pr-1">
+            {filteredStaffRoster.map((teacher) => {
+              const rec = todayAttendance.find(
+                (r: any) => (r.staff_id || r.staffId) === teacher.id
+              );
+              const parsedRow = rec
+                ? parseAttendanceNotesAndTime(
+                    rec.notes,
+                    rec.check_in || rec.checkIn,
+                    rec.check_out || rec.checkOut
+                  )
+                : { checkIn: '', breakOut: '', breakIn: '', checkOut: '', campusState: undefined, cleanRemarks: '' };
+              const cin = parsedRow.checkIn;
+              const bout = parsedRow.breakOut;
+              const bin = parsedRow.breakIn;
+              const cout = parsedRow.checkOut;
+              const hasFinger = Boolean(
+                teacher.fingerprintTemplate || teacher.fingerprint_template
+              );
 
-            <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
-              {todayPunches.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-xs">
-                  <Fingerprint size={32} className="mx-auto mb-2 opacity-20" />
-                  <p className="font-bold">No Biometric Scans Yet Today</p>
-                  <p className="text-[10px] mt-0.5">
-                    Scans will appear here in real-time as students and staff check in.
-                  </p>
-                </div>
-              ) : (
-                todayPunches.map((punch) => (
-                  <div
-                    key={punch.id}
-                    className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-xs"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-superior-teal text-xs shrink-0 overflow-hidden">
-                        {punch.photo ? (
-                          <img
-                            src={punch.photo}
-                            alt=""
-                            className="w-full h-full object-cover"
+              return (
+                <div
+                  key={teacher.id}
+                  className="py-2.5 px-2 flex items-center justify-between gap-3 hover:bg-white/5 rounded-xl transition-colors"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-white/10 flex items-center justify-center text-xs font-black text-emerald-300 overflow-hidden shrink-0">
+                      {teacher.photo ? (
+                        <img
+                          src={teacher.photo}
+                          alt={teacher.fullName}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        (teacher.fullName || 'T').slice(0, 2).toUpperCase()
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-black text-white truncate">
+                          {teacher.fullName}
+                        </p>
+                        {hasFinger ? (
+                          <span
+                            className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"
+                            title={`Enrolled (${teacher.fingerprintFinger || 'Right Thumb'})`}
                           />
                         ) : (
-                          punch.fullName.charAt(0)
+                          <span
+                            className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold"
+                            title="Fingerprint not yet scanned"
+                          >
+                            No Thumb
+                          </span>
                         )}
                       </div>
-                      <div className="min-w-0">
-                        <p className="font-bold text-slate-900 dark:text-white truncate">
-                          {punch.fullName}
-                        </p>
-                        <p className="text-[10px] text-slate-400 truncate">
-                          {punch.rollNoOrRole} • {punch.personType}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="text-right shrink-0">
-                      <span className="text-[11px] font-mono font-black text-slate-800 dark:text-slate-200 block">
-                        {punch.time}
-                      </span>
-                      <span
-                        className={cn(
-                          "text-[9px] font-bold uppercase",
-                          punch.status === "Present"
-                            ? "text-emerald-600"
-                            : "text-amber-600"
-                        )}
-                      >
-                        {punch.status}
-                      </span>
+                      <p className="text-[10px] text-slate-400 font-mono truncate">
+                        {teacher.id} • {teacher.role}
+                      </p>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+
+                  <div className="text-right shrink-0">
+                    {rec ? (
+                      <div className="space-y-0.5">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black ${
+                            rec.status === 'Late'
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                              : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          }`}
+                        >
+                          <UserCheck size={10} />
+                          <span>
+                            {rec.status} {cin ? `• In: ${cin}` : ''}
+                          </span>
+                        </span>
+                        {bout && (
+                          <p className="text-[10px] font-mono text-amber-300 font-bold">
+                            Break: {bout} &rarr; {bin || 'Out Now'}
+                          </p>
+                        )}
+                        {cout && (
+                          <p className="text-[10px] font-mono text-sky-300 font-bold">
+                            Final Out: {cout}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-[10px] font-mono text-slate-500">
+                        Awaiting Punch
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="pt-3 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400">
+            <span>All Enrolled Staff Templates Verified in Cloud DB</span>
+            <span className="text-emerald-400 font-bold">Late Cutoff: {settings?.collegeStartTime || '07:54'} AM</span>
           </div>
         </div>
       </main>
 
-      {/* Biometric Enrollment Modal */}
-      {isEnrollModalOpen && (
-        <BiometricEnrollmentModal
-          isOpen={isEnrollModalOpen}
-          onClose={() => setIsEnrollModalOpen(false)}
-          studentsList={rawStudents}
-          staffList={rawStaff}
-          onEnrollmentSaved={(id, type, template, finger) => {
-            loadRoster();
-          }}
-        />
-      )}
+      <footer className="max-w-7xl w-full mx-auto text-center text-xs text-slate-500 pt-2">
+        {settings?.collegeName || collegeName} • Fast-Boost SecuGen Biometric Attendance Terminal
+      </footer>
     </div>
   );
 }

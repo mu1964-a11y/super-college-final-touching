@@ -1824,3 +1824,223 @@ export async function dispatchBulkStudentAbsentNotices(
 
   return { total: absentStudentsList.length, sent, failed };
 }
+
+export function parseAttendanceNotesAndTime(
+  notes?: string,
+  explicitCheckIn?: string,
+  explicitCheckOut?: string
+): {
+  checkIn: string;
+  breakOut: string;
+  breakIn: string;
+  checkOut: string;
+  campusState: string;
+  movements: Array<{ type: string; time: string }>;
+  cleanRemarks: string;
+} {
+  let checkIn = explicitCheckIn || '';
+  let breakOut = '';
+  let breakIn = '';
+  let checkOut = explicitCheckOut || '';
+  let campusState = '';
+  let movements: Array<{ type: string; time: string }> = [];
+  let cleanRemarks = '';
+
+  if (notes && typeof notes === 'string') {
+    const trimmed = notes.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (!checkIn && (parsed.checkIn || parsed.check_in || parsed.time)) {
+          checkIn = String(parsed.checkIn || parsed.check_in || parsed.time);
+        }
+        if (parsed.breakOut || parsed.break_out) {
+          breakOut = String(parsed.breakOut || parsed.break_out);
+        }
+        if (parsed.breakIn || parsed.break_in) {
+          breakIn = String(parsed.breakIn || parsed.break_in);
+        }
+        if (!checkOut && (parsed.checkOut || parsed.check_out)) {
+          checkOut = String(parsed.checkOut || parsed.check_out);
+        }
+        if (parsed.campusState) {
+          campusState = String(parsed.campusState);
+        }
+        if (Array.isArray(parsed.movements)) {
+          movements = parsed.movements;
+        }
+        cleanRemarks = parsed.notes || parsed.Verify || parsed.method || 'Biometric Verified';
+      } catch {
+        cleanRemarks = 'Biometric Verified';
+      }
+    } else {
+      const inMatch = trimmed.match(/check[-\s]*in[:\s]+([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:AM|PM)?)/i);
+      const outMatch = trimmed.match(/check[-\s]*out[:\s]+([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:AM|PM)?)/i);
+      const timeMatch = trimmed.match(/\b([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:AM|PM))\b/i);
+      if (!checkIn && inMatch) checkIn = inMatch[1].trim();
+      else if (!checkIn && timeMatch) checkIn = timeMatch[1].trim();
+      if (!checkOut && outMatch) checkOut = outMatch[1].trim();
+      cleanRemarks = trimmed;
+    }
+  }
+
+  return { checkIn, breakOut, breakIn, checkOut, campusState, movements, cleanRemarks };
+}
+
+export async function sendAutoStaffAttendancePdfNotice(
+  staffId: string,
+  phone?: string,
+  monthStr?: string,
+  options?: { silent?: boolean; currentPunch?: any; settings?: any }
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/whatsapp/send-official-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'staff_attendance',
+        staffId,
+        phone: phone ? formatWhatsAppPhone(phone) : undefined,
+        monthStr,
+        currentPunch: options?.currentPunch,
+        settings: options?.settings,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.success) {
+      if (!options?.silent) {
+        toast.success(`Cumulative Attendance PDF sent (${data.fileName || 'PDF'})`);
+      }
+      return true;
+    }
+    if (!options?.silent && data?.error) {
+      toast.error(data.error);
+    }
+    return false;
+  } catch (err: any) {
+    if (!options?.silent) {
+      toast.error(err?.message || 'Failed to send Staff Attendance PDF');
+    }
+    return false;
+  }
+}
+
+export async function sendAutoStaffSalaryPdfNotice(
+  staffId: string,
+  phone?: string,
+  monthStr?: string,
+  options?: { silent?: boolean }
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/whatsapp/send-official-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'staff_salary',
+        staffId,
+        phone: phone ? formatWhatsAppPhone(phone) : undefined,
+        monthStr,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.success) {
+      if (!options?.silent) {
+        toast.success(`Official Salary Slip PDF sent (${data.fileName || 'PDF'})`);
+      }
+      return true;
+    }
+    if (!options?.silent && data?.error) {
+      toast.error(data.error);
+    }
+    return false;
+  } catch (err: any) {
+    if (!options?.silent) {
+      toast.error(err?.message || 'Failed to send Staff Salary PDF');
+    }
+    return false;
+  }
+}
+
+export async function sendAutoStaffDailyCheckInNotice(
+  staff: any,
+  attendance: {
+    date: string;
+    status: string;
+    checkInTime?: string;
+    breakOutTime?: string;
+    breakInTime?: string;
+    checkOutTime?: string;
+    punchEventLabel?: string;
+    mode?: string;
+    notes?: string;
+  },
+  options?: { silent?: boolean; alsoSendPdf?: boolean; settings?: any }
+): Promise<boolean> {
+  const phone = staff?.contact || staff?.phone || staff?.whatsapp || '';
+  const cleanPhone = formatWhatsAppPhone(phone);
+  if (!cleanPhone || cleanPhone.length < 10) return false;
+
+  const parsed = parseAttendanceNotesAndTime(
+    attendance.notes,
+    attendance.checkInTime,
+    attendance.checkOutTime
+  );
+  const nowTimeStr = new Date().toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+  const checkIn = parsed.checkIn || nowTimeStr;
+  const breakOut = attendance.breakOutTime || parsed.breakOut || '';
+  const breakIn = attendance.breakInTime || parsed.breakIn || '';
+  const checkOut = parsed.checkOut || '';
+  const staffName = staff?.fullName || staff?.full_name || 'Faculty Member';
+  const role = staff?.designation || staff?.role || 'Faculty';
+  const staffId = staff?.id || 'STF';
+
+  if (options?.alsoSendPdf && staff?.id) {
+    const pdfOk = await sendAutoStaffAttendancePdfNotice(staff.id, cleanPhone, attendance.date, {
+      silent: options?.silent ?? true,
+      currentPunch: attendance,
+      settings: options?.settings,
+    });
+    if (pdfOk) return true;
+  }
+
+  let timingBlock = `⏰ *Morning Check-In:* *${checkIn}*`;
+  if (breakOut) {
+    timingBlock += `\n☕ *Mid-Day Out (Break/Free Period):* *${breakOut}*`;
+  }
+  if (breakIn) {
+    timingBlock += `\n🔄 *Returned to Campus (Break In):* *${breakIn}*`;
+  }
+  if (checkOut) {
+    timingBlock += `\n🏁 *Final Duty Check-Out:* *${checkOut}*`;
+  }
+
+  const dutyStart = staff?.dutyStartTime || staff?.duty_start_time;
+  const dutyEnd = staff?.dutyEndTime || staff?.duty_end_time;
+  const grace = staff?.graceMinutes ?? staff?.grace_minutes ?? 5;
+  const isCustomLecturer = Boolean(dutyStart && dutyEnd);
+
+  let msg = '';
+  if (isCustomLecturer) {
+    msg = `🏛️ *SUPERIOR COLLEGE JAHANIAN*\n👨‍🏫 *FACULTY LECTURE ATTENDANCE*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 *Lecturer:* *${staffName}* (${role} • ID: *${staffId}*)\n📅 *Date:* *${attendance.date}*\n📌 *Status:* *${(attendance.punchEventLabel || attendance.status).toUpperCase()}*\n📖 *Scheduled Duty:* *${dutyStart}* to *${dutyEnd}* (Grace: ${grace}m)\n${timingBlock}\n🔐 *Mode:* ${attendance.mode || parsed.cleanRemarks || 'Biometric Verified'}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n_Academic Directorate & HR — Superior College Jahanian_`;
+  } else {
+    msg = `🏛️ *SUPERIOR COLLEGE JAHANIAN*\n🏢 *OFFICIAL STAFF ATTENDANCE LOG*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 *Staff:* *${staffName}* (${role} • ID: *${staffId}*)\n📅 *Date:* *${attendance.date}*\n📌 *Status:* *${(attendance.punchEventLabel || attendance.status).toUpperCase()}*\n⏰ *College Hours:* 08:00 AM – 02:00 PM\n${timingBlock}\n🔐 *Mode:* ${attendance.mode || parsed.cleanRemarks || 'Biometric Verified'}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n_HR & Administration — Superior College Jahanian_`;
+  }
+
+  try {
+    const res = await fetch('/api/whatsapp/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: cleanPhone, message: msg }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return Boolean(res.ok && data?.success);
+  } catch {
+    return false;
+  }
+}
+

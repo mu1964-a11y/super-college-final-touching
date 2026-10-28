@@ -34,6 +34,7 @@ import autoTable from "jspdf-autotable";
 
 interface StaffTimetableProps {
   staffList: Staff[];
+  students?: any[];
   timetableRecords?: TimetableEntry[];
   onAddEntry?: (entry: TimetableEntry) => void;
   onRemoveEntry?: (id: string) => void;
@@ -50,6 +51,23 @@ export interface TimetableEntry {
   subject: string;
   classRoom: string;
   section: string;
+  program?: string;
+}
+
+const PROGRAM_TABS = [
+  { id: 'all', label: 'All Programs', short: 'All' },
+  { id: 'Inter', label: 'Intermediate (F.Sc / ICS / I.Com / FA)', short: 'Inter' },
+  { id: 'BS', label: 'BS Programs (4-Year)', short: 'BS' },
+  { id: 'DIT', label: 'DIT (Diploma)', short: 'DIT' },
+  { id: 'UKL3', label: 'UKL3 (International)', short: 'UKL3' },
+];
+
+function inferSectionProgram(secName: string, rawProg?: string): 'Inter' | 'BS' | 'DIT' | 'UKL3' {
+  const combined = `${rawProg || ''} ${secName || ''}`.toUpperCase();
+  if (combined.includes('UKL3') || combined.includes('UK LEVEL') || combined.includes('OTHM')) return 'UKL3';
+  if (combined.includes('DIT') || combined.includes('DIPLOMA')) return 'DIT';
+  if (combined.includes('BS') || combined.includes('ADP') || combined.includes('SEMESTER')) return 'BS';
+  return 'Inter';
 }
 
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -67,6 +85,7 @@ const STANDARD_PERIODS = [
 
 export default function StaffTimetable({ 
   staffList = [], 
+  students = [],
   timetableRecords = [], 
   onAddEntry, 
   onRemoveEntry, 
@@ -77,10 +96,26 @@ export default function StaffTimetable({
   
   // Navigation & View Modes
   const [viewMode, setViewMode] = useState<'master' | 'daily' | 'faculty'>('master');
+  const [programFilter, setProgramFilter] = useState<'all' | 'Inter' | 'BS' | 'DIT' | 'UKL3'>('all');
   const [campusFilter, setCampusFilter] = useState<'all' | 'Male' | 'Female'>('all');
   const [selectedSection, setSelectedSection] = useState<string>('');
   const [selectedDay, setSelectedDay] = useState<string>("Monday");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  // Custom Class / Section Creator State
+  const [customSections, setCustomSections] = useState<
+    Array<{ name: string; gender: 'Male' | 'Female' | 'Co-ed'; program: 'Inter' | 'BS' | 'DIT' | 'UKL3'; class?: string }>
+  >(() => {
+    try {
+      const saved = safeLocalStorage.getItem('scj_custom_timetable_sections');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
+  const [isNewSectionOpen, setIsNewSectionOpen] = useState(false);
+  const [newSecName, setNewSecName] = useState('');
+  const [newSecProgram, setNewSecProgram] = useState<'Inter' | 'BS' | 'DIT' | 'UKL3'>('BS');
+  const [newSecGender, setNewSecGender] = useState<'Male' | 'Female'>('Male');
 
   // Faculty Schedule State
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
@@ -88,6 +123,7 @@ export default function StaffTimetable({
 
   // Form State (Shared between Faculty View & Quick Add Modal)
   const [formStaffId, setFormStaffId] = useState<string>("");
+  const [formProgram, setFormProgram] = useState<'all' | 'Inter' | 'BS' | 'DIT' | 'UKL3'>('all');
   const [day, setDay] = useState<string>("Monday");
   const [startTime, setStartTime] = useState<string>("08:00");
   const [endTime, setEndTime] = useState<string>("08:45");
@@ -117,59 +153,155 @@ export default function StaffTimetable({
     safeLocalStorage.setItem('staffTimetable', JSON.stringify(newEntries));
   };
 
+  const handleCreateCustomSection = () => {
+    const clean = newSecName.trim();
+    if (!clean) {
+      toast.error('Please enter a Class / Section name (e.g., BS-CS Sem 1, DIT Morning, UKL3 Batch 1)');
+      return;
+    }
+    const nextList = [
+      ...customSections.filter((s) => s.name.toLowerCase() !== clean.toLowerCase()),
+      {
+        name: clean,
+        gender: newSecGender,
+        program: newSecProgram,
+        class: settings?.academicSession || '2026-28',
+      },
+    ];
+    setCustomSections(nextList);
+    safeLocalStorage.setItem('scj_custom_timetable_sections', JSON.stringify(nextList));
+    setProgramFilter(newSecProgram);
+    setSelectedSection(clean);
+    setSection(clean);
+    setNewSecName('');
+    setIsNewSectionOpen(false);
+    toast.success(`Added "${clean}" under ${newSecProgram} (${newSecGender === 'Female' ? 'Girls Campus' : 'Boys Campus'})!`);
+  };
+
   // Helper to determine gender / campus of a section
   const getSectionGender = (secName: string): 'Male' | 'Female' | 'Co-ed' => {
     if (!secName) return 'Co-ed';
     const clean = secName.replace(/\(Boys\)|\(Girls\)/gi, '').trim().toLowerCase();
     
+    const foundCustom = customSections.find(s => (s.name || '').trim().toLowerCase() === clean);
+    if (foundCustom?.gender) return foundCustom.gender;
+
     // Check in predefinedSections
     const found = predefinedSections.find(s => (s.name || '').trim().toLowerCase() === clean);
     if (found?.gender) return found.gender as any;
 
     if (secName.toUpperCase().endsWith('B') || secName.toLowerCase().includes('boy')) return 'Male';
     if (secName.toUpperCase().endsWith('G') || secName.toLowerCase().includes('girl')) return 'Female';
-    return 'Co-ed';
+    return 'Male';
   };
 
-  // Compile all active sections (predefined + any entered in timetable)
+  // Compile all active sections across Intermediate, BS, DIT, and UKL3
   const allSections = useMemo(() => {
-    const list: { name: string; gender: 'Male' | 'Female' | 'Co-ed'; program?: string; class?: string }[] = [];
+    const list: { name: string; gender: 'Male' | 'Female' | 'Co-ed'; program: 'Inter' | 'BS' | 'DIT' | 'UKL3'; class?: string }[] = [];
     const seen = new Set<string>();
 
-    predefinedSections.forEach(s => {
-      const cleanName = (s.name || '').trim();
-      if (cleanName && !seen.has(cleanName.toLowerCase())) {
-        seen.add(cleanName.toLowerCase());
+    const pushSec = (name: string, gender: 'Male' | 'Female' | 'Co-ed', program: 'Inter' | 'BS' | 'DIT' | 'UKL3', cls?: string) => {
+      const cleanName = (name || '').trim();
+      if (!cleanName) return;
+      const key = cleanName.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
         list.push({
           name: cleanName,
-          gender: s.gender || 'Male',
-          program: s.program || 'Inter',
-          class: s.class || settings?.academicSession || '2026-28'
+          gender: gender || 'Male',
+          program,
+          class: cls || settings?.academicSession || '2026-28',
         });
+      }
+    };
+
+    // 1. Predefined Sections from Settings
+    predefinedSections.forEach(s => {
+      const cleanName = (s.name || '').trim();
+      if (cleanName) {
+        pushSec(cleanName, s.gender || 'Male', inferSectionProgram(cleanName, s.program), s.class);
       }
     });
 
+    // 2. Custom Sections created in Timetable Builder
+    customSections.forEach(s => {
+      pushSec(s.name, s.gender, s.program, s.class);
+    });
+
+    // 3. Auto-discover sections from Enrolled Students across Inter, BS, DIT, and UKL3
+    (students || [])
+      .filter((st: any) => st.status !== 'Struck Off')
+      .forEach((st: any) => {
+        const stuProg = inferSectionProgram(
+          `${st.group || ''} ${st.course || ''} ${st.section || ''}`,
+          st.category || st.program
+        );
+        const stuGender: 'Male' | 'Female' = st.gender === 'Female' ? 'Female' : 'Male';
+        const rawSec = String(st.section || '').trim();
+        const rawGrp = String(st.group || st.course || '').trim();
+
+        if (rawSec && rawSec !== '-') {
+          // If it's BS/DIT/UKL3 and section is just "A" or "Morning", prefix with group/program so it's crystal clear
+          const secLabel =
+            stuProg !== 'Inter' && !rawSec.toUpperCase().includes(stuProg)
+              ? `${rawGrp || stuProg}-${rawSec}`
+              : rawSec;
+          pushSec(secLabel, stuGender, stuProg, st.session);
+        } else if (stuProg !== 'Inter') {
+          // Student in BS / DIT / UKL3 without explicit section -> create standard program-group section
+          const fallbackName = rawGrp
+            ? `${rawGrp} (${stuGender === 'Female' ? 'Girls' : 'Boys'})`
+            : `${stuProg} (${stuGender === 'Female' ? 'Girls' : 'Boys'})`;
+          pushSec(fallbackName, stuGender, stuProg, st.session);
+        }
+      });
+
+    // 4. Default standard sections for BS, DIT, and UKL3 if none exist yet so tabs are immediately usable
+    const hasBS = list.some(s => s.program === 'BS');
+    if (!hasBS) {
+      pushSec('BS-CS (Boys)', 'Male', 'BS');
+      pushSec('BS-CS (Girls)', 'Female', 'BS');
+      pushSec('BS-English (Boys)', 'Male', 'BS');
+      pushSec('BS-English (Girls)', 'Female', 'BS');
+    }
+    const hasDIT = list.some(s => s.program === 'DIT');
+    if (!hasDIT) {
+      pushSec('DIT-A (Boys)', 'Male', 'DIT');
+      pushSec('DIT-A (Girls)', 'Female', 'DIT');
+    }
+    const hasUKL3 = list.some(s => s.program === 'UKL3');
+    if (!hasUKL3) {
+      pushSec('UKL3-A (Boys)', 'Male', 'UKL3');
+      pushSec('UKL3-A (Girls)', 'Female', 'UKL3');
+    }
+
+    // 5. Any sections referenced in existing timetable entries
     entries.forEach(e => {
       const cleanName = (e.section || '').replace(/\(Boys\)|\(Girls\)/gi, '').trim();
-      if (cleanName && !seen.has(cleanName.toLowerCase())) {
-        seen.add(cleanName.toLowerCase());
-        list.push({
-          name: cleanName,
-          gender: getSectionGender(cleanName),
-          program: 'Inter',
-          class: settings?.academicSession || '2026-28'
-        });
+      if (cleanName) {
+        pushSec(cleanName, getSectionGender(e.section || cleanName), inferSectionProgram(cleanName, e.program));
       }
     });
 
     return list;
-  }, [predefinedSections, entries, settings]);
+  }, [predefinedSections, customSections, students, entries, settings]);
 
-  // Filter sections by campus filter
+  // Helper to get program of any section name
+  const getSectionProgram = (secName: string): 'Inter' | 'BS' | 'DIT' | 'UKL3' => {
+    const clean = (secName || '').replace(/\(Boys\)|\(Girls\)/gi, '').trim().toLowerCase();
+    const found = allSections.find(s => s.name.toLowerCase() === clean || s.name.replace(/\(Boys\)|\(Girls\)/gi, '').trim().toLowerCase() === clean);
+    if (found?.program) return found.program;
+    return inferSectionProgram(secName);
+  };
+
+  // Filter sections by Program Tab + Campus Wing
   const filteredSections = useMemo(() => {
-    if (campusFilter === 'all') return allSections;
-    return allSections.filter(s => s.gender === campusFilter);
-  }, [allSections, campusFilter]);
+    return allSections.filter(s => {
+      if (programFilter !== 'all' && s.program !== programFilter) return false;
+      if (campusFilter !== 'all' && s.gender !== campusFilter) return false;
+      return true;
+    });
+  }, [allSections, programFilter, campusFilter]);
 
   // Set default selectedSection if none selected
   useEffect(() => {
@@ -180,14 +312,14 @@ export default function StaffTimetable({
     }
   }, [filteredSections, selectedSection]);
 
-  // Filter entries based on campus
+  // Filter entries based on campus & program
   const campusFilteredEntries = useMemo(() => {
-    if (campusFilter === 'all') return entries;
     return entries.filter(e => {
-      const g = getSectionGender(e.section);
-      return g === campusFilter;
+      if (programFilter !== 'all' && getSectionProgram(e.section) !== programFilter) return false;
+      if (campusFilter !== 'all' && getSectionGender(e.section) !== campusFilter) return false;
+      return true;
     });
-  }, [entries, campusFilter]);
+  }, [entries, programFilter, campusFilter, allSections]);
 
   // Faculty filtering for faculty view
   const filteredStaff = useMemo(() => {
@@ -342,7 +474,7 @@ export default function StaffTimetable({
       format: 'a4'
     });
 
-    const collegeName = settings?.collegeName || 'SUPERIOR GROUP OF COLLEGES';
+    const collegeName = settings?.collegeName || 'SUPERIOR COLLEGE JAHANIAN';
     const campusName = (settings?.campusName || 'JAHANIAN') + (secGender === 'Female' ? ' (GIRLS CAMPUS)' : secGender === 'Male' ? ' (BOYS CAMPUS)' : '');
     const session = secObj?.class || settings?.academicSession || '2026-28';
 
@@ -504,7 +636,7 @@ export default function StaffTimetable({
       pageAdded = true;
 
       const secGender = secObj.gender;
-      const collegeName = settings?.collegeName || 'SUPERIOR GROUP OF COLLEGES';
+      const collegeName = settings?.collegeName || 'SUPERIOR COLLEGE JAHANIAN';
       const campusName = (settings?.campusName || 'JAHANIAN') + (secGender === 'Female' ? ' (GIRLS CAMPUS)' : secGender === 'Male' ? ' (BOYS CAMPUS)' : '');
       const session = secObj.class || settings?.academicSession || '2026-28';
 
@@ -633,7 +765,7 @@ export default function StaffTimetable({
     }
 
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    const collegeName = settings?.collegeName || 'SUPERIOR GROUP OF COLLEGES JAHANIAN';
+    const collegeName = settings?.collegeName || 'SUPERIOR COLLEGE JAHANIAN';
     const campusTitle = campusFilter === 'Male' ? 'BOYS CAMPUS' : campusFilter === 'Female' ? 'GIRLS CAMPUS' : 'ALL CAMPUSES COMBINED';
 
     // Header
@@ -852,65 +984,185 @@ export default function StaffTimetable({
       </div>
 
       {/* ------------------------------------------------------------- */}
-      {/* CAMPUS SELECTION BAR (BOYS / GIRLS / COMBINED) */}
+      {/* PROGRAM TABS (INTERMEDIATE | BS | DIT | UKL3) & CAMPUS BAR     */}
       {/* ------------------------------------------------------------- */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50 border border-slate-200/60 p-3 rounded-2xl">
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <span className="text-xs font-black uppercase tracking-wider text-slate-400 pl-2">Campus Wing:</span>
-          <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
-            <button
-              type="button"
-              onClick={() => setCampusFilter('all')}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
-                campusFilter === 'all' 
-                  ? "bg-slate-800 text-white" 
-                  : "text-slate-600 hover:bg-slate-50"
-              )}
+      <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-2xs space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Program Tabs */}
+          <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200/70">
+            {PROGRAM_TABS.map(prog => {
+              const progSecCount =
+                prog.id === 'all'
+                  ? allSections.length
+                  : allSections.filter(s => s.program === prog.id).length;
+              const isActive = programFilter === prog.id;
+              return (
+                <button
+                  key={prog.id}
+                  type="button"
+                  onClick={() => setProgramFilter(prog.id as any)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer",
+                    isActive
+                      ? "bg-[#064e43] text-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                  )}
+                >
+                  <span>{prog.label}</span>
+                  <span
+                    className={cn(
+                      "px-1.5 py-0.2 rounded-full text-[10px] font-black",
+                      isActive ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                    )}
+                  >
+                    {progSecCount}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setNewSecProgram(programFilter === 'all' ? 'BS' : programFilter);
+                setIsNewSectionOpen((v) => !v);
+              }}
+              className="h-9 px-3 rounded-xl font-bold bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100 text-xs flex items-center gap-1.5 cursor-pointer"
             >
-              <School size={13} />
-              <span>All Campuses ({entries.length})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setCampusFilter('Male')}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
-                campusFilter === 'Male' 
-                  ? "bg-blue-600 text-white" 
-                  : "text-blue-700 hover:bg-blue-50"
-              )}
+              <Plus size={14} /> + New Class / Section (Inter / BS / DIT / UKL3)
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBatchPrintAllNoticeBoards}
+              className="h-9 px-3 rounded-xl font-bold bg-white text-superior-teal border-superior-teal/30 hover:bg-emerald-50 text-xs flex items-center gap-2 shadow-xs cursor-pointer"
+              title="Download formatted notice board copy for all classes in one multi-page PDF"
             >
-              <span className="w-2 h-2 rounded-full bg-blue-400"></span>
-              <span>Boys Campus ({totalBoysLectures})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setCampusFilter('Female')}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
-                campusFilter === 'Female' 
-                  ? "bg-pink-600 text-white" 
-                  : "text-pink-700 hover:bg-pink-50"
-              )}
-            >
-              <span className="w-2 h-2 rounded-full bg-pink-400"></span>
-              <span>Girls Campus ({totalGirlsLectures})</span>
-            </button>
+              <Printer size={14} /> Batch Print All Notice Boards
+            </Button>
           </div>
         </div>
 
-        {/* Global Batch Notice Board Print Button */}
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleBatchPrintAllNoticeBoards}
-            className="h-9 px-3 rounded-xl font-bold bg-white text-superior-teal border-superior-teal/30 hover:bg-emerald-50 text-xs flex items-center gap-2 shadow-xs"
-            title="Download formatted notice board copy for all classes in one multi-page PDF"
-          >
-            <Printer size={14} /> Batch Print All Notice Boards
-          </Button>
+        {/* Inline Quick Class / Section Creator for any Program */}
+        {isNewSectionOpen && (
+          <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 flex flex-wrap items-end gap-3 animate-in fade-in duration-150">
+            <div>
+              <label className="block text-[10px] font-black uppercase text-amber-900 mb-1">
+                1. Program
+              </label>
+              <select
+                value={newSecProgram}
+                onChange={(e) => setNewSecProgram(e.target.value as any)}
+                className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-xs font-bold text-slate-800"
+              >
+                <option value="Inter">Intermediate (F.Sc / ICS / I.Com / FA)</option>
+                <option value="BS">BS Programs (4-Year)</option>
+                <option value="DIT">DIT (Diploma)</option>
+                <option value="UKL3">UKL3 (International)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-black uppercase text-amber-900 mb-1">
+                2. Campus Wing
+              </label>
+              <select
+                value={newSecGender}
+                onChange={(e) => setNewSecGender(e.target.value as any)}
+                className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-xs font-bold text-slate-800"
+              >
+                <option value="Male">Boys Campus</option>
+                <option value="Female">Girls Campus</option>
+              </select>
+            </div>
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-[10px] font-black uppercase text-amber-900 mb-1">
+                3. Class / Section Name
+              </label>
+              <input
+                type="text"
+                value={newSecName}
+                onChange={(e) => setNewSecName(e.target.value)}
+                placeholder="e.g. BS-CS Sem 1, DIT Morning, UKL3 Batch A, 1st Year Med-A"
+                className="w-full px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-xs font-bold text-slate-900"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleCreateCustomSection}
+                className="h-8 px-4 rounded-lg bg-[#064e43] hover:bg-[#064e43]/90 text-white text-xs font-bold"
+              >
+                Save Class / Section
+              </Button>
+              <button
+                type="button"
+                onClick={() => setIsNewSectionOpen(false)}
+                className="text-xs font-bold text-slate-500 hover:text-slate-800 px-2"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Campus Wing Row */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-black uppercase tracking-wider text-slate-400">Campus Wing:</span>
+            <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setCampusFilter('all')}
+                className={cn(
+                  "px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                  campusFilter === 'all' 
+                    ? "bg-slate-800 text-white" 
+                    : "text-slate-600 hover:bg-slate-100"
+                )}
+              >
+                <School size={13} />
+                <span>All Campuses ({entries.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCampusFilter('Male')}
+                className={cn(
+                  "px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                  campusFilter === 'Male' 
+                    ? "bg-blue-600 text-white" 
+                    : "text-blue-700 hover:bg-blue-50"
+                )}
+              >
+                <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                <span>Boys Campus ({totalBoysLectures})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCampusFilter('Female')}
+                className={cn(
+                  "px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                  campusFilter === 'Female' 
+                    ? "bg-pink-600 text-white" 
+                    : "text-pink-700 hover:bg-pink-50"
+                )}
+              >
+                <span className="w-2 h-2 rounded-full bg-pink-400"></span>
+                <span>Girls Campus ({totalGirlsLectures})</span>
+              </button>
+            </div>
+          </div>
+
+          <span className="text-[11px] font-bold text-slate-500">
+            Showing <strong>{filteredSections.length}</strong> Classes/Sections in{' '}
+            <strong className="text-[#064e43]">
+              {PROGRAM_TABS.find(p => p.id === programFilter)?.short || 'All'}
+            </strong>
+          </span>
         </div>
       </div>
 
@@ -1400,6 +1652,32 @@ export default function StaffTimetable({
                 </Select>
               </div>
 
+              {/* Program Filter inside Modal */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">Program Category</label>
+                <div className="flex flex-wrap gap-1.5 bg-slate-100 p-1 rounded-xl">
+                  {PROGRAM_TABS.map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setFormProgram(p.id as any);
+                        const matching = allSections.filter(s => p.id === 'all' || s.program === p.id);
+                        if (matching.length > 0) setSection(matching[0].name);
+                      }}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg text-[11px] font-black transition-all cursor-pointer",
+                        formProgram === p.id
+                          ? "bg-[#064e43] text-white shadow-xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      )}
+                    >
+                      {p.short}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Day & Section */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
@@ -1423,13 +1701,21 @@ export default function StaffTimetable({
                       <SelectValue placeholder="Select Section" />
                     </SelectTrigger>
                     <SelectContent className="max-h-[250px]">
-                      {allSections.map(s => (
-                        <SelectItem key={s.name} value={s.name}>
-                          {s.name} ({s.gender === 'Female' ? 'Girls' : 'Boys'}) - {s.program}
-                        </SelectItem>
-                      ))}
+                      {allSections
+                        .filter(s => formProgram === 'all' || s.program === formProgram)
+                        .map(s => (
+                          <SelectItem key={s.name} value={s.name}>
+                            [{s.program}] {s.name} ({s.gender === 'Female' ? 'Girls' : 'Boys'})
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
+                  <Input
+                    placeholder="Or type custom section (e.g. BS-IT Sem 3, UKL3-B)..."
+                    value={section}
+                    onChange={(e) => setSection(e.target.value)}
+                    className="mt-1.5 h-9 bg-white border-slate-200 rounded-xl text-xs font-bold"
+                  />
                 </div>
               </div>
 
