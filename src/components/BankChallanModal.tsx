@@ -13,10 +13,10 @@ import {
   Users,
   Receipt,
   Layers,
-  CheckCircle2,
-  Copy,
+  Search,
   DollarSign,
-  QrCode as QrIcon,
+  Maximize2,
+  List,
 } from 'lucide-react';
 import {
   download4VouchersPerPagePdf,
@@ -58,6 +58,11 @@ export default function BankChallanModal({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // View Mode: 'all_scroll' (Continuous Scroll of all students) vs 'page_fit' (A4 Sheet scaled to fit screen)
+  const [viewMode, setViewMode] = useState<'all_scroll' | 'page_fit'>('all_scroll');
+  const [zoomLevel, setZoomLevel] = useState<number>(0.8);
+  const [inModalSearch, setInModalSearch] = useState<string>('');
 
   // Scope & Filtering State
   const [filterScope, setFilterScope] = useState<'selected' | 'group' | 'section' | 'defaulters' | 'all'>('selected');
@@ -186,12 +191,24 @@ export default function BankChallanModal({
     return list;
   }, [filterScope, students, masterStudentPool, selectedCampus, selectedGroup, selectedSection]);
 
+  // Filtered list by in-modal quick search bar
+  const displayedStudents = useMemo(() => {
+    if (!inModalSearch.trim()) return activeStudentList;
+    const q = inModalSearch.trim().toLowerCase();
+    return activeStudentList.filter((s) => {
+      const name = String(s.fullName || '').toLowerCase();
+      const roll = String(s.collegeNo || '').toLowerCase();
+      const father = String(s.fatherName || '').toLowerCase();
+      return name.includes(q) || roll.includes(q) || father.includes(q);
+    });
+  }, [activeStudentList, inModalSearch]);
+
   if (!isOpen || !mounted) return null;
 
-  const totalPages = Math.max(1, Math.ceil(activeStudentList.length / 2));
-  const safePage = Math.min(previewPage, totalPages - 1);
-  const pageStudentA = activeStudentList[safePage * 2];
-  const pageStudentB = activeStudentList[safePage * 2 + 1];
+  const totalSheets = Math.max(1, Math.ceil(displayedStudents.length / 2));
+  const safePage = Math.min(previewPage, totalSheets - 1);
+  const pageStudentA = displayedStudents[safePage * 2];
+  const pageStudentB = displayedStudents[safePage * 2 + 1];
 
   const collegeName = 'SUPERIOR COLLEGE JAHANIAN';
   const collegeAddress = settings?.address || 'Canal Road Campus, Jahanian';
@@ -209,7 +226,7 @@ export default function BankChallanModal({
   const handleDownloadPdf = async (singleOnly = false) => {
     setIsExporting(true);
     try {
-      const toExport = singleOnly && activeStudentList[0] ? [activeStudentList[0]] : activeStudentList;
+      const toExport = singleOnly && displayedStudents[0] ? [displayedStudents[0]] : displayedStudents;
       if (toExport.length === 0) {
         toast.error('No students matching current filter.');
         return;
@@ -244,7 +261,7 @@ export default function BankChallanModal({
   // Direct Browser Print
   const handlePrint = () => {
     try {
-      const doc = generate4VouchersPerPageDoc(activeStudentList, {
+      const doc = generate4VouchersPerPageDoc(displayedStudents, {
         collegeName,
         collegeAddress,
         collegeContact,
@@ -252,7 +269,7 @@ export default function BankChallanModal({
         dueDate,
         lateSurcharge,
         feeMonth,
-        singleStudentMode: activeStudentList.length === 1 ? singleStudentMode : undefined,
+        singleStudentMode: displayedStudents.length === 1 ? singleStudentMode : undefined,
         installmentMode,
         fixedInstallmentAmount,
       });
@@ -273,7 +290,7 @@ export default function BankChallanModal({
           printIframe.contentWindow?.focus();
           printIframe.contentWindow?.print();
         } catch {
-          doc.save(`SCJ_Fee_Vouchers_${activeStudentList.length}_Students.pdf`);
+          doc.save(`SCJ_Fee_Vouchers_${displayedStudents.length}_Students.pdf`);
         }
       };
       toast.success('Print document prepared!');
@@ -282,11 +299,212 @@ export default function BankChallanModal({
     }
   };
 
+  // Reusable Voucher Row Renderer
+  const renderVoucherRow = (
+    student: any,
+    copyLabel: string,
+    rowIdx: number,
+    showCutLine: boolean = true
+  ) => {
+    if (!student) {
+      return (
+        <div
+          key={`blank-${rowIdx}`}
+          className="h-20 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl flex items-center justify-center p-2 text-center text-slate-400 gap-2"
+        >
+          <Scissors size={14} className="text-slate-300" />
+          <span className="text-[11px] font-bold">Blank Voucher Slot (Row {rowIdx + 1})</span>
+        </div>
+      );
+    }
+
+    const sName = student.fullName || student.name || 'Verified Student';
+    const fName = student.fatherName || student.father_name || 'N/A';
+    const rollNo = student.collegeNo || student.studentId || student.id || 'SCJ-0000';
+    const prog = student.group || student.program || student.currentClass || 'Intermediate';
+    const rawSec = student.section || 'A';
+    const sec = String(rawSec).replace(/^(sec|section)\s*[:-]?\s*/i, '').trim() || 'A';
+    const shift = student.gender === 'Female' ? 'Girls Campus' : 'Boys Campus';
+    const session = student.session || '2026-28';
+    const vchId = getVoucherId(student);
+
+    const sTotalPkg = Number(student.totalPackage || 0);
+    const sPaid = Number(student.feeReceived || 0);
+    const sRemaining = Math.max(0, sTotalPkg - sPaid);
+
+    let currentPayable = 0;
+    let payableTag = '';
+    if (installmentMode === 'fixed_installment' && fixedInstallmentAmount > 0) {
+      if (sRemaining <= fixedInstallmentAmount) {
+        currentPayable = sRemaining;
+        payableTag = 'Full Remaining Arrears';
+      } else {
+        currentPayable = fixedInstallmentAmount;
+        payableTag = `Installment (Remaining: Rs. ${(sRemaining - fixedInstallmentAmount).toLocaleString()})`;
+      }
+    } else {
+      currentPayable = sRemaining;
+      payableTag = 'Full Outstanding Due';
+    }
+
+    const totalAfter = currentPayable + (currentPayable > 0 ? lateSurcharge : 0);
+    const urduWords = numberToUrduWords(currentPayable);
+    const englishWords = numberToEnglishWords(currentPayable);
+
+    return (
+      <React.Fragment key={`${student.id || rollNo}-${copyLabel}-${rowIdx}`}>
+        {showCutLine && (
+          <div className="flex items-center justify-between text-[7px] font-mono text-slate-400 border-b border-dashed border-slate-400 py-0.5 my-0.5">
+            <span className="bg-white dark:bg-slate-900 px-1">✂ CUT</span>
+            <span className="tracking-widest uppercase font-bold text-slate-500">
+              -- ✂ Cut Along Dashed Line For Student Handover ✂ --
+            </span>
+            <span className="bg-white dark:bg-slate-900 px-1">CUT ✂</span>
+          </div>
+        )}
+
+        {/* Full-Width Horizontal Voucher Row Card */}
+        <div className="border border-emerald-950 dark:border-emerald-700 rounded-lg overflow-hidden bg-white dark:bg-slate-900 shadow-2xs flex flex-col text-[9.5px]">
+          {/* Row Header Banner */}
+          <div className="bg-[#044033] text-white px-2.5 py-1 border-b border-amber-500 flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <h4 className="font-black text-[10.5px] sm:text-xs tracking-tight text-white">
+                SUPERIOR COLLEGE JAHANIAN
+              </h4>
+              <span className="text-[7px] bg-amber-400/20 text-amber-200 font-bold px-1.5 py-0.2 rounded border border-amber-400/30">
+                {feeMonth.toUpperCase()}
+              </span>
+              <span className="text-[7px] bg-white/20 text-white font-bold px-1.5 py-0.2 rounded">
+                {copyLabel.toUpperCase()}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-[7.5px] font-mono">
+              <span className="font-bold text-white bg-emerald-900/80 px-1 py-0.2 rounded">
+                Ref: {vchId}
+              </span>
+              <span className="text-emerald-100 hidden sm:inline">Issue: {issueDate}</span>
+              <span className="bg-rose-950 text-rose-200 font-black px-1.5 py-0.2 rounded border border-rose-700/50">
+                Due: {dueDate}
+              </span>
+            </div>
+          </div>
+
+          {/* Row Body: 3 Wide Horizontal Panels */}
+          <div className="p-1.5 grid grid-cols-12 gap-1.5 bg-white dark:bg-slate-900">
+            {/* Panel 1: Student Particulars (4 Cols) */}
+            <div className="col-span-4 bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded-md border border-slate-300 dark:border-slate-700 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between gap-1 mb-0.5">
+                  <span className="text-[7px] font-black text-emerald-900 dark:text-emerald-400 uppercase">Student Particulars</span>
+                  <span className="bg-[#044033] text-white font-black px-1.5 py-0.2 rounded text-[7px]">
+                    Roll: {rollNo}
+                  </span>
+                </div>
+                <div className="font-black text-black dark:text-white truncate text-[10px] leading-tight">{sName}</div>
+                <div className="text-[7.5px] text-slate-800 dark:text-slate-300 font-bold truncate">S/D/O: {fName}</div>
+                <div className="text-[7.5px] text-slate-900 dark:text-slate-200 font-black truncate">{prog}</div>
+                <div className="text-[7px] text-slate-800 dark:text-slate-400 font-bold">Sec: {sec} • {shift}</div>
+                <div className="text-[7px] text-emerald-800 dark:text-emerald-400 font-black">{session}</div>
+              </div>
+
+              <div className="pt-0.5 border-t border-slate-300 dark:border-slate-700 text-[6.5px] text-slate-700 dark:text-slate-400 font-bold flex items-center justify-between">
+                <span>Depositor Sign: _________</span>
+              </div>
+            </div>
+
+            {/* Panel 2: Fee Particulars & Urdu Nastaleeq Figure (5 Cols) */}
+            <div className="col-span-5 flex flex-col justify-between p-0.5 bg-white dark:bg-slate-900">
+              <div className="space-y-0.5">
+                <div className="flex justify-between text-[7px] text-slate-800 dark:text-slate-300 font-bold">
+                  <span>Pkg: <strong>Rs. {sTotalPkg.toLocaleString()}</strong></span>
+                  <span>Paid: <strong className="text-emerald-700 dark:text-emerald-400">Rs. {sPaid.toLocaleString()}</strong></span>
+                </div>
+                <div className="flex justify-between text-[7.5px] bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 px-1 py-0.2 rounded text-rose-900 dark:text-rose-300 font-black">
+                  <span>REMAINING:</span>
+                  <span>Rs. {sRemaining.toLocaleString()}</span>
+                </div>
+
+                {/* Highlight Payable Box */}
+                <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-700 dark:border-emerald-600 rounded-md p-1 text-emerald-950 dark:text-emerald-200">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[7px] font-black text-emerald-900 dark:text-emerald-300 uppercase">
+                      Payable ({feeMonth}):
+                    </span>
+                    <span className="font-black text-xs sm:text-[13px] text-emerald-900 dark:text-emerald-200 leading-tight">
+                      Rs. {currentPayable.toLocaleString()}/-
+                    </span>
+                  </div>
+                  <div className="text-[6.5px] text-emerald-800 dark:text-emerald-400 font-bold truncate">
+                    {payableTag} • ({englishWords})
+                  </div>
+
+                  {/* Jameel Noori Nastaleeq Urdu Words */}
+                  <div
+                    className="font-nastaleeq text-[11px] sm:text-xs font-black text-emerald-950 dark:text-emerald-200 text-right dir-rtl leading-normal mt-0.5 pt-0.5 border-t border-emerald-300/80 dark:border-emerald-700"
+                    style={{ fontFamily: "'Jameel Noori Nastaleeq', 'Jameel Noori Nastaliq', 'Noto Nastaliq Urdu', serif" }}
+                  >
+                    مبلغ: {urduWords}
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-0.5 text-[6.5px] text-rose-800 dark:text-rose-400 font-black flex items-center justify-between">
+                <span>After Due Date (+Rs. {lateSurcharge}/day):</span>
+                <span className="text-rose-900 dark:text-rose-300 font-black">Rs. {totalAfter.toLocaleString()}/-</span>
+              </div>
+            </div>
+
+            {/* Panel 3: Cash Desk Verification & Audit Stamp (3 Cols) */}
+            <div className="col-span-3 border border-slate-300 dark:border-slate-700 rounded-md p-1 flex flex-col justify-between text-center bg-slate-50 dark:bg-slate-800/60">
+              <div>
+                <div className="text-[7px] font-black text-emerald-950 dark:text-emerald-400 uppercase">
+                  Audit Verification
+                </div>
+                <div className="text-[6.5px] font-mono text-slate-800 dark:text-slate-200 font-bold bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700 py-0.2">
+                  {vchId}
+                </div>
+              </div>
+
+              <div className="border border-dashed border-emerald-800 dark:border-emerald-600 bg-white dark:bg-slate-900 rounded p-0.5">
+                <div className="text-[6.5px] font-black text-[#044033] dark:text-emerald-400">ACCOUNTS CASH DESK</div>
+                <div className="text-[6px] text-black dark:text-white font-bold">Superior College Jahanian</div>
+                <div className="text-[5.5px] text-emerald-700 dark:text-emerald-400 font-black">
+                  STATUS: ISSUED (COUNTER)
+                </div>
+              </div>
+
+              {onQuickCollect && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onQuickCollect(student, vchId, currentPayable, feeMonth);
+                  }}
+                  className="w-full py-0.5 rounded bg-emerald-700 hover:bg-emerald-800 text-white text-[6.5px] font-black uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer transition-all shadow-2xs mt-0.5"
+                  title="Receive cash and mark paid at counter"
+                >
+                  <DollarSign size={8} />
+                  <span>Receive & Stamp</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Bottom Footer Line */}
+          <div className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[6.5px] font-bold text-slate-800 dark:text-slate-300 border-t border-slate-200 dark:border-slate-700 flex justify-between">
+            <span>• Fee payable on or before {dueDate}. Late fine Rs. {lateSurcharge}/day. Stamped slip required for semester clearance.</span>
+            <span className="text-emerald-900 dark:text-emerald-400 font-black">{collegeAddress}</span>
+          </div>
+        </div>
+      </React.Fragment>
+    );
+  };
+
   const modalContent = (
     <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-6xl h-[94vh] max-h-[94vh] flex flex-col overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-6xl h-[95vh] max-h-[95vh] flex flex-col overflow-hidden">
         {/* Top Header Bar */}
-        <div className="bg-gradient-to-r from-emerald-950 via-teal-900 to-slate-900 text-white px-5 py-3.5 flex items-center justify-between shrink-0 border-b border-emerald-800/40">
+        <div className="bg-gradient-to-r from-emerald-950 via-teal-900 to-slate-900 text-white px-5 py-3 flex items-center justify-between shrink-0 border-b border-emerald-800/40">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-300 shadow-inner">
               <Receipt size={22} />
@@ -322,7 +540,7 @@ export default function BankChallanModal({
         {/* Format & Target Ribbon */}
         <div className="bg-slate-100 dark:bg-slate-800/80 px-5 py-2 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2">
-            <div className="px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-700 text-white shadow-xs flex items-center gap-2">
+            <div className="px-3 py-1 rounded-xl text-xs font-black bg-emerald-700 text-white shadow-xs flex items-center gap-2">
               <Layers size={14} />
               <span>Standard Quad Mode (4 Horizontal Rows / A4 Sheet)</span>
             </div>
@@ -331,15 +549,50 @@ export default function BankChallanModal({
             </span>
           </div>
 
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
-            <Users size={14} className="text-emerald-600" />
-            <span>
-              Target: <strong className="text-emerald-700 dark:text-emerald-400">{activeStudentList.length} Students</strong>
-            </span>
-            <span className="text-slate-400">•</span>
-            <span>
-              Sheets: <strong>{Math.ceil(activeStudentList.length / 2)} A4 Pages</strong>
-            </span>
+          <div className="flex items-center gap-3 text-xs font-bold text-slate-700 dark:text-slate-300">
+            {/* View Mode Switcher Toggle */}
+            <div className="flex items-center gap-1 bg-white dark:bg-slate-700 p-0.5 rounded-xl border border-slate-300 dark:border-slate-600">
+              <button
+                type="button"
+                onClick={() => setViewMode('all_scroll')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                  viewMode === 'all_scroll'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600'
+                }`}
+                title="Scroll continuously through all students in this batch"
+              >
+                <List size={13} />
+                <span>Scroll All ({displayedStudents.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode('page_fit')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                  viewMode === 'page_fit'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600'
+                }`}
+                title="Fit full A4 sheet on screen without cutting rows"
+              >
+                <Maximize2 size={13} />
+                <span>Fit Page</span>
+              </button>
+            </div>
+
+            <span className="text-slate-300 dark:text-slate-600">|</span>
+
+            <div className="flex items-center gap-1.5">
+              <Users size={14} className="text-emerald-600" />
+              <span>
+                Target: <strong className="text-emerald-700 dark:text-emerald-400">{displayedStudents.length} Students</strong>
+              </span>
+              <span className="text-slate-400">•</span>
+              <span>
+                Sheets: <strong>{totalSheets} A4 Pages</strong>
+              </span>
+            </div>
           </div>
         </div>
 
@@ -498,7 +751,7 @@ export default function BankChallanModal({
                   </div>
                 </div>
 
-                {activeStudentList.length === 1 && (
+                {displayedStudents.length === 1 && (
                   <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-400 block mb-1">
                       Single Student Copies / Page
@@ -665,21 +918,21 @@ export default function BankChallanModal({
               <button
                 type="button"
                 onClick={() => handleDownloadPdf(false)}
-                disabled={isExporting || activeStudentList.length === 0}
+                disabled={isExporting || displayedStudents.length === 0}
                 className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-700 via-teal-800 to-emerald-800 hover:from-emerald-800 hover:to-teal-900 text-white font-black text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-50"
               >
                 <Download size={17} />
                 <span>
                   {isExporting
                     ? 'Generating Laser PDF...'
-                    : `Download ${activeStudentList.length} Students (${Math.ceil(activeStudentList.length / 2)} A4 Pages • 2 Copies / Student)`}
+                    : `Download ${displayedStudents.length} Students (${totalSheets} A4 Pages • 2 Copies / Student)`}
                 </span>
               </button>
 
               <button
                 type="button"
                 onClick={handlePrint}
-                disabled={isExporting || activeStudentList.length === 0}
+                disabled={isExporting || displayedStudents.length === 0}
                 className="w-full py-2.5 px-4 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 hover:bg-slate-100 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
                 <Printer size={15} />
@@ -688,266 +941,181 @@ export default function BankChallanModal({
             </div>
           </div>
 
-          {/* RIGHT: Visual Interactive A4 Portrait (4 Full-Width Horizontal Rows) Preview */}
-          <div className="lg:col-span-8 p-4 bg-slate-100 dark:bg-slate-950 overflow-y-auto flex flex-col items-center min-h-0">
-            {/* Preview Pagination */}
-            <div className="w-full max-w-3xl flex items-center justify-between mb-2 px-1">
-              <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                <FileText size={15} className="text-emerald-700" />
-                <span>A4 Sheet Preview (4 Full-Width Horizontal Rows • Jameel Noori Nastaleeq Active)</span>
-              </span>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPreviewPage((p) => Math.max(0, p - 1))}
-                  disabled={safePage === 0}
-                  className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white dark:bg-slate-800 text-xs font-bold disabled:opacity-40 cursor-pointer"
-                >
-                  <ChevronLeft size={14} />
-                </button>
-                <span className="text-xs font-bold font-mono text-slate-800 dark:text-slate-200">
-                  Page {safePage + 1} of {totalPages}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setPreviewPage((p) => Math.min(totalPages - 1, p + 1))}
-                  disabled={safePage >= totalPages - 1}
-                  className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white dark:bg-slate-800 text-xs font-bold disabled:opacity-40 cursor-pointer"
-                >
-                  <ChevronRight size={14} />
-                </button>
+          {/* RIGHT: Live Interactive Preview with Continuous Scroll AND Single Page Fit */}
+          <div className="lg:col-span-8 p-3 sm:p-4 bg-slate-100 dark:bg-slate-950 flex flex-col min-h-0 overflow-hidden">
+            {/* Top Toolbar inside Preview */}
+            <div className="w-full max-w-3xl flex flex-wrap items-center justify-between gap-2 mb-2 px-1 shrink-0">
+              {/* Quick Search inside Preview List */}
+              <div className="relative flex-1 min-w-[200px] max-w-xs">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={inModalSearch}
+                  onChange={(e) => setInModalSearch(e.target.value)}
+                  placeholder="Filter preview by name / roll..."
+                  className="w-full pl-8 pr-2.5 py-1 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-emerald-600 font-bold"
+                />
               </div>
-            </div>
 
-            {/* A4 Sheet Mockup Container */}
-            <div className="w-full max-w-3xl bg-white shadow-2xl rounded-2xl border-2 border-slate-400 p-3 relative overflow-hidden select-none space-y-2.5">
-              {[0, 1, 2, 3].map((rowIdx) => {
-                let student: any = null;
-                let copyLabel = 'College Copy';
+              {/* View Mode Controls */}
+              {viewMode === 'page_fit' ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 bg-white dark:bg-slate-800 px-2 py-0.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-bold">
+                    <span className="text-[10px] text-slate-500 uppercase mr-1">Zoom:</span>
+                    {[0.75, 0.85, 1.0].map((z) => (
+                      <button
+                        key={z}
+                        type="button"
+                        onClick={() => setZoomLevel(z)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] cursor-pointer ${
+                          zoomLevel === z ? 'bg-emerald-700 text-white font-black' : 'text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {Math.round(z * 100)}%
+                      </button>
+                    ))}
+                  </div>
 
-                if (activeStudentList.length === 1) {
-                  student = pageStudentA;
-                  if (rowIdx === 0) copyLabel = 'College Copy';
-                  else if (rowIdx === 1) copyLabel = 'Student Copy';
-                  else if (rowIdx === 2) {
-                    student = singleStudentMode === 'quad_copies' ? pageStudentA : null;
-                    copyLabel = 'Accounts Copy';
-                  } else {
-                    student = singleStudentMode === 'quad_copies' ? pageStudentA : null;
-                    copyLabel = 'Audit Record';
-                  }
-                } else {
-                  if (rowIdx < 2) {
-                    student = pageStudentA;
-                    copyLabel = rowIdx === 0 ? 'College Copy' : 'Student Copy';
-                  } else {
-                    student = pageStudentB;
-                    copyLabel = rowIdx === 2 ? 'College Copy' : 'Student Copy';
-                  }
-                }
-
-                if (!student) {
-                  return (
-                    <div
-                      key={rowIdx}
-                      className="h-28 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center p-3 text-center text-slate-400 gap-2"
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewPage((p) => Math.max(0, p - 1))}
+                      disabled={safePage === 0}
+                      className="px-2 py-1 rounded-lg border border-slate-300 bg-white dark:bg-slate-800 text-xs font-bold disabled:opacity-40 cursor-pointer"
                     >
-                      <Scissors size={18} className="text-slate-300" />
-                      <span className="text-xs font-bold">Blank Voucher Slot (Row {rowIdx + 1})</span>
-                    </div>
-                  );
-                }
-
-                const sName = student.fullName || student.name || 'Verified Student';
-                const fName = student.fatherName || student.father_name || 'N/A';
-                const rollNo = student.collegeNo || student.studentId || student.id || 'SCJ-0000';
-                const prog = student.group || student.program || student.currentClass || 'Intermediate';
-                const rawSec = student.section || 'A';
-                const sec = String(rawSec).replace(/^(sec|section)\s*[:-]?\s*/i, '').trim() || 'A';
-                const shift = student.gender === 'Female' ? 'Girls Campus' : 'Boys Campus';
-                const session = student.session || '2026-28';
-                const vchId = getVoucherId(student);
-
-                const sTotalPkg = Number(student.totalPackage || 0);
-                const sPaid = Number(student.feeReceived || 0);
-                const sRemaining = Math.max(0, sTotalPkg - sPaid);
-
-                let currentPayable = 0;
-                let payableTag = '';
-                if (installmentMode === 'fixed_installment' && fixedInstallmentAmount > 0) {
-                  if (sRemaining <= fixedInstallmentAmount) {
-                    currentPayable = sRemaining;
-                    payableTag = 'Full Remaining Arrears';
-                  } else {
-                    currentPayable = fixedInstallmentAmount;
-                    payableTag = `Installment (Remaining: Rs. ${(sRemaining - fixedInstallmentAmount).toLocaleString()})`;
-                  }
-                } else {
-                  currentPayable = sRemaining;
-                  payableTag = 'Full Outstanding Due';
-                }
-
-                const totalAfter = currentPayable + (currentPayable > 0 ? lateSurcharge : 0);
-                const urduWords = numberToUrduWords(currentPayable);
-                const englishWords = numberToEnglishWords(currentPayable);
-
-                return (
-                  <React.Fragment key={rowIdx}>
-                    {rowIdx > 0 && (
-                      <div className="flex items-center justify-between text-[8px] font-mono text-slate-400 border-b border-dashed border-slate-400 py-0.5">
-                        <span className="bg-white px-1">✂ CUT</span>
-                        <span className="tracking-widest uppercase font-bold text-slate-500">
-                          -- ✂ Cut Along Dashed Line For Student Handover ✂ --
-                        </span>
-                        <span className="bg-white px-1">CUT ✂</span>
-                      </div>
-                    )}
-
-                    {/* Full-Width Horizontal Voucher Row Card */}
-                    <div className="border-2 border-emerald-950 rounded-xl overflow-hidden bg-white shadow-xs flex flex-col text-[10px]">
-                      {/* Row Header Banner */}
-                      <div className="bg-[#044033] text-white px-3 py-1.5 border-b-2 border-amber-500 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-black text-xs tracking-tight text-white">
-                            SUPERIOR COLLEGE JAHANIAN
-                          </h4>
-                          <span className="text-[8px] bg-amber-400/20 text-amber-200 font-bold px-1.5 py-0.2 rounded border border-amber-400/30">
-                            {feeMonth.toUpperCase()}
-                          </span>
-                          <span className="text-[8px] bg-white/20 text-white font-bold px-1.5 py-0.2 rounded">
-                            {copyLabel.toUpperCase()}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 text-[8.5px] font-mono">
-                          <span className="font-bold text-white bg-emerald-900/80 px-1.5 py-0.5 rounded">
-                            Ref: {vchId}
-                          </span>
-                          <span className="text-emerald-100">Issue: {issueDate}</span>
-                          <span className="bg-rose-950 text-rose-200 font-black px-1.5 py-0.2 rounded border border-rose-700/50">
-                            Due: {dueDate}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Row Body: 3 Wide Horizontal Panels */}
-                      <div className="p-2 grid grid-cols-12 gap-2 bg-white">
-                        {/* Panel 1: Student Particulars (4 Cols) */}
-                        <div className="col-span-4 bg-slate-50 p-2 rounded-lg border border-slate-300 flex flex-col justify-between">
-                          <div>
-                            <div className="flex items-center justify-between gap-1 mb-1">
-                              <span className="text-[8px] font-black text-emerald-900 uppercase">Student Particulars</span>
-                              <span className="bg-[#044033] text-white font-black px-1.5 py-0.2 rounded text-[8px]">
-                                Roll: {rollNo}
-                              </span>
-                            </div>
-                            <div className="font-black text-black truncate text-[11px] leading-snug">{sName}</div>
-                            <div className="text-[8.5px] text-slate-800 font-bold truncate">S/D/O: {fName}</div>
-                            <div className="text-[8.5px] text-slate-900 font-black mt-0.5 truncate">{prog}</div>
-                            <div className="text-[8px] text-slate-900 font-bold">Section: {sec} • {shift}</div>
-                            <div className="text-[8px] text-emerald-800 font-black">{session}</div>
-                          </div>
-
-                          <div className="pt-1.5 border-t border-slate-300 text-[7.5px] text-slate-700 font-bold flex items-center justify-between">
-                            <span>Depositor Sign: _________</span>
-                          </div>
-                        </div>
-
-                        {/* Panel 2: Fee Particulars & Urdu Nastaleeq Figure (5 Cols) */}
-                        <div className="col-span-5 flex flex-col justify-between p-1 bg-white">
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-[8px] text-slate-800 font-bold">
-                              <span>Total Package: <strong>Rs. {sTotalPkg.toLocaleString()}</strong></span>
-                              <span>Paid: <strong className="text-emerald-700">Rs. {sPaid.toLocaleString()}</strong></span>
-                            </div>
-                            <div className="flex justify-between text-[8.5px] bg-rose-50 border border-rose-300 px-1.5 py-0.5 rounded text-rose-900 font-black">
-                              <span>TOTAL REMAINING BALANCE:</span>
-                              <span>Rs. {sRemaining.toLocaleString()}</span>
-                            </div>
-
-                            {/* Highlight Payable Box */}
-                            <div className="bg-emerald-50 border-2 border-emerald-700 rounded-lg p-1.5 text-emerald-950 shadow-2xs">
-                              <div className="flex justify-between items-center">
-                                <span className="text-[8px] font-black text-emerald-900 uppercase">
-                                  Payable For {feeMonth}:
-                                </span>
-                                <span className="font-black text-sm text-emerald-900 leading-tight">
-                                  Rs. {currentPayable.toLocaleString()}/-
-                                </span>
-                              </div>
-                              <div className="text-[7.5px] text-emerald-800 font-bold truncate mt-0.5">
-                                {payableTag} • ({englishWords})
-                              </div>
-
-                              {/* Jameel Noori Nastaleeq Urdu Words */}
-                              <div
-                                className="font-nastaleeq text-xs sm:text-[13px] font-black text-emerald-950 text-right dir-rtl leading-normal mt-1 pt-1 border-t border-emerald-300/80"
-                                style={{ fontFamily: "'Jameel Noori Nastaleeq', 'Jameel Noori Nastaliq', 'Noto Nastaliq Urdu', serif" }}
-                              >
-                                مبلغ: {urduWords}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="pt-0.5 text-[7.5px] text-rose-800 font-black flex items-center justify-between">
-                            <span>After Due Date (+Rs. {lateSurcharge}/day fine):</span>
-                            <span className="text-rose-900 font-black">Rs. {totalAfter.toLocaleString()}/-</span>
-                          </div>
-                        </div>
-
-                        {/* Panel 3: Cash Desk Verification & Audit Stamp (3 Cols) */}
-                        <div className="col-span-3 border-2 border-slate-300 rounded-lg p-1.5 flex flex-col justify-between text-center bg-slate-50">
-                          <div>
-                            <div className="text-[8px] font-black text-emerald-950 uppercase flex items-center justify-center gap-1">
-                              <span>Audit & Verification</span>
-                            </div>
-                            <div className="text-[7.5px] font-mono text-slate-800 font-bold mt-0.5 bg-white rounded border border-slate-200 py-0.5">
-                              {vchId}
-                            </div>
-                          </div>
-
-                          <div className="border border-dashed border-emerald-800 bg-white rounded p-1.5">
-                            <div className="text-[7.5px] font-black text-[#044033]">ACCOUNTS CASH DESK</div>
-                            <div className="text-[7px] text-black font-bold">Superior College Jahanian</div>
-                            <div className="text-[6.5px] text-emerald-700 font-black mt-0.5">
-                              STATUS: ISSUED (COUNTER PAYABLE)
-                            </div>
-                            <div className="text-[6px] text-slate-400 mt-1">Official Cashier Signature</div>
-                          </div>
-
-                          {/* Quick Collect Action at Cash Desk */}
-                          {onQuickCollect && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onQuickCollect(student, vchId, currentPayable, feeMonth);
-                              }}
-                              className="w-full py-1 rounded bg-emerald-700 hover:bg-emerald-800 text-white text-[7.5px] font-black uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer transition-all shadow-2xs mt-1"
-                              title="Instantly open Payment Dialog to receive cash and issue receipt against this voucher"
-                            >
-                              <DollarSign size={10} />
-                              <span>Receive & Stamp</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Bottom Footer Line */}
-                      <div className="bg-slate-100 px-3 py-0.5 text-[7.5px] font-bold text-slate-800 border-t border-slate-200 flex justify-between">
-                        <span>• Fee is payable on or before {dueDate}. After due date, late fine of Rs. {lateSurcharge}/day applies. Stamped slip is required for semester clearance.</span>
-                        <span className="text-emerald-900 font-black">{collegeAddress}</span>
-                      </div>
-                    </div>
-                  </React.Fragment>
-                );
-              })}
+                      <ChevronLeft size={14} />
+                    </button>
+                    <span className="text-xs font-bold font-mono text-slate-800 dark:text-slate-200">
+                      Page {safePage + 1} of {totalSheets}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewPage((p) => Math.min(totalSheets - 1, p + 1))}
+                      disabled={safePage >= totalSheets - 1}
+                      className="px-2 py-1 rounded-lg border border-slate-300 bg-white dark:bg-slate-800 text-xs font-bold disabled:opacity-40 cursor-pointer"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs font-bold text-slate-600 dark:text-slate-400">
+                  📜 Showing All <strong>{displayedStudents.length} Students</strong> • Scroll down smoothly to inspect
+                </div>
+              )}
             </div>
 
-            <p className="text-[11px] text-slate-600 font-bold mt-2.5 text-center">
-              💡 <strong>Quad Mode (2 Students / A4 Sheet):</strong> 1 standard A4 sheet gives 4 vouchers total —
-              2 copies per student (<strong>1 College Copy</strong> + <strong>1 Student Copy</strong>) with crisp cut-lines for photocopier savings.
-            </p>
+            {/* Scrollable Container */}
+            <div className="flex-1 overflow-y-auto pr-1 flex flex-col items-center">
+              {displayedStudents.length === 0 ? (
+                <div className="p-8 text-center text-slate-500 my-auto">
+                  <p className="font-bold text-sm">No students match current filter.</p>
+                  <p className="text-xs mt-1">Try changing class, section, or clear search box.</p>
+                </div>
+              ) : viewMode === 'all_scroll' ? (
+                /* Continuous Scroll Mode: All A4 Sheets stacked vertically with smooth scrolling */
+                <div className="w-full max-w-3xl space-y-5 pb-8">
+                  {Array.from({ length: totalSheets }).map((_, sheetIdx) => {
+                    const stA = displayedStudents[sheetIdx * 2];
+                    const stB = displayedStudents[sheetIdx * 2 + 1];
+
+                    return (
+                      <div
+                        key={`sheet-${sheetIdx}`}
+                        className="w-full bg-white dark:bg-slate-900 shadow-xl rounded-2xl border-2 border-slate-300 dark:border-slate-700 p-2.5 relative select-none space-y-1.5"
+                      >
+                        {/* Sheet Ribbon Header */}
+                        <div className="flex items-center justify-between pb-1 mb-1 border-b border-slate-200 dark:border-slate-800 text-xs font-black text-slate-700 dark:text-slate-300">
+                          <span className="flex items-center gap-1.5 text-emerald-800 dark:text-emerald-400">
+                            <FileText size={14} />
+                            <span>A4 Sheet #{sheetIdx + 1} of {totalSheets} (4 Vouchers / 2 Students)</span>
+                          </span>
+                          <span className="text-[11px] font-semibold text-slate-500">
+                            Students: <strong>{stA?.fullName}</strong> {stB ? <>• <strong>{stB?.fullName}</strong></> : null}
+                          </span>
+                        </div>
+
+                        {/* Row 1: Student A (College Copy) */}
+                        {renderVoucherRow(stA, 'College Copy', 0, false)}
+
+                        {/* Row 2: Student A (Student Copy) */}
+                        {renderVoucherRow(stA, 'Student Copy', 1, true)}
+
+                        {/* Row 3 & 4: Student B (or blank slots) */}
+                        {stB ? (
+                          <>
+                            {renderVoucherRow(stB, 'College Copy', 2, true)}
+                            {renderVoucherRow(stB, 'Student Copy', 3, true)}
+                          </>
+                        ) : (
+                          <>
+                            {renderVoucherRow(null, '', 2, true)}
+                            {renderVoucherRow(null, '', 3, true)}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                /* Page Fit Mode: Single Sheet scaled with zoom so all 4 rows fit 100% on screen */
+                <div
+                  className="w-full max-w-3xl transition-transform duration-150 origin-top"
+                  style={{
+                    transform: `scale(${zoomLevel})`,
+                    transformOrigin: 'top center',
+                    marginBottom: `${(1 - zoomLevel) * -200}px`,
+                  }}
+                >
+                  <div className="w-full bg-white dark:bg-slate-900 shadow-2xl rounded-2xl border-2 border-slate-400 dark:border-slate-700 p-2.5 relative select-none space-y-1.5">
+                    {/* Sheet Ribbon Header */}
+                    <div className="flex items-center justify-between pb-1 mb-1 border-b border-slate-200 dark:border-slate-800 text-xs font-black text-slate-700 dark:text-slate-300">
+                      <span className="flex items-center gap-1.5 text-emerald-800 dark:text-emerald-400">
+                        <FileText size={14} />
+                        <span>A4 Sheet #{safePage + 1} of {totalSheets}</span>
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-500">
+                        Students: <strong>{pageStudentA?.fullName}</strong> {pageStudentB ? <>• <strong>{pageStudentB?.fullName}</strong></> : null}
+                      </span>
+                    </div>
+
+                    {displayedStudents.length === 1 ? (
+                      <>
+                        {renderVoucherRow(pageStudentA, 'College Copy', 0, false)}
+                        {renderVoucherRow(pageStudentA, 'Student Copy', 1, true)}
+                        {singleStudentMode === 'quad_copies' ? (
+                          <>
+                            {renderVoucherRow(pageStudentA, 'Accounts Copy', 2, true)}
+                            {renderVoucherRow(pageStudentA, 'Audit Record', 3, true)}
+                          </>
+                        ) : (
+                          <>
+                            {renderVoucherRow(null, '', 2, true)}
+                            {renderVoucherRow(null, '', 3, true)}
+                          </>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {renderVoucherRow(pageStudentA, 'College Copy', 0, false)}
+                        {renderVoucherRow(pageStudentA, 'Student Copy', 1, true)}
+                        {pageStudentB ? (
+                          <>
+                            {renderVoucherRow(pageStudentB, 'College Copy', 2, true)}
+                            {renderVoucherRow(pageStudentB, 'Student Copy', 3, true)}
+                          </>
+                        ) : (
+                          <>
+                            {renderVoucherRow(null, '', 2, true)}
+                            {renderVoucherRow(null, '', 3, true)}
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
