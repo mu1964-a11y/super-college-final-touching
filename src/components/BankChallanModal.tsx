@@ -96,13 +96,20 @@ export default function BankChallanModal({
 
   // Form Fields
   const [selectedBankId, setSelectedBankId] = useState<string>('cash');
-  const [dueDate, setDueDate] = useState<string>(() => getDefaultDueDate());
   const [issueDate, setIssueDate] = useState<string>(() => {
     const d = new Date();
     return d.toISOString().split('T')[0];
   });
-  const [lateSurcharge, setLateSurcharge] = useState<number>(500);
+  const [dueDate, setDueDate] = useState<string>(() => getDefaultDueDate(new Date()));
+  const [lateSurcharge, setLateSurcharge] = useState<number>(100);
   const [feeMonth, setFeeMonth] = useState<string>('Monthly Installment');
+
+  const handleIssueDateChange = (newDate: string) => {
+    setIssueDate(newDate);
+    if (newDate) {
+      setDueDate(getDefaultDueDate(newDate));
+    }
+  };
 
   // Preview Pagination (Page of 4 vouchers)
   const [previewPage, setPreviewPage] = useState<number>(0);
@@ -629,26 +636,33 @@ export default function BankChallanModal({
                     <input
                       type="date"
                       value={issueDate}
-                      onChange={(e) => setIssueDate(e.target.value)}
+                      onChange={(e) => handleIssueDateChange(e.target.value)}
                       className="w-full h-9 rounded-xl border border-slate-300 dark:border-slate-700 px-2 text-xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100"
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase block mb-1">Due Date</label>
+                    <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase block mb-1">
+                      Due Date (10 Days Window)
+                    </label>
                     <input
                       type="text"
                       value={dueDate}
                       onChange={(e) => setDueDate(e.target.value)}
-                      className="w-full h-9 rounded-xl border border-slate-300 dark:border-slate-700 px-2 text-xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-                      placeholder="e.g. 10-Nov-2026"
+                      className="w-full h-9 rounded-xl border border-slate-300 dark:border-slate-700 px-2 text-xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono"
+                      placeholder="e.g. 07-Nov-2026"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase block mb-1">
-                    Late Surcharge after Due Date (PKR)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase">
+                      Late Fine after Due Date (Rs. / Day)
+                    </label>
+                    <span className="text-[10px] font-black text-rose-600 dark:text-rose-400">
+                      Rs. {lateSurcharge} / Day
+                    </span>
+                  </div>
                   <input
                     type="number"
                     value={lateSurcharge}
@@ -656,6 +670,9 @@ export default function BankChallanModal({
                     className="w-full h-9 rounded-xl border border-slate-300 dark:border-slate-700 px-3 text-xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100"
                     step="50"
                   />
+                  <p className="text-[9px] text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                    💡 <strong>Late Fine Policy:</strong> 10 din ke andar fee jama na karwane par per day Rs. {lateSurcharge} jurmana (fine) calculate hota hai.
+                  </p>
                 </div>
               </div>
             </div>
@@ -818,7 +835,7 @@ export default function BankChallanModal({
                           <span className="font-bold text-white">Vch: SCJ-{rollNo}</span>
                           <span className="font-semibold text-emerald-100">Issue: {issueDate}</span>
                           <span className="bg-rose-900 text-rose-100 font-black px-1.5 py-0.2 rounded">
-                            Due: {dueDate}
+                            Due: {dueDate} (10 Days)
                           </span>
                         </div>
                       </div>
@@ -879,8 +896,8 @@ export default function BankChallanModal({
                           </div>
 
                           <div className="pt-0.5 text-[7.5px] text-rose-800 font-black flex items-center justify-between">
-                            <span>After Due Date (+Rs. {lateSurcharge}):</span>
-                            <span className="text-rose-900 font-black">Rs. {totalAfter.toLocaleString()}/-</span>
+                            <span>After Due Date (+Rs. {lateSurcharge}/day fine):</span>
+                            <span className="text-rose-900 font-black">Rs. {totalAfter.toLocaleString()}/- (+Rs. {lateSurcharge}/day)</span>
                           </div>
                         </div>
 
@@ -905,7 +922,7 @@ export default function BankChallanModal({
 
                       {/* Bottom Footer Line */}
                       <div className="bg-slate-100 px-3 py-0.5 text-[7.5px] font-bold text-slate-800 border-t border-slate-200 flex justify-between">
-                        <span>• Fee is payable strictly in Cash at College Accounts Desk on or before Due Date.</span>
+                        <span>• Fee is payable within 10 days of issue (Due Date: {dueDate}). After due date, late fine of Rs. {lateSurcharge} per day applies.</span>
                         <span className="text-emerald-800 font-black">{collegeAddress}</span>
                       </div>
                     </div>

@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { SUPERIOR_COLLEGE_LOGO } from './collegeLogo';
 
 export interface ChallanOptions {
   collegeName?: string;
@@ -64,18 +65,42 @@ function formatDate(dateObj: Date): string {
   return `${dd}-${mmm}-${yyyy}`;
 }
 
-export function getDefaultDueDate(): string {
-  const now = new Date();
-  let targetMonth = now.getMonth();
-  let targetYear = now.getFullYear();
-  if (now.getDate() > 10) {
-    targetMonth += 1;
-    if (targetMonth > 11) {
-      targetMonth = 0;
-      targetYear += 1;
+export function getDefaultDueDate(baseDate?: string | Date): string {
+  let base: Date;
+  if (!baseDate) {
+    base = new Date();
+  } else if (typeof baseDate === 'string') {
+    const parsed = new Date(baseDate);
+    if (!isNaN(parsed.getTime())) {
+      base = parsed;
+    } else {
+      // Try parsing DD-MMM-YYYY (e.g. 28-Oct-2026)
+      const parts = baseDate.split('-');
+      if (parts.length === 3) {
+        const months: Record<string, number> = {
+          jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+          jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+        };
+        const m = months[parts[1].toLowerCase().slice(0, 3)];
+        if (m !== undefined) {
+          base = new Date(Number(parts[2]), m, Number(parts[0]));
+        } else {
+          base = new Date();
+        }
+      } else {
+        base = new Date();
+      }
     }
+  } else {
+    base = baseDate;
   }
-  const due = new Date(targetYear, targetMonth, 10);
+
+  if (isNaN(base.getTime())) {
+    base = new Date();
+  }
+
+  const due = new Date(base.getTime());
+  due.setDate(due.getDate() + 10);
   return formatDate(due);
 }
 
@@ -94,8 +119,8 @@ export function generate3CopyChallanDoc(
   const studentList = Array.isArray(students) && students.length > 0 ? students : [{}];
   const now = new Date();
   const issueDateStr = options.issueDate || formatDate(now);
-  const dueDateStr = options.dueDate || getDefaultDueDate();
-  const lateFee = typeof options.lateSurcharge === 'number' ? options.lateSurcharge : 500;
+  const dueDateStr = options.dueDate || getDefaultDueDate(options.issueDate || now);
+  const lateFee = typeof options.lateSurcharge === 'number' ? options.lateSurcharge : 100;
 
   const collegeName = 'SUPERIOR COLLEGE JAHANIAN';
   const collegeAddress = options.collegeAddress || 'Canal Road, Jahanian';
@@ -163,13 +188,22 @@ export function generate3CopyChallanDoc(
       // Top Navy Header Banner
       doc.setFillColor(11, 36, 71);
       doc.rect(x, topY, copyWidth, 12, 'F');
+
+      try {
+        doc.setFillColor(255, 255, 255);
+        doc.circle(x + 6.5, topY + 6, 4.2, 'F');
+        doc.addImage(SUPERIOR_COLLEGE_LOGO, 'PNG', x + 2.8, topY + 2.3, 7.4, 7.4);
+      } catch (err) {
+        // Fallback if image fails
+      }
+
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
-      doc.text(collegeName, x + copyWidth / 2, topY + 5.5, { align: 'center' });
+      doc.text(collegeName, x + copyWidth / 2 + 3, topY + 5.5, { align: 'center' });
       doc.setFontSize(5.5);
       doc.setFont('helvetica', 'normal');
-      doc.text(`${collegeAddress} • ${collegeContact}`, x + copyWidth / 2, topY + 9.5, { align: 'center' });
+      doc.text(`${collegeAddress} • ${collegeContact}`, x + copyWidth / 2 + 3, topY + 9.5, { align: 'center' });
 
       // Copy Badge
       doc.setFillColor(241, 245, 249);
@@ -306,9 +340,9 @@ export function generate3CopyChallanDoc(
       doc.setTextColor(185, 28, 28);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5.5);
-      doc.text(`Late Surcharge (After Due Date ${dueDateStr}):`, x + 3.5, curY + 3.8);
+      doc.text(`Late Fine (After Due Date ${dueDateStr}):`, x + 3.5, curY + 3.8);
       doc.setFont('helvetica', 'bold');
-      doc.text(`+ Rs. ${lateFee.toLocaleString()}`, x + copyWidth - 3, curY + 3.8, { align: 'right' });
+      doc.text(`+ Rs. ${lateFee.toLocaleString()} / Day`, x + copyWidth - 3, curY + 3.8, { align: 'right' });
 
       // Total After Due Date Row
       curY += 6.5;
@@ -318,7 +352,7 @@ export function generate3CopyChallanDoc(
       doc.setTextColor(159, 18, 57);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
-      doc.text('TOTAL PAYABLE (AFTER DUE DATE):', x + 3.5, curY + 4.3);
+      doc.text('TOTAL AFTER DUE DATE (INCL. DAY 1 FINE):', x + 3.5, curY + 4.3);
       doc.text(`Rs. ${totalAfterDue.toLocaleString()}`, x + copyWidth - 3, curY + 4.3, { align: 'right' });
 
       // Words Bar
@@ -336,9 +370,9 @@ export function generate3CopyChallanDoc(
       curY += 7;
       doc.setFontSize(4.5);
       doc.setTextColor(100, 116, 139);
-      doc.text('• Fee is non-refundable / non-transferable once deposited.', x + 3, curY + 3);
-      doc.text('• Please verify payment stamp & signature of bank teller before leaving counter.', x + 3, curY + 5.5);
-      doc.text('• Online collection valid at all automated branches of HBL across Pakistan.', x + 3, curY + 8);
+      doc.text(`• Fee is payable within 10 days of issue (Due Date: ${dueDateStr}). Late fine: Rs. ${lateFee}/day after due date.`, x + 3, curY + 3);
+      doc.text('• Preserve voucher required for semester clearance. Stamped slip must be presented at counter.', x + 3, curY + 5.5);
+      doc.text('• Fee is non-refundable / non-transferable once deposited.', x + 3, curY + 8);
 
       // Signature & Stamp Blocks
       curY += 12;
@@ -435,8 +469,8 @@ function drawSingleCollegeSlipRow(
   const collegeAddress = options.collegeAddress || 'Canal Road Campus, Jahanian';
   const collegeContact = options.collegeContact || 'Accounts Desk: 0331-2211147';
   const issueDateStr = options.issueDate || formatDate(new Date());
-  const dueDateStr = options.dueDate || getDefaultDueDate();
-  const lateFee = typeof options.lateSurcharge === 'number' ? options.lateSurcharge : 500;
+  const dueDateStr = options.dueDate || getDefaultDueDate(options.issueDate || new Date());
+  const lateFee = typeof options.lateSurcharge === 'number' ? options.lateSurcharge : 100;
   const feeMonth = options.feeMonth || 'Monthly Installment';
 
   const sName = String(student?.fullName || student?.full_name || student?.name || 'Verified Student');
@@ -492,11 +526,23 @@ function drawSingleCollegeSlipRow(
   doc.setFillColor(217, 119, 6); // Superior Gold
   doc.rect(x + 0.3, y + 11.3, 199.4, 0.8, 'F');
 
-  // College Name (Large Bold 12pt White Font)
+  // Superior College Crest Logo (Crisp circular white badge with gold border)
+  try {
+    doc.setFillColor(255, 255, 255);
+    doc.circle(x + 6.2, y + 5.9, 4.6, 'F');
+    doc.setDrawColor(217, 119, 6);
+    doc.setLineWidth(0.3);
+    doc.circle(x + 6.2, y + 5.9, 4.6, 'D');
+    doc.addImage(SUPERIOR_COLLEGE_LOGO, 'PNG', x + 2.2, y + 1.9, 8.0, 8.0);
+  } catch (err) {
+    // Graceful fallback
+  }
+
+  // College Name (Large Bold 11.5pt White Font)
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text(collegeName, x + 4, y + 5.5);
+  doc.setFontSize(11.5);
+  doc.text(collegeName, x + 12.5, y + 5.5);
 
   // Subtitle / Fee Head
   doc.setFontSize(7.5);
@@ -504,13 +550,13 @@ function drawSingleCollegeSlipRow(
   const voucherTitle = copyBadgeText
     ? `OFFICIAL STUDENT FEE VOUCHER • ${copyBadgeText.toUpperCase()}`
     : `OFFICIAL STUDENT FEE VOUCHER • ${feeMonth.toUpperCase()}`;
-  doc.text(voucherTitle, x + 4, y + 9.5);
+  doc.text(voucherTitle, x + 12.5, y + 9.5);
 
   // Campus Address & Contact
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.setTextColor(241, 245, 249);
-  doc.text(`${collegeAddress} • ${collegeContact}`, x + 88, y + 5.5);
+  doc.text(`${collegeAddress} • ${collegeContact}`, x + 90, y + 5.5);
 
   // Right-side Metadata Strip inside Header
   doc.setFillColor(4, 120, 87);
@@ -665,9 +711,9 @@ function drawSingleCollegeSlipRow(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(5.8);
   doc.setTextColor(159, 18, 57);
-  doc.text(`After Due Date (+Rs. ${lateFee} Late Fine):`, p2X + 3, lateBoxY + 3.5);
+  doc.text(`After Due Date (+Rs. ${lateFee}/Day Late Fine):`, p2X + 3, lateBoxY + 3.5);
   doc.setFontSize(7.5);
-  doc.text(`Rs. ${totalAfterDue.toLocaleString()}/-`, p2X + p2W - 3, lateBoxY + 3.5, { align: 'right' });
+  doc.text(`Rs. ${totalAfterDue.toLocaleString()}/- (+Rs. ${lateFee}/day)`, p2X + p2W - 3, lateBoxY + 3.5, { align: 'right' });
 
   // --- PANEL 3: ACCOUNTS CASH DESK & VERIFICATION (Width: 48mm) ---
   const p3X = x + 150.5;
@@ -719,8 +765,8 @@ function drawSingleCollegeSlipRow(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(5.5);
   doc.setTextColor(15, 23, 42); // Dark slate
-  doc.text('• Fee is payable strictly in Cash at College Accounts Desk on or before due date.', x + 4, y + 63);
-  doc.text('• Stamped voucher must be preserved for semester clearance.', x + 4, y + 65.5);
+  doc.text(`• Fee is payable within 10 days of issue (on or before ${dueDateStr}). Late fine: Rs. ${lateFee}/day after due date.`, x + 4, y + 63);
+  doc.text(`• Preserve voucher required for semester clearance. Stamped slip must be presented at Accounts Desk.`, x + 4, y + 65.5);
 
   if (copyBadgeText) {
     doc.setFillColor(6, 78, 59);
