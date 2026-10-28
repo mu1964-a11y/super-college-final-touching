@@ -102,7 +102,7 @@ async function startServer() {
   });
 
   // API routes can be added here
-  app.get("/api/health", (req, res) => {
+  app.get(["/api/health", "/healthz", "/_health"], (req, res) => {
     res.json({ status: "ok" });
   });
 
@@ -1549,10 +1549,15 @@ Return strictly the raw JSON without markdown code fences.`;
 
     // Service Worker and app entry points must NEVER be cached by browser or proxies
     app.get(["/sw.js", "/sw.js*"], (req, res) => {
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.setHeader("Pragma", "no-cache");
-      res.setHeader("Expires", "0");
-      res.sendFile(path.join(distPath, "sw.js"));
+      const swFile = path.join(distPath, "sw.js");
+      if (fs.existsSync(swFile)) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+        res.sendFile(swFile);
+      } else {
+        res.status(404).end();
+      }
     });
 
     app.use(express.static(distPath, {
@@ -1566,10 +1571,15 @@ Return strictly the raw JSON without markdown code fences.`;
     }));
 
     app.get("*", (req, res) => {
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.setHeader("Pragma", "no-cache");
-      res.setHeader("Expires", "0");
-      res.sendFile(path.join(distPath, "index.html"));
+      const indexFile = path.join(distPath, "index.html");
+      if (fs.existsSync(indexFile)) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+        res.sendFile(indexFile);
+      } else {
+        res.status(200).send("Superior College ERP");
+      }
     });
   }
 

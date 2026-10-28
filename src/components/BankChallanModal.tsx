@@ -181,9 +181,10 @@ export default function BankChallanModal({
 
   if (!isOpen) return null;
 
-  const totalPages = Math.max(1, Math.ceil(activeStudentList.length / 4));
+  const totalPages = Math.max(1, Math.ceil(activeStudentList.length / 2));
   const safePage = Math.min(previewPage, totalPages - 1);
-  const currentQuadStudents = activeStudentList.slice(safePage * 4, safePage * 4 + 4);
+  const pageStudentA = activeStudentList[safePage * 2];
+  const pageStudentB = activeStudentList[safePage * 2 + 1];
 
   const collegeName = 'SUPERIOR COLLEGE JAHANIAN';
   const collegeAddress = settings?.address || 'Canal Road Campus, Jahanian';
@@ -215,8 +216,8 @@ export default function BankChallanModal({
 
         toast.success(
           toExport.length === 1
-            ? `Fee Voucher downloaded for ${toExport[0].fullName || 'Student'}!`
-            : `Downloaded 4-per-page Landscape Fee Vouchers for ${toExport.length} students (${Math.ceil(toExport.length / 4)} A4 Pages)!`
+            ? `Fee Voucher downloaded for ${toExport[0].fullName || 'Student'} (College Copy + Student Copy)!`
+            : `Downloaded Fee Vouchers for ${toExport.length} students (${Math.ceil(toExport.length / 2)} A4 Pages • 2 Copies / Student)!`
         );
       } else {
         // 3-Copy Bank Challan fallback
@@ -369,7 +370,7 @@ export default function BankChallanModal({
             </span>
             <span className="text-slate-400">•</span>
             <span>
-              Sheets: <strong>{Math.ceil(activeStudentList.length / 4)} A4 Pages</strong>
+              Sheets: <strong>{Math.ceil(activeStudentList.length / 2)} A4 Pages</strong> (2 Students / Sheet • 2 Copies Each)
             </span>
           </div>
         </div>
@@ -495,20 +496,9 @@ export default function BankChallanModal({
                 {activeStudentList.length === 1 && (
                   <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-400 block mb-1">
-                      Single Student Layout Mode
+                      Single Student Copies
                     </label>
                     <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSingleStudentMode('quad_copies')}
-                        className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
-                          singleStudentMode === 'quad_copies'
-                            ? 'border-emerald-600 bg-emerald-50 text-emerald-950 dark:bg-emerald-950/40 dark:text-emerald-200 ring-1 ring-emerald-600'
-                            : 'border-slate-300 text-slate-700 hover:bg-slate-50'
-                        }`}
-                      >
-                        4 Copies / 1 Page
-                      </button>
                       <button
                         type="button"
                         onClick={() => setSingleStudentMode('single_slip')}
@@ -518,7 +508,18 @@ export default function BankChallanModal({
                             : 'border-slate-300 text-slate-700 hover:bg-slate-50'
                         }`}
                       >
-                        1 Slip
+                        2 Copies (College + Student)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSingleStudentMode('quad_copies')}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                          singleStudentMode === 'quad_copies'
+                            ? 'border-emerald-600 bg-emerald-50 text-emerald-950 dark:bg-emerald-950/40 dark:text-emerald-200 ring-1 ring-emerald-600'
+                            : 'border-slate-300 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        4 Copies (2 Sets)
                       </button>
                     </div>
                   </div>
@@ -671,7 +672,7 @@ export default function BankChallanModal({
                 <span>
                   {isExporting
                     ? 'Generating PDF...'
-                    : `Download ${activeStudentList.length} Vouchers (${Math.ceil(activeStudentList.length / 4)} A4 Pages)`}
+                    : `Download ${activeStudentList.length} Students (${Math.ceil(activeStudentList.length / 2)} A4 Pages • 2 Copies / Student)`}
                 </span>
               </button>
 
@@ -722,16 +723,32 @@ export default function BankChallanModal({
             {/* A4 Sheet Mockup Container (4 Full-Width Rows Stacked Vertically) */}
             <div className="w-full max-w-2xl bg-white shadow-2xl rounded-2xl border-2 border-slate-400 p-3 relative overflow-hidden select-none space-y-2.5">
               {[0, 1, 2, 3].map((rowIdx) => {
-                const student =
-                  activeStudentList.length === 1 && singleStudentMode === 'quad_copies'
-                    ? activeStudentList[0]
-                    : currentQuadStudents[rowIdx];
+                let student: any = null;
+                let copyLabel = 'College Copy';
 
-                const copyBadges = ['College Copy', 'Accounts Copy', 'Student Copy', 'Admin Record'];
-                const copyLabel =
-                  activeStudentList.length === 1 && singleStudentMode === 'quad_copies'
-                    ? copyBadges[rowIdx]
-                    : `Slip ${safePage * 4 + rowIdx + 1}`;
+                if (activeStudentList.length === 1) {
+                  student = pageStudentA;
+                  if (rowIdx === 0) {
+                    copyLabel = 'College Copy';
+                  } else if (rowIdx === 1) {
+                    copyLabel = 'Student Copy';
+                  } else if (rowIdx === 2) {
+                    student = singleStudentMode === 'quad_copies' ? pageStudentA : null;
+                    copyLabel = 'College Copy (Duplicate)';
+                  } else {
+                    student = singleStudentMode === 'quad_copies' ? pageStudentA : null;
+                    copyLabel = 'Student Copy (Duplicate)';
+                  }
+                } else {
+                  // Batch mode: 2 students per A4 page, 2 copies each (College Copy & Student Copy)
+                  if (rowIdx < 2) {
+                    student = pageStudentA;
+                    copyLabel = rowIdx === 0 ? 'College Copy' : 'Student Copy';
+                  } else {
+                    student = pageStudentB;
+                    copyLabel = rowIdx === 2 ? 'College Copy' : 'Student Copy';
+                  }
+                }
 
                 if (!student) {
                   return (
@@ -749,7 +766,8 @@ export default function BankChallanModal({
                 const fName = student.fatherName || student.father_name || 'N/A';
                 const rollNo = student.collegeNo || student.studentId || student.id || 'SCJ-0000';
                 const prog = student.group || student.program || student.currentClass || 'Intermediate';
-                const sec = student.section || 'A';
+                const rawSec = student.section || 'A';
+                const sec = String(rawSec).replace(/^(sec|section)\s*[:-]?\s*/i, '').trim() || 'A';
                 const shift = student.gender === 'Female' ? 'Girls Campus' : 'Boys Campus';
                 const session = student.session || '2026-28';
 
@@ -819,7 +837,7 @@ export default function BankChallanModal({
                             <div className="font-black text-black truncate text-[11px] leading-snug">{sName}</div>
                             <div className="text-[8.5px] text-slate-800 font-bold truncate">S/D/O: {fName}</div>
                             <div className="text-[8.5px] text-slate-900 font-black mt-0.5 truncate">{prog}</div>
-                            <div className="text-[8px] text-slate-700 font-bold">Sec {sec} • {shift}</div>
+                            <div className="text-[8px] text-slate-900 font-bold">Section: {sec} • {shift}</div>
                             <div className="text-[8px] text-emerald-800 font-black">{session}</div>
                           </div>
 
@@ -897,8 +915,9 @@ export default function BankChallanModal({
             </div>
 
             <p className="text-[11px] text-slate-600 font-bold mt-2.5 text-center">
-              💡 <strong>4 Full-Width Horizontal Rows:</strong> 1 standard A4 sheet gives 4 wide, easy-to-read vouchers.
-              Cut along the 3 horizontal dashed lines for rapid student distribution.
+              💡 <strong>2 Students / A4 Sheet (2 Copies Each):</strong> 1 standard A4 sheet gives 4 vouchers total —
+              2 copies per student (<strong>1 College Copy</strong> + <strong>1 Student Copy</strong>).
+              Cut along the horizontal dashed lines for instant distribution.
             </p>
           </div>
         </div>

@@ -18,12 +18,139 @@ import crypto from "crypto";
 // server/whatsappPdfGenerator.ts
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+function extractAttendanceTimings(rec) {
+  if (!rec) {
+    return { checkIn: "-", breakOut: "-", breakIn: "-", checkOut: "-", remarks: "-" };
+  }
+  let checkIn = rec.check_in_time || rec.checkInTime || rec.check_in || rec.checkIn || "";
+  let breakOut = rec.break_out || rec.breakOut || "";
+  let breakIn = rec.break_in || rec.breakIn || "";
+  let checkOut = rec.check_out_time || rec.checkOutTime || rec.check_out || rec.checkOut || "";
+  let remarks = "";
+  const rawNotes = rec.notes ?? rec.remarks ?? "";
+  if (typeof rawNotes === "string" && rawNotes.trim()) {
+    const trimmed = rawNotes.trim();
+    if (trimmed.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (!checkIn && (parsed.checkIn || parsed.check_in || parsed.time)) {
+          checkIn = String(parsed.checkIn || parsed.check_in || parsed.time);
+        }
+        if (!breakOut && (parsed.breakOut || parsed.break_out)) {
+          breakOut = String(parsed.breakOut || parsed.break_out);
+        }
+        if (!breakIn && (parsed.breakIn || parsed.break_in)) {
+          breakIn = String(parsed.breakIn || parsed.break_in);
+        }
+        if (!checkOut && (parsed.checkOut || parsed.check_out)) {
+          checkOut = String(parsed.checkOut || parsed.check_out);
+        }
+        const baseRemark = parsed.notes || parsed.Verify || parsed.method || "Biometric Verified";
+        if (breakOut || breakIn) {
+          remarks = `${baseRemark} (Break: ${breakOut || "-"} -> ${breakIn || "Out"})`;
+        } else {
+          remarks = baseRemark;
+        }
+      } catch {
+        remarks = "Biometric Verified";
+      }
+    } else {
+      const inMatch = trimmed.match(/check[-\s]*in[:\s]+([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:AM|PM)?)/i);
+      const outMatch = trimmed.match(/check[-\s]*out[:\s]+([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:AM|PM)?)/i);
+      const timeMatch = trimmed.match(/\b([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:AM|PM))\b/i);
+      if (!checkIn && inMatch) checkIn = inMatch[1].trim();
+      else if (!checkIn && timeMatch) checkIn = timeMatch[1].trim();
+      if (!checkOut && outMatch) checkOut = outMatch[1].trim();
+      remarks = trimmed;
+    }
+  } else if (rawNotes && typeof rawNotes === "object") {
+    if (!checkIn && (rawNotes.checkIn || rawNotes.check_in)) {
+      checkIn = String(rawNotes.checkIn || rawNotes.check_in);
+    }
+    if (!breakOut && (rawNotes.breakOut || rawNotes.break_out)) {
+      breakOut = String(rawNotes.breakOut || rawNotes.break_out);
+    }
+    if (!breakIn && (rawNotes.breakIn || rawNotes.break_in)) {
+      breakIn = String(rawNotes.breakIn || rawNotes.break_in);
+    }
+    if (!checkOut && (rawNotes.checkOut || rawNotes.check_out)) {
+      checkOut = String(rawNotes.checkOut || rawNotes.check_out);
+    }
+    remarks = rawNotes.notes || rawNotes.Verify || "Biometric Verified";
+  }
+  if (!checkIn && rec.created_at && String(rec.created_at).includes("T")) {
+    try {
+      const d = new Date(rec.created_at);
+      if (!isNaN(d.getTime())) {
+        const pkt = new Date(d.getTime() + (5 * 60 + d.getTimezoneOffset()) * 60 * 1e3);
+        let h = pkt.getHours();
+        const m = String(pkt.getMinutes()).padStart(2, "0");
+        const ampm = h >= 12 ? "PM" : "AM";
+        h = h % 12 || 12;
+        checkIn = `${String(h).padStart(2, "0")}:${m} ${ampm}`;
+      }
+    } catch {
+    }
+  }
+  const status = String(rec.status || "");
+  if (!checkIn) {
+    checkIn = status === "Present" || status === "Late" ? "08:00 AM" : "-";
+  }
+  if (!breakOut) breakOut = "-";
+  if (!breakIn) breakIn = "-";
+  if (!checkOut) {
+    checkOut = "-";
+  }
+  if (!remarks) {
+    remarks = status === "Present" || status === "Late" ? "Verified" : "-";
+  }
+  return { checkIn, breakOut, breakIn, checkOut, remarks };
+}
+function formatCollegeTimingRange(settings) {
+  const startRaw = settings?.collegeStartTime || settings?.config?.collegeStartTime || settings?.gateEntryStartTime || settings?.config?.gateEntryStartTime || "08:00";
+  const endRaw = settings?.gateExitStartTime || settings?.config?.gateExitStartTime || settings?.gateExitCutoffTime || settings?.config?.gateExitCutoffTime || settings?.collegeEndTime || settings?.config?.collegeEndTime || "14:00";
+  const to12h = (timeVal, fallback) => {
+    if (!timeVal || typeof timeVal !== "string") return fallback;
+    const clean = timeVal.trim();
+    if (/am|pm/i.test(clean)) return clean;
+    const parts = clean.split(":");
+    if (parts.length < 2) return clean;
+    let h = parseInt(parts[0], 10);
+    const m = parts[1].slice(0, 2);
+    if (isNaN(h)) return fallback;
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return `${String(h).padStart(2, "0")}:${m} ${ampm}`;
+  };
+  const startFormatted = to12h(startRaw, "08:00 AM");
+  const endFormatted = to12h(endRaw, "02:00 PM");
+  return `${startFormatted} - ${endFormatted}`;
+}
 var COLLEGE_TITLE = "SUPERIOR COLLEGE JAHANIAN";
 var COLLEGE_SUBTITLE = "Official ERP & Automated Document Verification System \u2022 Canal Road, Jahanian";
 function getPktNowInfo(customDate) {
-  const base = customDate ? new Date(customDate) : /* @__PURE__ */ new Date();
-  const validDate = isNaN(base.getTime()) ? /* @__PURE__ */ new Date() : base;
-  const pkt = new Date(validDate.getTime() + (5 * 60 + validDate.getTimezoneOffset()) * 60 * 1e3);
+  const realNow = /* @__PURE__ */ new Date();
+  const realPkt = new Date(realNow.getTime() + (5 * 60 + realNow.getTimezoneOffset()) * 60 * 1e3);
+  let pkt = realPkt;
+  const isDateOnlyStr = typeof customDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(customDate.trim());
+  if (customDate) {
+    if (isDateOnlyStr) {
+      const [y, m, d] = customDate.trim().split("-").map(Number);
+      pkt = new Date(
+        y,
+        (m || 1) - 1,
+        d || 1,
+        realPkt.getHours(),
+        realPkt.getMinutes(),
+        realPkt.getSeconds()
+      );
+    } else {
+      const base = new Date(customDate);
+      if (!isNaN(base.getTime())) {
+        pkt = new Date(base.getTime() + (5 * 60 + base.getTimezoneOffset()) * 60 * 1e3);
+      }
+    }
+  }
   const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const fullMonths = [
@@ -309,7 +436,7 @@ function generateAdmissionSlipPdf(admission) {
 \u{1F4B3} *Package:* Rs. ${totalPkg.toLocaleString()} | *Paid:* Rs. ${feePaid.toLocaleString()} | *Balance:* *Rs. ${remaining.toLocaleString()}*
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
 \u{1F4CE} _Aap ki Official Admission Confirmation PDF Slip niche attach hai._`;
-  return { pdfBuffer, fileName, caption };
+  return { pdfBuffer, buffer: pdfBuffer, fileName, caption };
 }
 function generateFeeReceiptAndStatementPdf(student, currentPayment, rawHistory) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
@@ -473,26 +600,35 @@ function generateFeeReceiptAndStatementPdf(student, currentPayment, rawHistory) 
 \u{1F4CC} *Remaining Balance:* *Rs. ${remaining.toLocaleString()}* ${remaining === 0 ? "\u2705 (Cleared)" : "\u26A0\uFE0F (Pending)"}
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
 \u{1F4CE} _Tamam jama shuda installments (Date, Day & Time ke sath) ki Official Statement PDF attach hai._`;
-  return { pdfBuffer, fileName, caption };
+  return { pdfBuffer, buffer: pdfBuffer, fileName, caption };
 }
-function generateCumulativeStaffAttendancePdf(staff, monthAttendanceRows, targetDateStr) {
+function generateCumulativeStaffAttendancePdf(staff, monthAttendanceRows, targetDateStr, settingsOrTiming) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
   const nowInfo = getPktNowInfo(targetDateStr);
   const staffName = staff?.fullName || staff?.full_name || staff?.name || "Faculty Member";
   const staffId = staff?.id || staff?.staffId || "STF-01";
   const role = staff?.designation || staff?.role || "Faculty";
   const phone = staff?.contact || staff?.phone || "Verified";
+  let officialCollegeTiming = "08:00 AM - 02:00 PM";
+  if (typeof settingsOrTiming === "string" && settingsOrTiming.trim()) {
+    officialCollegeTiming = settingsOrTiming.trim();
+  } else if (settingsOrTiming && typeof settingsOrTiming === "object") {
+    officialCollegeTiming = formatCollegeTimingRange(settingsOrTiming);
+  }
   const activeDateStr = targetDateStr || nowInfo.isoDate;
   const [yr, mo, dy] = activeDateStr.split("-").map(Number);
   const year = yr || (/* @__PURE__ */ new Date()).getFullYear();
   const month = mo || (/* @__PURE__ */ new Date()).getMonth() + 1;
   const maxDay = dy || (/* @__PURE__ */ new Date()).getDate();
+  const monthPrefix = `${year}-${String(month).padStart(2, "0")}-`;
   const daysNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const recordMap = /* @__PURE__ */ new Map();
   for (const r of monthAttendanceRows || []) {
     const dKey = String(r.date || "").slice(0, 10);
-    if (dKey) recordMap.set(dKey, r);
+    if (dKey && dKey.startsWith(monthPrefix) && dKey <= activeDateStr) {
+      recordMap.set(dKey, r);
+    }
   }
   let monthlyPresent = 0;
   let monthlyLate = 0;
@@ -503,23 +639,25 @@ function generateCumulativeStaffAttendancePdf(staff, monthAttendanceRows, target
   let weeklyLate = 0;
   let weeklyAbsent = 0;
   let weeklyLeave = 0;
+  const progressiveDatesSet = new Set(Array.from(recordMap.keys()));
+  progressiveDatesSet.add(activeDateStr);
+  const sortedDates = Array.from(progressiveDatesSet).sort((a, b) => a.localeCompare(b));
   const dayRows = [];
-  for (let d = 1; d <= maxDay; d++) {
-    const dStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    const jsDate = new Date(year, month - 1, d);
+  for (const dStr of sortedDates) {
+    const dayNum = Number(dStr.split("-")[2] || 1);
+    const jsDate = new Date(year, month - 1, dayNum);
     const dayName = daysNames[jsDate.getDay()];
     const isSunday = jsDate.getDay() === 0;
-    const isWithinLast7Days = maxDay - d < 7;
+    const isWithinLast7Days = maxDay - dayNum < 7 && maxDay - dayNum >= 0;
     const rec = recordMap.get(dStr);
-    const rawStatus = rec?.status || (isSunday ? "Sunday Holiday" : "Not Marked");
-    const checkIn = rec?.check_in_time || rec?.checkInTime || rec?.check_in || rec?.checkIn || (rawStatus === "Present" ? "08:00 AM" : "-");
-    const checkOut = rec?.check_out_time || rec?.checkOutTime || rec?.check_out || rec?.checkOut || (rawStatus === "Present" || rawStatus === "Late" ? "02:00 PM" : "-");
-    let cleanRemarks = rec?.notes || "-";
-    if (typeof cleanRemarks === "string" && cleanRemarks.startsWith("{")) {
-      cleanRemarks = "Biometric Verified";
-    }
-    if (!isSunday && rawStatus !== "College Holiday" && rawStatus !== "Public Holiday") {
-      if (rec) monthlyWorkingDays++;
+    const rawStatus = rec?.status || (isSunday ? "Sunday Holiday" : "Pending");
+    const parsedTimings = rec ? extractAttendanceTimings(rec) : { checkIn: "-", breakOut: "-", breakIn: "-", checkOut: "-", remarks: isSunday ? "Weekly Off" : "Pending Today" };
+    const checkIn = parsedTimings.checkIn;
+    const checkOut = parsedTimings.checkOut;
+    const breakInfo = parsedTimings.breakOut && parsedTimings.breakOut !== "-" ? `Break: ${parsedTimings.breakOut}${parsedTimings.breakIn && parsedTimings.breakIn !== "-" ? `-${parsedTimings.breakIn}` : ""} | ` : "";
+    const cleanRemarks = `${breakInfo}${parsedTimings.remarks}`;
+    if (rec && !isSunday && rawStatus !== "College Holiday" && rawStatus !== "Public Holiday") {
+      monthlyWorkingDays++;
       if (rawStatus === "Present") {
         monthlyPresent++;
         if (isWithinLast7Days) weeklyPresent++;
@@ -535,37 +673,43 @@ function generateCumulativeStaffAttendancePdf(staff, monthAttendanceRows, target
       }
     }
     dayRows.push([
-      `${String(d).padStart(2, "0")} ${shortMonths[month - 1]} ${year}`,
+      `${String(dayNum).padStart(2, "0")} ${shortMonths[month - 1]} ${year}`,
       dayName,
+      officialCollegeTiming,
       String(checkIn),
       String(checkOut),
       rawStatus.toUpperCase(),
-      String(cleanRemarks).slice(0, 28)
+      String(cleanRemarks).slice(0, 26)
     ]);
   }
   const todayRec = recordMap.get(activeDateStr);
-  const todayStatus = todayRec?.status || "Present";
-  const todayCheckIn = todayRec?.check_in_time || todayRec?.checkInTime || todayRec?.check_in || todayRec?.checkIn || nowInfo.timeFormatted;
+  const todayTimings = todayRec ? extractAttendanceTimings(todayRec) : null;
+  const todayStatus = todayRec?.status || "Pending";
+  const todayCheckIn = todayTimings ? todayTimings.checkIn : "-";
+  const todayCheckOut = todayTimings ? todayTimings.checkOut : "-";
+  if (todayCheckIn !== "-") {
+    nowInfo.timeFormatted = todayCheckIn;
+  }
   const attendancePct = monthlyWorkingDays > 0 ? Math.round((monthlyPresent + monthlyLate) / monthlyWorkingDays * 100) : 100;
   let y = drawExecutiveHeader(
     doc,
-    `Cumulative Staff Attendance Register (${shortMonths[month - 1]} ${year})`,
+    `Daily Progressive Staff Attendance Register (${shortMonths[month - 1]} ${year})`,
     `TODAY: ${todayStatus.toUpperCase()}`,
     nowInfo
   );
-  y = drawIdentityCard(doc, y, "Verified Faculty Profile & Daily Attendance Stamp", [
+  y = drawIdentityCard(doc, y, "Verified Faculty Profile & Official Attendance Stamp", [
     { label: "Faculty Name", value: staffName },
     { label: "Staff ID", value: String(staffId) },
     { label: "Designation", value: String(role) },
-    { label: "Registered Phone", value: String(phone) },
-    { label: "Updated Up To", value: `${nowInfo.dateFormatted} (${nowInfo.dayName})` },
-    { label: "Today's Check-In", value: `${todayStatus} \u2022 ${todayCheckIn}` }
+    { label: "Official College Time", value: officialCollegeTiming },
+    { label: "Report Date", value: `${nowInfo.dateFormatted} (${nowInfo.dayName})` },
+    { label: "Today's Check-In Time", value: `${todayStatus} \u2022 In: ${todayCheckIn}${todayCheckOut !== "-" ? ` | Out: ${todayCheckOut}` : ""}` }
   ]);
   y = drawSummaryKPIBoxes(doc, y, [
     {
-      label: "Today's Status",
+      label: "Today's Status & Time",
       value: todayStatus.toUpperCase(),
-      subtext: `${nowInfo.dayName} \u2022 ${todayCheckIn}`,
+      subtext: `In: ${todayCheckIn}${todayCheckOut !== "-" ? ` | Out: ${todayCheckOut}` : ""}`,
       highlight: todayStatus === "Absent" ? "crimson" : todayStatus === "Late" ? "amber" : "teal"
     },
     {
@@ -575,32 +719,36 @@ function generateCumulativeStaffAttendancePdf(staff, monthAttendanceRows, target
       highlight: "navy"
     },
     {
-      label: "Monthly Present / Late",
+      label: "Recorded Present / Late",
       value: `${monthlyPresent} Present / ${monthlyLate} Late`,
-      subtext: `Out of ${monthlyWorkingDays} logged days`,
+      subtext: `${monthlyWorkingDays} recorded day(s) so far`,
       highlight: "teal"
     },
     {
-      label: "Monthly Absent / %",
-      value: `${monthlyAbsent} Absent (${attendancePct}%)`,
-      subtext: `Leaves: ${monthlyLeave}`,
+      label: "Punctuality Score",
+      value: `${attendancePct}% Attendance`,
+      subtext: `Absent: ${monthlyAbsent} | Leave: ${monthlyLeave}`,
       highlight: monthlyAbsent > 2 ? "crimson" : "navy"
     }
   ]);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
   doc.setTextColor(11, 36, 71);
-  doc.text(`DAY-BY-DAY RUNNING ATTENDANCE LOG (01 ${shortMonths[month - 1].toUpperCase()} TO ${String(maxDay).padStart(2, "0")} ${shortMonths[month - 1].toUpperCase()} ${year})`, 14, y + 2.5);
+  doc.text(
+    `DAY-BY-DAY PROGRESSIVE ATTENDANCE LOG (${dayRows.length} RECORDED DAY${dayRows.length === 1 ? "" : "S"} IN ${shortMonths[month - 1].toUpperCase()} ${year})`,
+    14,
+    y + 2.5
+  );
   autoTable(doc, {
     startY: y + 5,
-    head: [["Date", "Day of Week", "Check-In Time", "Check-Out Time", "Attendance Status", "Remarks / Mode"]],
+    head: [["Date", "Day", "College Timing", "Check-In", "Check-Out", "Status", "Remarks / Mode"]],
     body: dayRows,
     theme: "grid",
-    headStyles: { fillColor: [11, 36, 71], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.8 },
-    bodyStyles: { fontSize: 7.5, textColor: [15, 23, 42], cellPadding: 1.8 },
+    headStyles: { fillColor: [11, 36, 71], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.5 },
+    bodyStyles: { fontSize: 7.5, textColor: [15, 23, 42], cellPadding: 2 },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     didParseCell: (data) => {
-      if (data.section === "body" && data.column.index === 4) {
+      if (data.section === "body" && data.column.index === 5) {
         const val = String(data.cell.raw || "");
         if (val.includes("ABSENT")) {
           data.cell.styles.textColor = [185, 28, 28];
@@ -621,15 +769,16 @@ function generateCumulativeStaffAttendancePdf(staff, monthAttendanceRows, target
   const pdfBuffer = Buffer.from(arrayBuffer);
   const fileName = `Staff_Attendance_${toSafeFilename(staffName)}_${year}_${String(month).padStart(2, "0")}.pdf`;
   const caption = `\u{1F3DB}\uFE0F *${COLLEGE_TITLE}*
-\u{1F4CB} *DAILY UPDATED STAFF ATTENDANCE REPORT*
+\u{1F4CB} *DAILY PROGRESSIVE STAFF ATTENDANCE REPORT*
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
 \u{1F464} *Faculty:* *${staffName}* (*${role}* \u2022 ID: *${staffId}*)
-\u{1F552} *Today (${nowInfo.dayName}, ${nowInfo.dateFormatted}):* *${todayStatus.toUpperCase()}* (Time: *${todayCheckIn}*)
-\u{1F4CA} *Weekly:* Present: *${weeklyPresent}* | Late: *${weeklyLate}* | Absent: *${weeklyAbsent}*
-\u{1F4C5} *Monthly Total:* Present: *${monthlyPresent}* | Late: *${monthlyLate}* | Absent: *${monthlyAbsent}* (*${attendancePct}%*)
+\u{1F3EB} *Official College Timing:* *${officialCollegeTiming}*
+\u{1F552} *Today's Attendance (${nowInfo.dayName}, ${nowInfo.dateFormatted}):* *${todayStatus.toUpperCase()}*
+\u23F0 *Check-In Time:* *${todayCheckIn}*${todayCheckOut !== "-" ? ` | *Check-Out:* *${todayCheckOut}*` : ""}
+\u{1F4CA} *Recorded Days (${shortMonths[month - 1]} ${year}):* Present: *${monthlyPresent}* | Late: *${monthlyLate}* | Absent: *${monthlyAbsent}* (*${attendancePct}%*)
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-\u{1F4CE} _1st tareekh se aaj tak ka mukammal Day-by-Day, Weekly aur Monthly Attendance Register PDF mein attach hai._`;
-  return { pdfBuffer, fileName, caption };
+\u{1F4CE} _Your progressive Day-by-Day Attendance Register PDF (${dayRows.length} recorded day${dayRows.length === 1 ? "" : "s"}) is attached below._`;
+  return { pdfBuffer, buffer: pdfBuffer, fileName, caption };
 }
 function generateStaffSalarySlipPdf(staff, attendanceRows, advancesRows, monthStr) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
@@ -670,6 +819,10 @@ function generateStaffSalarySlipPdf(staff, attendanceRows, advancesRows, monthSt
   });
   const totalDeductions = absentDeduction + lateDeduction + monthlyAdvanceDeduction;
   const netPayable = Math.max(0, baseSalary - totalDeductions);
+  const sortedAtt = [...attendanceRows || []].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  const latestAtt = sortedAtt[0];
+  const latestTimings = latestAtt ? extractAttendanceTimings(latestAtt) : null;
+  const latestAttLabel = latestAtt ? `${latestAtt.status} (${latestAtt.date} \u2022 In: ${latestTimings?.checkIn || "-"})` : "No Entry Yet";
   let y = drawExecutiveHeader(doc, `Official Faculty Salary & Payroll Statement (${activeMonth})`, "PAYROLL SLIP", nowInfo);
   y = drawIdentityCard(doc, y, "Verified Staff Payroll Profile", [
     { label: "Faculty Name", value: staffName },
@@ -677,7 +830,7 @@ function generateStaffSalarySlipPdf(staff, attendanceRows, advancesRows, monthSt
     { label: "Designation", value: String(role) },
     { label: "Salary Month", value: activeMonth },
     { label: "Monthly Attendance", value: `P: ${presentCount} | L: ${lateCount} | A: ${absentCount} | Leaves: ${leaveCount}` },
-    { label: "Statement Date", value: `${nowInfo.dateFormatted} (${nowInfo.dayName})` }
+    { label: "Latest Hazri & Time", value: latestAttLabel }
   ]);
   y = drawSummaryKPIBoxes(doc, y, [
     { label: "Gross Base Salary", value: `Rs. ${baseSalary.toLocaleString()}`, subtext: `Per Day: Rs. ${perDayWage.toLocaleString()}`, highlight: "navy" },
@@ -732,11 +885,12 @@ function generateStaffSalarySlipPdf(staff, attendanceRows, advancesRows, monthSt
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
 \u{1F464} *Faculty:* *${staffName}* (*${role}* \u2022 ID: *${staffId}*)
 \u{1F4C5} *Month:* *${activeMonth}* | *Attendance:* P:${presentCount} \u2022 L:${lateCount} \u2022 A:${absentCount}
+\u{1F552} *Latest Hazri:* *${latestAtt ? `${latestAtt.status} (${latestAtt.date} at ${latestTimings?.checkIn || "-"})` : "Not Marked Today"}*
 \u{1F4B0} *Base Salary:* Rs. ${baseSalary.toLocaleString()} | *Deductions:* Rs. ${totalDeductions.toLocaleString()}
 \u2705 *Net Payable Salary:* *Rs. ${netPayable.toLocaleString()}*
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
 \u{1F4CE} _Aap ki mukammal Salary, Attendance aur Advance Statement PDF mein attach hai._`;
-  return { pdfBuffer, fileName, caption };
+  return { pdfBuffer, buffer: pdfBuffer, fileName, caption };
 }
 function generateStaffTimetablePdf(staff, timetableRows, queryDay) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
@@ -786,7 +940,7 @@ function generateStaffTimetablePdf(staff, timetableRows, queryDay) {
 \u{1F4DA} *Assigned Lectures:* *${(timetableRows || []).length} Slot(s)* ${queryDay ? `on *${queryDay}*` : "(Full Week)"}
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
 \u{1F4CE} _Aap ka mukammal Time-wise aur Room-wise Lecture Schedule PDF mein attach hai._`;
-  return { pdfBuffer, fileName, caption };
+  return { pdfBuffer, buffer: pdfBuffer, fileName, caption };
 }
 function generateStudentAcademicReportPdf(student, attendanceRows, examRecords, focusMode = "general") {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
@@ -856,25 +1010,29 @@ function generateStudentAcademicReportPdf(student, attendanceRows, examRecords, 
     });
     y = (doc.lastAutoTable?.finalY || y + 40) + 6;
   }
+  const latestStuAtt = (attendanceRows || [])[0];
+  const latestStuTimings = latestStuAtt ? extractAttendanceTimings(latestStuAtt) : null;
   if (attendanceRows && attendanceRows.length > 0 && y < 235) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(11, 36, 71);
-    doc.text("CHRONOLOGICAL ATTENDANCE LOG (DATE, DAY & TIME WISE)", 14, y + 2.5);
+    doc.text("CHRONOLOGICAL ATTENDANCE LOG (DATE, DAY & EXACT CHECK-IN / CHECK-OUT TIME)", 14, y + 2.5);
     const attBody = attendanceRows.slice(0, 18).map((a, idx) => {
-      const dt = formatDateDayTime(a.date, a.check_in_time || a.checkIn);
+      const timings = extractAttendanceTimings(a);
+      const dt = formatDateDayTime(a.date, timings.checkIn);
       return [
         String(idx + 1),
         dt.dateStr,
         dt.dayStr,
-        dt.timeStr,
+        timings.checkIn,
+        timings.checkOut,
         String(a.status || "Present").toUpperCase(),
-        String(a.notes || "Verified")
+        String(timings.remarks || "Verified").slice(0, 26)
       ];
     });
     autoTable(doc, {
       startY: y + 5,
-      head: [["Sr#", "Date", "Day", "Time", "Attendance Status", "Remarks"]],
+      head: [["Sr#", "Date", "Day", "Check-In Time", "Check-Out Time", "Status", "Remarks / Mode"]],
       body: attBody,
       theme: "grid",
       headStyles: { fillColor: [6, 78, 67], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
@@ -890,11 +1048,12 @@ function generateStudentAcademicReportPdf(student, attendanceRows, examRecords, 
 \u{1F4CA} *OFFICIAL STUDENT ATTENDANCE & RESULT REPORT*
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
 \u{1F464} *Student:* *${studentName}* S/D/O *${fatherName}* (Roll: *${rollNo}*)
-\u{1F4C5} *Attendance:* Present: *${presentDays}* | Absent: *${absentDays}* | Rate: *${attPct}%*
+\u{1F552} *Latest Hazri:* *${latestStuAtt ? `${latestStuAtt.status.toUpperCase()} (${latestStuAtt.date} \u2022 Check-In: ${latestStuTimings?.checkIn || "-"})` : "Verified"}*
+\u{1F4C5} *Attendance Summary:* Present: *${presentDays}* | Absent: *${absentDays}* | Rate: *${attPct}%*
 \u{1F4DD} *Academic Standing:* *${(examRecords || []).length} Test(s)* ${totalMax > 0 ? `\u2022 Score: *${totalObtained}/${totalMax} (${examPct}%)*` : ""}
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-\u{1F4CE} _Date & Day-wise Attendance aur Exam Results ki Official PDF Report attach hai._`;
-  return { pdfBuffer, fileName, caption };
+\u{1F4CE} _Date, Day aur Exact Check-In Time ke sath Attendance aur Exam Results ki Official PDF Report attach hai._`;
+  return { pdfBuffer, buffer: pdfBuffer, fileName, caption };
 }
 function generatePrincipalExecutiveReportPdf(data) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
@@ -949,7 +1108,7 @@ function generatePrincipalExecutiveReportPdf(data) {
 \u{1F393} *Active Enrolment:* *${data.totalStudents} Students* (Boys: ${data.boysCount} | Girls: ${data.girlsCount})
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
 \u{1F4CE} _Mukammal Staff Attendance Roster aur Financial Audit PDF niche attach hai._`;
-  return { pdfBuffer, fileName, caption };
+  return { pdfBuffer, buffer: pdfBuffer, fileName, caption };
 }
 
 // server/whatsappIntentRouter.ts
@@ -2161,13 +2320,15 @@ ${list.join("\n")}
 Baraye meherbani specific Roll Number (maslan: *${matched[0].college_no || matched[0].id}*) likh kar reply karein.`;
   }
   // Hard-Locked Staff Salary PDF Builder (Strictly queries WHERE id = verifiedStaffId ONLY)
-  async buildLockedStaffSalaryPdf(supabase, verifiedStaffId, fallbackName) {
+  async buildLockedStaffSalaryPdf(supabase, verifiedStaffId, fallbackName = "Faculty Member", monthStr) {
     if (!verifiedStaffId) return null;
     const { data: staff } = await supabase.from("staff").select("*").eq("id", verifiedStaffId).maybeSingle();
     if (!staff) return null;
-    const currentMonth = this.getPktDate().dateStr.slice(0, 7);
+    const currentMonth = monthStr && monthStr.length >= 7 ? monthStr.slice(0, 7) : this.getPktDate().dateStr.slice(0, 7);
+    const startDate = `${currentMonth}-01`;
+    const endDate = `${currentMonth}-31`;
     const [attRes, advRes] = await Promise.all([
-      supabase.from("staff_attendance").select("*").eq("staff_id", verifiedStaffId).ilike("date", `${currentMonth}%`),
+      supabase.from("staff_attendance").select("*").eq("staff_id", verifiedStaffId).gte("date", startDate).lte("date", endDate),
       supabase.from("staff_advances").select("*").eq("staff_id", verifiedStaffId)
     ]);
     return generateStaffSalarySlipPdf(
@@ -2178,16 +2339,47 @@ Baraye meherbani specific Roll Number (maslan: *${matched[0].college_no || match
     );
   }
   // Hard-Locked Cumulative Day-by-Day Staff Attendance PDF Builder (Strictly queries WHERE staff_id = verifiedStaffId ONLY)
-  async buildLockedStaffAttendancePdf(supabase, verifiedStaffId, fallbackName, targetDate) {
+  async buildLockedStaffAttendancePdf(supabase, verifiedStaffId, fallbackName = "Faculty Member", targetDate, currentPunch, settingsOverride) {
     if (!verifiedStaffId) return null;
     const { data: staff } = await supabase.from("staff").select("*").eq("id", verifiedStaffId).maybeSingle();
-    const activeDate = targetDate || this.getPktDate().dateStr;
+    const activeDate = targetDate && targetDate.length >= 10 ? targetDate.slice(0, 10) : this.getPktDate().dateStr;
     const currentMonth = activeDate.slice(0, 7);
-    const { data: attRows } = await supabase.from("staff_attendance").select("*").eq("staff_id", verifiedStaffId).ilike("date", `${currentMonth}%`).order("date", { ascending: true });
+    let activeSettings = settingsOverride;
+    if (!activeSettings) {
+      try {
+        const { data: setRow } = await supabase.from("settings").select("*").limit(1).maybeSingle();
+        if (setRow) activeSettings = setRow;
+      } catch {
+      }
+    }
+    const startDate = `${currentMonth}-01`;
+    const endDate = `${currentMonth}-31`;
+    const { data: attRows } = await supabase.from("staff_attendance").select("*").eq("staff_id", verifiedStaffId).gte("date", startDate).lte("date", endDate).order("date", { ascending: true });
+    const rowsList = Array.isArray(attRows) ? [...attRows] : [];
+    if (currentPunch && typeof currentPunch === "object") {
+      const punchDate = currentPunch.date || activeDate;
+      const existingIdx = rowsList.findIndex((r) => String(r.date || "").slice(0, 10) === punchDate);
+      const existingRow = existingIdx >= 0 ? rowsList[existingIdx] : {};
+      const mergedRecord = {
+        ...existingRow,
+        staff_id: verifiedStaffId,
+        date: punchDate,
+        status: currentPunch.status || existingRow.status || "Present",
+        check_in: currentPunch.checkInTime || currentPunch.check_in || existingRow.check_in || existingRow.check_in_time,
+        check_out: currentPunch.checkOutTime || currentPunch.check_out || existingRow.check_out || existingRow.check_out_time,
+        notes: currentPunch.notes || existingRow.notes
+      };
+      if (existingIdx >= 0) {
+        rowsList[existingIdx] = mergedRecord;
+      } else {
+        rowsList.push(mergedRecord);
+      }
+    }
     return generateCumulativeStaffAttendancePdf(
       staff || { id: verifiedStaffId, full_name: fallbackName, role: "Faculty" },
-      attRows || [],
-      activeDate
+      rowsList,
+      activeDate,
+      activeSettings
     );
   }
   // Hard-Locked Staff Timetable PDF Builder (Strictly queries WHERE staff_id = verifiedStaffId ONLY)
@@ -2278,11 +2470,12 @@ Baraye meherbani specific Roll Number (maslan: *${matched[0].college_no || match
     for (const a of staffAttRes.data || []) attMap.set(a.staff_id, a);
     const staffRoster = (staffRes.data || []).map((st) => {
       const a = attMap.get(st.id);
+      const timings = a ? extractAttendanceTimings(a) : { checkIn: "-", checkOut: "-" };
       return {
         name: st.full_name || "Staff Member",
         role: st.designation || st.role || "Faculty",
         status: a?.status || "Absent",
-        checkIn: a?.check_in_time || a?.check_in || (a?.status === "Present" ? "08:00 AM" : "-")
+        checkIn: timings.checkIn
       };
     });
     return generatePrincipalExecutiveReportPdf({
@@ -2363,11 +2556,17 @@ _Superior College Jahanian Official LMS_`;
       totalAdvance += Number(adv.amount || 0);
       remainingAdvance += Number(adv.remaining_balance || 0);
     }
-    const currentMonth = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
-    const { data: att } = await supabase.from("staff_attendance").select("status, date").eq("staff_id", staffId).ilike("date", `${currentMonth}%`);
+    const todayStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    const currentMonth = todayStr.slice(0, 7);
+    const startDate = `${currentMonth}-01`;
+    const endDate = `${currentMonth}-31`;
+    const { data: att } = await supabase.from("staff_attendance").select("*").eq("staff_id", staffId).gte("date", startDate).lte("date", endDate).order("date", { ascending: false });
     const present = (att || []).filter((a) => a.status === "Present").length;
     const late = (att || []).filter((a) => a.status === "Late").length;
     const absent = (att || []).filter((a) => a.status === "Absent").length;
+    const todayRec = (att || []).find((a) => String(a.date || "").slice(0, 10) === todayStr) || (att || [])[0];
+    const todayTimings = todayRec ? extractAttendanceTimings(todayRec) : null;
+    const todayLine = todayRec ? `\u2022 Latest Hazri (${todayRec.date}): *${todayRec.status}* (Check-In: *${todayTimings?.checkIn || "-"}*${todayTimings?.checkOut && todayTimings.checkOut !== "-" ? ` | Check-Out: *${todayTimings.checkOut}*` : ""})` : `\u2022 Today's Hazri (${todayStr}): *Not Marked Yet*`;
     return `\u{1F3DB}\uFE0F *SUPERIOR COLLEGE JAHANIAN*
 \u{1F4CB} *PERSONAL FACULTY PROFILE & ATTENDANCE*
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
@@ -2375,8 +2574,9 @@ _Superior College Jahanian Official LMS_`;
 \u{1F3F7}\uFE0F *Role:* ${staff?.role || "Faculty"} (ID: *${staffId}*)
 \u{1F4B0} *Base Salary:* Rs. ${(staff?.salary || staff?.base_salary || 0).toLocaleString()}
 
-\u{1F4C5} *Monthly Attendance (${currentMonth}):*
-\u2022 Present Days: *${present}* | Late: *${late}* | Absent: *${absent}*
+\u{1F552} *Attendance & Check-In Timing:*
+${todayLine}
+\u2022 Monthly Summary (${currentMonth}): Present: *${present}* | Late: *${late}* | Absent: *${absent}*
 
 \u{1F4B3} *Salary Advance Account:*
 \u2022 Total Advanced: Rs. ${totalAdvance.toLocaleString()}
@@ -2607,7 +2807,8 @@ _Realtime College Management System (LMS)_`;
             absentNames.push(st.full_name || "Staff");
           } else if (a.status === "Late") {
             lateCount++;
-            const t = a.check_in ? ` (${a.check_in.slice(0, 5)})` : "";
+            const timings = extractAttendanceTimings(a);
+            const t = timings.checkIn && timings.checkIn !== "-" ? ` (${timings.checkIn})` : "";
             lateNames.push(`${st.full_name || "Staff"}${t}`);
           } else {
             presentCount++;
@@ -2806,7 +3007,8 @@ Live metrics temporarily unavailable: ${err?.message || "Unknown error"}
             absentNames.push(st.full_name || "Staff");
           } else if (a.status === "Late") {
             lateStaff++;
-            const t = a.check_in ? ` (${a.check_in.slice(0, 5)})` : "";
+            const timings = extractAttendanceTimings(a);
+            const t = timings.checkIn && timings.checkIn !== "-" ? ` (${timings.checkIn})` : "";
             lateNames.push(`${st.full_name || "Staff"}${t}`);
           } else {
             presentStaff++;
@@ -3009,7 +3211,7 @@ _Generated for Principal & Directors \u2014 SCJ Management System LMS_`;
 \u2022 Net Monthly Surplus / Operating Balance: *Rs. ${netSurplus.toLocaleString()}*
 \u2022 Cumulative Unpaid Defaulters Balance: *Rs. ${totalOutstanding.toLocaleString()}*
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-_Directorate of Audit & Accounts \u2014 Superior Group of Colleges Jahanian_`;
+_Directorate of Audit & Accounts \u2014 Superior College Jahanian_`;
   }
   // 4. Dispatch Scheduled Report (Auto or Manual Trigger)
   async dispatchScheduledReport(reportType, force = false, supabaseClient, overridePhone) {
@@ -4962,14 +5164,31 @@ ${finalCaption}`;
         verifiedStudent: verifiedName || (session.verifiedStudent ? session.verifiedStudent.full_name : void 0)
       });
       if (this.sock) {
+        const docBuffer = pdfObj.pdfBuffer || pdfObj.buffer;
         try {
+          if (!docBuffer) throw new Error("PDF Buffer is empty");
           await this.sock.sendMessage(senderJid, {
-            document: pdfObj.buffer,
+            document: docBuffer,
             mimetype: "application/pdf",
             fileName: pdfObj.fileName,
             caption: finalCaption
           });
         } catch (docErr) {
+          if (senderJid.endsWith("@lid") && docBuffer) {
+            try {
+              const fallbackPhone = this.normalizePhoneNumber(rawNumber);
+              if (fallbackPhone && fallbackPhone.length >= 10) {
+                await this.sock.sendMessage(`${fallbackPhone}@s.whatsapp.net`, {
+                  document: docBuffer,
+                  mimetype: "application/pdf",
+                  fileName: pdfObj.fileName,
+                  caption: finalCaption
+                });
+                return finalCaption;
+              }
+            } catch {
+            }
+          }
           console.warn("[WhatsApp Bot] Document send fallback to text:", docErr);
           await this.sock.sendMessage(senderJid, { text: finalCaption });
         }
@@ -5357,8 +5576,9 @@ Staff member *${delegatedAdmin.name}* (${delegatedAdmin.phone}) ne 5-digit PIN s
         if (delegatedAdmin.pinHash && testHash === delegatedAdmin.pinHash) {
           try {
             const newId = `SGC-26-${Math.floor(100 + Math.random() * 900)}`;
+            const admUuid = crypto.randomUUID();
             const admRecord = {
-              id: newId,
+              id: admUuid,
               student_id: newId,
               college_no: newId,
               full_name: pendingAdm.fullName,
@@ -5369,6 +5589,7 @@ Staff member *${delegatedAdmin.name}* (${delegatedAdmin.phone}) ne 5-digit PIN s
               previous_marks: pendingAdm.previousMarks ? Number(pendingAdm.previousMarks) : null,
               previous_institute: pendingAdm.previousInstitute || "",
               category: pendingAdm.category || "General",
+              group: pendingAdm.groupName || "Intermediate",
               group_name: pendingAdm.groupName || "Intermediate",
               section: pendingAdm.section || "A",
               total_fee_finalized: Number(pendingAdm.totalPackage || 6e4),
@@ -5381,31 +5602,26 @@ Staff member *${delegatedAdmin.name}* (${delegatedAdmin.phone}) ne 5-digit PIN s
               session: "2026-28",
               reference: `[Source: WhatsApp AI] Via WhatsApp Bot (${delegatedAdmin.name})`,
               source: "WhatsApp AI",
-              status: "Admitted",
+              status: "Admitted/Confirmed",
               is_admitted: true
             };
             await supabase.from("admissions").insert(admRecord);
             try {
               await supabase.from("students").insert({
                 id: newId,
-                admission_id: newId,
+                admission_id: admUuid,
                 college_no: newId,
                 full_name: pendingAdm.fullName,
                 father_name: pendingAdm.fatherName || "N/A",
                 contact: pendingAdm.contact || standardPhone,
                 category: pendingAdm.category || "General",
                 group: pendingAdm.groupName || "Intermediate",
+                group_name: pendingAdm.groupName || "Intermediate",
                 section: pendingAdm.section || "A",
                 total_package: Number(pendingAdm.totalPackage || 6e4),
                 fee_received: Number(pendingAdm.admissionFee || 1e4),
                 session: "2026-28",
-                address: pendingAdm.address || "Jahanian",
-                reference: `Via WhatsApp Bot (${delegatedAdmin.name})`,
-                notes: [{
-                  date: (/* @__PURE__ */ new Date()).toISOString(),
-                  type: "General",
-                  content: `Admitted via WhatsApp Bot by ${delegatedAdmin.name}`
-                }]
+                address: pendingAdm.address || "Jahanian"
               });
             } catch (e) {
             }
@@ -5450,7 +5666,7 @@ Aapka admission Superior College Jahanian mein kamyabi se record ho chuka hai.
 \u{1F4F1} *Digital Admission Card & Slip:*
 ${admUrl}
 
-Superior Group of Colleges Jahanian mein khushamdeed!`;
+Superior College Jahanian mein khushamdeed!`;
               await this.sendMessage(pendingAdm.contact, studentMsg);
             }
             const successAdmMsg = `\u2705 *ADMISSION REGISTERED IN LMS DATABASE!*
@@ -5785,7 +6001,7 @@ College Zero-Leakage Security Policy ke mutabiq, Staff WhatsApp Desk se kisi bhi
       }
       const isSalaryQuery = cleanQuery === "2" || cleanQuery.startsWith("2.") || /\b(salary|sallery|salery|sallary|tankhwah|tankhwa|pay|payroll|payslip|slip|advance|deduction|meri\s*pay|meri\s*salary)\b/i.test(cleanQuery);
       if (isSalaryQuery && verifiedUser.staffId) {
-        const pdfObj = await this.buildLockedStaffSalaryPdf(supabase, verifiedUser.staffId);
+        const pdfObj = await this.buildLockedStaffSalaryPdf(supabase, verifiedUser.staffId, verifiedUser.name);
         if (pdfObj) {
           return await sendPdfReply(pdfObj, "Staff Salary Slip PDF Sent", verifiedUser.name);
         }
@@ -5794,7 +6010,7 @@ College Zero-Leakage Security Policy ke mutabiq, Staff WhatsApp Desk se kisi bhi
       }
       const isStaffAttQuery = cleanQuery === "3" || cleanQuery.startsWith("3.") || /\b(attendance|hazri|hazir|absent|late|present|meri\s*attendance|meri\s*hazri|monthly\s*report|weekly\s*report)\b/i.test(cleanQuery);
       if (isStaffAttQuery && verifiedUser.staffId) {
-        const pdfObj = await this.buildLockedStaffAttendancePdf(supabase, verifiedUser.staffId);
+        const pdfObj = await this.buildLockedStaffAttendancePdf(supabase, verifiedUser.staffId, verifiedUser.name);
         if (pdfObj) {
           return await sendPdfReply(pdfObj, "Staff Cumulative Attendance PDF Sent", verifiedUser.name);
         }
@@ -6417,9 +6633,11 @@ ${resultUrl}
 _Office of the Controller of Examinations, SGC Jahanian_${this.getMenuFooter()}`;
     }
     if (intent === "attendance") {
-      const todayStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-      const { data: todayAtt } = await supabase.from("student_attendance").select("status").eq("student_id", student.id).eq("date", todayStr).maybeSingle();
-      const todayStatus = todayAtt?.status ? todayAtt.status.toUpperCase() : "Marked in Progress";
+      const todayStr = this.getPktDate().dateStr;
+      const { data: todayAtt } = await supabase.from("student_attendance").select("*").eq("student_id", student.id).eq("date", todayStr).maybeSingle();
+      const todayTimings = todayAtt ? extractAttendanceTimings(todayAtt) : null;
+      const todayStatus = todayAtt?.status ? todayAtt.status.toUpperCase() : "MARKED IN PROGRESS";
+      const todayTimeStr = todayTimings && todayTimings.checkIn !== "-" ? todayTimings.checkIn : "Not Recorded Yet";
       const attendanceUrl = `${baseUrl}/?v=attendance&id=${studentRef}`;
       return `\u{1F3DB}\uFE0F *SUPERIOR COLLEGE JAHANIAN*
 \u{1F4C5} *ATTENDANCE & PUNCTUALITY NOTIFICATION*
@@ -6429,6 +6647,7 @@ _Office of the Controller of Examinations, SGC Jahanian_${this.getMenuFooter()}`
 \u2022 *Father:* ${student.father_name}
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
 \u2022 *Today's Status (${todayStr}):* ${todayStatus === "PRESENT" ? "\u2705 PRESENT (Hazir)" : todayStatus === "ABSENT" ? "\u{1F6A8} ABSENT (Ghair Hazir)" : "\u{1F552} " + todayStatus}
+\u2022 *Marked Check-In Time:* *${todayTimeStr}*${todayTimings?.checkOut && todayTimings.checkOut !== "-" ? ` | *Check-Out:* *${todayTimings.checkOut}*` : ""}
 \u2022 *Total Present Days:* ${student.attendance_present || 0}
 \u2022 *Total Absent Days:* ${student.attendance_absent || 0}
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
@@ -6614,9 +6833,10 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
     if (this.phoneToLidMap.has(normalized)) {
       jid = this.phoneToLidMap.get(normalized);
     }
+    const docBuffer = pdfObj.pdfBuffer || pdfObj.buffer;
     try {
       const sentMsg = await this.sock.sendMessage(jid, {
-        document: pdfObj.buffer,
+        document: docBuffer,
         mimetype: "application/pdf",
         fileName: pdfObj.fileName,
         caption: pdfObj.caption
@@ -6637,7 +6857,7 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
         try {
           const fallbackJid = `${normalized}@s.whatsapp.net`;
           const sentMsg = await this.sock.sendMessage(fallbackJid, {
-            document: pdfObj.buffer,
+            document: docBuffer,
             mimetype: "application/pdf",
             fileName: pdfObj.fileName,
             caption: pdfObj.caption
@@ -6672,18 +6892,17 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
       const targetPhone = payload.phone || d.contact || d.fatherContact;
       if (!targetPhone) return { success: false, error: "No recipient phone provided for Admission Slip PDF." };
       const pdfObj = generateAdmissionSlipPdf({
-        studentName: d.studentName || d.fullName || "Student",
+        fullName: d.studentName || d.fullName || "Student",
         fatherName: d.fatherName || "N/A",
-        rollNo: String(d.rollNo || d.collegeNo || d.id || "N/A"),
-        className: d.className || d.group || "Intermediate",
+        collegeNo: String(d.rollNo || d.collegeNo || d.id || "N/A"),
+        groupName: d.className || d.group || "Intermediate",
         section: d.section || "A",
         session: d.session || "2026-28",
         contact: targetPhone,
-        bForm: d.bForm || d.bayFormNo || "N/A",
+        bayFormNo: d.bForm || d.bayFormNo || "N/A",
         totalPackage: Number(d.totalPackage || 0),
-        paidAmount: Number(d.paidAmount || d.feeReceived || 0),
-        balanceAmount: Math.max(0, Number(d.totalPackage || 0) - Number(d.paidAmount || d.feeReceived || 0)),
-        admissionDate: d.admissionDate || (/* @__PURE__ */ new Date()).toISOString()
+        feeReceived: Number(d.paidAmount || d.feeReceived || 0),
+        date: d.admissionDate || (/* @__PURE__ */ new Date()).toISOString()
       });
       const res = await this.sendDocument(targetPhone, pdfObj);
       return { ...res, fileName: pdfObj.fileName };
@@ -6713,48 +6932,36 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
       if (!studentRecord) return { success: false, error: "Student record not found for Fee Receipt Statement PDF." };
       const targetPhone = payload.phone || studentRecord.contact || studentRecord.father_contact;
       if (!targetPhone) return { success: false, error: "No target phone for Student Fee Statement PDF." };
-      const { data: feeRows } = await supabase.from("student_fees").select("*").eq("student_id", studentRecord.id).order("payment_date", { ascending: true });
-      const installments = (feeRows || []).map((f, idx) => ({
-        receiptNo: f.receipt_no || f.id?.slice(0, 8)?.toUpperCase() || `REC-${idx + 1}`,
-        dateStr: f.payment_date || f.created_at || (/* @__PURE__ */ new Date()).toISOString(),
-        amount: Number(f.amount_paid || f.amount || 0),
-        mode: f.payment_method || f.mode || "Cash",
-        feeHead: f.fee_month || f.fee_type || "Tuition Fee"
-      }));
-      if (p.paidAmount && Number(p.paidAmount) > 0) {
-        const alreadyInList = installments.some((i) => i.receiptNo === p.receiptNo && i.amount === Number(p.paidAmount));
-        if (!alreadyInList) {
-          installments.push({
-            receiptNo: p.receiptNo || `REC-${Date.now().toString().slice(-5)}`,
-            dateStr: p.paymentDate || (/* @__PURE__ */ new Date()).toISOString(),
-            amount: Number(p.paidAmount),
-            mode: p.paymentMode || "Cash Counter",
-            feeHead: p.feeMonth || "Tuition Fee Installment"
-          });
+      let rawHistory = Array.isArray(studentRecord.fee_history) ? [...studentRecord.fee_history] : [];
+      try {
+        const { data: feeRows } = await supabase.from("student_fees").select("*").eq("student_id", studentRecord.id).order("payment_date", { ascending: true });
+        if (feeRows && feeRows.length > 0 && rawHistory.length === 0) {
+          rawHistory = feeRows.map((f, idx) => ({
+            receiptId: f.receipt_no || f.id?.slice(0, 8)?.toUpperCase() || `REC-${idx + 1}`,
+            datePaid: f.payment_date || f.created_at || (/* @__PURE__ */ new Date()).toISOString(),
+            amountPaid: Number(f.amount_paid || f.amount || 0),
+            paymentMethod: f.payment_method || f.mode || "Cash",
+            feeType: f.fee_month || f.fee_type || "Tuition Fee"
+          }));
         }
+      } catch {
       }
-      const totalPkg = Number(p.totalPackage ?? studentRecord.total_package ?? 0);
-      const totalSub = Number(p.totalPaidSoFar ?? studentRecord.fee_received ?? installments.reduce((s, i) => s + i.amount, 0));
-      const remBal = Math.max(0, Number(p.remainingBalance ?? totalPkg - totalSub));
-      const pdfObj = generateFeeReceiptAndStatementPdf({
-        studentName: studentRecord.full_name || p.studentName || "Student",
-        fatherName: studentRecord.father_name || p.fatherName || "N/A",
-        rollNo: String(studentRecord.college_no || studentRecord.id || p.rollNo || "N/A"),
-        className: studentRecord.group || p.className || "Intermediate",
-        section: studentRecord.section || "A",
-        session: studentRecord.session || "2026-28",
-        totalPackage: totalPkg,
-        totalSubmitted: totalSub,
-        remainingBalance: remBal,
-        currentPayment: p.paidAmount ? {
-          receiptNo: p.receiptNo || `REC-${Date.now().toString().slice(-5)}`,
-          dateStr: p.paymentDate || (/* @__PURE__ */ new Date()).toISOString(),
-          amount: Number(p.paidAmount),
-          mode: p.paymentMode || "Cash Counter",
-          feeHead: p.feeMonth || "Tuition Fee"
-        } : void 0,
-        installments
-      });
+      const currentPayment = p.paidAmount && Number(p.paidAmount) > 0 ? {
+        receiptId: p.receiptNo || `REC-${Date.now().toString().slice(-5)}`,
+        datePaid: p.paymentDate || (/* @__PURE__ */ new Date()).toISOString(),
+        amountPaid: Number(p.paidAmount),
+        paymentMethod: p.paymentMode || "Cash Counter",
+        feeType: p.feeMonth || "Tuition Fee Installment"
+      } : null;
+      const pdfObj = generateFeeReceiptAndStatementPdf(
+        {
+          ...studentRecord,
+          totalPackage: Number(p.totalPackage ?? studentRecord.total_package ?? 0),
+          feeReceived: Number(p.totalPaidSoFar ?? studentRecord.fee_received ?? 0)
+        },
+        currentPayment,
+        rawHistory
+      );
       const res = await this.sendDocument(targetPhone, pdfObj);
       return { ...res, fileName: pdfObj.fileName };
     }
@@ -6762,7 +6969,14 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
       const { data: st } = await supabase.from("staff").select("*").eq("id", payload.staffId).maybeSingle();
       const targetPhone = payload.phone || st?.contact || st?.phone;
       if (!targetPhone) return { success: false, error: "Staff contact number not found." };
-      const pdfObj = await this.buildLockedStaffAttendancePdf(supabase, payload.staffId, payload.monthStr);
+      const pdfObj = await this.buildLockedStaffAttendancePdf(
+        supabase,
+        payload.staffId,
+        st?.full_name || "Faculty Member",
+        payload.monthStr,
+        payload.currentPunch,
+        payload.settings
+      );
       if (!pdfObj) return { success: false, error: "Could not build Staff Attendance PDF." };
       const res = await this.sendDocument(targetPhone, pdfObj);
       return { ...res, fileName: pdfObj.fileName };
@@ -6771,7 +6985,12 @@ _Office of the Principal, SGC Jahanian_${this.getMenuFooter()}`;
       const { data: st } = await supabase.from("staff").select("*").eq("id", payload.staffId).maybeSingle();
       const targetPhone = payload.phone || st?.contact || st?.phone;
       if (!targetPhone) return { success: false, error: "Staff contact number not found." };
-      const pdfObj = await this.buildLockedStaffSalaryPdf(supabase, payload.staffId, payload.monthStr);
+      const pdfObj = await this.buildLockedStaffSalaryPdf(
+        supabase,
+        payload.staffId,
+        st?.full_name || "Faculty Member",
+        payload.monthStr
+      );
       if (!pdfObj) return { success: false, error: "Could not build Staff Salary PDF." };
       const res = await this.sendDocument(targetPhone, pdfObj);
       return { ...res, fileName: pdfObj.fileName };
@@ -6870,7 +7089,7 @@ async function startServer() {
     }
     next();
   });
-  app.get("/api/health", (req, res) => {
+  app.get(["/api/health", "/healthz", "/_health"], (req, res) => {
     res.json({ status: "ok" });
   });
   app.post("/api/public/leads", async (req, res) => {
@@ -8073,10 +8292,15 @@ Return strictly the raw JSON without markdown code fences.`;
     const distPath = fs2.existsSync(path2.join(__dirname, "dist")) ? path2.join(__dirname, "dist") : path2.join(process.cwd(), "dist");
     app.use("/assets", express.static(path2.join(distPath, "assets"), { maxAge: "30d", immutable: true }));
     app.get(["/sw.js", "/sw.js*"], (req, res) => {
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.setHeader("Pragma", "no-cache");
-      res.setHeader("Expires", "0");
-      res.sendFile(path2.join(distPath, "sw.js"));
+      const swFile = path2.join(distPath, "sw.js");
+      if (fs2.existsSync(swFile)) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+        res.sendFile(swFile);
+      } else {
+        res.status(404).end();
+      }
     });
     app.use(express.static(distPath, {
       setHeaders: (res, filePath) => {
@@ -8088,10 +8312,15 @@ Return strictly the raw JSON without markdown code fences.`;
       }
     }));
     app.get("*", (req, res) => {
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.setHeader("Pragma", "no-cache");
-      res.setHeader("Expires", "0");
-      res.sendFile(path2.join(distPath, "index.html"));
+      const indexFile = path2.join(distPath, "index.html");
+      if (fs2.existsSync(indexFile)) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+        res.sendFile(indexFile);
+      } else {
+        res.status(200).send("Superior College ERP");
+      }
     });
   }
   app.listen(PORT, "0.0.0.0", () => {

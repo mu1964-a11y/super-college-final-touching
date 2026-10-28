@@ -222,7 +222,7 @@ export function generate3CopyChallanDoc(
       // Student Particulars Block
       curY += 11.5;
       const stuRows = [
-        ['Roll / College ID:', String(rollNo), 'Class / Program:', `${prog} (Sec ${sec})`],
+        ['Roll / College ID:', String(rollNo), 'Class / Program:', `${prog} (${sec})`],
         ['Student Name:', sName, 'Father Name:', fName],
       ];
 
@@ -443,7 +443,8 @@ function drawSingleCollegeSlipRow(
   const fName = String(student?.fatherName || student?.father_name || 'N/A');
   const rollNo = String(student?.collegeNo || student?.studentId || student?.rollNumber || student?.id || 'SCJ-0000');
   const prog = String(student?.group || student?.program || student?.currentClass || student?.category || 'Intermediate');
-  const sec = String(student?.section || 'A');
+  const rawSec = String(student?.section || 'A');
+  const sec = rawSec.replace(/^(sec|section)\s*[:-]?\s*/i, '').trim() || 'A';
   const shift = student?.gender === 'Female' ? 'Girls Campus' : 'Boys Campus';
   const session = String(student?.session || '2026-28');
 
@@ -571,7 +572,7 @@ function drawSingleCollegeSlipRow(
   drawStudentRow('Student:', sName, true);
   drawStudentRow('Father:', fName);
   drawStudentRow('Class/Grp:', prog);
-  drawStudentRow('Section:', `Sec ${sec} • ${shift}`);
+  drawStudentRow('Section:', `${sec} • ${shift}`);
   drawStudentRow('Session:', session);
 
   // Depositor signature line in student panel bottom
@@ -791,30 +792,46 @@ export function generate4VouchersPerPageDoc(
     });
   };
 
-  if (isSingleStudentQuad) {
-    // Single student with 4 copies on 1 A4 sheet
+  // If exactly 1 student is selected:
+  if (studentList.length === 1) {
     const student = studentList[0];
-    rowCoords.forEach((c, idx) => {
-      drawSingleCollegeSlipRow(doc, student, c.x, c.y, 0, options, singleCopyBadges[idx]);
-    });
+    if (options.singleStudentMode === 'single_slip') {
+      // 1 Pair (Row 0: College Copy, Row 1: Student Copy)
+      drawSingleCollegeSlipRow(doc, student, rowCoords[0].x, rowCoords[0].y, 0, options, 'College Copy');
+      drawSingleCollegeSlipRow(doc, student, rowCoords[1].x, rowCoords[1].y, 0, options, 'Student Copy');
+    } else {
+      // 2 Sets of (College Copy + Student Copy) on 1 sheet
+      drawSingleCollegeSlipRow(doc, student, rowCoords[0].x, rowCoords[0].y, 0, options, 'College Copy');
+      drawSingleCollegeSlipRow(doc, student, rowCoords[1].x, rowCoords[1].y, 0, options, 'Student Copy');
+      drawSingleCollegeSlipRow(doc, student, rowCoords[2].x, rowCoords[2].y, 0, options, 'College Copy (Duplicate)');
+      drawSingleCollegeSlipRow(doc, student, rowCoords[3].x, rowCoords[3].y, 0, options, 'Student Copy (Duplicate)');
+    }
     drawRowCutLines();
     return doc;
   }
 
-  // Multi-student batch layout: 4 students (4 full-width rows) per A4 page
-  const totalPages = Math.ceil(studentList.length / 4);
+  // Multi-student batch layout: 2 Students per A4 page (2 copies each: 1 College Copy + 1 Student Copy = 4 full-width rows)
+  const totalPages = Math.ceil(studentList.length / 2);
 
   for (let p = 0; p < totalPages; p++) {
     if (p > 0) {
       doc.addPage('a4', 'portrait');
     }
 
-    const pageStudents = studentList.slice(p * 4, p * 4 + 4);
+    const studentA = studentList[p * 2];
+    const studentB = studentList[p * 2 + 1];
 
-    pageStudents.forEach((student, idx) => {
-      const overallIdx = p * 4 + idx;
-      drawSingleCollegeSlipRow(doc, student, rowCoords[idx].x, rowCoords[idx].y, overallIdx, options);
-    });
+    if (studentA) {
+      // Student A: 2 copies (College Copy + Student Copy)
+      drawSingleCollegeSlipRow(doc, studentA, rowCoords[0].x, rowCoords[0].y, p * 2, options, 'College Copy');
+      drawSingleCollegeSlipRow(doc, studentA, rowCoords[1].x, rowCoords[1].y, p * 2, options, 'Student Copy');
+    }
+
+    if (studentB) {
+      // Student B: 2 copies (College Copy + Student Copy)
+      drawSingleCollegeSlipRow(doc, studentB, rowCoords[2].x, rowCoords[2].y, p * 2 + 1, options, 'College Copy');
+      drawSingleCollegeSlipRow(doc, studentB, rowCoords[3].x, rowCoords[3].y, p * 2 + 1, options, 'Student Copy');
+    }
 
     drawRowCutLines();
   }
@@ -845,7 +862,7 @@ export async function download4VouchersPerPagePdf(
       const name = String(s?.fullName || s?.name || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 20);
       defaultName = `SCJ_Fee_Voucher_${roll}${name ? `_${name}` : ''}.pdf`;
     } else {
-      defaultName = `SCJ_Fee_Vouchers_${list.length}_Students_4Rows.pdf`;
+      defaultName = `SCJ_Fee_Vouchers_${list.length}_Students_2CopiesEach.pdf`;
     }
 
     const finalName = filename || defaultName;

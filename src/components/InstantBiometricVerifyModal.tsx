@@ -28,6 +28,7 @@ import {
   parseAttendanceNotesAndTime,
 } from '../lib/whatsappAutomation';
 import FingerprintThumbnail from './FingerprintThumbnail';
+import BiometricLivePulse from './BiometricLivePulse';
 import { toast } from 'sonner';
 
 interface InstantBiometricVerifyModalProps {
@@ -1437,37 +1438,13 @@ export default function InstantBiometricVerifyModal({
                   )}
                 </div>
               ) : (
-                <div className="text-center space-y-4 py-4">
-                  <div
-                    onClick={() => handleScanCycle(true)}
-                    className={`w-28 h-32 rounded-3xl mx-auto flex flex-col items-center justify-center border-2 transition-all cursor-pointer ${
-                      scanning
-                        ? 'bg-slate-950 border-emerald-500 shadow-[0_0_35px_rgba(16,185,129,0.35)] scale-105'
-                        : 'bg-slate-900 border-slate-700 hover:border-emerald-500'
-                    }`}
-                  >
-                    <Fingerprint
-                      className={`w-14 h-14 text-emerald-400 ${
-                        scanning ? 'animate-pulse' : ''
-                      }`}
-                    />
-                    <span className="text-[9px] font-black uppercase tracking-widest text-emerald-300 mt-1.5">
-                      {scanning ? 'Sensor Active' : 'Click to Scan'}
-                    </span>
-                  </div>
-
-                  <div className="space-y-1 max-w-md mx-auto">
-                    <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider">
-                      <Zap size={11} />
-                      <span>Fast-Boost 1:N Biometric Engine</span>
-                    </div>
-                    <h4 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
-                      Place Enrolled Finger on SecuGen Scanner
-                    </h4>
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      Place your enrolled thumb or index finger flat on the USB scanner. Attendance (Check-In / Check-Out) and identity details will appear automatically with sound confirmation.
-                    </p>
-                  </div>
+                <div className="w-full max-w-md mx-auto text-center space-y-3 py-2">
+                  <BiometricLivePulse
+                    isScanning={scanning}
+                    variant="light"
+                    onManualScan={() => handleScanCycle(true)}
+                    enrolledCount={enrolledStaff.length}
+                  />
 
                   <div className="flex items-center justify-center gap-2.5 pt-1">
                     <button

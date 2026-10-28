@@ -16,7 +16,10 @@ import {
   Search,
   Pause,
   Play,
+  HeartPulse,
+  Waves,
 } from 'lucide-react';
+import BiometricLivePulse from './BiometricLivePulse';
 import { secugenService } from '../lib/secugenService';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { safeLocalStorage } from '../utils/safeStorage';
@@ -1283,43 +1286,20 @@ export default function BiometricAttendanceDesk({
                 )}
               </div>
             ) : (
-              <div className="space-y-6 max-w-md mx-auto">
-                <div
-                  onClick={() => executeSingleScanCycle(true)}
-                  className={`w-32 h-32 rounded-full mx-auto flex items-center justify-center border-4 transition-all cursor-pointer ${
-                    isCapturing
-                      ? 'bg-emerald-500/20 border-emerald-400 shadow-[0_0_50px_rgba(16,185,129,0.45)] scale-105'
-                      : 'bg-slate-800/80 border-white/15 hover:border-emerald-400/60'
-                  }`}
-                >
-                  <Fingerprint
-                    className={`w-16 h-16 text-emerald-400 ${
-                      isCapturing ? 'animate-pulse' : ''
-                    }`}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-black uppercase tracking-wider">
-                    <Zap size={12} />
-                    <span>Zero-Click Continuous Scanner Active</span>
-                  </div>
-                  <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
-                    Place Finger on Scanner
-                  </h2>
-                  <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
-                    Automatically records <strong>1. Morning In</strong> &rarr;{' '}
-                    <strong>2. Break / Free-Period Out</strong> &rarr;{' '}
-                    <strong>3. Break Return In</strong> &rarr; <strong>4. Final Out</strong>.
-                  </p>
-                </div>
+              <div className="w-full max-w-md mx-auto">
+                <BiometricLivePulse
+                  isScanning={isCapturing}
+                  variant="kiosk"
+                  onManualScan={() => executeSingleScanCycle(true)}
+                  enrolledCount={enrolledStaff.length}
+                />
 
                 <div className="pt-2 flex items-center justify-center gap-3">
                   <button
                     type="button"
                     onClick={() => executeSingleScanCycle(true)}
                     disabled={isCapturing}
-                    className="px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg cursor-pointer disabled:opacity-60"
+                    className="px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg cursor-pointer disabled:opacity-60 transition-all hover:scale-102"
                   >
                     <Fingerprint size={16} />
                     <span>{isCapturing ? 'Listening on Sensor...' : 'Scan Finger Now'}</span>
@@ -1327,7 +1307,7 @@ export default function BiometricAttendanceDesk({
                   <button
                     type="button"
                     onClick={loadBiometricDatabase}
-                    className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/15 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/15 text-xs font-bold flex items-center gap-1.5 cursor-pointer text-slate-300 hover:text-white transition-all"
                     title="Refresh Enrolled Templates from Cloud"
                   >
                     <RefreshCw size={14} />
