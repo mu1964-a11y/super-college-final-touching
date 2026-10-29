@@ -114,23 +114,7 @@ export function useSupabaseData(user: any) {
     if (!silent) setLoading(true);
     try {
       // Use parallel fetch for simple items, but paginate large ones
-      const [
-        leadsData,
-        admissionsData,
-        studentsData,
-        expensesData,
-        incomeData,
-        staffResult,
-        staffAttendanceResult,
-        staffTimetableResult,
-        staffAdvancesResult,
-        settingsResult,
-        permissionsResponse,
-        notificationsResult,
-        academicRecordsResult,
-        salaryPaymentsResult,
-        studentAttendanceResult
-      ] = await Promise.all([
+      const fetchPromise = Promise.all([
         fetchAllRecords('leads', 'date_added'),
         fetchAllRecords('admissions', 'created_at'),
         fetchAllRecords('students', 'created_at'),
@@ -147,6 +131,28 @@ export function useSupabaseData(user: any) {
         fetchAllRecords('salary_payments', 'date'),
         fetchAllRecords('student_attendance', 'date')
       ]);
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('SUPABASE_FETCH_TIMEOUT')), 7500)
+      );
+
+      const [
+        leadsData,
+        admissionsData,
+        studentsData,
+        expensesData,
+        incomeData,
+        staffResult,
+        staffAttendanceResult,
+        staffTimetableResult,
+        staffAdvancesResult,
+        settingsResult,
+        permissionsResponse,
+        notificationsResult,
+        academicRecordsResult,
+        salaryPaymentsResult,
+        studentAttendanceResult
+      ] = (await Promise.race([fetchPromise, timeoutPromise])) as any[];
 
       const { data: staffData } = staffResult;
       const { data: staffAttendanceData } = staffAttendanceResult;

@@ -440,12 +440,16 @@ export default function App() {
     return () => window.removeEventListener('themechange', handleThemeChange);
   }, []);
 
-  // Fetch branding even before login
+  // Fetch branding even before login (with 1.5s safety timeout against slow networks)
   React.useEffect(() => {
     if (!isSupabaseConfigured) {
       setIsBrandingLoaded(true);
       return;
     }
+    const safetyTimer = setTimeout(() => {
+      setIsBrandingLoaded(true);
+    }, 1500);
+
     const fetchBranding = async () => {
       try {
         // Try to get the settings record
@@ -504,21 +508,29 @@ export default function App() {
         }
         console.warn("Branding fetch fatal error:", err);
       } finally {
+        clearTimeout(safetyTimer);
         setIsBrandingLoaded(true);
       }
     };
     fetchBranding();
+    return () => clearTimeout(safetyTimer);
   }, []);
 
-  // Standard session handling without auto-logout as requested
+  // Standard session handling without auto-logout as requested (with 1.5s safety timer)
   React.useEffect(() => {
     if (!isSupabaseConfigured) {
       setAuthLoading(false);
       return;
     }
+
+    const authSafetyTimer = setTimeout(() => {
+      setAuthLoading(false);
+    }, 1500);
+
     supabase.auth
       .getSession()
       .then((response) => {
+        clearTimeout(authSafetyTimer);
         const { data, error } = response;
         if (error) {
           const errMsg = typeof error === 'string' ? error : (error.message || String(error));
@@ -542,6 +554,7 @@ export default function App() {
         setAuthLoading(false);
       })
       .catch((err) => {
+        clearTimeout(authSafetyTimer);
         const errMsg = typeof err === 'string' ? err : (err?.message || String(err));
         const lowerMsg = errMsg.toLowerCase();
         if (lowerMsg.includes("refresh token") || lowerMsg.includes("refresh_token") || lowerMsg.includes("session_not_found") || lowerMsg.includes("invalid_grant")) {
@@ -563,6 +576,7 @@ export default function App() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
+      clearTimeout(authSafetyTimer);
       if (event === "SIGNED_OUT") {
         setUser(null);
       } else if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
@@ -577,7 +591,10 @@ export default function App() {
       setAuthLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(authSafetyTimer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   React.useEffect(() => {
@@ -1312,12 +1329,13 @@ export default function App() {
     );
   }
 
-  if (authLoading || (!user && !portalSession && !isBrandingLoaded) || ((user || portalSession) && data.loading)) {
+  if (authLoading) {
     return (
       <PremiumLoadingScreen 
         brandingSettings={brandingSettings}
-        authLoading={authLoading}
-        customMessage={authLoading ? "Verifying Credentials & Workspace..." : undefined}
+        authLoading={true}
+        customMessage="Verifying Credentials & Workspace..."
+        onBypass={() => setAuthLoading(false)}
       />
     );
   }
@@ -1634,12 +1652,13 @@ export default function App() {
     );
   }
 
-  if (data.loading || loadingCountdown > 0) {
+  if (user && loadingCountdown > 0) {
     return (
       <PremiumLoadingScreen 
         brandingSettings={brandingSettings}
         countdown={loadingCountdown}
         userName={user?.user_metadata?.full_name || user?.email?.split('@')[0]}
+        onBypass={() => setLoadingCountdown(0)}
       />
     );
   }

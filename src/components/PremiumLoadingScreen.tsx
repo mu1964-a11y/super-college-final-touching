@@ -24,6 +24,7 @@ interface PremiumLoadingScreenProps {
   countdown?: number;
   userName?: string;
   customMessage?: string;
+  onBypass?: () => void;
 }
 
 const LOADING_STATUS_MESSAGES = [
@@ -39,9 +40,19 @@ export default function PremiumLoadingScreen({
   authLoading = false,
   countdown = 0,
   userName,
-  customMessage
+  customMessage,
+  onBypass
 }: PremiumLoadingScreenProps) {
   const [statusIndex, setStatusIndex] = useState(0);
+  const [canSkip, setCanSkip] = useState(false);
+
+  // Allow bypass after 3.5 seconds in case of slow network
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCanSkip(true);
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Smoothly cycle status messages
   useEffect(() => {
@@ -348,6 +359,22 @@ export default function PremiumLoadingScreen({
               <p className="text-slate-400 text-[11px] font-medium tracking-wide">
                 Bringing your campus together.
               </p>
+
+              {canSkip && onBypass && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="pt-2 flex justify-center"
+                >
+                  <button
+                    type="button"
+                    onClick={onBypass}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100/80 active:scale-95 text-[#085a4e] text-[11px] font-bold border border-emerald-200/80 shadow-xs transition-all cursor-pointer"
+                  >
+                    <span>Direct Access to Workspace &rarr;</span>
+                  </button>
+                </motion.div>
+              )}
             </div>
           </div>
 
