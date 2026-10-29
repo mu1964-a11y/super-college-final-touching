@@ -62,20 +62,20 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 import DashboardView from "./components/DashboardView";
+import AdmissionsView from "./components/AdmissionsView";
+import StudentsView from "./components/StudentsView";
+import StaffView from "./components/StaffView";
+import AccountsView from "./components/AccountsView";
+import ReportsView from "./components/ReportsView";
+import LeadsManagementView from "./components/LeadsManagementView";
+import FeeManagementView from "./components/FeeManagementView";
+import AttendanceView from "./components/AttendanceView";
+import SettingsView from "./components/SettingsView";
+import AcademicView from "./components/AcademicView";
+import WhatsAppCenterView from "./components/WhatsAppCenterView";
+import DeletedArchiveView from "./components/DeletedArchiveView";
 
-// Lazy-loaded Views for Instant Initial Load & Memory Efficiency
-const AdmissionsView = React.lazy(() => import("./components/AdmissionsView"));
-const StudentsView = React.lazy(() => import("./components/StudentsView"));
-const StaffView = React.lazy(() => import("./components/StaffView"));
-const AccountsView = React.lazy(() => import("./components/AccountsView"));
-const ReportsView = React.lazy(() => import("./components/ReportsView"));
-const LeadsManagementView = React.lazy(() => import("./components/LeadsManagementView"));
-const FeeManagementView = React.lazy(() => import("./components/FeeManagementView"));
-const AttendanceView = React.lazy(() => import("./components/AttendanceView"));
-const SettingsView = React.lazy(() => import("./components/SettingsView"));
-const AcademicView = React.lazy(() => import("./components/AcademicView"));
-const WhatsAppCenterView = React.lazy(() => import("./components/WhatsAppCenterView"));
-const DeletedArchiveView = React.lazy(() => import("./components/DeletedArchiveView"));
+// Standalone Heavy Portals and Dialogs (Loaded On-Demand Only)
 const GlobalCommandPalette = React.lazy(() => import("./components/GlobalCommandPalette"));
 const StudentDossier360 = React.lazy(() => import("./components/StudentDossier360"));
 const PublicVerificationView = React.lazy(() => import("./components/PublicVerificationView"));
@@ -94,17 +94,6 @@ import PremiumLoadingScreen from "./components/PremiumLoadingScreen";
 import { SpatialCard } from "./components/SpatialCanvasCard";
 import { Search } from "lucide-react";
 import { Settings as SettingsIcon } from "lucide-react";
-
-// Lightweight Module Loader Fallback
-const ViewLoader = () => (
-  <div className="w-full min-h-[50vh] flex flex-col items-center justify-center gap-3 py-16">
-    <div className="relative w-10 h-10 flex items-center justify-center">
-      <div className="absolute inset-0 rounded-full border-2 border-emerald-500/20 animate-ping" />
-      <div className="w-8 h-8 rounded-full border-2 border-superior-teal/30 border-t-superior-teal animate-spin" />
-    </div>
-    <span className="text-[11px] font-bold text-slate-400 tracking-wider uppercase">Loading Module...</span>
-  </div>
-);
 
 type Page =
   | "dashboard"
@@ -2368,18 +2357,17 @@ export default function App() {
         {/* Content Area with High-Performance Hardware Acceleration */}
         <div className="flex-1 overflow-auto relative z-10">
           <div className="w-full max-w-full px-3 sm:px-6 pt-1 pb-6">
-            <React.Suspense fallback={<ViewLoader />}>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={`${activePage}-${activeFilter}`}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  transition={{
-                    duration: 0.15,
-                    ease: "easeOut"
-                  }}
-                >
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={`${activePage}-${activeFilter}`}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{
+                  duration: 0.15,
+                  ease: "easeOut"
+                }}
+              >
                   {activePage === "dashboard" && (
                     <DashboardView
                       data={filteredData}
@@ -2485,7 +2473,6 @@ export default function App() {
                 )}
               </motion.div>
             </AnimatePresence>
-            </React.Suspense>
           </div>
         </div>
       </main>
