@@ -102,6 +102,49 @@ async function startServer() {
   });
 
   // API routes can be added here
+  // Supabase Resilient Reverse Proxy: Bypasses Pakistani ISP/PTA Cloudflare throttling
+  app.all("/api/supabase-proxy*", async (req, res) => {
+    try {
+      const targetBase = process.env.VITE_SUPABASE_URL || "https://wgjkodcggpklxqcpnjhu.supabase.co";
+      const subPath = req.originalUrl.replace(/^\/api\/supabase-proxy/, "");
+      const targetUrl = `${targetBase}${subPath}`;
+
+      const forwardHeaders: Record<string, string> = {};
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (!['host', 'connection', 'content-length'].includes(k.toLowerCase()) && v) {
+          forwardHeaders[k] = Array.isArray(v) ? v.join(',') : String(v);
+        }
+      }
+
+      const method = req.method.toUpperCase();
+      const options: RequestInit = {
+        method,
+        headers: forwardHeaders,
+      };
+
+      if (!['GET', 'HEAD'].includes(method)) {
+        if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
+          options.body = JSON.stringify(req.body);
+          forwardHeaders['content-type'] = forwardHeaders['content-type'] || 'application/json';
+        }
+      }
+
+      const upstreamRes = await fetch(targetUrl, options);
+      
+      upstreamRes.headers.forEach((val, key) => {
+        if (!['content-encoding', 'content-length', 'transfer-encoding'].includes(key.toLowerCase())) {
+          res.setHeader(key, val);
+        }
+      });
+      
+      res.status(upstreamRes.status);
+      const buffer = await upstreamRes.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } catch (err: any) {
+      console.error("[Supabase Proxy Error]:", err?.message || err);
+      res.status(502).json({ error: "Supabase Proxy Failed", details: err?.message });
+    }
+  });
   app.get(["/api/health", "/healthz", "/_health"], (req, res) => {
     res.json({ status: "ok" });
   });

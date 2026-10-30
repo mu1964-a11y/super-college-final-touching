@@ -890,13 +890,18 @@ export default function App() {
   // Snappy transition countdown timer for app loading screen
   React.useEffect(() => {
     if (user && loadingCountdown > 0) {
-      const delay = !data.loading ? 250 : 800;
+      const hasCoreData = (data?.students && data.students.length > 0) || (data?.staff && data.staff.length > 0);
+      const isReady = !data?.loading || hasCoreData;
+      const delay = isReady ? 150 : 600;
       const timer = setTimeout(() => {
-        setLoadingCountdown((prev) => (!data.loading ? 0 : Math.max(0, prev - 1)));
+        setLoadingCountdown((prev) => {
+          if (isReady) return 0;
+          return Math.max(1, prev - 1);
+        });
       }, delay);
       return () => clearTimeout(timer);
     }
-  }, [user, loadingCountdown, data?.loading]);
+  }, [user, loadingCountdown, data?.loading, data?.students?.length, data?.staff?.length]);
 
   // Sync branding once authenticated data is available
   React.useEffect(() => {
