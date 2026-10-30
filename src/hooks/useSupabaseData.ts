@@ -123,77 +123,78 @@ export function useSupabaseData(user: any) {
         }
       };
 
-      // Wave 1: Core Campus Data (High-Priority: Settings, Staff, Students, Admissions, Finance, Attendance)
       const [
-        settingsResult,
-        staffResult,
-        studentsData,
+        leadsData,
         admissionsData,
+        studentsData,
         expensesData,
         incomeData,
+        staffResult,
         staffAttendanceResult,
+        staffTimetableResult,
+        staffAdvancesResult,
+        settingsResult,
+        permissionsResponse,
+        notificationsResult,
+        academicRecordsResult,
+        salaryPaymentsResult,
         studentAttendanceResult
       ] = await Promise.all([
-        safeQuery(supabase.from('settings').select('*').order('updated_at', { ascending: false }).limit(1).maybeSingle(), { data: null, error: null }),
-        safeQuery(supabase.from('staff').select('*').order('created_at', { ascending: false }).limit(1000), { data: [], error: null }),
-        safeQuery(fetchAllRecords('students', 'created_at'), []),
+        safeQuery(fetchAllRecords('leads', 'date_added'), []),
         safeQuery(fetchAllRecords('admissions', 'created_at'), []),
+        safeQuery(fetchAllRecords('students', 'created_at'), []),
         safeQuery(fetchAllRecords('expenses', 'date'), []),
         safeQuery(fetchAllRecords('income', 'date'), []),
+        safeQuery(supabase.from('staff').select('*').order('created_at', { ascending: false }).limit(1000), { data: [], error: null }),
         safeQuery(supabase.from('staff_attendance').select('*').order('date', { ascending: false }).limit(2000), { data: [], error: null }),
+        safeQuery(supabase.from('staff_timetable').select('*').limit(1000), { data: [], error: null }),
+        safeQuery(supabase.from('staff_advances').select('*').order('date_issued', { ascending: false }).limit(500), { data: [], error: null }),
+        safeQuery(supabase.from('settings').select('*').order('updated_at', { ascending: false }).limit(1).maybeSingle(), { data: null, error: null }),
+        safeQuery(fetch('/api/permissions').then(res => res.json()).catch(() => []), []),
+        safeQuery(supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(1000), { data: [], error: null }),
+        safeQuery(fetchAllRecords('academic_records', 'date'), []),
+        safeQuery(fetchAllRecords('salary_payments', 'date'), []),
         safeQuery(fetchAllRecords('student_attendance', 'date'), [])
       ]);
 
       const { data: staffData } = staffResult;
       const { data: staffAttendanceData } = staffAttendanceResult;
+      const { data: staffTimetableData } = staffTimetableResult;
+      const { data: staffAdvancesData } = staffAdvancesResult;
       const { data: settingsData } = settingsResult;
+      const permissionsData = Array.isArray(permissionsResponse) ? permissionsResponse : (permissionsResponse?.data || []);
+      const { data: notificationsData } = notificationsResult;
+      const academicRecordsData = academicRecordsResult || [];
+      const salaryPaymentsData  = salaryPaymentsResult || [];
+      const studentAttendanceData = studentAttendanceResult || [];
+
       const defaultSession = settingsData?.academic_session || '2026-28';
 
-      if (settingsData) {
-        if (settingsData.config?.deletedArchive && Array.isArray(settingsData.config.deletedArchive)) {
-          setDeletedArchive(settingsData.config.deletedArchive);
-        }
-        const normalizedCollegeName = (settingsData.college_name || 'Superior College Jahanian')
-          .replace(/Superior Group of Colleges\s*,?\s*Jahanian/gi, 'Superior College Jahanian')
-          .replace(/Superior Group of Colleges/gi, 'Superior College Jahanian');
-        setSettings({
-        id: settingsData.id,
-        collegeName: normalizedCollegeName,
-        campusName: (settingsData.campus_name || '').replace(/Superior Group of Colleges/gi, 'Superior College Jahanian'),
-        logo: settingsData.logo_url || settingsData.logo || settingsData.config?.logo,
-        address: settingsData.address,
-        contactNumber: settingsData.contact_number,
-        email: settingsData.email,
-        website: settingsData.website,
-        principalName: settingsData.principal_name,
-        themeColor: settingsData.theme_color,
-        currencySymbol: settingsData.currency_symbol,
-        academicSession: settingsData.academic_session,
-        sidebarColor: settingsData.sidebar_color || settingsData.config?.sidebarColor,
-        sidebarTextColor: settingsData.sidebar_text_color || settingsData.config?.sidebarTextColor,
-        headerColor: settingsData.header_color || settingsData.config?.headerColor,
-        headerTextColor: settingsData.header_text_color || settingsData.config?.headerTextColor,
-        fontFamily: settingsData.font_family || settingsData.config?.fontFamily,
-        cardRadius: settingsData.card_radius || settingsData.config?.cardRadius,
-        glassEffect: settingsData.glass_effect ?? settingsData.config?.glassEffect,
-        enabledModules: settingsData.enabled_modules || [],
-        autoLeadConversion: settingsData.auto_lead_conversion ?? settingsData.config?.autoLeadConversion,
-        defaulterAlertThreshold: settingsData.defaulter_alert_threshold ?? settingsData.config?.defaulterAlertThreshold,
-        allowQuickNav: settingsData.allow_quick_nav ?? settingsData.config?.allowQuickNav,
-        enableHighlighting: settingsData.enable_highlighting ?? settingsData.config?.enableHighlighting,
-        admissionSlipCustomText: settingsData.admission_slip_custom_text ?? settingsData.config?.admissionSlipCustomText,
-        feeReceiptCustomText: settingsData.fee_receipt_custom_text ?? settingsData.config?.feeReceiptCustomText,
-        predefinedSections: settingsData.predefined_sections || settingsData.config?.predefinedSections || [],
-        gateEntryStartTime: settingsData.config?.gateEntryStartTime || '07:00',
-        collegeStartTime: settingsData.config?.collegeStartTime || '07:54',
-        gateEntryCutoffTime: settingsData.config?.gateEntryCutoffTime || '08:30',
-        gateExitStartTime: settingsData.config?.gateExitStartTime || '13:30',
-        gateExitCutoffTime: settingsData.config?.gateExitCutoffTime || '15:30',
-        allowOffHoursScan: settingsData.config?.allowOffHoursScan ?? false,
-        config: settingsData.config || {}
-      } as any);
+      if (leadsData) {
+        const mappedLeads = leadsData.map(l => ({ 
+        ...l, 
+        studentName: l.student_name,
+        fatherName: l.father_name,
+        finalizedFee: l.package ?? l.finalized_fee,
+        finalizedBy: l.finalized_by,
+        previousSchool: l.previous_school,
+        fatherPhone: l.father_phone,
+        areaVillage: l.area_village,
+        dateAdded: l.date_added,
+        currentClass: l.current_class,
+        isConverted: l.is_converted,
+        session: l.session || defaultSession,
+        subjects: l.subjects || [],
+        pipelineStage: l.pipeline_stage || l.extra_info1 || (l.is_converted ? 'converted' : 'new'),
+        followUpDate: l.follow_up_date || l.extra_info2 || '',
+        notes: l.notes || '',
+        source: l.source || (l.notes && l.notes.includes('[Source:') ? l.notes.match(/\[Source:\s*([^\]]+)\]/)?.[1] : undefined) || 'Campus Desk'
+      }));
+      setLeads(mappedLeads);
+      
       }
 
+      
       if (admissionsData) setAdmissions(admissionsData.map(a => {
         const linkedStudent = studentsData?.find(s => 
           s.admission_id === a.id || 
@@ -241,6 +242,7 @@ export function useSupabaseData(user: any) {
         };
       }));
 
+      
       if (studentsData) {
         const deletedArchiveList = (settingsData?.config?.deletedArchive || []) as any[];
         const archivedIds = new Set<string>();
@@ -478,6 +480,7 @@ export function useSupabaseData(user: any) {
         autoPromoteStudents(mappedStudents);
       }
 
+      
       if (staffData) {
         const mappedStaff = staffData.map(st => {
         const isStaffFpDeleted = safeLocalStorage.getItem(`scj_fp_deleted_${st.id}`) === 'true';
@@ -572,6 +575,7 @@ export function useSupabaseData(user: any) {
       
       }
 
+      
       if (staffAttendanceData) setStaffAttendance(staffAttendanceData.map(a => {
         let parsedNotes: any = null;
         if (a.notes && typeof a.notes === 'string' && a.notes.startsWith('{')) {
@@ -614,6 +618,17 @@ export function useSupabaseData(user: any) {
         };
       }));
 
+      
+      if (staffTimetableData) setStaffTimetable(staffTimetableData.map(t => ({
+        ...t,
+        staffId: t.staff_id,
+        startTime: t.start_time,
+        endTime: t.end_time,
+        classRoom: t.class_room,
+        section: t.section || (t.class_room?.match(/\(Sec\s+([^)]+)\)/i)?.[1]?.trim()) || ''
+      })));
+
+      
       if (studentAttendanceData) setStudentAttendance(studentAttendanceData.map(a => {
         let parsedNotes: any = null;
         if (a.notes && typeof a.notes === 'string' && a.notes.startsWith('{')) {
@@ -652,11 +667,22 @@ export function useSupabaseData(user: any) {
         };
       }));
 
+      
+      if (staffAdvancesData) setStaffAdvances(staffAdvancesData.map(a => ({
+        ...a,
+        staffId: a.staff_id,
+        dateIssued: a.date_issued,
+        deductionPerMonth: a.deduction_per_month,
+        remainingBalance: a.remaining_balance
+      })));
+
+      
       if (expensesData) setExpenses(expensesData.map(e => ({
         ...e,
         session: e.session || defaultSession
       })));
 
+      
       if (incomeData) setIncomes(incomeData.map(i => ({
         ...i,
         studentId: i.student_id,
@@ -668,76 +694,53 @@ export function useSupabaseData(user: any) {
       })));
 
 
-      // Unlock UI immediately with core database records
-      if (!silent) setLoading(false);
-
-      // Wave 2: Auxiliary Data in Background (Leads, Timetable, Advances, Notifications, Academic, Salaries, Permissions)
-      const [
-        leadsData,
-        staffTimetableResult,
-        staffAdvancesResult,
-        notificationsResult,
-        academicRecordsResult,
-        salaryPaymentsResult,
-        permissionsResponse
-      ] = await Promise.all([
-        safeQuery(fetchAllRecords('leads', 'date_added'), []),
-        safeQuery(supabase.from('staff_timetable').select('*').limit(1000), { data: [], error: null }),
-        safeQuery(supabase.from('staff_advances').select('*').order('date_issued', { ascending: false }).limit(500), { data: [], error: null }),
-        safeQuery(supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(1000), { data: [], error: null }),
-        safeQuery(fetchAllRecords('academic_records', 'date'), []),
-        safeQuery(fetchAllRecords('salary_payments', 'date'), []),
-        safeQuery(fetch('/api/permissions').then(res => res.json()).catch(() => []), [])
-      ]);
-
-      const { data: staffTimetableData } = staffTimetableResult;
-      const { data: staffAdvancesData } = staffAdvancesResult;
-      const { data: notificationsData } = notificationsResult;
-      const academicRecordsData = academicRecordsResult || [];
-      const salaryPaymentsData  = salaryPaymentsResult || [];
-      const permissionsData = Array.isArray(permissionsResponse) ? permissionsResponse : (permissionsResponse?.data || []);
-
-      if (leadsData) {
-        const mappedLeads = leadsData.map(l => ({ 
-        ...l, 
-        studentName: l.student_name,
-        fatherName: l.father_name,
-        finalizedFee: l.package ?? l.finalized_fee,
-        finalizedBy: l.finalized_by,
-        previousSchool: l.previous_school,
-        fatherPhone: l.father_phone,
-        areaVillage: l.area_village,
-        dateAdded: l.date_added,
-        currentClass: l.current_class,
-        isConverted: l.is_converted,
-        session: l.session || defaultSession,
-        subjects: l.subjects || [],
-        pipelineStage: l.pipeline_stage || l.extra_info1 || (l.is_converted ? 'converted' : 'new'),
-        followUpDate: l.follow_up_date || l.extra_info2 || '',
-        notes: l.notes || '',
-        source: l.source || (l.notes && l.notes.includes('[Source:') ? l.notes.match(/\[Source:\s*([^\]]+)\]/)?.[1] : undefined) || 'Campus Desk'
-      }));
-      setLeads(mappedLeads);
       
+      if (settingsData) {
+        if (settingsData.config?.deletedArchive && Array.isArray(settingsData.config.deletedArchive)) {
+          setDeletedArchive(settingsData.config.deletedArchive);
+        }
+        const normalizedCollegeName = (settingsData.college_name || 'Superior College Jahanian')
+          .replace(/Superior Group of Colleges\s*,?\s*Jahanian/gi, 'Superior College Jahanian')
+          .replace(/Superior Group of Colleges/gi, 'Superior College Jahanian');
+        setSettings({
+        id: settingsData.id,
+        collegeName: normalizedCollegeName,
+        campusName: (settingsData.campus_name || '').replace(/Superior Group of Colleges/gi, 'Superior College Jahanian'),
+        logo: settingsData.logo_url || settingsData.logo || settingsData.config?.logo,
+        address: settingsData.address,
+        contactNumber: settingsData.contact_number,
+        email: settingsData.email,
+        website: settingsData.website,
+        principalName: settingsData.principal_name,
+        themeColor: settingsData.theme_color,
+        currencySymbol: settingsData.currency_symbol,
+        academicSession: settingsData.academic_session,
+        sidebarColor: settingsData.sidebar_color || settingsData.config?.sidebarColor,
+        sidebarTextColor: settingsData.sidebar_text_color || settingsData.config?.sidebarTextColor,
+        headerColor: settingsData.header_color || settingsData.config?.headerColor,
+        headerTextColor: settingsData.header_text_color || settingsData.config?.headerTextColor,
+        fontFamily: settingsData.font_family || settingsData.config?.fontFamily,
+        cardRadius: settingsData.card_radius || settingsData.config?.cardRadius,
+        glassEffect: settingsData.glass_effect ?? settingsData.config?.glassEffect,
+        enabledModules: settingsData.enabled_modules || [],
+        autoLeadConversion: settingsData.auto_lead_conversion ?? settingsData.config?.autoLeadConversion,
+        defaulterAlertThreshold: settingsData.defaulter_alert_threshold ?? settingsData.config?.defaulterAlertThreshold,
+        allowQuickNav: settingsData.allow_quick_nav ?? settingsData.config?.allowQuickNav,
+        enableHighlighting: settingsData.enable_highlighting ?? settingsData.config?.enableHighlighting,
+        admissionSlipCustomText: settingsData.admission_slip_custom_text ?? settingsData.config?.admissionSlipCustomText,
+        feeReceiptCustomText: settingsData.fee_receipt_custom_text ?? settingsData.config?.feeReceiptCustomText,
+        predefinedSections: settingsData.predefined_sections || settingsData.config?.predefinedSections || [],
+        gateEntryStartTime: settingsData.config?.gateEntryStartTime || '07:00',
+        collegeStartTime: settingsData.config?.collegeStartTime || '07:54',
+        gateEntryCutoffTime: settingsData.config?.gateEntryCutoffTime || '08:30',
+        gateExitStartTime: settingsData.config?.gateExitStartTime || '13:30',
+        gateExitCutoffTime: settingsData.config?.gateExitCutoffTime || '15:30',
+        allowOffHoursScan: settingsData.config?.allowOffHoursScan ?? false,
+        config: settingsData.config || {}
+      } as any);
       }
 
-      if (staffTimetableData) setStaffTimetable(staffTimetableData.map(t => ({
-        ...t,
-        staffId: t.staff_id,
-        startTime: t.start_time,
-        endTime: t.end_time,
-        classRoom: t.class_room,
-        section: t.section || (t.class_room?.match(/\(Sec\s+([^)]+)\)/i)?.[1]?.trim()) || ''
-      })));
-
-      if (staffAdvancesData) setStaffAdvances(staffAdvancesData.map(a => ({
-        ...a,
-        staffId: a.staff_id,
-        dateIssued: a.date_issued,
-        deductionPerMonth: a.deduction_per_month,
-        remainingBalance: a.remaining_balance
-      })));
-
+      
       if (permissionsData) setPermissions(permissionsData.map(p => ({
         ...p,
         displayName: p.display_name,
@@ -745,6 +748,7 @@ export function useSupabaseData(user: any) {
         lastActive: p.last_active
       })));
 
+      
       if (notificationsData) setNotifications(notificationsData.map(n => ({
         ...n,
         actorName: n.actor_name,
@@ -752,6 +756,7 @@ export function useSupabaseData(user: any) {
         timestamp: n.created_at
       })));
 
+      
       if (academicRecordsData) setAcademicRecords(academicRecordsData.map(r => ({
         ...r,
         studentId: r.student_id,
@@ -767,6 +772,7 @@ export function useSupabaseData(user: any) {
         session: r.session || defaultSession
       })));
 
+      
       if (salaryPaymentsData) setSalaryPayments(salaryPaymentsData.map(p => ({
         ...p,
         staffId: p.staff_id,
@@ -774,6 +780,7 @@ export function useSupabaseData(user: any) {
         paymentMethod: p.payment_method,
         receiptNumber: p.receipt_number
       })));
+    
     } catch (error) {
       console.error('Error fetching Supabase data:', error);
     } finally {
