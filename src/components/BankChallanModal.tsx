@@ -23,7 +23,6 @@ import {
   generate4VouchersPerPageDoc,
   getDefaultDueDate,
   numberToEnglishWords,
-  numberToUrduWords,
 } from '../utils/challanPdfGenerator';
 import { toast } from 'sonner';
 
@@ -384,7 +383,6 @@ export default function BankChallanModal({
     }
 
     const totalAfter = currentPayable + (currentPayable > 0 ? lateSurcharge : 0);
-    const urduWords = numberToUrduWords(currentPayable);
     const englishWords = numberToEnglishWords(currentPayable);
 
     return (
@@ -410,7 +408,7 @@ export default function BankChallanModal({
               <span className="text-[7.5px] border border-slate-500 text-slate-800 dark:text-slate-200 font-bold px-1.5 py-0.2 rounded">
                 {feeMonth.toUpperCase()}
               </span>
-              <span className="text-[7.5px] bg-slate-900 text-white dark:bg-white dark:text-slate-900 font-black px-2 py-0.2 rounded">
+              <span className="text-[7.5px] border border-slate-700 text-slate-900 dark:text-slate-200 font-black px-2 py-0.2 rounded bg-white dark:bg-slate-900">
                 {copyLabel.toUpperCase()}
               </span>
             </div>
@@ -454,9 +452,9 @@ export default function BankChallanModal({
             {/* Panel 2: Fee Particulars & Urdu Nastaleeq Figure (5 Cols) - Course package is hidden! */}
             <div className="col-span-5 flex flex-col justify-between p-0.5 bg-white dark:bg-slate-900">
               <div className="space-y-0.5">
-                {/* Total Remaining Balance (Baqaya Jaat) */}
+                {/* Total Remaining Balance (Course package is hidden!) */}
                 <div className="flex justify-between items-center text-[7.5px] bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 px-1.5 py-0.5 rounded text-rose-900 dark:text-rose-300 font-black">
-                  <span>TOTAL REMAINING BALANCE (بقایا جات):</span>
+                  <span>TOTAL REMAINING BALANCE:</span>
                   <span className="font-mono text-[8.5px] font-black">Rs. {sRemaining.toLocaleString()}</span>
                 </div>
 
@@ -471,15 +469,10 @@ export default function BankChallanModal({
                     </span>
                   </div>
                   <div className="text-[6.5px] text-slate-700 dark:text-slate-300 font-bold truncate">
-                    {payableTag} • ({englishWords})
+                    {payableTag}
                   </div>
-
-                  {/* Jameel Noori Nastaleeq Urdu Words */}
-                  <div
-                    className="font-nastaleeq text-[11px] sm:text-xs font-black text-slate-900 dark:text-white text-right dir-rtl leading-normal mt-0.5 pt-0.5 border-t border-slate-200 dark:border-slate-700"
-                    style={{ fontFamily: "'Jameel Noori Nastaleeq', 'Jameel Noori Nastaliq', 'Noto Nastaliq Urdu', serif" }}
-                  >
-                    مبلغ: {urduWords}
+                  <div className="text-[7px] text-slate-800 dark:text-slate-200 font-bold truncate mt-0.5 pt-0.5 border-t border-slate-200 dark:border-slate-700">
+                    Amount in Words: {englishWords}
                   </div>
                 </div>
               </div>
@@ -516,7 +509,7 @@ export default function BankChallanModal({
                     e.stopPropagation();
                     onQuickCollect(student, vchId, currentPayable, feeMonth);
                   }}
-                  className="w-full py-0.5 rounded bg-slate-900 hover:bg-black text-white text-[6.5px] font-black uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer transition-all shadow-2xs mt-0.5"
+                  className="w-full py-0.5 rounded border border-slate-400 bg-white hover:bg-slate-100 text-slate-800 dark:text-slate-200 text-[6.5px] font-black uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer transition-all shadow-2xs mt-0.5"
                   title="Receive cash and mark paid at counter"
                 >
                   <DollarSign size={8} />

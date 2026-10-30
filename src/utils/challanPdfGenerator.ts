@@ -307,17 +307,19 @@ function drawSingleCollegeSlipRow(
   doc.roundedRect(p1X, contentY, p1W, panelHeight, 1, 1, 'FD');
 
   // Strip Header
-  doc.setFillColor(248, 250, 252);
-  doc.rect(p1X + 0.2, contentY + 0.2, p1W - 0.4, 4.2, 'F');
+  // Strip Header
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(p1X + 0.2, contentY + 0.2, p1W - 0.4, 4.2, 0.5, 0.5, 'D');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(6.2);
   doc.setTextColor(15, 23, 42);
   doc.text('STUDENT PARTICULARS', p1X + 2, contentY + 3.1);
 
-  // Roll Badge
+  // Roll Badge (Outline pill, no dark fill)
   doc.setDrawColor(15, 23, 42);
   doc.setFillColor(255, 255, 255);
-  doc.roundedRect(p1X + p1W - 27, contentY + 0.6, 25, 3.4, 0.6, 0.6, 'FD');
+  doc.roundedRect(p1X + p1W - 27, contentY + 0.6, 25, 3.4, 0.6, 0.6, 'D');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(5.8);
   doc.setTextColor(0, 0, 0);
@@ -364,11 +366,12 @@ function drawSingleCollegeSlipRow(
   doc.setFillColor(255, 255, 255);
   doc.setDrawColor(100, 116, 139);
   doc.setLineWidth(0.3);
-  doc.roundedRect(p2X, contentY, p2W, panelHeight, 1, 1, 'FD');
+  doc.roundedRect(p2X, contentY, p2W, panelHeight, 1, 1, 'D');
 
   // Strip Header
-  doc.setFillColor(248, 250, 252);
-  doc.rect(p2X + 0.2, contentY + 0.2, p2W - 0.4, 4.2, 'F');
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(p2X + 0.2, contentY + 0.2, p2W - 0.4, 4.2, 0.5, 0.5, 'D');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(6.2);
   doc.setTextColor(15, 23, 42);
@@ -376,13 +379,13 @@ function drawSingleCollegeSlipRow(
 
   // Box 1: Total Remaining Balance (Package is completely hidden!)
   const remY = contentY + 6.2;
-  doc.setFillColor(254, 242, 242);
+  doc.setFillColor(255, 255, 255);
   doc.setDrawColor(248, 113, 113);
-  doc.roundedRect(p2X + 1.5, remY, p2W - 3, 5.5, 0.8, 0.8, 'FD');
+  doc.roundedRect(p2X + 1.5, remY, p2W - 3, 5.5, 0.8, 0.8, 'D');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(6.2);
   doc.setTextColor(153, 27, 27); // Dark Crimson Red
-  doc.text('TOTAL REMAINING BALANCE (بقایا جات):', p2X + 3, remY + 3.8);
+  doc.text('TOTAL REMAINING BALANCE:', p2X + 3, remY + 3.8);
   doc.setFontSize(8);
   doc.text(`Rs. ${totalRemaining.toLocaleString()}`, p2X + p2W - 3, remY + 3.8, { align: 'right' });
 
@@ -392,7 +395,7 @@ function drawSingleCollegeSlipRow(
   doc.setFillColor(255, 255, 255);
   doc.setDrawColor(15, 23, 42); // Crisp Double Border Style
   doc.setLineWidth(0.4);
-  doc.roundedRect(p2X + 1.5, payableBoxY, p2W - 3, payableBoxHeight, 0.8, 0.8, 'FD');
+  doc.roundedRect(p2X + 1.5, payableBoxY, p2W - 3, payableBoxHeight, 0.8, 0.8, 'D');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(6.5);
@@ -411,22 +414,17 @@ function drawSingleCollegeSlipRow(
   doc.setTextColor(71, 85, 105);
   doc.text(installmentSubtext.slice(0, 60), p2X + 3, payableBoxY + 9.5);
 
-  // Urdu Figures Representation
+  // English Amount in Words Only (100% Crisp English, Zero Mojibake!)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(5.8);
-  doc.setTextColor(15, 23, 42);
-  const urduLine = `مبلغ: ${numberToUrduWords(currentPayable)}`;
-  doc.text(urduLine, p2X + p2W - 3, payableBoxY + 13.5, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(5.2);
-  doc.setTextColor(100, 116, 139);
-  doc.text(`(${numberToEnglishWords(currentPayable)})`, p2X + 3, payableBoxY + 13.5);
+  doc.setTextColor(30, 41, 59);
+  doc.text(`Amount in Words: ${numberToEnglishWords(currentPayable)}`, p2X + 3, payableBoxY + 13.5);
 
   // Late Fee Box
   const lateBoxY = payableBoxY + payableBoxHeight + 1.5;
   doc.setFillColor(255, 255, 255);
   doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(p2X + 1.5, lateBoxY, p2W - 3, 5, 0.6, 0.6, 'FD');
+  doc.roundedRect(p2X + 1.5, lateBoxY, p2W - 3, 5, 0.6, 0.6, 'D');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(5.6);
   doc.setTextColor(185, 28, 28);
@@ -440,24 +438,27 @@ function drawSingleCollegeSlipRow(
   doc.setFillColor(255, 255, 255);
   doc.setDrawColor(100, 116, 139);
   doc.setLineWidth(0.3);
-  doc.roundedRect(p3X, contentY, p3W, panelHeight, 1, 1, 'FD');
+  doc.roundedRect(p3X, contentY, p3W, panelHeight, 1, 1, 'D');
 
   // Strip Header
-  doc.setFillColor(248, 250, 252);
-  doc.rect(p3X + 0.2, contentY + 0.2, p3W - 0.4, 4.2, 'F');
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(p3X + 0.2, contentY + 0.2, p3W - 0.4, 4.2, 0.5, 0.5, 'D');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(6.2);
   doc.setTextColor(15, 23, 42);
   doc.text('ACCOUNTS VERIFICATION', p3X + 2, contentY + 3.1);
 
-  // Audit Reference Box
+  // Audit Reference Box (Clean outline, pure white background, NO black box!)
   const auditRefY = contentY + 5.5;
+  doc.setFillColor(255, 255, 255);
   doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(p3X + 2, auditRefY, p3W - 4, 7.5, 0.6, 0.6, 'FD');
+  doc.roundedRect(p3X + 2, auditRefY, p3W - 4, 7.5, 0.6, 0.6, 'D');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(5.8);
   doc.setTextColor(15, 23, 42);
   doc.text(`Audit: ${voucherNo}`, p3X + 3, auditRefY + 3.5);
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(5.2);
   doc.setTextColor(71, 85, 105);
   doc.text(`Campus: ${shift}`, p3X + 3, auditRefY + 6.4);
