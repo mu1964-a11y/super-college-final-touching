@@ -31,10 +31,18 @@ function safeParseArray(val: any): string[] {
 }
 
 export function useSupabaseData(user: any) {
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [admissions, setAdmissions] = useState<Admission[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [staff, setStaff] = useState<Staff[]>([]);
+  const [leads, setLeads] = useState<Lead[]>(() => {
+    try { const c = safeLocalStorage.getItem('scj_cache_leads'); return c ? JSON.parse(c) : []; } catch { return []; }
+  });
+  const [admissions, setAdmissions] = useState<Admission[]>(() => {
+    try { const c = safeLocalStorage.getItem('scj_cache_admissions'); return c ? JSON.parse(c) : []; } catch { return []; }
+  });
+  const [students, setStudents] = useState<Student[]>(() => {
+    try { const c = safeLocalStorage.getItem('scj_cache_students'); return c ? JSON.parse(c) : []; } catch { return []; }
+  });
+  const [staff, setStaff] = useState<Staff[]>(() => {
+    try { const c = safeLocalStorage.getItem('scj_cache_staff'); return c ? JSON.parse(c) : []; } catch { return []; }
+  });
   const [staffAttendance, setStaffAttendance] = useState<any[]>([]);
   const [studentAttendance, setStudentAttendance] = useState<any[]>([]);
   const [staffTimetable, setStaffTimetable] = useState<any[]>([]);
@@ -132,10 +140,6 @@ export function useSupabaseData(user: any) {
         fetchAllRecords('student_attendance', 'date')
       ]);
 
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('SUPABASE_FETCH_TIMEOUT')), 7500)
-      );
-
       const [
         leadsData,
         admissionsData,
@@ -152,7 +156,7 @@ export function useSupabaseData(user: any) {
         academicRecordsResult,
         salaryPaymentsResult,
         studentAttendanceResult
-      ] = (await Promise.race([fetchPromise, timeoutPromise])) as any[];
+      ] = await fetchPromise;
 
       const { data: staffData } = staffResult;
       const { data: staffAttendanceData } = staffAttendanceResult;
@@ -167,7 +171,8 @@ export function useSupabaseData(user: any) {
 
       const defaultSession = settingsData?.academic_session || '2026-28';
 
-      if (leadsData) setLeads(leadsData.map(l => ({ 
+      if (leadsData) {
+        const mappedLeads = leadsData.map(l => ({ 
         ...l, 
         studentName: l.student_name,
         fatherName: l.father_name,
@@ -185,7 +190,10 @@ export function useSupabaseData(user: any) {
         followUpDate: l.follow_up_date || l.extra_info2 || '',
         notes: l.notes || '',
         source: l.source || (l.notes && l.notes.includes('[Source:') ? l.notes.match(/\[Source:\s*([^\]]+)\]/)?.[1] : undefined) || 'Campus Desk'
-      })));
+      }));
+      setLeads(mappedLeads);
+      try { if (mappedLeads.length > 0) safeLocalStorage.setItem('scj_cache_leads', JSON.stringify(mappedLeads)); } catch {}
+      }
       if (admissionsData) setAdmissions(admissionsData.map(a => {
         const linkedStudent = studentsData?.find(s => 
           s.admission_id === a.id || 
@@ -464,10 +472,16 @@ export function useSupabaseData(user: any) {
         }
 
         setStudents(mappedStudents);
+        try {
+          if (mappedStudents && mappedStudents.length > 0) {
+            safeLocalStorage.setItem('scj_cache_students', JSON.stringify(mappedStudents));
+          }
+        } catch {}
         // Run promotion check
         autoPromoteStudents(mappedStudents);
       }
-      if (staffData) setStaff(staffData.map(st => {
+      if (staffData) {
+        const mappedStaff = staffData.map(st => {
         const isStaffFpDeleted = safeLocalStorage.getItem(`scj_fp_deleted_${st.id}`) === 'true';
         let dbTemplate = isStaffFpDeleted ? undefined : (st.fingerprint_template || (st as any).fingerprintTemplate || undefined);
         let rawDbFinger = isStaffFpDeleted ? undefined : (st.fingerprint_finger || (st as any).fingerprintFinger || undefined);
@@ -555,7 +569,10 @@ export function useSupabaseData(user: any) {
             };
           })()
         };
-      }));
+      });
+      setStaff(mappedStaff);
+      try { if (mappedStaff.length > 0) safeLocalStorage.setItem('scj_cache_staff', JSON.stringify(mappedStaff)); } catch {}
+      }
       if (staffAttendanceData) setStaffAttendance(staffAttendanceData.map(a => {
         let parsedNotes: any = null;
         if (a.notes && typeof a.notes === 'string' && a.notes.startsWith('{')) {
