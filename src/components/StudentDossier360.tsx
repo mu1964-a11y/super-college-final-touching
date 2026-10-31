@@ -264,6 +264,17 @@ _Office of the Principal, Superior College Jahanian_`;
                     </Badge>
                   )}
 
+                  {/* Aspire College Campus Badge */}
+                  {((student.collegeNo || '').includes('[Aspire]') || 
+                    (student.group || '').includes('Aspire') || 
+                    (student.category || '').includes('Aspire') || 
+                    (student as any).campus?.includes('Aspire') || 
+                    (student as any).is_aspire) && (
+                    <Badge className="bg-amber-500/20 text-amber-300 border border-amber-400/40 text-[10px] font-black shadow-xs px-2.5 py-0.5">
+                      🏛️ Aspire College Mukhdoom Rasheed
+                    </Badge>
+                  )}
+
                   {/* WhatsApp Bot Badge */}
                   {((student.reference || '').toLowerCase().includes('whatsapp') || 
                     (student.notes && JSON.stringify(student.notes).toLowerCase().includes('whatsapp'))) && (

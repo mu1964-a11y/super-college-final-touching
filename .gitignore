@@ -18,3 +18,7 @@ release/
 public/downloads/*.exe
 repomix-output.xml
 backup/
+# Large historical excel archives (>5MB)
+college_excels/Inter Classes*.xlsx
+college_excels/Bs & 5th Semester*.xlsx
+

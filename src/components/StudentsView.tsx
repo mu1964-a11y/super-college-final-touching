@@ -2011,6 +2011,16 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                           Sec {student.section}
                         </span>
                       )}
+                      {(student.collegeNo?.includes('[Aspire]') || (student as any).is_aspire || (student as any).campus?.includes('Aspire') || (student.groupName || '').includes('Aspire')) && (
+                        <span className="text-[9px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded-md shadow-2xs">
+                          🏛️ Aspire Campus
+                        </span>
+                      )}
+                      {student.collegeNo && (
+                        <span className="text-[9px] font-mono font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md">
+                          R# {student.collegeNo.replace('[Aspire]', '').trim()}
+                        </span>
+                      )}
                       {isViaBot && (
                         <span className="text-[8px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-1 py-0.2 rounded">
                           🤖 Bot
