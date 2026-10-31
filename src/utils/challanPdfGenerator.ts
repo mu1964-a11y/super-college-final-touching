@@ -164,6 +164,230 @@ export interface FeeVoucherOptions {
 }
 
 /**
+ * Standard College Academic Classes / Groups Configuration (SGC-J)
+ */
+export const ACADEMIC_CLASSES = [
+  { id: 'all', label: 'All Academic Classes / Groups' },
+  { id: 'inter-p1', label: 'Inter Part-1 (Session 2026-28)' },
+  { id: 'inter-p2', label: 'Inter Part-2 (Session 2025-27)' },
+  { id: 'bs-all', label: 'BS Degree Programs (All Semesters)' },
+  { id: 'bs-2nd', label: '  ↳ BS 2nd Semester (2025-29)' },
+  { id: 'bs-4th', label: '  ↳ BS 4th Semester (2024-28)' },
+  { id: 'bs-6th', label: '  ↳ BS 6th Semester (2023-27)' },
+  { id: 'bs-8th', label: '  ↳ BS 8th Semester (2024-26)' },
+  { id: 'dit', label: 'D.I.T. Technical Diploma (2026-28)' },
+  { id: 'ads-adp', label: 'ADS / ADP (2-Year Degree)' },
+  { id: 'ukl3', label: 'UK Level 3 (International)' },
+];
+
+/**
+ * Derives the clean, official Academic Class name for fee vouchers and documentation.
+ * Replaces raw subject group codes like 'Ics1' with 'Inter Part 1 2026-28'.
+ */
+export function getStudentDisplayClass(st: any): string {
+  if (!st) return 'Intermediate';
+  const cat = String(st.category || '').toLowerCase();
+  const part = String(st.academicPart || st.academic_part || '').toLowerCase();
+  const sec = String(st.section || '').toLowerCase();
+  const grp = String(st.group || st.group_name || '').toLowerCase();
+  const sess = String(st.session || '');
+  const isBs = cat.includes('bs') || sec.includes('bs') || grp.startsWith('bs') || part.includes('semester');
+
+  // 1. D.I.T. Diploma
+  if (cat.includes('dit') || sec.includes('dit') || grp.includes('dit')) {
+    return `D.I.T. Diploma (${sess || '2026-28'})`;
+  }
+
+  // 2. BS Degree Programs
+  if (isBs) {
+    const rawGrp = st.group || st.group_name || 'BS';
+    const cleanGrp = String(rawGrp).replace(/_/g, '-').trim();
+    const sem = st.academicPart || st.academic_part || '';
+    if (sem) {
+      return `${cleanGrp} (${sem})`;
+    }
+    const match = sec.match(/(\d+(?:st|nd|rd|th)?\s*sem(?:ester)?)/i);
+    if (match) {
+      return `${cleanGrp} (${match[1].toUpperCase()})`;
+    }
+    return `${cleanGrp} Degree`;
+  }
+
+  // 3. ADS / ADP (2-Year Degree)
+  if (!isBs && (cat.startsWith('ads') || cat.startsWith('adp') || grp.startsWith('adp') || grp.startsWith('ads'))) {
+    return `ADS / ADP (${sess || '2-Year'})`;
+  }
+
+  // 4. UK Level 3
+  if (!isBs && (cat.includes('uk') || grp.includes('uk') || sec.includes('uk'))) {
+    return `UK Level 3 (${sess || 'International'})`;
+  }
+
+  // 5. Inter Part 1
+  if (
+    part === 'part-1' ||
+    part === 'part 1' ||
+    cat.includes('part-1') ||
+    cat.includes('part 1') ||
+    sess === '2026-28' ||
+    sec.includes('-1') ||
+    sec.includes('g1') ||
+    sec.includes('b1') ||
+    grp.includes('p1') ||
+    grp.includes('ics1')
+  ) {
+    return 'Inter Part 1 2026-28';
+  }
+
+  // 6. Inter Part 2
+  if (
+    part === 'part-2' ||
+    part === 'part 2' ||
+    cat.includes('part-2') ||
+    cat.includes('part 2') ||
+    sess === '2025-27' ||
+    sec.includes('-2') ||
+    sec.includes('g2') ||
+    sec.includes('b2') ||
+    grp.includes('p2') ||
+    grp.includes('ics2') ||
+    grp.includes('ics3')
+  ) {
+    return 'Inter Part 2 2025-27';
+  }
+
+  return st.category || st.group || 'Intermediate';
+}
+
+/**
+ * Accurately determines campus shift ('Girls Campus' or 'Boys Campus').
+ * Fully accounts for BS girls and female student names.
+ */
+export function getStudentCampusShift(st: any): string {
+  if (!st) return 'Boys Campus';
+  const g = String(st?.gender || '').toLowerCase().trim();
+  if (g === 'female' || g === 'girl' || g === 'girls') return 'Girls Campus';
+  if (g === 'male' || g === 'boy' || g === 'boys') return 'Boys Campus';
+
+  const cat = String(st?.category || '').toLowerCase();
+  const sec = String(st?.section || '').toLowerCase();
+  if (
+    cat.includes('girl') ||
+    sec.includes('girl') ||
+    sec.includes('-g') ||
+    sec.endsWith('g') ||
+    sec.includes('pmc1g') ||
+    sec.includes('mes-g') ||
+    sec.includes('ics1-g') ||
+    sec.includes('ics2-g') ||
+    sec.includes('ics3-g')
+  ) {
+    return 'Girls Campus';
+  }
+  return 'Boys Campus';
+}
+
+/**
+ * Filter helper matching students against standardized Academic Classes / Groups
+ */
+export function matchesAcademicClass(student: any, selectedClassId: string): boolean {
+  if (!selectedClassId || selectedClassId === 'all') return true;
+
+  const cat = String(student.category || '').toLowerCase();
+  const part = String(student.academicPart || student.academic_part || '').toLowerCase();
+  const sec = String(student.section || '').toLowerCase();
+  const grp = String(student.group || student.group_name || '').toLowerCase();
+  const sess = String(student.session || '');
+  const isBs = cat.includes('bs') || sec.includes('bs') || grp.startsWith('bs') || part.includes('semester');
+
+  switch (selectedClassId) {
+    case 'inter-p1':
+      return (
+        !isBs &&
+        !cat.includes('dit') &&
+        !sec.includes('dit') &&
+        (part === 'part-1' ||
+          part === 'part 1' ||
+          cat.includes('part-1') ||
+          cat.includes('part 1') ||
+          sess === '2026-28' ||
+          sec.includes('-1') ||
+          sec.includes('g1') ||
+          sec.includes('b1') ||
+          grp.includes('p1') ||
+          grp.includes('ics1'))
+      );
+
+    case 'inter-p2':
+      return (
+        !isBs &&
+        (part === 'part-2' ||
+          part === 'part 2' ||
+          cat.includes('part-2') ||
+          cat.includes('part 2') ||
+          sess === '2025-27' ||
+          sec.includes('-2') ||
+          sec.includes('g2') ||
+          sec.includes('b2') ||
+          grp.includes('p2') ||
+          grp.includes('ics2') ||
+          grp.includes('ics3'))
+      );
+
+    case 'bs-all':
+      return isBs;
+
+    case 'bs-2nd':
+      return (
+        isBs &&
+        (part.includes('semester 2') ||
+          sec.includes('2nd semester') ||
+          sec.includes('2th semester') ||
+          cat.includes('semester 2'))
+      );
+
+    case 'bs-4th':
+      return (
+        isBs &&
+        (part.includes('semester 4') ||
+          sec.includes('4th semester') ||
+          cat.includes('semester 4'))
+      );
+
+    case 'bs-6th':
+      return (
+        isBs &&
+        (part.includes('semester 6') ||
+          sec.includes('6th semester') ||
+          cat.includes('semester 6'))
+      );
+
+    case 'bs-8th':
+      return (
+        isBs &&
+        (part.includes('semester 8') ||
+          sec.includes('8th semester') ||
+          cat.includes('semester 8'))
+      );
+
+    case 'dit':
+      return cat.includes('dit') || sec.includes('dit') || grp.includes('dit');
+
+    case 'ads-adp':
+      return !isBs && (cat.startsWith('ads') || cat.startsWith('adp') || grp.startsWith('adp') || grp.startsWith('ads'));
+
+    case 'ukl3':
+      return !isBs && (cat.includes('uk') || grp.includes('uk') || sec.includes('uk'));
+
+    default:
+      return (
+        String(student.group || '').toLowerCase() === selectedClassId.toLowerCase() ||
+        String(student.category || '').toLowerCase() === selectedClassId.toLowerCase()
+      );
+  }
+}
+
+/**
  * Draws a single full-width horizontal fee voucher row.
  * Toner & Laser-Friendly design: Clean white background, no solid dark fills, crisp 0.4mm borders.
  * Course package and total paid are omitted per institution policy. Only Remaining balance & Payable dues are printed.
@@ -189,10 +413,10 @@ function drawSingleCollegeSlipRow(
   const sName = String(student?.fullName || student?.full_name || student?.name || 'Verified Student');
   const fName = String(student?.fatherName || student?.father_name || 'N/A');
   const rollNo = String(student?.collegeNo || student?.studentId || student?.rollNumber || student?.id || 'SCJ-0000');
-  const prog = String(student?.group || student?.program || student?.currentClass || student?.category || 'Intermediate');
+  const prog = getStudentDisplayClass(student);
   const rawSec = String(student?.section || 'A');
   const sec = rawSec.replace(/^(sec|section)\s*[:-]?\s*/i, '').trim() || 'A';
-  const shift = student?.gender === 'Female' ? 'Girls Campus' : 'Boys Campus';
+  const shift = getStudentCampusShift(student);
   const session = String(student?.session || '2026-28');
   const contact = String(student?.contactNumber || student?.fatherContact || student?.phone || '');
 

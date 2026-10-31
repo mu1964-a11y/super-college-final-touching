@@ -19,9 +19,13 @@ import {
   List,
 } from 'lucide-react';
 import {
+  ACADEMIC_CLASSES,
   download4VouchersPerPagePdf,
   generate4VouchersPerPageDoc,
   getDefaultDueDate,
+  getStudentCampusShift,
+  getStudentDisplayClass,
+  matchesAcademicClass,
   numberToEnglishWords,
 } from '../utils/challanPdfGenerator';
 import { toast } from 'sonner';
@@ -110,19 +114,23 @@ export default function BankChallanModal({
           ? [students]
           : [];
 
-    return raw.map((s: any) => ({
-      ...s,
-      fullName: s.fullName || s.full_name || s.name || 'Verified Student',
-      fatherName: s.fatherName || s.father_name || 'N/A',
-      collegeNo: s.collegeNo || s.studentId || s.rollNumber || s.id || 'SCJ-0000',
-      group: s.group || s.program || s.currentClass || s.category || 'Intermediate',
-      section: s.section || 'A',
-      gender: s.gender || (String(s.category || '').toLowerCase().includes('girl') ? 'Female' : 'Male'),
-      session: s.session || '2026-28',
-      totalPackage: Number(s.totalPackage ?? s.total_package ?? 0),
-      feeReceived: Number(s.feeReceived ?? s.fee_received ?? 0),
-      contactNumber: s.contactNumber || s.fatherContact || s.phone || '',
-    }));
+    return raw.map((s: any) => {
+      const campusShift = getStudentCampusShift(s);
+      const normGender = campusShift === 'Girls Campus' ? 'Female' : 'Male';
+      return {
+        ...s,
+        fullName: s.fullName || s.full_name || s.name || 'Verified Student',
+        fatherName: s.fatherName || s.father_name || 'N/A',
+        collegeNo: s.collegeNo || s.studentId || s.rollNumber || s.id || 'SCJ-0000',
+        group: s.group || s.program || s.currentClass || s.category || 'Intermediate',
+        section: s.section || 'A',
+        gender: s.gender || normGender,
+        session: s.session || '2026-28',
+        totalPackage: Number(s.totalPackage ?? s.total_package ?? 0),
+        feeReceived: Number(s.feeReceived ?? s.fee_received ?? 0),
+        contactNumber: s.contactNumber || s.fatherContact || s.phone || '',
+      };
+    });
   }, [allStudents, students]);
 
   // Derived groups and sections
@@ -136,11 +144,15 @@ export default function BankChallanModal({
 
   const availableSections = useMemo(() => {
     const s = new Set<string>();
-    masterStudentPool.forEach((st) => {
+    const pool = selectedGroup === 'all'
+      ? masterStudentPool
+      : masterStudentPool.filter((st) => matchesAcademicClass(st, selectedGroup));
+
+    pool.forEach((st) => {
       if (st.section) s.add(String(st.section).trim().toUpperCase());
     });
     return Array.from(s).sort();
-  }, [masterStudentPool]);
+  }, [masterStudentPool, selectedGroup]);
 
   // Compute Active Filtered Students List
   const activeStudentList = useMemo(() => {
@@ -148,30 +160,37 @@ export default function BankChallanModal({
 
     if (filterScope === 'selected') {
       const selRaw = Array.isArray(students) ? students : students ? [students] : [];
-      list = selRaw.map((s: any) => ({
-        ...s,
-        fullName: s.fullName || s.full_name || s.name || 'Verified Student',
-        fatherName: s.fatherName || s.father_name || 'N/A',
-        collegeNo: s.collegeNo || s.studentId || s.rollNumber || s.id || 'SCJ-0000',
-        group: s.group || s.program || s.currentClass || s.category || 'Intermediate',
-        section: s.section || 'A',
-        gender: s.gender || (String(s.category || '').toLowerCase().includes('girl') ? 'Female' : 'Male'),
-        session: s.session || '2026-28',
-        totalPackage: Number(s.totalPackage ?? s.total_package ?? 0),
-        feeReceived: Number(s.feeReceived ?? s.fee_received ?? 0),
-        contactNumber: s.contactNumber || s.fatherContact || s.phone || '',
-      }));
+      list = selRaw.map((s: any) => {
+        const campusShift = getStudentCampusShift(s);
+        const normGender = campusShift === 'Girls Campus' ? 'Female' : 'Male';
+        return {
+          ...s,
+          fullName: s.fullName || s.full_name || s.name || 'Verified Student',
+          fatherName: s.fatherName || s.father_name || 'N/A',
+          collegeNo: s.collegeNo || s.studentId || s.rollNumber || s.id || 'SCJ-0000',
+          group: s.group || s.program || s.currentClass || s.category || 'Intermediate',
+          section: s.section || 'A',
+          gender: s.gender || normGender,
+          session: s.session || '2026-28',
+          totalPackage: Number(s.totalPackage ?? s.total_package ?? 0),
+          feeReceived: Number(s.feeReceived ?? s.fee_received ?? 0),
+          contactNumber: s.contactNumber || s.fatherContact || s.phone || '',
+        };
+      });
     } else {
       list = [...masterStudentPool];
     }
 
     if (selectedCampus !== 'all') {
-      list = list.filter((st) => st.gender === selectedCampus);
+      list = list.filter((st) => {
+        const shift = getStudentCampusShift(st);
+        return selectedCampus === 'Female' ? shift === 'Girls Campus' : shift === 'Boys Campus';
+      });
     }
 
     if (filterScope === 'group' || selectedGroup !== 'all') {
       if (selectedGroup !== 'all') {
-        list = list.filter((st) => String(st.group || '').toLowerCase() === selectedGroup.toLowerCase());
+        list = list.filter((st) => matchesAcademicClass(st, selectedGroup));
       }
     }
 
@@ -355,10 +374,10 @@ export default function BankChallanModal({
     const sName = student.fullName || student.name || 'Verified Student';
     const fName = student.fatherName || student.father_name || 'N/A';
     const rollNo = student.collegeNo || student.studentId || student.id || 'SCJ-0000';
-    const prog = student.group || student.program || student.currentClass || 'Intermediate';
+    const prog = getStudentDisplayClass(student);
     const rawSec = student.section || 'A';
     const sec = String(rawSec).replace(/^(sec|section)\s*[:-]?\s*/i, '').trim() || 'A';
-    const shift = student.gender === 'Female' ? 'Girls Campus' : 'Boys Campus';
+    const shift = getStudentCampusShift(student);
     const session = student.session || '2026-28';
     const contact = student.contactNumber || '';
     const vchId = getVoucherId(student);
@@ -711,15 +730,22 @@ export default function BankChallanModal({
                   </label>
                   <select
                     value={selectedGroup}
-                    onChange={(e) => setSelectedGroup(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedGroup(e.target.value);
+                      setSelectedSection('all');
+                    }}
                     className="w-full h-9 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 text-xs font-bold text-slate-900 dark:text-slate-100 focus:outline-emerald-600"
                   >
-                    <option value="all">All Academic Groups ({availableGroups.length})</option>
-                    {availableGroups.map((g) => (
-                      <option key={g} value={g}>
-                        {g}
-                      </option>
-                    ))}
+                    {ACADEMIC_CLASSES.map((cls) => {
+                      const count = cls.id === 'all'
+                        ? masterStudentPool.length
+                        : masterStudentPool.filter((st) => matchesAcademicClass(st, cls.id)).length;
+                      return (
+                        <option key={cls.id} value={cls.id}>
+                          {cls.label} {count > 0 ? `(${count})` : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
