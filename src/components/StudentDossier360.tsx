@@ -72,6 +72,11 @@ export default function StudentDossier360({
   const [activeTab, setActiveTab] = useState<'profile' | 'financials' | 'academic' | 'whatsapp'>(initialTab);
   const [isChallanOpen, setIsChallanOpen] = useState(false);
   const [isCollectPaymentOpen, setIsCollectPaymentOpen] = useState(false);
+  const [activeStudent, setActiveStudent] = useState<any>(student);
+
+  React.useEffect(() => {
+    setActiveStudent(student);
+  }, [student]);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   React.useEffect(() => {
@@ -107,14 +112,15 @@ export default function StudentDossier360({
   };
 
   // Calculate financial statistics - exact mathematical balance
-  const totalPackage = Number(student.totalPackage || student.feeLedger?.totalPackage || 0);
-  const totalReceived = Number(student.feeReceived || student.feeLedger?.totalReceived || 0);
+  const curStudent = activeStudent || student;
+  const totalPackage = Number(curStudent.totalPackage || curStudent.feeLedger?.totalPackage || 0);
+  const totalReceived = Number(curStudent.feeReceived || student.feeLedger?.totalReceived || 0);
   const remainingBalance = Math.max(0, totalPackage - totalReceived);
   const paymentRatio = totalPackage > 0 ? Math.min(100, Math.round((totalReceived / totalPackage) * 100)) : 0;
 
   // Attendance metrics
-  const presentDays = Number(student.attendance?.present || 0);
-  const absentDays = Number(student.attendance?.absent || 0);
+  const presentDays = Number(curStudent.attendance?.present || 0);
+  const absentDays = Number(curStudent.attendance?.absent || 0);
   const totalAttendanceDays = presentDays + absentDays;
   const attendancePercentage = totalAttendanceDays > 0 ? Math.round((presentDays / totalAttendanceDays) * 100) : 100;
 
@@ -612,10 +618,18 @@ _Office of the Principal, Superior College Jahanian_`;
                 (student.section && (student.section.includes('-G2') || student.section.includes('-B2')))
               );
 
-              const curSem = student.currentSemester || student.feeLedger?.currentSemester || 6;
-              const semFee = student.feeLedger?.semesterFee || 18000;
+              const curSem = curStudent.currentSemester || curStudent.feeLedger?.currentSemester || 6;
+              const semFee = curStudent.feeLedger?.semesterFee || 18000;
               const semPkg = curSem * semFee;
               const advanceSurplus = Math.max(0, totalReceived - semPkg);
+
+              // 4-Year BS Degree Horizon (8 Semesters Total)
+              const totalDegreeSemesters = 8;
+              const completedSemesters = Math.min(totalDegreeSemesters, curSem);
+              const remainingSemesters = Math.max(0, totalDegreeSemesters - completedSemesters);
+              const remainingSemestersFee = remainingSemesters * semFee;
+              const totalDegreePackage = totalDegreeSemesters * semFee;
+              const netDegreePayable = Math.max(0, totalDegreePackage - totalReceived);
 
               return (
               <div className="space-y-6 animate-in fade-in duration-200">
@@ -662,22 +676,60 @@ _Office of the Principal, Superior College Jahanian_`;
                       </div>
                     </div>
 
+                    {/* REMAINING 2 SEMESTERS DEGREE HORIZON BANNER */}
+                    {remainingSemesters > 0 && (
+                      <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-amber-500/15 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0 border border-amber-400/30">
+                            <Clock size={16} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-black text-amber-200 text-xs">
+                                Next Remaining Semesters: {remainingSemesters} Semesters Bakaya (Sem {curSem + 1} to Sem 8)
+                              </span>
+                              <span className="text-[9px] bg-amber-400/20 text-amber-300 font-black px-1.5 py-0.2 rounded border border-amber-400/30">
+                                4-Year BS Degree
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-amber-200/80 mt-0.5">
+                              Completed: {curSem} Semesters (Rs. {semPkg.toLocaleString()}) • Total 8-Sem Package: Rs. {totalDegreePackage.toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0 bg-black/25 px-3 py-1.5 rounded-lg border border-white/10">
+                          <span className="text-[9px] uppercase font-bold text-amber-300/80 block">Upcoming Semesters Fees</span>
+                          <span className="text-sm font-black text-amber-300">
+                            Rs. {remainingSemestersFee.toLocaleString()}
+                          </span>
+                          <span className="text-[9px] text-slate-400 block font-mono">
+                            Net Degree Due: Rs. {netDegreePayable.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Semester Milestones Roadmap */}
                     <div className="pt-1 space-y-1">
-                      <span className="text-[9px] font-bold uppercase text-slate-400">Semester Completion Milestones:</span>
-                      <div className="grid grid-cols-4 sm:grid-cols-8 gap-1 text-[9px] font-bold text-center">
+                      <div className="flex items-center justify-between text-[9px] font-bold uppercase text-slate-400">
+                        <span>8-Semester Degree Progression:</span>
+                        <span className="text-amber-300">{curSem} Completed • {remainingSemesters} Upcoming</span>
+                      </div>
+                      <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5 text-[9px] font-bold text-center">
                         {[1, 2, 3, 4, 5, 6, 7, 8].map(sNum => {
                           const isDone = sNum <= curSem;
                           return (
                             <div
                               key={sNum}
-                              className={`py-1 px-1 rounded-lg border ${
+                              className={`py-1.5 px-1 rounded-xl border flex flex-col items-center justify-center ${
                                 isDone
-                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                                  : 'bg-white/5 text-slate-500 border-white/10'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-xs'
+                                  : 'bg-amber-500/10 text-amber-300/90 border-amber-500/30'
                               }`}
                             >
-                              Sem {sNum} {isDone ? '✓' : ''}
+                              <span>Sem {sNum}</span>
+                              <span className="text-[8px] opacity-80">{isDone ? '✓ Paid' : 'Due Rs. 18k'}</span>
                             </div>
                           );
                         })}
@@ -1028,8 +1080,33 @@ _Office of the Principal, Superior College Jahanian_`;
         <VoucherCollectPaymentModal
           isOpen={isCollectPaymentOpen}
           onClose={() => setIsCollectPaymentOpen(false)}
-          student={student}
+          student={curStudent}
           data={data}
+          onPaymentSuccess={(paymentRecord) => {
+            const newRec = (curStudent.feeReceived || 0) + paymentRecord.amountPaid;
+            const newTx = {
+              id: `tx-${Date.now()}`,
+              date: paymentRecord.datePaid,
+              amount: paymentRecord.amountPaid,
+              receiptId: paymentRecord.receiptNo,
+              description: `Fee Collection (${paymentRecord.voucherNo})`,
+              paymentMethod: 'Cash',
+              recordedBy: 'Accounts Counter'
+            };
+            const updated = {
+              ...curStudent,
+              feeReceived: newRec,
+              feeLedger: {
+                ...(curStudent.feeLedger || {}),
+                totalReceived: newRec,
+                remainingBalance: Math.max(0, (curStudent.totalPackage || 0) - newRec),
+                transactions: [newTx, ...(curStudent.feeLedger?.transactions || [])]
+              }
+            };
+            setActiveStudent(updated);
+            setIsCollectPaymentOpen(false);
+            toast.success(`Fee Rs. ${paymentRecord.amountPaid.toLocaleString()} collected! Dossier ledger updated.`);
+          }}
         />
       )}
 

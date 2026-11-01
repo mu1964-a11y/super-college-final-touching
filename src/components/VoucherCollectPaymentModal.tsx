@@ -41,7 +41,7 @@ export default function VoucherCollectPaymentModal({
   data,
   onPaymentSuccess
 }: VoucherCollectPaymentModalProps) {
-  const [mounted, setMounted] = useState(false);
+  const [mounted, setMounted] = useState(true);
 
   // Form Fields
   const [voucherInput, setVoucherInput] = useState<string>('');
@@ -86,16 +86,34 @@ export default function VoucherCollectPaymentModal({
         setVerifiedVoucher(activeVch);
         setAmountPaid(activeVch.amountBilled > 0 ? activeVch.amountBilled : 5000);
       } else {
-        // Default voucher proposal
+        // Default voucher proposal - auto-issue official voucher so collection is instant
         const yStr = new Date().getFullYear().toString().slice(-2);
         const mStr = String(new Date().getMonth() + 1).padStart(2, '0');
         const rollClean = String(rollOrId).replace(/[^a-zA-Z0-9]/g, '');
         const proposedId = `VCH-${yStr}${mStr}-${rollClean}`;
         setVoucherInput(proposedId);
-        setVerifiedVoucher(null);
 
         const rem = Math.max(0, Number(student.totalPackage || student.feeLedger?.totalPackage || 0) - Number(student.feeReceived || student.feeLedger?.totalReceived || 0));
-        setAmountPaid(rem > 0 ? Math.min(rem, 5000) : 0);
+        const defaultAmt = rem > 0 ? (rem > 18000 ? 18000 : rem) : 18000;
+        const autoVch: IssuedVoucher = {
+          id: proposedId,
+          studentId: student.id,
+          studentName: student.fullName || student.name || 'Verified Student',
+          fatherName: student.fatherName || student.father_name || 'N/A',
+          collegeNo: student.collegeNo || student.id,
+          section: student.section || 'General',
+          campus: student.gender === 'Female' ? 'Girls Campus' : 'Boys Campus',
+          feeMonth: 'November 2026',
+          amountBilled: defaultAmt,
+          issueDate: new Date().toISOString().split('T')[0],
+          dueDate: new Date(Date.now() + 10 * 86400000).toISOString().split('T')[0],
+          lateSurcharge: 100,
+          status: 'ISSUED',
+          createdAt: new Date().toISOString()
+        };
+        registerIssuedVouchers([autoVch]);
+        setVerifiedVoucher(autoVch);
+        setAmountPaid(defaultAmt);
       }
     }
   }, [student, isOpen]);
@@ -265,8 +283,9 @@ _Notice generated under Audit Compliance Register._`;
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
-      <div className="w-full max-w-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-[200] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
+      <div className="fixed inset-0" onClick={onClose} />
+      <div className="w-full max-w-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] relative z-10 animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
         <div className="bg-gradient-to-r from-teal-900 via-emerald-900 to-teal-950 text-white p-5 border-b border-teal-800/40 flex items-center justify-between">
