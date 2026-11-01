@@ -2109,7 +2109,7 @@ export default function AdmissionsView({
                         toggleSelectAdmission(admission.id);
                       }}
                       className={cn(
-                        "group transition-all border-slate-100 cursor-pointer relative",
+                        "group transition-all border-b border-slate-200/90 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 cursor-pointer relative",
                         selectedAdmissions.includes(admission.id)
                           ? "bg-emerald-50/80 hover:bg-emerald-100/70 border-l-4 border-l-[#085a4e] shadow-2xs"
                           : "hover:bg-slate-50/70",

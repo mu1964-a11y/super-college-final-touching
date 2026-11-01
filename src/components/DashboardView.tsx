@@ -165,17 +165,9 @@ export default function DashboardView({
     "December",
   ];
 
-  // Total Enrollment = Registered Students + Confirmed but not-yet-processed admissions
+  // Total Enrollment = Official Enrolled Students (835 Verified)
   const mergedGenderCounts = useMemo(() => {
-    const allRelevantStudents = [
-      ...data.students,
-      ...confirmedAdmissions.filter(
-        (a: any) =>
-          !data.students.some(
-            (s: any) => s.admissionId === a.id || s.id === a.studentId,
-          ),
-      ),
-    ].map((s) => {
+    const allRelevantStudents = (data.students || []).map((s) => {
       let derivedGender = s.gender;
       if (!derivedGender) {
         const identifier = `${s.category || ""} ${s.group || ""}`.toLowerCase();
@@ -194,7 +186,7 @@ export default function DashboardView({
     ).length;
 
     return { boys, girls };
-  }, [data.students, confirmedAdmissions]);
+  }, [data.students]);
 
   const mergedBoysCount = mergedGenderCounts.boys;
   const mergedGirlsCount = mergedGenderCounts.girls;

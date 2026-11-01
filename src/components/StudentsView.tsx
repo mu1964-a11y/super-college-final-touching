@@ -187,93 +187,6 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
           created_at: s.created_at || s.createdAt || linkedAdm?.created_at || linkedAdm?.createdAt,
         };
       });
-    
-    // Add all admissions that don't have a matching student record yet but are confirmed
-    (data.admissions || []).forEach((a: any) => {
-      const isArchived = a.status === 'Archived' || 
-                         a.status === 'Deleted' || 
-                         a.isAdmitted === false ||
-                         archivedIds.has(a.id) || 
-                         (a.studentId && archivedIds.has(a.studentId)) ||
-                         (a.fullName && a.fatherName && archivedNames.has(`${a.fullName.trim().toLowerCase()}::${a.fatherName.trim().toLowerCase()}`));
-      if (isArchived) return;
-
-      const existsInStudents = rawStudents.some((s: any) => s.admissionId === a.id || s.id === a.studentId);
-      const isConfirmed = (a.isAdmitted === true || 
-                          a.status === "Admitted/Confirmed" || 
-                          a.status === "Admitted" || 
-                          a.status === "Confirmed" || 
-                          a.status === "Full Paid" || 
-                          a.status === "Partial Paid") && a.status !== 'Pending' && a.status !== 'Rejected';
-      
-      if (!existsInStudents && isConfirmed) {
-        let derivedGender = a.gender;
-        if (!derivedGender) {
-          const identifier = (`${a.category || ''} ${a.group || ''}`).toLowerCase();
-          if (identifier.includes('girl') || identifier.includes('female')) {
-            derivedGender = 'Female';
-          } else {
-            derivedGender = 'Male';
-          }
-        }
-
-        // Map Admission to a Student model for display
-        rawStudents.push({
-          id: a.studentId || a.id,
-          admissionId: a.id,
-          fullName: a.fullName,
-          fatherName: a.fatherName,
-          collegeNo: a.collegeNo || (a as any).college_no,
-          bayFormNo: a.bayFormNo || (a as any).bay_form_no,
-          dob: a.dob,
-          previousClass: a.previousClass || (a as any).previous_class,
-          boardRollNo: a.boardRollNo || (a as any).board_roll_no,
-          previousMarks: a.previousMarks ?? (a as any).previous_marks,
-          contact: a.contactNumber || a.contact,
-          fatherContact: a.fatherContact || (a as any).father_contact,
-          secondaryContact: a.secondaryContact || (a as any).secondary_contact,
-          email: a.email,
-          bloodGroup: a.bloodGroup,
-          concessionReason: a.concessionReason || (a as any).concession_reason,
-          address: a.address || '',
-          gender: derivedGender,
-          category: a.category || 'Inter Part-1 Boys',
-          group: a.group || 'Pending',
-          section: a.section || 'A',
-          photo: a.photo || a.photoUrl || (a as any).photo_url || '',
-          attendance: { present: 0, absent: 0 },
-          feeHistory: a.feeHistory || [],
-          feeLedger: a.feeLedger ? a.feeLedger : { 
-            totalPackage: a.totalPackage || 0, 
-            totalReceived: a.feeReceived || 0, 
-            remainingBalance: (a.totalPackage || 0) - (a.feeReceived || 0), 
-            transactions: a.feeReceived > 0 ? [{
-              id: `tx-initial-${a.id}`,
-              date: a.date?.split('T')[0] || new Date().toISOString().split('T')[0],
-              amount: a.feeReceived,
-              description: 'Initial Admission Payment',
-              paymentMethod: 'Cash',
-              receiptId: `REC-${a.id.slice(-6)}`
-            }] : [], 
-            installments: [] 
-          },
-          subjects: a.subjects || [],
-          admissionFee: a.admissionFee || 0,
-          miscFunds: a.miscFunds || 0,
-          totalFeeFinalized: a.totalFeeFinalized || 0,
-          totalInstallments: a.totalInstallments || 12,
-          monthlyFee: Math.round((a.totalPackage || 0) / (a.totalInstallments || 12)),
-          totalPackage: a.totalPackage || 0,
-          feeReceived: a.feeReceived || 0,
-          session: a.session,
-          sessionStartDate: a.sessionStartDate,
-          sessionEndDate: a.sessionEndDate,
-          academicPart: a.academicPart || 'Part-1',
-          programType: a.programType || 'Yearly',
-          currentSemester: a.currentSemester || 0
-        } as any);
-      }
-    });
 
     return rawStudents;
   }, [data.students, data.admissions, data.deletedArchive]);
@@ -2149,7 +2062,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
             </TableHeader>
             <TableBody>
                {visibleStudents.map((student: Student) => (
-                  <TableRow key={student.id} className="group cursor-pointer hover:bg-slate-50/50" onClick={() => { setSelectedStudent(student); setDialogType('profile'); }}>
+                  <TableRow key={student.id} className="group cursor-pointer border-b border-slate-200/90 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors" onClick={() => { setSelectedStudent(student); setDialogType('profile'); }}>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                          <Checkbox 
                            checked={selectedStudents.includes(student.id)} 

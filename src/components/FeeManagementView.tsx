@@ -232,47 +232,7 @@ export default function FeeManagementView({
       return { ...s, gender: derivedGender };
     });
 
-    (data.admissions || []).forEach((a: any) => {
-      const isEnrolled =
-        a.isAdmitted === true ||
-        a.status === "Admitted/Confirmed" ||
-        a.status === "Admitted" ||
-        a.status === "Confirmed" ||
-        a.status === "Full Paid" ||
-        a.status === "Partial Paid" ||
-        Number(a.feeReceived) > 0;
-      const exists = raw.some(
-        (s: any) => s.admissionId === a.id || s.id === a.studentId,
-      );
-      if (isEnrolled && !exists) {
-        let derivedGender = a.gender;
-        if (!derivedGender) {
-          const identifier =
-            `${a.category || ""} ${a.group || ""}`.toLowerCase();
-          if (identifier.includes("girl") || identifier.includes("female")) {
-            derivedGender = "Female";
-          } else {
-            derivedGender = "Male";
-          }
-        }
-
-        raw.push({
-          id: a.studentId || a.id,
-          fullName: a.fullName,
-          fatherName: a.fatherName,
-          gender: derivedGender,
-          category: a.category || "",
-          group: a.group || "",
-          section: a.section || "",
-          totalPackage: a.totalPackage || 0,
-          feeReceived: a.feeReceived || 0,
-          status: "Active",
-          feeHistory: a.feeHistory || [],
-          feeLedger: a.feeLedger || null,
-        });
-      }
-    });
-
+    
     // Filter by program here so executive stats reflect the current program
     if (program) {
       raw = raw.filter((s: any) => {
@@ -1715,7 +1675,7 @@ export default function FeeManagementView({
                             key={student.id}
                             onClick={() => setActiveRowStudent(student)}
                             className={cn(
-                              "group hover:bg-emerald-50/60 transition-colors border-slate-100 cursor-pointer h-[75px]",
+                              "group hover:bg-emerald-50/60 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-200/90 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 cursor-pointer h-[75px]",
                               activeRowStudent?.id === student.id
                                 ? "bg-emerald-100 border-emerald-300 shadow-inner ring-1 ring-emerald-300"
                                 : "",

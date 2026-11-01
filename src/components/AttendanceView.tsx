@@ -242,36 +242,8 @@ export default function AttendanceView({ data }: { data: any }) {
   }, [data?.studentAttendance]);
 
   const students = useMemo(() => {
-    const raw: any[] = [...(data?.students || [])];
-    data?.admissions?.forEach((a: any) => {
-      const isConfirmed = a.isAdmitted === true || 
-                          a.status === "Admitted/Confirmed" || 
-                          a.status === "Admitted" || 
-                          a.status === "Confirmed" || 
-                          a.status === "Full Paid" || 
-                          a.status === "Partial Paid" || 
-                          Number(a.feeReceived) > 0;
-      if (isConfirmed) {
-        if (!raw.some((s: any) => s.admissionId === a.id || s.id === (a.studentId || a.id))) {
-          raw.push({
-            id: a.studentId || a.id,
-            admissionId: a.id,
-            studentId: a.studentId,
-            fullName: a.fullName,
-            fatherName: a.fatherName,
-            contact: a.contactNumber || a.phone || '',
-            fatherContact: a.fatherContact || a.contactNumber || '',
-            section: a.section,
-            currentClass: a.category,
-            groupName: a.group,
-            gender: a.gender,
-            photo: a.photo || a.photoUrl || a.photo_url || a.studentPhoto || a.student_photo
-          });
-        }
-      }
-    });
-    return raw;
-  }, [data?.students, data?.admissions]);
+    return data?.students || [];
+  }, [data?.students]);
 
   const sectionOptions = React.useMemo(() => {
     let sections = data?.settings?.predefinedSections || [];

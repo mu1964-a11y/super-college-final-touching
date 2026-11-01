@@ -75,10 +75,11 @@ export default function BankChallanModal({
   const [inModalSearch, setInModalSearch] = useState<string>('');
 
   // Scope & Filtering State
-  const [filterScope, setFilterScope] = useState<'selected' | 'group' | 'section' | 'defaulters' | 'all'>('selected');
+  const [filterScope, setFilterScope] = useState<'selected' | 'group' | 'section' | 'defaulters' | 'cleared_only' | 'all'>('selected');
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
   const [selectedSection, setSelectedSection] = useState<string>('all');
   const [selectedCampus, setSelectedCampus] = useState<'all' | 'Male' | 'Female'>('all');
+  const [hideZeroOrLowDues, setHideZeroOrLowDues] = useState<boolean>(true);
 
   // Installment Mode & Custom Amount options
   const [installmentMode, setInstallmentMode] = useState<'fixed_installment' | 'full_balance'>('fixed_installment');
@@ -204,12 +205,24 @@ export default function BankChallanModal({
       list = list.filter((st) => {
         const pkg = Number(st.totalPackage || 0);
         const rec = Number(st.feeReceived || 0);
-        return pkg - rec > 0;
+        return pkg - rec > 200;
+      });
+    } else if (filterScope === 'cleared_only') {
+      list = list.filter((st) => {
+        const pkg = Number(st.totalPackage || 0);
+        const rec = Number(st.feeReceived || 0);
+        return pkg - rec <= 200;
+      });
+    } else if (hideZeroOrLowDues && filterScope !== 'selected') {
+      list = list.filter((st) => {
+        const pkg = Number(st.totalPackage || 0);
+        const rec = Number(st.feeReceived || 0);
+        return (pkg - rec) > 200;
       });
     }
 
     return list;
-  }, [filterScope, students, masterStudentPool, selectedCampus, selectedGroup, selectedSection]);
+  }, [filterScope, students, masterStudentPool, selectedCampus, selectedGroup, selectedSection, hideZeroOrLowDues]);
 
   // Filtered by in-modal quick search bar
   const displayedStudents = useMemo(() => {
@@ -674,7 +687,7 @@ export default function BankChallanModal({
                   <Filter size={13} className="text-emerald-600" />
                   <span>Select Target Scope</span>
                 </label>
-                <div className="grid grid-cols-2 gap-1.5 text-xs font-bold">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-xs font-bold">
                   <button
                     type="button"
                     onClick={() => setFilterScope('selected')}
@@ -684,7 +697,7 @@ export default function BankChallanModal({
                         : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-300 hover:bg-slate-100'
                     }`}
                   >
-                    Current Selection ({Array.isArray(students) ? students.length : 1})
+                    Selection ({Array.isArray(students) ? students.length : 1})
                   </button>
                   <button
                     type="button"
@@ -695,7 +708,18 @@ export default function BankChallanModal({
                         : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-300 hover:bg-slate-100'
                     }`}
                   >
-                    Pending Defaulters Only
+                    Pending Dues (&gt; Rs. 200)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterScope('cleared_only')}
+                    className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
+                      filterScope === 'cleared_only'
+                        ? 'border-emerald-700 bg-emerald-50 text-emerald-950 dark:bg-emerald-950/40 dark:text-emerald-200 ring-1 ring-emerald-700'
+                        : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    Cleared / 0 Dues
                   </button>
                   <button
                     type="button"
@@ -718,6 +742,21 @@ export default function BankChallanModal({
                     }`}
                   >
                     By Section
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterScope('all');
+                      setSelectedGroup('all');
+                      setSelectedSection('all');
+                    }}
+                    className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
+                      filterScope === 'all'
+                        ? 'border-emerald-700 bg-emerald-50 text-emerald-950 dark:bg-emerald-950/40 dark:text-emerald-200 ring-1 ring-emerald-700'
+                        : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    All Active Roster
                   </button>
                 </div>
               </div>
@@ -782,6 +821,26 @@ export default function BankChallanModal({
                       <option value="Female">Girls Campus</option>
                     </select>
                   </div>
+                </div>
+
+                {/* Hide Zero / Low Dues Toggle */}
+                <div className="flex items-center justify-between pt-2.5 border-t border-slate-200 dark:border-slate-700">
+                  <label className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={hideZeroOrLowDues}
+                      onChange={(e) => setHideZeroOrLowDues(e.target.checked)}
+                      className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-400 cursor-pointer"
+                    />
+                    <span>Hide Zero / Cleared Dues (&le; Rs. 200)</span>
+                  </label>
+                  <span className={`text-[9.5px] font-mono px-2 py-0.5 rounded-full font-bold transition-all ${
+                    hideZeroOrLowDues 
+                      ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300' 
+                      : 'bg-slate-100 dark:bg-slate-700 text-slate-500'
+                  }`}>
+                    {hideZeroOrLowDues ? '0-Fee Filtered' : 'Showing All'}
+                  </span>
                 </div>
               </div>
 
