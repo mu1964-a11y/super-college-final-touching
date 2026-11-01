@@ -29,6 +29,7 @@ import {
   numberToEnglishWords,
 } from '../utils/challanPdfGenerator';
 import { toast } from 'sonner';
+import { registerIssuedVouchers, IssuedVoucher } from '../utils/voucherRegistry';
 
 interface BankChallanModalProps {
   isOpen: boolean;
@@ -285,6 +286,45 @@ export default function BankChallanModal({
     return undefined;
   };
 
+
+  // Register generated vouchers into persistent audit registry
+  const persistGeneratedVouchers = (studentList: any[]) => {
+    try {
+      const records: IssuedVoucher[] = studentList.map((st) => {
+        const vchId = getVoucherId(st);
+        const sTotalPkg = Number(st.totalPackage || 0);
+        const sPaid = Number(st.feeReceived || 0);
+        const sRemaining = Math.max(0, sTotalPkg - sPaid);
+        let payable = sRemaining;
+        if (installmentMode === 'fixed_installment' && fixedInstallmentAmount > 0) {
+          payable = sRemaining <= fixedInstallmentAmount ? sRemaining : fixedInstallmentAmount;
+        }
+        const isCleared = sRemaining <= 200;
+        return {
+          id: vchId,
+          studentId: st.id,
+          studentName: st.fullName || st.name || 'Student',
+          fatherName: st.fatherName || 'N/A',
+          collegeNo: st.collegeNo || st.id,
+          section: st.section || 'General',
+          campus: st.gender === 'Female' ? 'Girls Campus' : 'Boys Campus',
+          feeMonth,
+          amountBilled: payable,
+          issueDate,
+          dueDate,
+          lateSurcharge,
+          status: isCleared ? 'COLLECTED' : 'ISSUED',
+          collectedAmount: isCleared ? sPaid : 0,
+          collectedDate: isCleared ? issueDate : undefined,
+          createdAt: new Date().toISOString()
+        };
+      });
+      registerIssuedVouchers(records);
+    } catch (e) {
+      console.error('Error logging issued vouchers:', e);
+    }
+  };
+
   // Download Action
   const handleDownloadPdf = async () => {
     setIsExporting(true);
@@ -296,6 +336,7 @@ export default function BankChallanModal({
 
       const targetPages = resolveTargetPages(totalSheets);
 
+      persistGeneratedVouchers(displayedStudents);
       await download4VouchersPerPagePdf(displayedStudents, undefined, {
         collegeName,
         collegeAddress,
@@ -325,6 +366,7 @@ export default function BankChallanModal({
     try {
       const targetPages = resolveTargetPages(totalSheets);
 
+      persistGeneratedVouchers(displayedStudents);
       const doc = generate4VouchersPerPageDoc(displayedStudents, {
         collegeName,
         collegeAddress,
