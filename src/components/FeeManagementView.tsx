@@ -158,8 +158,8 @@ export default function FeeManagementView({
     syncVouchersFromSupabase().then((vchs) => {
       if (vchs && vchs.length > 0) {
         setAuditVouchersList(vchs);
-      } else if (students && students.length > 0) {
-        const initVchs: IssuedVoucher[] = students.slice(0, 200).map((st: any) => {
+      } else if (data?.students && data.students.length > 0) {
+        const initVchs: IssuedVoucher[] = data.students.slice(0, 200).map((st: any) => {
           const pkg = Number(st.totalPackage || st.feeLedger?.totalPackage || 0);
           const rec = Number(st.feeReceived || st.feeLedger?.totalReceived || 0);
           const rem = Math.max(0, pkg - rec);
@@ -188,7 +188,7 @@ export default function FeeManagementView({
         setAuditVouchersList(initVchs);
       }
     });
-  }, [students]);
+  }, [data?.students]);
 
   const isNewStudent = React.useCallback((student: any): boolean => {
     const ts = student?.createdAt || student?.created_at;
