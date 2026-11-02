@@ -53,6 +53,7 @@ import InstantBiometricVerifyModal from "./components/InstantBiometricVerifyModa
 import { useSupabaseData } from "./hooks/useSupabaseData";
 import { supabase, isSupabaseConfigured } from "./lib/supabase";
 import { secugenService } from "./lib/secugenService";
+import { useBiometricAttendance } from "./context/BiometricAttendanceContext";
 import { safeLocalStorage } from "./utils/safeStorage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -307,10 +308,14 @@ export default function App() {
 
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isGlobalSpotCheckOpen, setIsGlobalSpotCheckOpen] = useState(false);
+  const [isBiometricDeskPopupOpen, setIsBiometricDeskPopupOpen] = useState(false);
   const [dossierStudent, setDossierStudent] = useState<any | null>(null);
   const [dossierInitialTab, setDossierInitialTab] = useState<'profile' | 'financials' | 'academic' | 'whatsapp'>('profile');
 
-  // Global Ctrl+K (Spotlight) & Ctrl+B (Biometric Spot-Check) keyboard shortcuts
+  // Unified global biometric scanner status
+  const { scannerStatus } = useBiometricAttendance();
+
+  // Global Ctrl+K (Spotlight) & Ctrl+B (Biometric Desk) keyboard shortcuts
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -318,7 +323,7 @@ export default function App() {
         setIsCommandPaletteOpen((prev) => !prev);
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
         e.preventDefault();
-        setIsGlobalSpotCheckOpen((prev) => !prev);
+        setIsBiometricDeskPopupOpen((prev) => !prev);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -2115,26 +2120,26 @@ export default function App() {
 
             {/* Machine-Isolated Local Biometric Scanner Pill (USB Hamster Pro on this PC) */}
             <button
-              onClick={() => setIsGlobalSpotCheckOpen(true)}
+              onClick={() => setIsBiometricDeskPopupOpen(true)}
               className={cn(
                 "hidden md:flex items-center gap-2 h-9 px-3 rounded-xl border transition-all duration-200 shadow-2xs shrink-0 cursor-pointer active:scale-95",
-                localBiometricStatus.connected && localBiometricStatus.deviceFound
+                scannerStatus.connected && scannerStatus.deviceFound
                   ? "bg-teal-500/10 hover:bg-teal-500/20 text-teal-700 dark:text-teal-300 border-teal-300 dark:border-teal-800"
                   : "bg-slate-100 hover:bg-slate-200/70 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700"
               )}
               title={
-                localBiometricStatus.connected && localBiometricStatus.deviceFound
-                  ? "Local SecuGen Hamster Pro 20 Scanner Connected to this PC (Ctrl+B)"
-                  : "Local USB Scanner not detected on localhost:8443 (Ctrl+B to verify)"
+                scannerStatus.connected && scannerStatus.deviceFound
+                  ? "SecuGen Hamster Pro 20 Ready — Click to open Biometric Attendance Desk (Ctrl+B)"
+                  : "SecuGen USB Scanner not detected on localhost:8443 (Click to verify)"
               }
             >
               <span className={cn(
                 "w-2 h-2 rounded-full shrink-0",
-                localBiometricStatus.connected && localBiometricStatus.deviceFound ? "bg-teal-500 animate-pulse shadow-[0_0_8px_#14b8a6]" : "bg-slate-400"
+                scannerStatus.connected && scannerStatus.deviceFound ? "bg-teal-500 animate-pulse shadow-[0_0_8px_#14b8a6]" : "bg-slate-400"
               )} />
-              <Fingerprint size={14} className={localBiometricStatus.connected && localBiometricStatus.deviceFound ? "text-teal-600 dark:text-teal-400 shrink-0" : "text-slate-400 shrink-0"} />
+              <Fingerprint size={14} className={scannerStatus.connected && scannerStatus.deviceFound ? "text-teal-600 dark:text-teal-400 shrink-0" : "text-slate-400 shrink-0"} />
               <span className="text-[10px] font-black uppercase tracking-wider whitespace-nowrap">
-                {localBiometricStatus.connected && localBiometricStatus.deviceFound ? "Scanner Ready" : "Scanner Offline"}
+                {scannerStatus.connected && scannerStatus.deviceFound ? "Scanner Ready" : "Scanner Offline"}
               </span>
             </button>
           </div>
@@ -2535,6 +2540,27 @@ export default function App() {
           }}
         />
       </React.Suspense>
+
+      {/* SecuGen Biometric Attendance & Verification Desk Modal (View 2) */}
+      {isBiometricDeskPopupOpen && (
+        <React.Suspense fallback={<PremiumLoadingScreen brandingSettings={brandingSettings} authLoading={true} customMessage="Loading Biometric Desk..." />}>
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950 animate-in fade-in duration-150">
+            <BiometricAttendanceDesk
+              standalone={false}
+              collegeLogo={brandingSettings.logo || "/superior-logo.png"}
+              collegeName={brandingSettings.name || "Superior College Jahanian"}
+              staffListProp={data.staff || []}
+              studentsListProp={data.students || []}
+              settingsProp={brandingSettings}
+              onAttendanceMarked={() => data.fetchData?.(true)}
+              onBackToApp={() => {
+                setIsBiometricDeskPopupOpen(false);
+                data.fetchData?.(true);
+              }}
+            />
+          </div>
+        </React.Suspense>
+      )}
 
       {/* Universal Biometric Spot-Check Scanner Modal */}
       <InstantBiometricVerifyModal

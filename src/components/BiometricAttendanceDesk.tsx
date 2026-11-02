@@ -18,9 +18,12 @@ import {
   Play,
   HeartPulse,
   Waves,
+  Sparkles,
 } from 'lucide-react';
 import BiometricLivePulse from './BiometricLivePulse';
+import BiometricReEnrollModal from './BiometricReEnrollModal';
 import { secugenService } from '../lib/secugenService';
+import { calculateWorkingHours } from '../context/BiometricAttendanceContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { safeLocalStorage } from '../utils/safeStorage';
 import {
@@ -160,6 +163,7 @@ export default function BiometricAttendanceDesk({
   const [isCapturing, setIsCapturing] = useState<boolean>(false);
   const [searchRoster, setSearchRoster] = useState<string>('');
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  const [reEnrollTeacher, setReEnrollTeacher] = useState<any | null>(null);
 
   // Instant Verification Result Banner (Auto-resets after 3.5 seconds)
   const [verifiedCard, setVerifiedCard] = useState<{
@@ -534,11 +538,23 @@ export default function BiometricAttendanceDesk({
           ? crypto.randomUUID()
           : undefined;
 
+        const calcHours = calculateWorkingHours(nextCheckIn, nextBreakOut, nextBreakIn, nextCheckOut);
+
         const basePayload: any = {
           staff_id: matchedStaff.id,
           date: todayStr,
           status: computedStatus,
           verification_method: 'secugen_fingerprint',
+          morning_in: nextCheckIn,
+          break_out: nextBreakOut || null,
+          break_in: nextBreakIn || null,
+          final_out: nextCheckOut || null,
+          check_in: nextCheckIn,
+          check_out: nextCheckOut || null,
+          total_hours: calcHours,
+          match_score: bestScore,
+          stage: stageAction,
+          whatsapp_status: 'pending',
           notes: notesJson,
         };
         if (assignedId) {
@@ -592,7 +608,17 @@ export default function BiometricAttendanceDesk({
               alsoSendPdf: stageAction === 'checkin' || stageAction === 'checkout',
               settings: settingsProp || settings,
             }
-          ).catch(() => {});
+          ).then(async (waOk) => {
+            const waStatus = waOk ? 'sent' : 'failed';
+            const sentAt = waOk ? new Date().toISOString() : null;
+            if (isSupabaseConfigured) {
+              await supabase
+                .from('staff_attendance')
+                .update({ whatsapp_status: waStatus, whatsapp_sent_at: sentAt })
+                .eq('staff_id', matchedStaff.id)
+                .eq('date', todayStr);
+            }
+          }).catch(() => {});
         }
       })();
     },
@@ -632,43 +658,19 @@ export default function BiometricAttendanceDesk({
 
         setScannerStatus({ connected: true, deviceFound: true });
 
-        // 1:N Fast Template Matching against Enrolled Staff (31+ Faculty, supports 1 or 2 fingers per teacher)
-        let topStaff: any = null;
-        let topStaffScore = 0;
-        let runnerUpStaffScore = 0;
+        // 1:N Millisecond RAM Best-Match against Enrolled Staff (Evaluates ALL candidates, enforces score >= 135 and margin >= 15)
+        const staffBestMatch = secugenService.match1toNBestMatch(
+          res.templateBase64,
+          enrolledStaff,
+          { minScore: 135, minMargin: 15 }
+        );
 
-        for (const teacher of enrolledStaff) {
-          const tpl = teacher.fingerprintTemplate || teacher.fingerprint_template;
-          if (!tpl) continue;
-          const m = await secugenService.matchTemplates(
-            res.templateBase64,
-            tpl,
-            'ISO',
-            teacher.fingerprintFinger || teacher.fingerprint_finger
-          );
-          if (m.score > topStaffScore) {
-            runnerUpStaffScore = topStaffScore;
-            topStaffScore = m.score;
-            topStaff = teacher;
-          } else if (m.score > runnerUpStaffScore) {
-            runnerUpStaffScore = m.score;
-          }
-        }
-
-        // STRICT BIOMETRIC FALSE-POSITIVE & AMBIGUITY GUARDS:
-        // 1. Biological match threshold: >= 95 (self-match scores 120-199; cross-person random overlap peaks at 79).
-        // 2. Candidate Margin Guard: #1 candidate must lead runner-up by >= 25 points if runner-up >= 55.
         let matchedStaff: any = null;
         let bestScore = 0;
 
-        const isUnambiguousStaff =
-          topStaff &&
-          topStaffScore >= 95 &&
-          (runnerUpStaffScore < 55 || topStaffScore - runnerUpStaffScore >= 25);
-
-        if (isUnambiguousStaff) {
-          matchedStaff = topStaff;
-          bestScore = topStaffScore;
+        if (staffBestMatch.matched && staffBestMatch.candidate) {
+          matchedStaff = staffBestMatch.candidate;
+          bestScore = staffBestMatch.score;
         }
 
         // Also check enrolled students if no staff matched
@@ -696,7 +698,7 @@ export default function BiometricAttendanceDesk({
             }
           }
 
-          if (topStu && topStuScore >= 95 && (runnerUpStuScore < 55 || topStuScore - runnerUpStuScore >= 25)) {
+          if (topStu && topStuScore >= 120 && (runnerUpStuScore < 55 || topStuScore - runnerUpStuScore >= 15)) {
             matchedStudent = topStu;
             bestScore = topStuScore;
           }
@@ -708,13 +710,16 @@ export default function BiometricAttendanceDesk({
 
         if (!matchedStaff && !matchedStudent) {
           if (soundEnabled) playKioskSound('error');
-          // If a finger scored borderline (e.g. 70-94) or ambiguous, provide clear guidance
-          const isBorderline = topStaffScore >= 70;
+          let unrecogMsg = 'Fingerprint Not Recognized — Please Place Enrolled Finger Flat on Sensor';
+          if (staffBestMatch.isAmbiguous) {
+            unrecogMsg = `Fingerprint Ambiguous (Score ${staffBestMatch.score}, Margin only ${staffBestMatch.margin}pts) — Please Center Finger Firmly`;
+          } else if (staffBestMatch.score >= 85) {
+            unrecogMsg = `Fingerprint Unclear (Score ${staffBestMatch.score}/199, requires 135) — Please Press Firmly`;
+          }
+
           setVerifiedCard({
             type: 'unrecognized',
-            message: isBorderline
-              ? 'Fingerprint Unclear or Partial — Please Center Finger Firmly on Sensor'
-              : 'Fingerprint Not Recognized — Please Place Enrolled Finger Flat on Sensor',
+            message: unrecogMsg,
             thumbBmp: thumbDataUrl,
           });
           if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
@@ -1414,23 +1419,47 @@ export default function BiometricAttendanceDesk({
                         <p className="text-xs font-black text-white truncate">
                           {teacher.fullName}
                         </p>
-                        {hasFinger ? (
+                        {teacher.primary_finger_template && teacher.secondary_finger_template ? (
                           <span
-                            className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"
-                            title={`Enrolled (${teacher.fingerprintFinger || 'Right Thumb'})`}
-                          />
+                            className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                            title="2 Fingers Enrolled: Right Thumb + Right Index"
+                          >
+                            2 Fingers ✓
+                          </span>
+                        ) : hasFinger ? (
+                          <span
+                            className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                            title="1 Finger Enrolled"
+                          >
+                            1 Finger
+                          </span>
                         ) : (
                           <span
-                            className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold"
-                            title="Fingerprint not yet scanned"
+                            className="px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-[9px] font-bold border border-rose-500/30"
+                            title="Fingerprint not enrolled"
                           >
-                            No Thumb
+                            Not Enrolled
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-slate-400 font-mono truncate">
-                        {teacher.id} • {teacher.role}
-                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-[10px] text-slate-400 font-mono truncate">
+                          {teacher.id} • {teacher.role}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAutoLoopEnabled(false);
+                            setReEnrollTeacher(teacher);
+                          }}
+                          className="px-2 py-0.5 rounded-md text-[9px] font-black bg-teal-600 hover:bg-teal-500 text-white flex items-center gap-1 cursor-pointer transition-all active:scale-95 shadow-sm"
+                          title="Re-Scan 2 Fingers & Auto-Mark Morning In"
+                        >
+                          <Sparkles size={8} />
+                          <span>Re-Scan & Mark</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -1481,6 +1510,16 @@ export default function BiometricAttendanceDesk({
       <footer className="max-w-7xl w-full mx-auto text-center text-xs text-slate-500 pt-2">
         {settings?.collegeName || collegeName} • Fast-Boost SecuGen Biometric Attendance Terminal
       </footer>
+
+      {reEnrollTeacher && (
+        <BiometricReEnrollModal
+          staff={reEnrollTeacher}
+          onClose={() => {
+            setReEnrollTeacher(null);
+            setAutoLoopEnabled(true);
+          }}
+        />
+      )}
     </div>
   );
 }
