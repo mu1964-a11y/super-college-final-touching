@@ -2024,8 +2024,15 @@ export async function sendAutoStaffDailyCheckInNotice(
   const grace = staff?.graceMinutes ?? staff?.grace_minutes ?? 5;
   const isCustomLecturer = Boolean(dutyStart && dutyEnd);
 
+  const isAbsent = attendance.status === 'Absent';
+  const isLeave = attendance.status === 'Personal Leave' || attendance.status === 'Leave' || attendance.status === 'Half Day';
+
   let msg = '';
-  if (isCustomLecturer) {
+  if (isAbsent) {
+    msg = `🏛️ *SUPERIOR COLLEGE JAHANIAN*\n⚠️ *FACULTY ABSENCE ADVISORY*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 *Faculty Member:* *${staffName}* (${role} • ID: *${staffId}*)\n📅 *Date:* *${attendance.date}*\n📌 *Attendance Status:* *ABSENT (Uninformed)*\n📝 *Remarks:* ${attendance.notes || parsed.cleanRemarks || 'Marked absent during morning faculty roll call.'}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n_If you are on duty or have an official leave application, please contact Administration immediately._\n_HR & Administration — Superior College Jahanian_`;
+  } else if (isLeave) {
+    msg = `🏛️ *SUPERIOR COLLEGE JAHANIAN*\n📋 *OFFICIAL FACULTY LEAVE CONFIRMATION*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 *Faculty Member:* *${staffName}* (${role} • ID: *${staffId}*)\n📅 *Date:* *${attendance.date}*\n📌 *Attendance Status:* *${attendance.status.toUpperCase()}*\n📝 *Approved Reason:* ${attendance.notes || parsed.cleanRemarks || 'Approved leave recorded in college ERP portal.'}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n_HR & Administration — Superior College Jahanian_`;
+  } else if (isCustomLecturer) {
     msg = `🏛️ *SUPERIOR COLLEGE JAHANIAN*\n👨‍🏫 *FACULTY LECTURE ATTENDANCE*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 *Lecturer:* *${staffName}* (${role} • ID: *${staffId}*)\n📅 *Date:* *${attendance.date}*\n📌 *Status:* *${(attendance.punchEventLabel || attendance.status).toUpperCase()}*\n📖 *Scheduled Duty:* *${dutyStart}* to *${dutyEnd}* (Grace: ${grace}m)\n${timingBlock}\n🔐 *Mode:* ${attendance.mode || parsed.cleanRemarks || 'Biometric Verified'}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n_Academic Directorate & HR — Superior College Jahanian_`;
   } else {
     msg = `🏛️ *SUPERIOR COLLEGE JAHANIAN*\n🏢 *OFFICIAL STAFF ATTENDANCE LOG*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 *Staff:* *${staffName}* (${role} • ID: *${staffId}*)\n📅 *Date:* *${attendance.date}*\n📌 *Status:* *${(attendance.punchEventLabel || attendance.status).toUpperCase()}*\n⏰ *College Hours:* 08:00 AM – 02:00 PM\n${timingBlock}\n🔐 *Mode:* ${attendance.mode || parsed.cleanRemarks || 'Biometric Verified'}\n━━━━━━━━━━━━━━━━━━━━━━━━━\n_HR & Administration — Superior College Jahanian_`;

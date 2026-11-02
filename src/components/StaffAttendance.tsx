@@ -56,7 +56,11 @@ import {
   calculateWorkingHours,
   BiometricStage,
 } from '../context/BiometricAttendanceContext';
-import { sendAutoStaffAttendancePdfNotice, parseAttendanceNotesAndTime } from '../lib/whatsappAutomation';
+import {
+  sendAutoStaffDailyCheckInNotice,
+  sendAutoStaffAttendancePdfNotice,
+  parseAttendanceNotesAndTime,
+} from '../lib/whatsappAutomation';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface StaffAttendanceProps {
@@ -393,6 +397,74 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
     return Object.values(dailyEntries).filter((e) => e.whatsappStatus === 'failed').length;
   }, [dailyEntries]);
 
+  // Filter staff who are marked Absent, Personal Leave, or Half Day and have NOT been notified yet today
+  const pendingAbsentsAndLeaves = useMemo(() => {
+    return (staffList || []).filter((staff) => {
+      const entry = dailyEntries[staff.id];
+      if (!entry) return false;
+      const isAbsentOrLeave =
+        entry.status === 'Absent' ||
+        entry.status === 'Personal Leave' ||
+        entry.status === 'Half Day';
+      return isAbsentOrLeave && entry.whatsappStatus !== 'sent';
+    });
+  }, [staffList, dailyEntries]);
+
+  const [isNotifyingAbsents, setIsNotifyingAbsents] = useState(false);
+
+  // Dispatch WhatsApp ONLY to Absent and Leave staff members (Present/Late faculty are NEVER messaged)
+  const handleNotifyAbsentsAndLeaves = async () => {
+    if (pendingAbsentsAndLeaves.length === 0) {
+      toast.info('No pending absent or leave staff members to notify for this date.');
+      return;
+    }
+
+    setIsNotifyingAbsents(true);
+    let sentCount = 0;
+    let failedCount = 0;
+
+    for (const staff of pendingAbsentsAndLeaves) {
+      const entry = dailyEntries[staff.id];
+      try {
+        const ok = await sendAutoStaffDailyCheckInNotice(staff, {
+          date: selectedDate,
+          status: entry.status,
+          notes: entry.operatorNotes || '',
+        });
+
+        if (ok) {
+          sentCount++;
+          // Update DB whatsapp_status
+          if (isSupabaseConfigured) {
+            await supabase
+              .from('staff_attendance')
+              .update({
+                whatsapp_status: 'sent',
+                whatsapp_sent_at: new Date().toISOString(),
+              })
+              .eq('staff_id', staff.id)
+              .eq('date', selectedDate);
+          }
+        } else {
+          failedCount++;
+        }
+      } catch {
+        failedCount++;
+      }
+    }
+
+    setIsNotifyingAbsents(false);
+    if (sentCount > 0) {
+      toast.success(`Dispatched WhatsApp notices to ${sentCount} absent/leave faculty members.`, {
+        description: 'All Present faculty were completely skipped to prevent duplicate messages.',
+      });
+      data?.fetchData?.(true);
+    }
+    if (failedCount > 0) {
+      toast.error(`${failedCount} notifications could not be sent. Check WhatsApp connection.`);
+    }
+  };
+
   // Filtered staff list
   const filteredStaff = useMemo(() => {
     return staffList.filter((s) => {
@@ -687,6 +759,18 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
 
         {activeTab === 'daily' && (
           <div className="flex flex-wrap items-center gap-2">
+            {pendingAbsentsAndLeaves.length > 0 && (
+              <Button
+                onClick={handleNotifyAbsentsAndLeaves}
+                disabled={isNotifyingAbsents}
+                className="rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs cursor-pointer shadow-md"
+                title="Send WhatsApp notices ONLY to Absent or Leave staff members (Present/Late faculty skipped)"
+              >
+                {isNotifyingAbsents ? <RefreshCw size={13} className="animate-spin mr-1.5" /> : <Send size={13} className="mr-1.5" />}
+                <span>Notify Absents & Leaves ({pendingAbsentsAndLeaves.length})</span>
+              </Button>
+            )}
+
             <Button
               variant="outline"
               onClick={() => setIsTimingModalOpen(true)}
@@ -1238,6 +1322,43 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                                     Retry
                                   </Button>
                                 </div>
+                              ) : ['Absent', 'Personal Leave', 'Half Day'].includes(status) ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={async () => {
+                                    try {
+                                      const ok = await sendAutoStaffDailyCheckInNotice(staff, {
+                                        date: selectedDate,
+                                        status,
+                                        notes: operatorNotes || '',
+                                      });
+                                      if (ok) {
+                                        toast.success(`Dispatched ${status} notice to ${staff.fullName}`);
+                                        if (isSupabaseConfigured) {
+                                          await supabase
+                                            .from('staff_attendance')
+                                            .update({
+                                              whatsapp_status: 'sent',
+                                              whatsapp_sent_at: new Date().toISOString(),
+                                            })
+                                            .eq('staff_id', staff.id)
+                                            .eq('date', selectedDate);
+                                        }
+                                        data?.fetchData?.(true);
+                                      } else {
+                                        toast.error(`Could not deliver WhatsApp notice to ${staff.fullName}`);
+                                      }
+                                    } catch {
+                                      toast.error(`Failed to send WhatsApp message`);
+                                    }
+                                  }}
+                                  className="h-7 px-2 text-[10px] font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border-amber-200 rounded-lg cursor-pointer flex items-center gap-1 shadow-2xs"
+                                  title={`Send WhatsApp ${status} notice to ${staff.fullName}`}
+                                >
+                                  <Send size={10} />
+                                  <span>Notify {status === 'Absent' ? 'Absent' : 'Leave'}</span>
+                                </Button>
                               ) : (
                                 <span className="text-slate-300 font-mono text-xs">—</span>
                               )}
@@ -1621,40 +1742,273 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
       )}
 
       {/* 30-Day Biometric Staff Attendance Dossier Modal */}
-      {selectedDossierStaff && (
-        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden">
-            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-teal-950 text-white p-5 flex items-center justify-between">
-              <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-teal-300 font-bold overflow-hidden shrink-0">
-                  {selectedDossierStaff.photo ? (
-                    <img src={selectedDossierStaff.photo} alt={selectedDossierStaff.fullName} className="w-full h-full object-cover" />
-                  ) : (
-                    (selectedDossierStaff.fullName || 'S').slice(0, 2).toUpperCase()
-                  )}
+      {selectedDossierStaff && (() => {
+        const stats = getMonthlyStats(selectedDossierStaff.id);
+        const [yearStr, monthStr] = reportMonth.split('-');
+        const year = parseInt(yearStr) || new Date().getFullYear();
+        const month = parseInt(monthStr) || new Date().getMonth() + 1;
+        const daysInMonth = new Date(year, month, 0).getDate();
+
+        // Query records for this staff member in reportMonth
+        const staffMonthRecords = records.filter(
+          (r: any) =>
+            (r.staffId || r.staff_id) === selectedDossierStaff.id &&
+            r.date &&
+            r.date.startsWith(reportMonth)
+        );
+
+        const daysList = [];
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dateStr = `${reportMonth}-${String(d).padStart(2, '0')}`;
+          const jsDate = new Date(year, month - 1, d);
+          const dayName = jsDate.toLocaleDateString('en-US', { weekday: 'short' });
+          const isSunday = jsDate.getDay() === 0;
+
+          let rec = staffMonthRecords.find((r: any) => r.date === dateStr);
+          if (!rec && dateStr === getTodayDateStr()) {
+            rec = todayAttendance.find(
+              (r: any) => (r.staff_id || r.staffId) === selectedDossierStaff.id && r.date === dateStr
+            );
+          }
+
+          const parsed = rec
+            ? parseAttendanceNotesAndTime(
+                rec.notes,
+                rec.morning_in || rec.check_in || rec.checkIn,
+                rec.final_out || rec.check_out || rec.checkOut
+              )
+            : { checkIn: null, breakOut: null, breakIn: null, checkOut: null, cleanRemarks: '' };
+
+          const morningIn = rec?.morning_in || parsed.checkIn || (rec?.checkIn && rec?.checkIn !== '08:00' ? rec?.checkIn : null);
+          const breakOut = rec?.break_out || parsed.breakOut || null;
+          const breakIn = rec?.break_in || parsed.breakIn || null;
+          const finalOut = rec?.final_out || parsed.checkOut || (rec?.checkOut && rec?.checkOut !== '14:00' ? rec?.checkOut : null);
+          const totalHours = rec?.total_hours !== undefined ? rec.total_hours : calculateWorkingHours(morningIn, breakOut, breakIn, finalOut);
+          const status = rec?.status || (isSunday ? 'Sunday Holiday' : 'Not Marked');
+          const notes = rec?.operator_notes || parsed.cleanRemarks || '';
+          const waStatus = rec?.whatsapp_status || 'pending';
+
+          daysList.push({
+            date: dateStr,
+            dayNum: d,
+            dayName,
+            isSunday,
+            morningIn,
+            breakOut,
+            breakIn,
+            finalOut,
+            totalHours,
+            status,
+            notes,
+            waStatus,
+            hasRecord: !!rec,
+          });
+        }
+
+        // Export individual staff monthly PDF
+        const handleExportIndividualPDF = () => {
+          const doc = new jsPDF();
+          doc.setFontSize(14);
+          doc.text('SUPERIOR COLLEGE JAHANIAN', 14, 15);
+          doc.setFontSize(10);
+          doc.text(`Faculty 30-Day Biometric Attendance Dossier • ${selectedDossierStaff.fullName} (${selectedDossierStaff.id})`, 14, 22);
+          doc.text(`Month: ${reportMonth} • Role: ${selectedDossierStaff.role || 'Faculty'} • Phone: ${selectedDossierStaff.contact || 'N/A'}`, 14, 28);
+
+          const tableRows = daysList.map((d) => [
+            `${d.date} (${d.dayName})`,
+            d.status,
+            d.morningIn || '—',
+            d.breakOut || '—',
+            d.breakIn || '—',
+            d.finalOut || '—',
+            d.totalHours !== null && d.totalHours !== undefined ? `${d.totalHours}h` : '—',
+            d.notes || (d.isSunday ? 'Weekly Off' : '—'),
+          ]);
+
+          autoTable(doc, {
+            startY: 33,
+            head: [['Date', 'Status', 'In', 'Break Out', 'Break In', 'Out', 'Hours', 'Remarks']],
+            body: tableRows,
+            theme: 'grid',
+            headStyles: { fillColor: [6, 78, 67] },
+            styles: { fontSize: 8 },
+          });
+
+          doc.save(`SCJ_Attendance_${selectedDossierStaff.id}_${reportMonth}.pdf`);
+          toast.success(`Dossier PDF downloaded for ${selectedDossierStaff.fullName}`);
+        };
+
+        return (
+          <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-md z-[10000] flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200 select-none">
+            <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-teal-950 text-white p-5 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-teal-300 font-bold overflow-hidden shrink-0 shadow-inner">
+                    {selectedDossierStaff.photo ? (
+                      <img src={selectedDossierStaff.photo} alt={selectedDossierStaff.fullName} className="w-full h-full object-cover" />
+                    ) : (
+                      (selectedDossierStaff.fullName || 'S').slice(0, 2).toUpperCase()
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base sm:text-lg font-black text-white">{selectedDossierStaff.fullName}</h3>
+                      <span className="font-mono text-xs text-amber-300 font-bold">({selectedDossierStaff.id})</span>
+                    </div>
+                    <p className="text-xs text-slate-300">
+                      {selectedDossierStaff.role || selectedDossierStaff.designation || 'Faculty Member'} • Phone: <strong className="text-emerald-300">{selectedDossierStaff.contact || 'N/A'}</strong>
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-white">{selectedDossierStaff.fullName}</h3>
-                  <p className="text-xs text-slate-300">
-                    Faculty 30-Day Biometric Audit Dossier • Month: <strong className="text-amber-300">{reportMonth}</strong>
-                  </p>
+
+                {/* Header Actions */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => sendAutoStaffAttendancePdfNotice(selectedDossierStaff.id, selectedDossierStaff.contact, reportMonth)}
+                    className="h-8 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-400/40 text-xs font-bold gap-1 cursor-pointer"
+                    title="Send Full Month Cumulative Attendance PDF to Teacher WhatsApp"
+                  >
+                    📄 Send WA PDF
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleExportIndividualPDF}
+                    className="h-8 rounded-xl bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs font-bold gap-1 cursor-pointer"
+                    title="Download Official PDF Dossier"
+                  >
+                    <Download size={13} /> Export PDF
+                  </Button>
+                  <button
+                    onClick={() => setSelectedDossierStaff(null)}
+                    className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
                 </div>
               </div>
-              <button
-                onClick={() => setSelectedDossierStaff(null)}
-                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-              <Button onClick={() => setSelectedDossierStaff(null)} className="rounded-xl font-bold">
-                Close Dossier
-              </Button>
+
+              {/* Quick Metric Rollup Strip */}
+              <div className="bg-slate-50 border-b border-slate-100 p-4 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5 shrink-0 text-center">
+                <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase">Work Days</div>
+                  <div className="text-base font-black text-slate-800">{stats.totalWorkingDays}</div>
+                </div>
+                <div className="bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-200 shadow-2xs">
+                  <div className="text-[10px] font-bold text-emerald-700 uppercase">Present</div>
+                  <div className="text-base font-black text-emerald-800">{stats.present}</div>
+                </div>
+                <div className="bg-amber-50/50 p-2.5 rounded-xl border border-amber-200 shadow-2xs">
+                  <div className="text-[10px] font-bold text-amber-700 uppercase">Late</div>
+                  <div className="text-base font-black text-amber-800">{stats.late}</div>
+                </div>
+                <div className="bg-rose-50/50 p-2.5 rounded-xl border border-rose-200 shadow-2xs">
+                  <div className="text-[10px] font-bold text-rose-700 uppercase">Absent</div>
+                  <div className="text-base font-black text-rose-800">{stats.absent}</div>
+                </div>
+                <div className="bg-blue-50/50 p-2.5 rounded-xl border border-blue-200 shadow-2xs">
+                  <div className="text-[10px] font-bold text-blue-700 uppercase">Leaves</div>
+                  <div className="text-base font-black text-blue-800">{stats.personalLeave}</div>
+                </div>
+                <div className="bg-teal-50/50 p-2.5 rounded-xl border border-teal-200 shadow-2xs">
+                  <div className="text-[10px] font-bold text-teal-700 uppercase">Total Hours</div>
+                  <div className="text-base font-black text-teal-800">{stats.totalHours}h</div>
+                </div>
+                <div className="bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-200 shadow-2xs">
+                  <div className="text-[10px] font-bold text-emerald-700 uppercase">WA Delivered</div>
+                  <div className="text-base font-black text-emerald-800">{stats.waDelivered}</div>
+                </div>
+              </div>
+
+              {/* Day-by-Day Historical Attendance Table */}
+              <div className="overflow-y-auto max-h-[58vh] p-4 flex-1">
+                <Table>
+                  <TableHeader className="bg-slate-50 sticky top-0 z-10 shadow-xs">
+                    <TableRow>
+                      <TableHead className="w-28 pl-4 font-black uppercase text-[10px] text-slate-400">Date & Day</TableHead>
+                      <TableHead className="w-28 font-black uppercase text-[10px] text-slate-400 text-center">Status</TableHead>
+                      <TableHead className="w-24 font-black uppercase text-[10px] text-slate-400 text-center">Morning In</TableHead>
+                      <TableHead className="w-24 font-black uppercase text-[10px] text-slate-400 text-center">Break Out</TableHead>
+                      <TableHead className="w-24 font-black uppercase text-[10px] text-slate-400 text-center">Break In</TableHead>
+                      <TableHead className="w-24 font-black uppercase text-[10px] text-slate-400 text-center">Final Out</TableHead>
+                      <TableHead className="w-20 font-black uppercase text-[10px] text-slate-400 text-center">Hours</TableHead>
+                      <TableHead className="font-black uppercase text-[10px] text-slate-400">Notes / Remarks</TableHead>
+                      <TableHead className="w-24 font-black uppercase text-[10px] text-slate-400 pr-4 text-right">WhatsApp</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {daysList.map((d) => (
+                      <TableRow
+                        key={d.date}
+                        className={cn(
+                          'hover:bg-slate-50/80 border-b border-slate-100 transition-colors',
+                          d.isSunday && 'bg-slate-50/40 text-slate-400'
+                        )}
+                      >
+                        <TableCell className="pl-4 font-mono text-xs font-bold text-slate-800">
+                          {d.date} <span className="text-[10px] font-normal text-slate-500">({d.dayName})</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span
+                            className={cn(
+                              'px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border',
+                              d.status === 'Present'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                : d.status === 'Late'
+                                ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                : d.status === 'Personal Leave' || d.status === 'Leave'
+                                ? 'bg-blue-50 text-blue-800 border-blue-300'
+                                : d.status === 'Absent'
+                                ? 'bg-rose-50 text-rose-800 border-rose-300'
+                                : 'bg-slate-100 text-slate-500 border-slate-200'
+                            )}
+                          >
+                            {d.status}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center font-mono text-xs text-slate-700">{d.morningIn || '—'}</TableCell>
+                        <TableCell className="text-center font-mono text-xs text-slate-700">{d.breakOut || '—'}</TableCell>
+                        <TableCell className="text-center font-mono text-xs text-slate-700">{d.breakIn || '—'}</TableCell>
+                        <TableCell className="text-center font-mono text-xs text-slate-700">{d.finalOut || '—'}</TableCell>
+                        <TableCell className="text-center font-mono font-bold text-xs text-slate-800">
+                          {d.totalHours !== null && d.totalHours !== undefined ? `${d.totalHours}h` : '—'}
+                        </TableCell>
+                        <TableCell className="text-xs text-slate-600 font-medium">
+                          {d.notes || (d.isSunday ? <span className="italic text-slate-400">Weekly Off</span> : '—')}
+                        </TableCell>
+                        <TableCell className="text-right pr-4">
+                          {d.waStatus === 'sent' ? (
+                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              ✓ Sent
+                            </span>
+                          ) : d.hasRecord ? (
+                            <span className="text-[10px] font-mono text-slate-400">Pending</span>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between shrink-0">
+                <span className="text-xs text-slate-500 font-medium">
+                  Showing 30-day verified attendance register for <strong className="text-slate-700">{selectedDossierStaff.fullName}</strong>
+                </span>
+                <Button onClick={() => setSelectedDossierStaff(null)} className="rounded-xl font-bold text-xs cursor-pointer">
+                  Close Dossier
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
