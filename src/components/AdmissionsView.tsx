@@ -49,6 +49,9 @@ import {
   Award,
   X,
   BookOpen,
+  UserCheck,
+  Clock,
+  Archive,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
@@ -120,6 +123,7 @@ export default function AdmissionsView({
 }) {
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearch = useDebounce(searchTerm, 300);
+  const [admissionScope, setAdmissionScope] = useState<"enrolled" | "prospective" | "archive" | "all">("enrolled");
   const [feeFilter, setFeeFilter] = useState<string>(initialFilter || "all");
   const [admittedFilter, setAdmittedFilter] = useState<string>("all");
   const [genderFilter, setGenderFilter] = useState<string>("all");
@@ -170,9 +174,65 @@ export default function AdmissionsView({
     }
   }, [program]);
 
-  // Real-time comprehensive cohort counters across the entire database
+  const activeStudentIdSet = useMemo(() => {
+    return new Set((data.students || []).map((s: any) => (s.id || "").toUpperCase()));
+  }, [data.students]);
+
+  const activeStudentNameMap = useMemo(() => {
+    const map = new Map<string, any>();
+    (data.students || []).forEach((s: any) => {
+      const key = `${(s.fullName || s.name || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "")}__${(s.fatherName || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+      map.set(key, s);
+    });
+    return map;
+  }, [data.students]);
+
+  const scopeCounts = useMemo(() => {
+    const list: Admission[] = data.admissions || [];
+    let enrolled = 0;
+    let prospective = 0;
+    let archive = 0;
+
+    for (const a of list) {
+      const sid = (a.studentId || (a as any).student_id || "").toUpperCase();
+      const key = `${(a.fullName || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "")}__${(a.fatherName || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+      const isEnrolled = (sid && activeStudentIdSet.has(sid)) || activeStudentNameMap.has(key);
+
+      const statusStr = String(a.status || "").toLowerCase();
+      const isPros = statusStr === "prospective" || statusStr === "inquiry" || a.isAdmitted === false;
+
+      if (isEnrolled) enrolled++;
+      else if (isPros) prospective++;
+      else archive++;
+    }
+
+    return { enrolled, prospective, archive, all: list.length };
+  }, [data.admissions, activeStudentIdSet, activeStudentNameMap]);
+
+  // Real-time comprehensive cohort counters across the selected admission scope
   const quickStats = useMemo(() => {
-    const list = data.admissions || [];
+    let list = data.admissions || [];
+    if (admissionScope === "enrolled") {
+      list = list.filter((a: Admission) => {
+        const sid = (a.studentId || (a as any).student_id || "").toUpperCase();
+        const key = `${(a.fullName || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "")}__${(a.fatherName || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+        return (sid && activeStudentIdSet.has(sid)) || activeStudentNameMap.has(key);
+      });
+    } else if (admissionScope === "prospective") {
+      list = list.filter((a: Admission) => {
+        const statusStr = String(a.status || "").toLowerCase();
+        return statusStr === "prospective" || statusStr === "inquiry" || a.isAdmitted === false;
+      });
+    } else if (admissionScope === "archive") {
+      list = list.filter((a: Admission) => {
+        const sid = (a.studentId || (a as any).student_id || "").toUpperCase();
+        const key = `${(a.fullName || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "")}__${(a.fatherName || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+        const isEnrolled = (sid && activeStudentIdSet.has(sid)) || activeStudentNameMap.has(key);
+        const rawStatusLower = String(a.status || "").toLowerCase();
+        const isPros = rawStatusLower === "prospective" || rawStatusLower === "inquiry" || a.isAdmitted === false;
+        return !isEnrolled && !isPros;
+      });
+    }
     let interTotal = 0, bsTotal = 0, adsTotal = 0, ditTotal = 0, ukl3Total = 0;
     let p1Boys = 0, p1Girls = 0, p2Boys = 0, p2Girls = 0;
     let interSess26_28 = 0, interSess25_27 = 0;
@@ -245,11 +305,22 @@ export default function AdmissionsView({
       dit: { total: ditTotal },
       ukl3: { total: ukl3Total }
     };
-  }, [data.admissions]);
+  }, [data.admissions, admissionScope, activeStudentIdSet, activeStudentNameMap]);
 
   const filteredAdmissions = useMemo(() => {
     return (data.admissions || [])
       .filter((a: Admission) => {
+        // 0. Scope Filter: Enrolled (835) vs Prospective vs Archive vs All
+        const sid = (a.studentId || (a as any).student_id || "").toUpperCase();
+        const key = `${(a.fullName || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "")}__${(a.fatherName || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+        const isEnrolled = (sid && activeStudentIdSet.has(sid)) || activeStudentNameMap.has(key);
+        const rawStatusLower = String(a.status || "").toLowerCase();
+        const isPros = rawStatusLower === "prospective" || rawStatusLower === "inquiry" || a.isAdmitted === false;
+
+        if (admissionScope === "enrolled" && !isEnrolled) return false;
+        if (admissionScope === "prospective" && !isPros) return false;
+        if (admissionScope === "archive" && (isEnrolled || isPros)) return false;
+
         const groupLower = (a.group || "").toLowerCase();
         const categoryLower = (a.category || "").toLowerCase();
         const sessNorm = normalizeSessionString(a.session);
@@ -367,6 +438,9 @@ export default function AdmissionsView({
       });
   }, [
     data.admissions,
+    admissionScope,
+    activeStudentIdSet,
+    activeStudentNameMap,
     activeStreamFilter,
     activeStageFilter,
     activeSessionFilter,
@@ -1749,6 +1823,131 @@ export default function AdmissionsView({
               <Globe size={13} />
               <span>U.K. Level 3 International Intake: {quickStats.ukl3.total} Total Registered Candidates</span>
             </div>
+          )}
+        </div>
+      </div>
+
+      {/* Scope Segmented Control: Active Enrolled (835) vs Prospective vs Archive vs All */}
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              setAdmissionScope("enrolled");
+              setAdmittedFilter("all");
+              setFeeFilter("all");
+            }}
+            className={cn(
+              "px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer",
+              admissionScope === "enrolled"
+                ? "bg-emerald-600 text-white shadow-xs"
+                : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700"
+            )}
+          >
+            <UserCheck size={14} />
+            <span>Active Enrolled Scholars</span>
+            <span className={cn(
+              "text-[10.5px] px-2 py-0.5 rounded-full font-mono font-black",
+              admissionScope === "enrolled" ? "bg-white/25 text-white" : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+            )}>
+              {scopeCounts.enrolled}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setAdmissionScope("prospective");
+              setAdmittedFilter("all");
+              setFeeFilter("all");
+            }}
+            className={cn(
+              "px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer",
+              admissionScope === "prospective"
+                ? "bg-amber-600 text-white shadow-xs"
+                : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700"
+            )}
+          >
+            <Clock size={14} />
+            <span>Prospective Forms & Inquiries</span>
+            <span className={cn(
+              "text-[10.5px] px-2 py-0.5 rounded-full font-mono font-black",
+              admissionScope === "prospective" ? "bg-white/25 text-white" : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+            )}>
+              {scopeCounts.prospective}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setAdmissionScope("archive");
+              setAdmittedFilter("all");
+              setFeeFilter("all");
+            }}
+            className={cn(
+              "px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer",
+              admissionScope === "archive"
+                ? "bg-slate-700 text-white shadow-xs"
+                : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700"
+            )}
+          >
+            <Archive size={14} />
+            <span>Past Sessions & Left Archive</span>
+            <span className={cn(
+              "text-[10.5px] px-2 py-0.5 rounded-full font-mono font-black",
+              admissionScope === "archive" ? "bg-white/25 text-white" : "bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-300"
+            )}>
+              {scopeCounts.archive}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setAdmissionScope("all");
+              setAdmittedFilter("all");
+              setFeeFilter("all");
+            }}
+            className={cn(
+              "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+              admissionScope === "all"
+                ? "bg-slate-900 text-white shadow-xs dark:bg-white dark:text-slate-900"
+                : "text-slate-500 hover:bg-slate-200/70 dark:hover:bg-slate-700"
+            )}
+          >
+            <Layers size={14} />
+            <span>All History</span>
+            <span className="text-[10.5px] px-2 py-0.5 rounded-full font-mono font-black bg-slate-200/70 dark:bg-slate-700">
+              {scopeCounts.all}
+            </span>
+          </button>
+        </div>
+
+        <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 px-2 flex items-center gap-1.5">
+          {admissionScope === "enrolled" && (
+            <>
+              <CheckCircle2 size={13} className="text-emerald-600" />
+              <span>Showing verified enrolled college scholars (100% matched to student roster)</span>
+            </>
+          )}
+          {admissionScope === "prospective" && (
+            <>
+              <Clock size={13} className="text-amber-600" />
+              <span>Showing applicants who submitted admission forms or inquiries but pending regular enrollment</span>
+            </>
+          )}
+          {admissionScope === "archive" && (
+            <>
+              <Archive size={13} className="text-slate-500" />
+              <span>Showing historical admissions from prior sessions and archived left students</span>
+            </>
+          )}
+          {admissionScope === "all" && (
+            <>
+              <Layers size={13} className="text-slate-500" />
+              <span>Showing all-time admissions application registry</span>
+            </>
           )}
         </div>
       </div>
