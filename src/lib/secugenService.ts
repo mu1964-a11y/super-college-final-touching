@@ -423,6 +423,19 @@ class SecuGenService {
   }
 
   /**
+   * Manually sets or refreshes positive scanner status when a successful capture occurs.
+   */
+  notifyScannerOnline(endpoint?: string) {
+    if (endpoint) this.activeEndpoint = endpoint;
+    this.cachedStatus = {
+      connected: true,
+      deviceFound: true,
+      endpoint: this.activeEndpoint || SECUGEN_ENDPOINTS[0],
+      checkedAt: Date.now(),
+    };
+  }
+
+  /**
    * Checks whether the local SecuGen WebAPI service (SGIBioSrv) is running and device is attached.
    * CRITICAL: Never interrupts an active finger capture and caches positive status so background
    * polling in App.tsx never locks the USB scanner (preventing ErrorCode 59 Device Busy).
@@ -436,7 +449,7 @@ class SecuGenService {
       };
     }
 
-    if (!forceRefresh && this.cachedStatus && this.cachedStatus.connected && Date.now() - this.cachedStatus.checkedAt < 60000) {
+    if (!forceRefresh && this.cachedStatus && this.cachedStatus.connected && Date.now() - this.cachedStatus.checkedAt < 30000) {
       return {
         connected: this.cachedStatus.connected,
         deviceFound: this.cachedStatus.deviceFound,
@@ -454,11 +467,11 @@ class SecuGenService {
       }
       try {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 1200);
+        const timer = setTimeout(() => controller.abort(), 3500);
         const res = await fetch(`${base}/SGIFPCapture`, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-          body: 'Timeout=100&Quality=40&templateFormat=ISO',
+          body: 'Timeout=400&Quality=40&templateFormat=ISO',
           signal: controller.signal,
         });
         clearTimeout(timer);

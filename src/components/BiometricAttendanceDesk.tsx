@@ -23,7 +23,7 @@ import {
 import BiometricLivePulse from './BiometricLivePulse';
 import BiometricReEnrollModal from './BiometricReEnrollModal';
 import { secugenService } from '../lib/secugenService';
-import { calculateWorkingHours } from '../context/BiometricAttendanceContext';
+import { calculateWorkingHours, useBiometricAttendance } from '../context/BiometricAttendanceContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { safeLocalStorage } from '../utils/safeStorage';
 import {
@@ -192,9 +192,27 @@ export default function BiometricAttendanceDesk({
   // Single check-in WhatsApp notification per staff member per day
   const whatsappDispatchedTodayRef = useRef<Set<string>>(new Set());
 
+  // Connect to global biometric context safely
+  let bioCtx: any = null;
+  try {
+    bioCtx = useBiometricAttendance();
+  } catch {}
+  const notifyScannerOnline = bioCtx?.notifyScannerOnline;
+
   useEffect(() => {
     autoLoopActiveRef.current = autoLoopEnabled;
   }, [autoLoopEnabled]);
+
+  // Escape key listener to close and return to ERP
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && onBackToApp) {
+        onBackToApp();
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [onBackToApp]);
 
   // Live digital clock
   useEffect(() => {
@@ -306,9 +324,12 @@ export default function BiometricAttendanceDesk({
     const st = await secugenService.getStatus();
     if (isMountedRef.current) {
       setScannerStatus({ connected: st.connected, deviceFound: st.deviceFound });
+      if (st.connected && st.deviceFound) {
+        notifyScannerOnline?.();
+      }
     }
     return st;
-  }, []);
+  }, [notifyScannerOnline]);
 
   useEffect(() => {
     checkHardwareStatus();
@@ -657,6 +678,7 @@ export default function BiometricAttendanceDesk({
             : undefined);
 
         setScannerStatus({ connected: true, deviceFound: true });
+        notifyScannerOnline?.();
 
         // 1:N Millisecond RAM Best-Match against Enrolled Staff (Evaluates ALL candidates, enforces score >= 135 and margin >= 15)
         const staffBestMatch = secugenService.match1toNBestMatch(
@@ -978,31 +1000,31 @@ export default function BiometricAttendanceDesk({
   }, [staffList, searchRoster]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-between p-4 sm:p-6 select-none">
-      {/* Top Institutional Kiosk Header */}
-      <header className="max-w-7xl w-full mx-auto flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/10">
+    <div className="fixed inset-0 z-[9999] overflow-y-auto bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-teal-950/60 via-slate-950 to-slate-950 text-white flex flex-col justify-between p-3 sm:p-6 select-none animate-in fade-in duration-150">
+      {/* Top Institutional Kiosk Header (High Contrast, Bold, Legible) */}
+      <header className="max-w-7xl w-full mx-auto bg-slate-900 border border-emerald-500/30 rounded-2xl p-4 sm:px-6 flex flex-wrap items-center justify-between gap-4 shadow-2xl mb-4 shrink-0">
         <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 p-2 flex items-center justify-center shrink-0">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 p-1.5 flex items-center justify-center shrink-0 shadow-inner">
             <img src={collegeLogo} alt={collegeName} className="w-full h-full object-contain" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-black tracking-tight text-white">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-base sm:text-xl font-black tracking-tight text-white drop-shadow-sm">
                 {settings?.collegeName || collegeName}
               </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                4-Stage Movement & Attendance Terminal
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">
+                4-Stage Biometric Terminal
               </span>
             </div>
-            <p className="text-xs text-slate-400">
-              Morning In • Mid-Day Break Out • Break Return In • Final Off-Duty Out
+            <p className="text-xs font-semibold text-slate-300 mt-0.5">
+              Morning In • Mid-Day Break Out • Break Return In • Final Off-Duty Check-Out
             </p>
           </div>
         </div>
 
-        {/* Right Controls: Live Clock, Audio/Voice Toggles & Return Button */}
+        {/* Right Controls: Live Clock, Auto-Scan Toggle, Sound & Prominent Close Button */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <div className="px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 flex items-center gap-2 font-mono text-xs font-bold text-amber-300">
+          <div className="px-3.5 py-2 rounded-xl bg-slate-950 border border-white/15 flex items-center gap-2 font-mono text-xs font-bold text-amber-300 shadow-inner">
             <Clock size={14} className="text-emerald-400" />
             <span>{formatTime12h(currentTime)}</span>
           </div>
@@ -1012,8 +1034,8 @@ export default function BiometricAttendanceDesk({
             onClick={() => setAutoLoopEnabled((v) => !v)}
             className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 border transition-all cursor-pointer ${
               autoLoopEnabled
-                ? 'bg-emerald-600/25 border-emerald-400/50 text-emerald-300'
-                : 'bg-slate-900 border-white/15 text-slate-400'
+                ? 'bg-emerald-600/30 border-emerald-400 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.3)]'
+                : 'bg-slate-800 border-white/20 text-slate-400'
             }`}
             title="Toggle Continuous Zero-Click Auto-Scanning"
           >
@@ -1031,8 +1053,8 @@ export default function BiometricAttendanceDesk({
             }}
             className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
               soundEnabled
-                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-                : 'bg-slate-900 border-white/10 text-slate-500'
+                ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                : 'bg-slate-800 border-white/10 text-slate-500'
             }`}
             title={soundEnabled ? 'Sound & Voice Feedback Enabled' : 'Muted'}
           >
@@ -1043,10 +1065,11 @@ export default function BiometricAttendanceDesk({
             <button
               type="button"
               onClick={onBackToApp}
-              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-bold flex items-center gap-2 cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white border border-rose-400/50 text-xs font-black flex items-center gap-2 shadow-lg shadow-rose-950/60 cursor-pointer transition-all active:scale-95"
+              title="Close Biometric Desk and return to ERP (Esc)"
             >
-              <ArrowLeft size={14} />
-              <span>Return to ERP</span>
+              <X size={15} />
+              <span>Close / Return to ERP</span>
             </button>
           )}
         </div>
@@ -1510,6 +1533,20 @@ export default function BiometricAttendanceDesk({
       <footer className="max-w-7xl w-full mx-auto text-center text-xs text-slate-500 pt-2">
         {settings?.collegeName || collegeName} • Fast-Boost SecuGen Biometric Attendance Terminal
       </footer>
+
+      {/* Floating Return Pill (Failsafe) */}
+      {onBackToApp && (
+        <button
+          type="button"
+          onClick={onBackToApp}
+          className="fixed bottom-4 right-4 z-50 px-4 py-2.5 rounded-2xl bg-slate-900/95 hover:bg-slate-800 text-white border border-rose-500/40 shadow-2xl flex items-center gap-2 text-xs font-black backdrop-blur-md cursor-pointer transition-all hover:scale-105 active:scale-95"
+          title="Exit Kiosk and Return to ERP (Esc)"
+        >
+          <X size={15} className="text-rose-400" />
+          <span>Exit Kiosk</span>
+          <kbd className="px-1.5 py-0.5 rounded bg-black/50 text-[9px] font-mono text-slate-400 border border-white/10">Esc</kbd>
+        </button>
+      )}
 
       {reEnrollTeacher && (
         <BiometricReEnrollModal

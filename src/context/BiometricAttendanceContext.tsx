@@ -93,7 +93,11 @@ export interface BiometricContextType {
 
   // Helpers & Sound
   playSound: (type: 'checkin' | 'checkout' | 'duplicate' | 'error' | 'undo') => void;
+  notifyScannerOnline: () => void;
   collegeStartTime: string;
+  collegeEndTime: string;
+  collegeGraceMinutes: number;
+  updateDutyTiming: (start: string, end: string, graceMinutes: number) => Promise<boolean>;
 }
 
 const BiometricAttendanceContext = createContext<BiometricContextType | null>(null);
@@ -248,6 +252,8 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
   const [punchMode, setPunchMode] = useState<PunchMode>('auto');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [collegeStartTime, setCollegeStartTime] = useState<string>('07:54');
+  const [collegeEndTime, setCollegeEndTime] = useState<string>('14:00');
+  const [collegeGraceMinutes, setCollegeGraceMinutes] = useState<number>(5);
 
   // In-Memory RAM Cache & Live Records
   const [staffRamCache, setStaffRamCache] = useState<BiometricCachedStaff[]>([]);
@@ -352,7 +358,7 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
     }
   }, []);
 
-  // 4. Load Settings (College Start Time)
+  // 4. Load Settings (Duty Timings & Cutoff)
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     supabase
@@ -361,12 +367,42 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
       .limit(1)
       .maybeSingle()
       .then(({ data }) => {
-        if (data?.config?.collegeStartTime) {
-          setCollegeStartTime(data.config.collegeStartTime);
+        if (data?.config) {
+          if (data.config.collegeStartTime) setCollegeStartTime(data.config.collegeStartTime);
+          if (data.config.collegeEndTime) setCollegeEndTime(data.config.collegeEndTime);
+          if (data.config.collegeGraceMinutes !== undefined) setCollegeGraceMinutes(Number(data.config.collegeGraceMinutes));
         }
       })
       .catch(() => {});
   }, []);
+
+  // 4b. Continuous Background Scanner Status Polling (Self-Healing)
+  useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
+    let isMounted = true;
+
+    const poll = async () => {
+      if (!isMounted) return;
+      try {
+        const res = await secugenService.getStatus(false);
+        if (isMounted) {
+          setScannerStatus({ connected: !!res.connected, deviceFound: !!res.deviceFound, checking: false });
+        }
+      } catch {}
+
+      if (isMounted) {
+        // Fast 4s poll if scanner is offline/unplugged, 25s check if connected
+        const interval = scannerStatus.connected && scannerStatus.deviceFound ? 25000 : 4000;
+        timer = setTimeout(poll, interval);
+      }
+    };
+
+    timer = setTimeout(poll, 1500);
+    return () => {
+      isMounted = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [scannerStatus.connected, scannerStatus.deviceFound]);
 
   // 5. Setup BroadcastChannel and Supabase Realtime Subscription for Instant Sync
   useEffect(() => {
@@ -408,6 +444,12 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
           setLastMatch(null);
         } else if (msg.type === 'CACHE_UPDATED') {
           refreshStaffCache();
+        } else if (msg.type === 'SCANNER_STATUS') {
+          setScannerStatus({ connected: !!msg.connected, deviceFound: !!msg.deviceFound, checking: false });
+        } else if (msg.type === 'DUTY_TIMING_UPDATED') {
+          if (msg.collegeStartTime) setCollegeStartTime(msg.collegeStartTime);
+          if (msg.collegeEndTime) setCollegeEndTime(msg.collegeEndTime);
+          if (msg.collegeGraceMinutes !== undefined) setCollegeGraceMinutes(msg.collegeGraceMinutes);
         }
       };
     } catch {}
@@ -555,11 +597,11 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
         finalOut = displayTime;
       }
 
-      // Compute status based on arrival time vs collegeStartTime
+      // Compute status based on arrival time vs (collegeStartTime + graceMinutes)
       let status = existingRec?.status || 'Present';
       if (morningIn) {
         const inMins = timeStringToMinutes(morningIn);
-        const cutMins = timeStringToMinutes(collegeStartTime) ?? (7 * 60 + 54);
+        const cutMins = (timeStringToMinutes(collegeStartTime) ?? (7 * 60 + 54)) + (collegeGraceMinutes ?? 5);
         if (inMins !== null && inMins > cutMins) {
           status = 'Late';
         } else if (status === 'Absent' || !existingRec?.status) {
@@ -984,7 +1026,14 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
       const breakOut = updates.breakOut !== undefined ? updates.breakOut : existingRec?.break_out || null;
       const breakIn = updates.breakIn !== undefined ? updates.breakIn : existingRec?.break_in || null;
       const finalOut = updates.finalOut !== undefined ? updates.finalOut : existingRec?.final_out || null;
-      const status = updates.status !== undefined ? updates.status : existingRec?.status || 'Present';
+      let status = updates.status !== undefined ? updates.status : existingRec?.status || 'Present';
+      if (updates.status === undefined && updates.morningIn !== undefined && updates.morningIn) {
+        const arrivalMins = timeStringToMinutes(updates.morningIn);
+        const cutMins = (timeStringToMinutes(collegeStartTime) ?? (7 * 60 + 54)) + (collegeGraceMinutes ?? 5);
+        if (arrivalMins !== null && !['Absent', 'Personal Leave', 'College Holiday', 'Public Holiday'].includes(status)) {
+          status = arrivalMins > cutMins ? 'Late' : 'Present';
+        }
+      }
       const notes = updates.notes !== undefined ? updates.notes : existingRec?.operator_notes || '';
 
       const totalHours = calculateWorkingHours(morningIn, breakOut, breakIn, finalOut);
@@ -1171,6 +1220,98 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
     }
   }, [todayAttendance, staffRamCache, retryWhatsApp]);
 
+  // 12b. Notify Scanner Online (Instant Event from Kiosk / Successful Capture)
+  const notifyScannerOnline = useCallback(() => {
+    secugenService.notifyScannerOnline();
+    setScannerStatus({ connected: true, deviceFound: true, checking: false });
+    try {
+      broadcastChannelRef.current?.postMessage({
+        type: 'SCANNER_STATUS',
+        connected: true,
+        deviceFound: true,
+      });
+    } catch {}
+  }, []);
+
+  // 12c. Custom Duty Timing Allotment & Late Calculation Setting
+  const updateDutyTiming = useCallback(
+    async (start: string, end: string, grace: number): Promise<boolean> => {
+      setCollegeStartTime(start);
+      setCollegeEndTime(end);
+      setCollegeGraceMinutes(grace);
+
+      const cutMins = (timeStringToMinutes(start) ?? 7 * 60 + 54) + grace;
+
+      // Optimistically update today's attendance statuses based on new cutoff!
+      setTodayAttendance((prev) =>
+        prev.map((rec) => {
+          if (!rec.morning_in) return rec;
+          if (['Absent', 'Personal Leave', 'College Holiday', 'Public Holiday'].includes(rec.status)) return rec;
+          const arrivalMins = timeStringToMinutes(rec.morning_in);
+          if (arrivalMins === null) return rec;
+          const newStatus = arrivalMins > cutMins ? 'Late' : 'Present';
+          return { ...rec, status: newStatus };
+        })
+      );
+
+      // Save to Supabase settings table
+      if (isSupabaseConfigured) {
+        try {
+          const { data: currentSettings } = await supabase.from('settings').select('*').limit(1).maybeSingle();
+          const prevConfig = currentSettings?.config || {};
+          const nextConfig = {
+            ...prevConfig,
+            collegeStartTime: start,
+            collegeEndTime: end,
+            collegeGraceMinutes: grace,
+          };
+
+          if (currentSettings?.id) {
+            await supabase.from('settings').update({ config: nextConfig }).eq('id', currentSettings.id);
+          } else {
+            await supabase.from('settings').insert([{ config: nextConfig }]);
+          }
+
+          // Recalculate today's staff_attendance in Supabase
+          const todayStr = getTodayDateStr();
+          const { data: todayDbRecords } = await supabase.from('staff_attendance').select('*').eq('date', todayStr);
+          if (todayDbRecords && todayDbRecords.length > 0) {
+            for (const r of todayDbRecords) {
+              const mIn = r.morning_in || (r.check_in && r.check_in !== '08:00' ? r.check_in : null);
+              if (mIn && !['Absent', 'Personal Leave', 'College Holiday', 'Public Holiday'].includes(r.status)) {
+                const arr = timeStringToMinutes(mIn);
+                if (arr !== null) {
+                  const newStatus = arr > cutMins ? 'Late' : 'Present';
+                  if (newStatus !== r.status) {
+                    await supabase.from('staff_attendance').update({ status: newStatus }).eq('id', r.id);
+                  }
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Failed to persist duty timings:', err);
+        }
+      }
+
+      // Broadcast update across tabs
+      try {
+        broadcastChannelRef.current?.postMessage({
+          type: 'DUTY_TIMING_UPDATED',
+          collegeStartTime: start,
+          collegeEndTime: end,
+          collegeGraceMinutes: grace,
+        });
+      } catch {}
+
+      toast.success('Official Duty Timings Updated', {
+        description: `Duty Start: ${start} • Grace: ${grace}m (Late Cutoff: ${Math.floor(cutMins / 60).toString().padStart(2, '0')}:${(cutMins % 60).toString().padStart(2, '0')}) • Duty Off: ${end}`,
+      });
+      return true;
+    },
+    []
+  );
+
   // 13. Re-Enrollment Modal Controls
   const openReEnrollModal = useCallback((staff: BiometricCachedStaff) => {
     setIsAutoScanActive(false); // Pause auto loop
@@ -1212,7 +1353,11 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
       openReEnrollModal,
       closeReEnrollModal,
       playSound: playKioskSound,
+      notifyScannerOnline,
       collegeStartTime,
+      collegeEndTime,
+      collegeGraceMinutes,
+      updateDutyTiming,
     }),
     [
       scannerStatus,
@@ -1238,7 +1383,11 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
       reEnrollModalStaff,
       openReEnrollModal,
       closeReEnrollModal,
+      notifyScannerOnline,
       collegeStartTime,
+      collegeEndTime,
+      collegeGraceMinutes,
+      updateDutyTiming,
     ]
   );
 

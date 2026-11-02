@@ -37,6 +37,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  Settings,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -193,6 +194,9 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
     reEnrollModalStaff,
     closeReEnrollModal,
     collegeStartTime,
+    collegeEndTime,
+    collegeGraceMinutes,
+    updateDutyTiming,
     setIsBiometricDeskModalOpen,
   } = useBiometricAttendance();
 
@@ -204,6 +208,25 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
   const [searchTerm, setSearchTerm] = useState('');
   const [auditSnapshot, setAuditSnapshot] = useState<AuditSnapshotData | null>(null);
   const [selectedDossierStaff, setSelectedDossierStaff] = useState<Staff | null>(null);
+
+  // Duty Timing Allotment Modal State
+  const [isTimingModalOpen, setIsTimingModalOpen] = useState(false);
+  const [customStartTime, setCustomStartTime] = useState(collegeStartTime || '07:54');
+  const [customEndTime, setCustomEndTime] = useState(collegeEndTime || '14:00');
+  const [customGraceMinutes, setCustomGraceMinutes] = useState(collegeGraceMinutes ?? 5);
+  const [isSavingTiming, setIsSavingTiming] = useState(false);
+
+  useEffect(() => {
+    setCustomStartTime(collegeStartTime || '07:54');
+  }, [collegeStartTime]);
+
+  useEffect(() => {
+    setCustomEndTime(collegeEndTime || '14:00');
+  }, [collegeEndTime]);
+
+  useEffect(() => {
+    setCustomGraceMinutes(collegeGraceMinutes ?? 5);
+  }, [collegeGraceMinutes]);
 
   // Scanner Dock Collapse State
   const [isScannerDockOpen, setIsScannerDockOpen] = useState<boolean>(true);
@@ -666,6 +689,15 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
+              onClick={() => setIsTimingModalOpen(true)}
+              className="rounded-xl border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100 font-bold text-xs cursor-pointer shadow-2xs"
+              title="Set Custom Duty Start/End Times & Late Arrival Grace Minutes"
+            >
+              <Clock size={14} className="mr-1.5 text-teal-600" /> Duty Timings ({collegeStartTime} - {collegeEndTime})
+            </Button>
+
+            <Button
+              variant="outline"
               onClick={() => setIsBiometricDeskOpen(true)}
               className="rounded-xl border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold text-xs cursor-pointer shadow-2xs"
               title="Open Fast SecuGen HU20 Biometric Desk Popup Modal (View 2)"
@@ -762,6 +794,32 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                 title={soundEnabled ? 'Audio Feedback Enabled' : 'Muted'}
               >
                 {soundEnabled ? <Volume2 size={15} className="text-emerald-400" /> : <VolumeX size={15} />}
+              </button>
+            </div>
+
+            {/* Live Duty Timing & Late Benchmark Pill */}
+            <div className="flex items-center gap-2 bg-slate-950/70 px-3 py-1.5 rounded-xl border border-teal-500/30 text-xs shadow-inner">
+              <Clock size={13} className="text-teal-400 shrink-0" />
+              <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                <span className="text-slate-400 font-bold">Duty:</span>
+                <span className="text-white font-extrabold">{collegeStartTime} - {collegeEndTime}</span>
+                <span className="text-slate-600">•</span>
+                <span className="text-amber-300 font-bold">
+                  Late after {(() => {
+                    const cut = (timeStringToMinutes(collegeStartTime) ?? (7 * 60 + 54)) + (collegeGraceMinutes ?? 5);
+                    return `${Math.floor(cut / 60).toString().padStart(2, '0')}:${(cut % 60).toString().padStart(2, '0')}`;
+                  })()}
+                </span>
+                <span className="text-slate-400 text-[10px]">({collegeGraceMinutes}m grace)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTimingModalOpen(true)}
+                className="ml-1 px-2 py-0.5 rounded-lg bg-teal-500/20 hover:bg-teal-500/40 text-teal-300 border border-teal-400/30 text-[10px] font-black cursor-pointer transition-all flex items-center gap-1 active:scale-95"
+                title="Configure Official Faculty Duty Hours & Late Cutoff"
+              >
+                <Settings size={11} />
+                <span>Duty Timings</span>
               </button>
             </div>
 
@@ -949,9 +1007,10 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                       const operatorNotes = entry?.operatorNotes || '';
                       const waStatus = entry?.whatsappStatus;
 
-                      // Check if morning in was late
+                      // Check if morning in was late based on official duty start + grace minutes
+                      const cutoffMinutes = (timeStringToMinutes(collegeStartTime) ?? (7 * 60 + 54)) + (collegeGraceMinutes ?? 5);
                       const isLate = morningIn
-                        ? (timeStringToMinutes(morningIn) ?? 0) > (timeStringToMinutes(collegeStartTime) ?? 7 * 60 + 54)
+                        ? (timeStringToMinutes(morningIn) ?? 0) > cutoffMinutes
                         : false;
 
                       // Map staff to BiometricCachedStaff for Re-Enroll modal
@@ -1017,14 +1076,14 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                                 <span
                                   className={cn(
                                     'inline-flex items-center gap-1 font-mono font-bold text-xs px-2.5 py-1 rounded-xl border shadow-2xs',
-                                    isLate
+                                    isLate || status === 'Late'
                                       ? 'bg-amber-50 text-amber-800 border-amber-300'
                                       : 'bg-emerald-50 text-emerald-800 border-emerald-300'
                                   )}
                                 >
-                                  <Clock size={11} className={isLate ? 'text-amber-600' : 'text-emerald-600'} />
+                                  <Clock size={11} className={isLate || status === 'Late' ? 'text-amber-600' : 'text-emerald-600'} />
                                   <span>{morningIn}</span>
-                                  {isLate && <span className="text-[8px] bg-amber-200 text-amber-900 px-1 rounded uppercase font-black">Late</span>}
+                                  {(isLate || status === 'Late') && <span className="text-[8px] bg-amber-200 text-amber-900 px-1 rounded uppercase font-black">Late</span>}
                                 </span>
                                 <button
                                   type="button"
@@ -1390,7 +1449,7 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
 
       {/* Fast SecuGen HU20 Biometric Desk Fullscreen Modal (View 2) */}
       {isBiometricDeskOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-slate-950 animate-in fade-in duration-150">
           <BiometricAttendanceDesk
             collegeLogo={data?.settings?.logo || '/superior-logo.png'}
             collegeName={data?.settings?.collegeName || 'Superior College Jahanian'}
@@ -1405,6 +1464,159 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
               data?.fetchData?.(true);
             }}
           />
+        </div>
+      )}
+
+      {/* Custom Faculty Duty Timing Allotment Modal */}
+      {isTimingModalOpen && (
+        <div className="fixed inset-0 z-[10000] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150 select-none">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-teal-950 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-400 shrink-0">
+                  <Clock size={20} />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-white">Faculty Duty Timings</h3>
+                  <p className="text-xs text-slate-300">Official In & Out Times for Late Calculation</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTimingModalOpen(false)}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-all cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Presets */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black uppercase tracking-wider text-slate-500">Quick Shift Presets</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomStartTime('07:54');
+                      setCustomEndTime('14:00');
+                      setCustomGraceMinutes(5);
+                    }}
+                    className="p-2.5 rounded-xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/50 text-left transition-all cursor-pointer"
+                  >
+                    <div className="font-extrabold text-xs text-slate-800">Standard</div>
+                    <div className="text-[10px] text-slate-500 font-mono">07:54 - 14:00</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomStartTime('07:45');
+                      setCustomEndTime('13:45');
+                      setCustomGraceMinutes(5);
+                    }}
+                    className="p-2.5 rounded-xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/50 text-left transition-all cursor-pointer"
+                  >
+                    <div className="font-extrabold text-xs text-slate-800">Summer</div>
+                    <div className="text-[10px] text-slate-500 font-mono">07:45 - 13:45</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomStartTime('08:15');
+                      setCustomEndTime('14:15');
+                      setCustomGraceMinutes(10);
+                    }}
+                    className="p-2.5 rounded-xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/50 text-left transition-all cursor-pointer"
+                  >
+                    <div className="font-extrabold text-xs text-slate-800">Winter</div>
+                    <div className="text-[10px] text-slate-500 font-mono">08:15 - 14:15</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Morning Start Time */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                  <span>Morning Duty Start Time (In Time)</span>
+                  <span className="text-[10px] text-teal-700 font-extrabold uppercase">Arrival Benchmark</span>
+                </label>
+                <Input
+                  type="time"
+                  value={customStartTime}
+                  onChange={(e) => setCustomStartTime(e.target.value)}
+                  className="font-mono text-sm h-11 rounded-xl"
+                />
+              </div>
+
+              {/* Grace Minutes */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                  <span>Late Arrival Grace Period (Minutes)</span>
+                  <span className="text-[10px] text-amber-700 font-extrabold uppercase">Cutoff Threshold</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={60}
+                    value={customGraceMinutes}
+                    onChange={(e) => setCustomGraceMinutes(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="font-mono text-sm h-11 rounded-xl w-24 text-center font-bold"
+                  />
+                  <div className="text-xs text-slate-500 leading-tight">
+                    Arrival after <strong className="text-slate-800 font-mono font-bold">{(() => {
+                      const cut = (timeStringToMinutes(customStartTime) ?? (7 * 60 + 54)) + customGraceMinutes;
+                      return `${Math.floor(cut / 60).toString().padStart(2, '0')}:${(cut % 60).toString().padStart(2, '0')}`;
+                    })()}</strong> is flagged as <span className="text-rose-600 font-black">LATE</span>.
+                  </div>
+                </div>
+              </div>
+
+              {/* Off-Duty End Time */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                  <span>Off-Duty Shift End Time (Out Time)</span>
+                  <span className="text-[10px] text-slate-500 font-extrabold uppercase">Final Departure</span>
+                </label>
+                <Input
+                  type="time"
+                  value={customEndTime}
+                  onChange={(e) => setCustomEndTime(e.target.value)}
+                  className="font-mono text-sm h-11 rounded-xl"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsTimingModalOpen(false)}
+                  className="rounded-xl font-bold text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={async () => {
+                    setIsSavingTiming(true);
+                    try {
+                      await updateDutyTiming(customStartTime, customEndTime, customGraceMinutes);
+                      setIsTimingModalOpen(false);
+                      data?.fetchData?.(true);
+                    } catch (e) {
+                      toast.error('Failed to update duty timings');
+                    } finally {
+                      setIsSavingTiming(false);
+                    }
+                  }}
+                  disabled={isSavingTiming}
+                  className="rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-black text-xs gap-1.5 cursor-pointer shadow-md"
+                >
+                  {isSavingTiming ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                  <span>Save & Recalculate</span>
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
