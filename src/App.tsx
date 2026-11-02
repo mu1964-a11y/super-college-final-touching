@@ -2544,7 +2544,7 @@ export default function App() {
       {/* SecuGen Biometric Attendance & Verification Desk Modal (View 2) */}
       {isBiometricDeskPopupOpen && (
         <React.Suspense fallback={<PremiumLoadingScreen brandingSettings={brandingSettings} authLoading={true} customMessage="Loading Biometric Desk..." />}>
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950 animate-in fade-in duration-150">
+          <div className="fixed inset-0 z-[9999] overflow-y-auto bg-slate-950 animate-in fade-in duration-150">
             <BiometricAttendanceDesk
               standalone={false}
               collegeLogo={brandingSettings.logo || "/superior-logo.png"}

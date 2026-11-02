@@ -19,6 +19,7 @@ import {
   HeartPulse,
   Waves,
   Sparkles,
+  X,
 } from 'lucide-react';
 import BiometricLivePulse from './BiometricLivePulse';
 import BiometricReEnrollModal from './BiometricReEnrollModal';
