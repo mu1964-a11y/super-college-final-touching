@@ -62,7 +62,19 @@ export function useStaffOperations(ctx: any) {
         const oldMember = staff.find((s: any) => s.id === id);
         const changes = diffObjects(oldMember, updates, STAFF_FIELD_LABELS);
 
-        setStaff((prev: Staff[]) => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+        setStaff((prev: Staff[]) => prev.map(s => {
+          if (s.id !== id) return s;
+          const mapped: any = { ...s, ...updates };
+          if (updates.photo !== undefined) {
+            mapped.photo = updates.photo || '';
+            mapped.photo_url = updates.photo || null;
+          }
+          if ((updates as any).photo_url !== undefined) {
+            mapped.photo_url = (updates as any).photo_url || null;
+            if (updates.photo === undefined) mapped.photo = (updates as any).photo_url || '';
+          }
+          return mapped;
+        }));
 
         const updatePayload: any = {
           full_name: updates.fullName,
@@ -73,12 +85,18 @@ export function useStaffOperations(ctx: any) {
           address: updates.address,
           base_salary: updates.baseSalary,
           salary: updates.salary,
-          photo: updates.photo,
           status: updates.status,
           subjects: updates.subjects,
           qualification: updates.qualification,
           specialization: updates.specialization
         };
+        if (updates.photo !== undefined || (updates as any).photo_url !== undefined) {
+          const photoVal = updates.photo !== undefined 
+            ? (updates.photo || null) 
+            : ((updates as any).photo_url || null);
+          updatePayload.photo = photoVal;
+          updatePayload.photo_url = photoVal;
+        }
         if (updates.designation !== undefined) {
           updatePayload.designation = updates.designation;
         } else if (updates.role !== undefined || updates.secondaryRole !== undefined) {

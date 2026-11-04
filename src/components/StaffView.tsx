@@ -164,6 +164,29 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
     await sendStaffPhotoRequestNotice(staff, data?.settings);
   };
 
+  const handleDirectRemovePhoto = async (staffMember: Staff) => {
+    if (!window.confirm(`Are you sure you want to remove the profile photo of ${staffMember.fullName}?`)) {
+      return;
+    }
+    const toastId = toast.loading(`Removing photo for ${staffMember.fullName}...`);
+    try {
+      await data.updateStaff(staffMember.id, { photo: null, photo_url: null } as any);
+      try {
+        await supabase.from('staff').update({ photo: null, photo_url: null }).eq('id', staffMember.id);
+      } catch (dbErr) {
+        console.warn('Direct DB photo clear error:', dbErr);
+      }
+      staffMember.photo = '';
+      (staffMember as any).photo_url = null;
+      toast.dismiss(toastId);
+      toast.success(`Profile photo for ${staffMember.fullName} removed successfully!`);
+    } catch (err: any) {
+      console.error('Photo remove error:', err);
+      toast.dismiss(toastId);
+      toast.error(`Failed to remove photo: ${err?.message || 'Unknown error'}`);
+    }
+  };
+
   const handleSendBulkPhotoRequests = () => {
     if (staffWithoutPhotos.length === 0) {
       toast.info('All staff members have profile photos!');
@@ -1284,53 +1307,45 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                 selectedStaffIds.includes(member.id) && "ring-2 ring-superior-teal ring-offset-2"
               )}
             >
-              {/* Profile Top Bar */}
+              {/* Profile Top Bar - 1/4th Photo Frame & 3/4th Identity Details */}
               <div className="p-4 pb-3 flex items-start gap-3.5">
-                {/* 100% Fully Visible Unclipped Avatar */}
-                <div className="relative shrink-0">
-                  <div className="w-16 h-16 rounded-2xl border-2 border-slate-200/90 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 overflow-hidden shadow-sm flex items-center justify-center">
-                    {member.photo ? (
-                      <img 
-                        src={member.photo} 
-                        alt={member.fullName} 
-                        className="w-full h-full object-cover object-top" 
-                        referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = 'none';
-                          const parent = target.parentElement;
-                          if (parent) {
-                            parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-teal-50 dark:bg-teal-950/40 text-superior-teal font-black text-xl">${member.fullName ? member.fullName.charAt(0).toUpperCase() : 'T'}</div>`;
-                          }
-                        }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-teal-50 dark:bg-teal-950/40 text-superior-teal font-black text-xl">
-                        {member.fullName ? member.fullName.charAt(0).toUpperCase() : 'T'}
-                      </div>
-                    )}
-                  </div>
-                  {/* Active/Inactive Status Dot */}
-                  <span className={cn(
-                    "absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center",
-                    member.status === 'Active' ? "bg-emerald-500" : "bg-slate-400"
-                  )}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-white" />
-                  </span>
+                {/* 1/4th Width Portrait Photo Frame (Clean Border Outline, Green Dot Removed) */}
+                <div className="w-[84px] h-[106px] sm:w-[88px] sm:h-[110px] rounded-2xl border-2 border-slate-200/90 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-800 overflow-hidden shadow-sm flex items-center justify-center shrink-0">
+                  {member.photo ? (
+                    <img 
+                      src={member.photo} 
+                      alt={member.fullName} 
+                      className="w-full h-full object-cover object-top" 
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent) {
+                          parent.innerHTML = `<div class="w-full h-full flex flex-col items-center justify-center bg-teal-50 dark:bg-teal-950/40 text-superior-teal font-black text-2xl">${member.fullName ? member.fullName.charAt(0).toUpperCase() : 'T'}</div>`;
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-teal-50 dark:bg-teal-950/40 text-superior-teal font-black text-2xl">
+                      {member.fullName ? member.fullName.charAt(0).toUpperCase() : 'T'}
+                    </div>
+                  )}
                 </div>
 
-                {/* Identity Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <span className="text-[10px] font-mono font-black text-superior-gold uppercase tracking-wider">
+                {/* 3/4th Identity Info Column */}
+                <div className="flex-1 min-w-0 flex flex-col justify-between self-stretch py-0.5 min-h-[106px] sm:min-h-[110px]">
+                  {/* Row 1: ID Badge & Role Badges */}
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[10px] font-mono font-black text-superior-gold bg-amber-50 dark:bg-amber-950/50 px-1.5 py-0.5 rounded border border-amber-200/60 dark:border-amber-800/60 uppercase tracking-wider">
                       {member.id}
                     </span>
                     <div className="flex flex-wrap items-center gap-1 justify-end">
                       {getRoleBadge(member.role)}
                       {member.additionalRoles && member.additionalRoles.length > 0 ? (
-                        member.additionalRoles.slice(0, 2).map((r, idx) => (
+                        member.additionalRoles.slice(0, 1).map((r, idx) => (
                           <Badge key={idx} className="text-[9px] font-bold bg-amber-100/90 text-amber-900 dark:bg-amber-950 dark:text-amber-200 border-amber-300 dark:border-amber-700">
-                            {r.length > 15 ? r.slice(0, 15) + '…' : r}
+                            {r.length > 12 ? r.slice(0, 12) + '…' : r}
                           </Badge>
                         ))
                       ) : (
@@ -1338,24 +1353,39 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                           getRoleBadge(member.secondaryRole as any)
                         )
                       )}
-                      {member.additionalRoles && member.additionalRoles.length > 2 && (
+                      {member.additionalRoles && member.additionalRoles.length > 1 && (
                         <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
-                          +{member.additionalRoles.length - 2}
+                          +{member.additionalRoles.length - 1}
                         </span>
                       )}
                     </div>
                   </div>
-                  <h3 className="font-black text-slate-900 dark:text-white text-base tracking-tight truncate group-hover:text-superior-teal transition-colors" title={member.fullName}>
-                    {member.fullName}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate" title={member.designation || member.role}>
-                    {member.designation || (member.secondaryRole && member.secondaryRole !== 'None' ? `${member.role} & ${member.secondaryRole}` : member.role)}
-                  </p>
-                  {member.qualification && (
-                    <p className="text-[11px] text-blue-700 dark:text-blue-400 font-bold truncate mt-0.5" title={member.qualification}>
-                      🎓 {member.qualification}
+
+                  {/* Row 2: Full Name & Designation */}
+                  <div className="my-0.5">
+                    <h3 className="font-black text-slate-900 dark:text-white text-[15px] sm:text-base leading-tight tracking-tight truncate group-hover:text-superior-teal transition-colors" title={member.fullName}>
+                      {member.fullName}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5" title={member.designation || member.role}>
+                      {member.designation || (member.secondaryRole && member.secondaryRole !== 'None' ? `${member.role} & ${member.secondaryRole}` : member.role)}
                     </p>
-                  )}
+                  </div>
+
+                  {/* Row 3: Qualification & Inactive Status */}
+                  <div className="flex items-center justify-between gap-1 mt-0.5">
+                    {member.qualification ? (
+                      <p className="text-[11px] text-blue-700 dark:text-blue-400 font-bold truncate" title={member.qualification}>
+                        🎓 {member.qualification}
+                      </p>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 font-medium italic">Faculty Member</span>
+                    )}
+                    {member.status !== 'Active' && (
+                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                        {member.status}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1487,6 +1517,14 @@ export default function StaffView({ data, initialFilter, title, hideNavigation }
                         >
                           <Smartphone size={15} className="text-emerald-600" /> <span>Request Photo (WhatsApp)</span>
                         </DropdownMenuItem>
+                        {Boolean(member.photo || (member as any).photo_url) && (
+                          <DropdownMenuItem 
+                            className="flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer font-bold text-rose-600 hover:text-rose-700 focus:bg-rose-50 dark:focus:bg-rose-950/40" 
+                            onClick={() => handleDirectRemovePhoto(member)}
+                          >
+                            <Trash2 size={15} /> <span>Remove Photo</span>
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem 
                           className="flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer font-bold text-slate-600 focus:bg-slate-50" 
                           onClick={() => {
@@ -1987,6 +2025,30 @@ function StaffProfile({
     }
   };
 
+  const handleRemovePhoto = async () => {
+    if (!window.confirm(`Are you sure you want to remove ${member.fullName}\'s profile photo?`)) {
+      return;
+    }
+    const toastId = toast.loading("Removing photo...");
+    try {
+      await data.updateStaff(member.id, { photo: null, photo_url: null } as any);
+      try {
+        await supabase.from('staff').update({ photo: null, photo_url: null }).eq('id', member.id);
+      } catch (dbErr) {
+        console.warn('Direct DB photo clear error:', dbErr);
+      }
+      member.photo = '';
+      (member as any).photo_url = null;
+      setImageError(false);
+      toast.dismiss(toastId);
+      toast.success("Profile photo removed successfully!");
+    } catch (err: any) {
+      console.error('Photo remove error:', err);
+      toast.dismiss(toastId);
+      toast.error(`Failed to remove photo: ${err?.message || 'Unknown error'}`);
+    }
+  };
+
   return (
     <div className="w-full bg-white dark:bg-slate-900 rounded-3xl overflow-hidden flex flex-col">
       {/* Executive Profile Header */}
@@ -2013,12 +2075,22 @@ function StaffProfile({
               )}
             </div>
             <label 
-              className="absolute -bottom-1 -right-1 p-2 bg-superior-gold text-slate-950 rounded-xl cursor-pointer hover:scale-110 active:scale-95 transition-all shadow-md border-2 border-white dark:border-slate-800"
+              className="absolute -bottom-1 -right-1 p-2 bg-superior-gold hover:bg-amber-400 text-slate-950 rounded-xl cursor-pointer hover:scale-110 active:scale-95 transition-all shadow-md border-2 border-white dark:border-slate-800"
               title="Upload / Change Staff Photo"
             >
               <Camera size={14} />
               <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
             </label>
+            {Boolean(member.photo && !imageError) && (
+              <button
+                type="button"
+                onClick={handleRemovePhoto}
+                className="absolute -top-1 -right-1 p-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl cursor-pointer hover:scale-110 active:scale-95 transition-all shadow-md border-2 border-white dark:border-slate-800"
+                title="Remove / Delete Photo"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
           </div>
 
           {/* Identity & Badges */}
@@ -2564,10 +2636,20 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
                 </div>
               )}
             </div>
-            <label className="absolute -bottom-1 -right-1 p-1.5 bg-superior-teal hover:bg-superior-teal/90 text-white rounded-xl cursor-pointer shadow-md border-2 border-white dark:border-slate-800 transition-all">
+            <label className="absolute -bottom-1 -right-1 p-1.5 bg-superior-teal hover:bg-superior-teal/90 text-white rounded-xl cursor-pointer shadow-md border-2 border-white dark:border-slate-800 transition-all" title="Upload / Change Photo">
               <Camera size={13} />
               <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
             </label>
+            {formData.photo && (
+              <button
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, photo: '' }))}
+                className="absolute -top-1 -right-1 p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl cursor-pointer shadow-md border-2 border-white dark:border-slate-800 transition-all hover:scale-110 active:scale-95"
+                title="Remove Photo"
+              >
+                <Trash2 size={12} />
+              </button>
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <h4 className="font-black text-slate-800 dark:text-white text-base truncate">{formData.fullName || "Unnamed Staff Member"}</h4>
@@ -2579,7 +2661,19 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
                 </span>
               )}
             </p>
-            <p className="text-[11px] text-slate-400 mt-0.5">Click camera icon to change passport photo for biometric gate & ID cards.</p>
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              <p className="text-[11px] text-slate-400">Click camera icon to change passport photo for biometric gate & ID cards.</p>
+              {formData.photo && (
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, photo: '' }))}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-lg border border-rose-200 dark:border-rose-800/60 transition-colors"
+                >
+                  <Trash2 size={11} />
+                  <span>Remove Photo</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -3233,10 +3327,20 @@ function AddStaffDialog({ data, isOpen, onClose }: { data: any; isOpen?: boolean
                 </div>
               )}
             </div>
-            <label className="absolute -bottom-1 -right-1 p-1.5 bg-superior-teal hover:bg-superior-teal/90 text-white rounded-xl cursor-pointer shadow-md border-2 border-white dark:border-slate-800 transition-all">
+            <label className="absolute -bottom-1 -right-1 p-1.5 bg-superior-teal hover:bg-superior-teal/90 text-white rounded-xl cursor-pointer shadow-md border-2 border-white dark:border-slate-800 transition-all" title="Upload Photo">
               <Camera size={13} />
               <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
             </label>
+            {formData.photo && (
+              <button
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, photo: '' }))}
+                className="absolute -top-1 -right-1 p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl cursor-pointer shadow-md border-2 border-white dark:border-slate-800 transition-all hover:scale-110 active:scale-95"
+                title="Remove Photo"
+              >
+                <Trash2 size={12} />
+              </button>
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -3248,7 +3352,19 @@ function AddStaffDialog({ data, isOpen, onClose }: { data: any; isOpen?: boolean
             <h4 className="font-black text-slate-800 dark:text-white text-base truncate mt-1">
               {formData.fullName || "Enter Staff Name Below"}
             </h4>
-            <p className="text-[11px] text-slate-400">Passport photo is used for Biometric Tablet Gate Attendance and Faculty ID Cards.</p>
+            <div className="flex flex-wrap items-center gap-2 mt-0.5">
+              <p className="text-[11px] text-slate-400">Passport photo is used for Biometric Tablet Gate Attendance and Faculty ID Cards.</p>
+              {formData.photo && (
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, photo: '' }))}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-lg border border-rose-200 dark:border-rose-800/60 transition-colors"
+                >
+                  <Trash2 size={11} />
+                  <span>Remove Photo</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
