@@ -1887,26 +1887,48 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                               const hrs = rec.total_hours !== undefined ? Number(rec.total_hours) : calculateWorkingHours(parsed.checkIn, parsed.breakOut, parsed.breakIn, parsed.checkOut);
                               if (hrs && !isNaN(hrs)) totalHours += hrs;
 
+                              const isLeaveCell = rec.status === 'Personal Leave' || rec.status === 'Leave';
+                              const isAbsentCell = rec.status === 'Absent';
+
                               const statBadge =
                                 rec.status === 'Present'
                                   ? { label: 'Present', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' }
                                   : rec.status === 'Late'
                                   ? { label: 'Late', cls: 'bg-amber-100 text-amber-800 border-amber-300' }
-                                  : rec.status === 'Absent'
+                                  : isAbsentCell
                                   ? { label: 'Absent', cls: 'bg-rose-100 text-rose-800 border-rose-300' }
-                                  : rec.status === 'Personal Leave'
-                                  ? { label: 'Leave', cls: 'bg-blue-100 text-blue-800 border-blue-300' }
+                                  : isLeaveCell
+                                  ? { label: 'Leave', cls: 'bg-blue-600 text-white border-blue-700 shadow-xs font-black uppercase tracking-wider' }
                                   : { label: rec.status || 'Present', cls: 'bg-slate-100 text-slate-700 border-slate-300' };
 
                               return (
                                 <TableCell
                                   key={wd.dateStr}
-                                  className={cn('text-center py-2.5', wd.isToday ? 'bg-teal-50/40' : '')}
+                                  className={cn(
+                                    'text-center py-2.5 transition-all',
+                                    isLeaveCell
+                                      ? 'bg-blue-50/90 dark:bg-blue-950/40 border-x-2 border-blue-200 dark:border-blue-900/60'
+                                      : isAbsentCell
+                                      ? 'bg-rose-50/70 dark:bg-rose-950/30'
+                                      : wd.isToday
+                                      ? 'bg-teal-50/40'
+                                      : ''
+                                  )}
                                 >
-                                  <div className="flex flex-col items-center gap-1">
-                                    <span className={cn('px-2 py-0.5 rounded-md text-[10px] font-black border shadow-2xs', statBadge.cls)}>
-                                      {statBadge.label}
-                                    </span>
+                                  {isLeaveCell ? (
+                                    <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-blue-100/90 dark:bg-blue-900/50 border border-blue-300 dark:border-blue-700 shadow-2xs w-full max-w-[105px] mx-auto min-h-[58px]">
+                                      <span className="px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-blue-600 text-white shadow-2xs">
+                                        Leave
+                                      </span>
+                                      <span className="text-[9px] font-extrabold text-blue-800 dark:text-blue-300 mt-1">
+                                        Approved Leave
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex flex-col items-center gap-1">
+                                      <span className={cn('px-2 py-0.5 rounded-md text-[10px] font-black border shadow-2xs', statBadge.cls)}>
+                                        {statBadge.label}
+                                      </span>
                                     {(parsed.checkIn || parsed.checkOut) && (
                                       <div className="font-mono text-[9px] font-bold text-slate-700 leading-tight space-y-0.5 text-left w-full max-w-[105px] mx-auto bg-slate-50 p-1.5 rounded-lg border border-slate-200 shadow-2xs">
                                         {parsed.checkIn ? (
@@ -1933,12 +1955,13 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                                         )}
                                       </div>
                                     )}
-                                    {hrs > 0 && (
-                                      <span className="text-[8px] font-mono text-slate-500 font-bold bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
-                                        {hrs} hrs
-                                      </span>
-                                    )}
-                                  </div>
+                                      {hrs > 0 && (
+                                        <span className="text-[8px] font-mono text-slate-500 font-bold bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
+                                          {hrs} hrs
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
                                 </TableCell>
                               );
                             })}
