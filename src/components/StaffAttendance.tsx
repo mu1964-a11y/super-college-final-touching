@@ -1294,7 +1294,7 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                 {activeTab === 'daily'
                   ? 'Real-time 4-stage punches with millisecond RAM matching and zero false cross-matching'
                   : activeTab === 'weekly'
-                  ? '7-day routine matrix, exact punch times, total hours, and past days Supabase audit verification'
+                  ? '7-day routine matrix, exact punch times, total hours, and past days audit verification'
                   : 'Teacher monthly rollup table, working hours, and full day-by-day historical archive'}
               </p>
             </div>
@@ -1460,11 +1460,13 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                           {/* Staff Column with Photo, Name, Finger Badge & [Re-Scan & Mark] */}
                           <TableCell className="pl-8 py-3.5">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-2xl bg-superior-teal/10 flex items-center justify-center text-superior-teal font-bold text-xs overflow-hidden border border-slate-200 shrink-0">
+                              <div className="w-12 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-superior-teal font-bold text-xs overflow-hidden border-2 border-slate-200/90 dark:border-slate-700 shadow-sm shrink-0">
                                 {staff.photo ? (
-                                  <img src={staff.photo} alt={staff.fullName} className="w-full h-full object-cover" />
+                                  <img src={staff.photo} alt={staff.fullName} className="w-full h-full object-cover object-top" referrerPolicy="no-referrer" />
                                 ) : (
-                                  staff.fullName.substring(0, 2).toUpperCase()
+                                  <div className="w-full h-full flex items-center justify-center bg-teal-50 text-superior-teal font-black text-xs">
+                                    {staff.fullName ? staff.fullName.substring(0, 2).toUpperCase() : 'ST'}
+                                  </div>
                                 )}
                               </div>
                               <div className="space-y-1">
@@ -1760,7 +1762,7 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                     </div>
                     <div>
                       <div className="font-extrabold text-slate-800 text-xs">Nov 02, 2026 (Audit)</div>
-                      <div className="text-[11px] text-emerald-800 font-bold">Verified in Supabase Cloud DB</div>
+                      <div className="text-[11px] text-emerald-800 font-bold">Verified in Cloud Database</div>
                     </div>
                   </div>
                   <span className="font-mono font-black text-sm text-emerald-700 bg-white px-3 py-1 rounded-xl border border-emerald-200 shadow-2xs">
@@ -1775,7 +1777,7 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                     </div>
                     <div>
                       <div className="font-extrabold text-slate-800 text-xs">Nov 03, 2026 (Audit)</div>
-                      <div className="text-[11px] text-emerald-800 font-bold">Verified in Supabase Cloud DB</div>
+                      <div className="text-[11px] text-emerald-800 font-bold">Verified in Cloud Database</div>
                     </div>
                   </div>
                   <span className="font-mono font-black text-sm text-emerald-700 bg-white px-3 py-1 rounded-xl border border-emerald-200 shadow-2xs">
@@ -1804,7 +1806,7 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                 <Table>
                   <TableHeader className="bg-slate-50">
                     <TableRow>
-                      <TableHead className="w-56 pl-6 font-black uppercase text-[10px] text-slate-500">Staff Member</TableHead>
+                      <TableHead className="w-64 pl-6 font-black uppercase text-[10px] text-slate-500">Staff Member</TableHead>
                       {weekDays.map((wd) => (
                         <TableHead
                           key={wd.dateStr}
@@ -1825,7 +1827,7 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                       <TableRow>
                         <TableCell colSpan={9} className="h-48 text-center text-slate-500">
                           <RefreshCw size={18} className="animate-spin inline-block mr-2 text-superior-teal" />
-                          <span>Loading weekly routine from Supabase...</span>
+                          <span>Loading weekly routine records...</span>
                         </TableCell>
                       </TableRow>
                     ) : filteredStaff.length === 0 ? (
@@ -1843,16 +1845,18 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                           <TableRow key={staff.id} className="hover:bg-slate-50/70 border-b border-slate-100">
                             {/* Teacher Info */}
                             <TableCell className="pl-6 py-3">
-                              <div className="flex items-center gap-2.5">
-                                <div className="w-8 h-8 rounded-xl bg-superior-teal/10 text-superior-teal flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden border border-slate-200">
+                              <div className="flex items-center gap-3">
+                                <div className="w-12 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden border-2 border-slate-200/90 dark:border-slate-700 shadow-sm">
                                   {staff.photo ? (
-                                    <img src={staff.photo} alt={staff.fullName} className="w-full h-full object-cover" />
+                                    <img src={staff.photo} alt={staff.fullName} className="w-full h-full object-cover object-top" referrerPolicy="no-referrer" />
                                   ) : (
-                                    staff.fullName.substring(0, 2).toUpperCase()
+                                    <div className="w-full h-full flex items-center justify-center bg-teal-50 text-superior-teal font-black text-xs">
+                                      {staff.fullName ? staff.fullName.substring(0, 2).toUpperCase() : 'ST'}
+                                    </div>
                                   )}
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="font-extrabold text-slate-800 text-xs truncate">{staff.fullName}</div>
+                                  <div className="font-extrabold text-slate-800 dark:text-white text-xs truncate" title={staff.fullName}>{staff.fullName}</div>
                                   <div className="text-[10px] text-slate-400 font-mono truncate">{staff.id} • {staff.role || 'Faculty'}</div>
                                 </div>
                               </div>
@@ -1990,11 +1994,13 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                         <TableRow key={staff.id} className="hover:bg-slate-50 border-b border-slate-100">
                           <TableCell className="pl-8 py-3.5">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-xs overflow-hidden">
+                              <div className="w-11 h-13 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 font-bold text-xs overflow-hidden border-2 border-slate-200/90 dark:border-slate-700 shadow-sm shrink-0">
                                 {staff.photo ? (
-                                  <img src={staff.photo} alt={staff.fullName} className="w-full h-full object-cover" />
+                                  <img src={staff.photo} alt={staff.fullName} className="w-full h-full object-cover object-top" referrerPolicy="no-referrer" />
                                 ) : (
-                                  staff.fullName.substring(0, 2).toUpperCase()
+                                  <div className="w-full h-full flex items-center justify-center bg-teal-50 text-superior-teal font-black text-xs">
+                                    {staff.fullName ? staff.fullName.substring(0, 2).toUpperCase() : 'ST'}
+                                  </div>
                                 )}
                               </div>
                               <div>
