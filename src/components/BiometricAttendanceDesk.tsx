@@ -402,6 +402,33 @@ export default function BiometricAttendanceDesk({
         return;
       }
 
+      // 60-Minute Minimum Check-Out Lock: In 4-stage mode, never check out within 60 mins of Morning In
+      if (stageAction === 'checkout' && existingCheckIn) {
+        const inMins = timeStringToMinutes(existingCheckIn);
+        const nowMins = now.getHours() * 60 + now.getMinutes();
+        if (inMins !== null && nowMins - inMins < 60) {
+          const unlockH = Math.floor((inMins + 60) / 60);
+          const unlockM = (inMins + 60) % 60;
+          const unlockStr = `${unlockH % 12 || 12}:${String(unlockM).padStart(2, '0')} ${unlockH >= 12 ? 'PM' : 'AM'}`;
+          if (soundEnabled) playKioskSound('duplicate');
+          setVerifiedCard({
+            type: 'duplicate',
+            person: matchedStaff,
+            status: existingRec?.status || 'Present',
+            punchTime: displayTime,
+            score: bestScore,
+            message: `Check-Out Locked: Minimum 60-minute campus stay required (unlocks at ${unlockStr}).`,
+            thumbBmp: thumbDataUrl,
+            checkIn: existingCheckIn,
+            breakOut: existingBreakOut,
+            breakIn: existingBreakIn,
+            checkOut: existingCheckOut,
+            campusState: 'in_campus',
+          });
+          return;
+        }
+      }
+
       // Determine cutoff time dynamically for this teacher's lecture schedule
       let rawStart = matchedStaff.dutyStartTime || matchedStaff.duty_start_time || settings?.collegeStartTime || '08:00';
       const teacherDutyStart = (typeof rawStart === 'string' && rawStart.includes(':')) ? rawStart : '08:00';
@@ -832,6 +859,9 @@ export default function BiometricAttendanceDesk({
           }
 
           await recordStaffStageAction(matchedStaff, actionType, bestScore, thumbDataUrl);
+
+          // 4-Second Hardware Debounce Pause: Allows faculty to comfortably lift finger from optical glass
+          await new Promise((resolve) => setTimeout(resolve, 4000));
 
           if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
           resetTimerRef.current = setTimeout(() => {

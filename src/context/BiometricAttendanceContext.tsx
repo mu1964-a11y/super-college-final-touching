@@ -8,6 +8,50 @@ import { toast } from 'sonner';
 export type BiometricStage = 'checkin' | 'breakout' | 'breakin' | 'checkout';
 export type PunchMode = 'auto' | BiometricStage;
 
+export const isValidUuid = (val?: string | null): boolean =>
+  Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
+
+const PENDING_QUEUE_KEY = 'scj_pending_attendance_upserts';
+
+export function enqueuePendingAttendanceUpsert(record: any) {
+  try {
+    const raw = safeLocalStorage.getItem(PENDING_QUEUE_KEY);
+    const queue: any[] = raw ? JSON.parse(raw) : [];
+    const staffId = record.staff_id || record.staffId;
+    const date = record.date;
+    const filtered = queue.filter((item) => !(item.staff_id === staffId && item.date === date));
+    filtered.push(record);
+    safeLocalStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(filtered));
+  } catch {}
+}
+
+export async function processPendingAttendanceQueue() {
+  if (!isSupabaseConfigured) return;
+  try {
+    const raw = safeLocalStorage.getItem(PENDING_QUEUE_KEY);
+    if (!raw) return;
+    const queue: any[] = JSON.parse(raw);
+    if (!queue || queue.length === 0) return;
+
+    const remaining: any[] = [];
+    for (const item of queue) {
+      const payload = { ...item };
+      if (!isValidUuid(payload.id)) {
+        delete payload.id;
+      }
+      const { error } = await supabase
+        .from('staff_attendance')
+        .upsert([payload], { onConflict: 'staff_id,date' });
+      if (error) {
+        remaining.push(item);
+      }
+    }
+    if (remaining.length !== queue.length) {
+      safeLocalStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(remaining));
+    }
+  } catch {}
+}
+
 export interface LastMatchInfo {
   staff: BiometricCachedStaff;
   stage: BiometricStage;
@@ -39,6 +83,7 @@ export interface BiometricContextType {
   todayAttendance: any[];
   refreshStaffCache: () => Promise<void>;
   refreshTodayAttendance: () => Promise<void>;
+  refreshAttendanceForDate: (dateStr: string) => Promise<any[]>;
   updateStaffTemplateInCache: (
     staffId: string,
     primaryTpl?: string | null,
@@ -343,6 +388,31 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
     }
   }, []);
 
+  // 2b. Refresh Attendance for Any Specific Date (Cross-Device & Historical View Sync)
+  const refreshAttendanceForDate = useCallback(async (dateStr: string) => {
+    if (!isSupabaseConfigured) return [];
+    try {
+      const { data, error } = await supabase.from('staff_attendance').select('*').eq('date', dateStr);
+      if (!error && data) {
+        if (dateStr === getTodayDateStr()) {
+          setTodayAttendance(data);
+        }
+        return data;
+      }
+    } catch (err) {
+      console.error(`Failed to refresh attendance for ${dateStr}:`, err);
+    }
+    return [];
+  }, []);
+
+  // 2c. Persistent Offline Queue Background Worker (Every 8 seconds)
+  useEffect(() => {
+    const queueInterval = setInterval(() => {
+      processPendingAttendanceQueue();
+    }, 8000);
+    return () => clearInterval(queueInterval);
+  }, []);
+
   // 3. Check SecuGen Hardware Connection
   const refreshScannerStatus = useCallback(async (force = false) => {
     try {
@@ -629,10 +699,13 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
         operatorNotes: options.notes || existingRec?.operator_notes || '',
       };
 
-      const recordId = existingRec?.id || `${staffId}-${todayStr}`;
+      const dbId = isValidUuid(existingRec?.id)
+        ? existingRec.id
+        : typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : undefined;
 
       const updatedRecord: any = {
-        id: recordId,
         staff_id: staffId,
         date: todayStr,
         status,
@@ -652,6 +725,10 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
         whatsapp_sent_at: existingRec?.whatsapp_sent_at || null,
         whatsapp_error: null,
       };
+
+      if (dbId) {
+        updatedRecord.id = dbId;
+      }
 
       // 1. Optimistic UI update in RAM
       setTodayAttendance((prev) => {
@@ -674,7 +751,7 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
         durationMs,
         thumbBmp: options.thumbBmp,
         previousRecord: existingRec ? { ...existingRec } : null,
-        attendanceId: recordId,
+        attendanceId: dbId || `${staffId}-${todayStr}`,
       };
       setLastMatch(matchInfo);
 
@@ -696,21 +773,20 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
         });
       } catch {}
 
-      // 2. Background Asynchronous Save to Supabase
+      // 2. Background Asynchronous Save to Supabase (Enforce onConflict: 'staff_id,date' without fake UUIDs)
       if (isSupabaseConfigured) {
         try {
           const { error: upsertErr } = await supabase
             .from('staff_attendance')
-            .upsert([updatedRecord], { onConflict: 'id' });
+            .upsert([updatedRecord], { onConflict: 'staff_id,date' });
 
           if (upsertErr) {
-            console.error('Supabase attendance upsert failed, retrying on (staff_id, date):', upsertErr);
-            await supabase
-              .from('staff_attendance')
-              .upsert([updatedRecord], { onConflict: 'staff_id,date' });
+            console.error('Supabase staff_attendance upsert failed, enqueueing for retry:', upsertErr);
+            enqueuePendingAttendanceUpsert(updatedRecord);
           }
         } catch (dbErr) {
           console.error('Background DB write error:', dbErr);
+          enqueuePendingAttendanceUpsert(updatedRecord);
         }
       }
 
@@ -759,7 +835,8 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
                 whatsapp_sent_at: sentAt,
                 whatsapp_error: waErr,
               })
-              .eq('id', recordId);
+              .eq('staff_id', staffId)
+              .eq('date', todayStr);
           }
         })
         .catch((err) => {
@@ -831,17 +908,19 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
 
         const matchedTeacher = matchResult.candidate;
 
-        // 5-Minute Anti-Bounce & Cooldown Check
+        // 5-Minute Anti-Bounce & Cooldown Check (Checks RAM cache and DB notes)
         const lastPunch = recentPunchesRef.current.get(matchedTeacher.id);
         const nowMs = Date.now();
         const COOLDOWN_MS = 5 * 60 * 1000;
 
+        let inCooldown = false;
+        let cooldownTime = '';
+        let cooldownStage = '';
+
         if (lastPunch && nowMs - lastPunch.timestamp < COOLDOWN_MS) {
-          if (soundEnabled) playKioskSound('duplicate');
-          toast.info(`${matchedTeacher.fullName} Already Marked`, {
-            description: `Already recorded at ${lastPunch.displayTime}. Cooldown active.`,
-          });
-          return { success: true, matched: true };
+          inCooldown = true;
+          cooldownTime = lastPunch.displayTime;
+          cooldownStage = lastPunch.stage;
         }
 
         // Determine 4-stage action
@@ -854,6 +933,28 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
           existingRec?.morning_in || existingRec?.check_in,
           existingRec?.final_out || existingRec?.check_out
         );
+
+        if (!inCooldown && existingRec?.notes && typeof existingRec.notes === 'string') {
+          try {
+            const p = JSON.parse(existingRec.notes);
+            if (p.lastPunchIso) {
+              const punchMs = new Date(p.lastPunchIso).getTime();
+              if (!isNaN(punchMs) && nowMs - punchMs < COOLDOWN_MS) {
+                inCooldown = true;
+                cooldownTime = p.lastPunchTime || formatTime12h(new Date(punchMs));
+                cooldownStage = p.lastStage || 'Attendance';
+              }
+            }
+          } catch {}
+        }
+
+        if (inCooldown) {
+          if (soundEnabled) playKioskSound('duplicate');
+          toast.info(`${matchedTeacher.fullName} Already Marked`, {
+            description: `Already marked (${cooldownStage.toUpperCase()} at ${cooldownTime}) — Cooldown Active.`,
+          });
+          return { success: true, matched: true };
+        }
 
         let stageAction: BiometricStage = 'checkin';
         if (punchMode !== 'auto') {
@@ -871,6 +972,25 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
             stageAction = 'breakout';
           } else {
             stageAction = 'checkout';
+          }
+        }
+
+        // 60-Minute Minimum Check-Out Lock: In Smart 4-Stage, never checkout within 60 mins of Morning In
+        if (stageAction === 'checkout') {
+          const morningInTime = existingRec?.morning_in || parsed.checkIn;
+          if (morningInTime) {
+            const morningMins = timeStringToMinutes(morningInTime);
+            const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+            if (morningMins !== null && (nowMins - morningMins) < 60) {
+              const unlockH = Math.floor((morningMins + 60) / 60);
+              const unlockM = (morningMins + 60) % 60;
+              const unlockStr = `${unlockH % 12 || 12}:${String(unlockM).padStart(2, '0')} ${unlockH >= 12 ? 'PM' : 'AM'}`;
+              if (soundEnabled) playKioskSound('duplicate');
+              toast.warning(`Check-Out Locked: ${matchedTeacher.fullName}`, {
+                description: `Morning In at ${morningInTime}. 60-minute minimum campus stay required (unlocks at ${unlockStr}).`,
+              });
+              return { success: true, matched: true };
+            }
           }
         }
 
@@ -898,6 +1018,9 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
         toast.success(`Biometric Punch Verified: ${matchedTeacher.fullName}`, {
           description: `Stage: ${stageAction.toUpperCase()} • Score: ${matchResult.score}/199 • Matched in ${matchResult.durationMs}ms`,
         });
+
+        // Layer 1 Hardware Debounce: 4-second pause so teacher can lift finger before next scan
+        await new Promise((resolve) => setTimeout(resolve, 4000));
 
         return { success: true, matched: true };
       } finally {
@@ -1037,7 +1160,11 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
       const notes = updates.notes !== undefined ? updates.notes : existingRec?.operator_notes || '';
 
       const totalHours = calculateWorkingHours(morningIn, breakOut, breakIn, finalOut);
-      const recordId = existingRec?.id || `${staffId}-${todayStr}`;
+      const dbId = isValidUuid(existingRec?.id)
+        ? existingRec.id
+        : typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : undefined;
 
       const notesPayload = {
         checkIn: morningIn,
@@ -1051,7 +1178,6 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
       };
 
       const updatedRecord: any = {
-        id: recordId,
         staff_id: staffId,
         date: todayStr,
         status,
@@ -1069,6 +1195,10 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
         whatsapp_sent_at: existingRec?.whatsapp_sent_at || null,
         whatsapp_error: existingRec?.whatsapp_error || null,
       };
+
+      if (dbId) {
+        updatedRecord.id = dbId;
+      }
 
       // Optimistic RAM state update
       setTodayAttendance((prev) => {
@@ -1089,17 +1219,24 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
         });
       } catch {}
 
-      // Supabase write
+      // Supabase verified UPSERT on (staff_id, date) with offline persistent queue fallback
       if (isSupabaseConfigured) {
         try {
-          await supabase.from('staff_attendance').upsert([updatedRecord], { onConflict: 'id' });
+          const { error } = await supabase
+            .from('staff_attendance')
+            .upsert([updatedRecord], { onConflict: 'staff_id,date' });
+
+          if (error) {
+            console.error('Failed to save manual override to Supabase, queuing for retry:', error);
+            enqueuePendingAttendanceUpsert(updatedRecord);
+          }
         } catch (err) {
           console.error('Failed to save manual override:', err);
-          return false;
+          enqueuePendingAttendanceUpsert(updatedRecord);
         }
       }
 
-      toast.success('Attendance record updated');
+      toast.success('Attendance record saved');
       return true;
     },
     [todayAttendance]
@@ -1337,6 +1474,7 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
       todayAttendance,
       refreshStaffCache,
       refreshTodayAttendance,
+      refreshAttendanceForDate,
       updateStaffTemplateInCache,
       executeScanCycle,
       recordStaffPunch,
@@ -1370,6 +1508,7 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
       todayAttendance,
       refreshStaffCache,
       refreshTodayAttendance,
+      refreshAttendanceForDate,
       updateStaffTemplateInCache,
       executeScanCycle,
       recordStaffPunch,
