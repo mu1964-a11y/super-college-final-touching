@@ -960,7 +960,13 @@ export function BiometricAttendanceProvider({ children }: { children: React.Reac
         if (punchMode !== 'auto') {
           stageAction = punchMode;
         } else if (!parsed.checkIn && !existingRec?.morning_in) {
-          stageAction = 'checkin';
+          const nowHour = new Date().getHours();
+          // After 1:00 PM (13:00), first punch of the day is Departure/Check-Out (Chutti time), NOT morning check-in
+          if (nowHour >= 13) {
+            stageAction = 'checkout';
+          } else {
+            stageAction = 'checkin';
+          }
         } else if (parsed.campusState === 'on_break' || (parsed.breakOut && !parsed.breakIn)) {
           stageAction = 'breakin';
         } else {

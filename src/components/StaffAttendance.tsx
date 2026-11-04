@@ -902,7 +902,14 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
           const hrs = rec.total_hours !== undefined ? Number(rec.total_hours) : calculateWorkingHours(parsed.checkIn, parsed.breakOut, parsed.breakIn, parsed.checkOut);
           if (hrs && !isNaN(hrs)) totalHours += hrs;
 
-          const timeText = parsed.checkIn && parsed.checkOut ? ` (${parsed.checkIn} - ${parsed.checkOut})` : parsed.checkIn ? ` (${parsed.checkIn})` : '';
+          let timeText = '';
+          if (parsed.checkIn && parsed.checkOut) {
+            timeText = ` (In: ${parsed.checkIn} | Out: ${parsed.checkOut})`;
+          } else if (parsed.checkIn) {
+            timeText = ` (In: ${parsed.checkIn})`;
+          } else if (parsed.checkOut) {
+            timeText = ` (Out: ${parsed.checkOut})`;
+          }
           row[`${wd.dayName} ${wd.dayLabel}`] = `${rec.status || 'Present'}${timeText}`;
         } else {
           row[`${wd.dayName} ${wd.dayLabel}`] = '-';
@@ -921,7 +928,7 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
     toast.success('Weekly routine matrix exported to Excel');
   };
 
-  // Export Weekly Routine Matrix to PDF
+  // Export Weekly Routine Matrix to PDF (Full Form + In & Out Times)
   const handleExportWeeklyPDF = () => {
     const doc = new jsPDF('landscape');
     doc.setFontSize(14);
@@ -949,8 +956,16 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
         const hrs = rec.total_hours !== undefined ? Number(rec.total_hours) : calculateWorkingHours(parsed.checkIn, parsed.breakOut, parsed.breakIn, parsed.checkOut);
         if (hrs && !isNaN(hrs)) totalHours += hrs;
 
-        const statShort = rec.status === 'Present' ? 'P' : rec.status === 'Late' ? 'Lt' : rec.status === 'Absent' ? 'A' : rec.status === 'Personal Leave' ? 'L' : rec.status?.slice(0, 3) || 'P';
-        return parsed.checkIn ? `${statShort} (${parsed.checkIn})` : statShort;
+        const statusName = rec.status || 'Present';
+        let timeLines = '';
+        if (parsed.checkIn && parsed.checkOut) {
+          timeLines = `\nIn: ${parsed.checkIn}\nOut: ${parsed.checkOut}`;
+        } else if (parsed.checkIn) {
+          timeLines = `\nIn: ${parsed.checkIn}`;
+        } else if (parsed.checkOut) {
+          timeLines = `\nOut: ${parsed.checkOut}`;
+        }
+        return `${statusName}${timeLines}`;
       });
 
       return [staff.id, staff.fullName, ...dayCells, presentDays, `${Math.round(totalHours * 10) / 10}h`];
@@ -1400,8 +1415,8 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                     <TableHead className="w-28 font-black uppercase text-[10px] text-slate-400 text-center">Break In</TableHead>
                     <TableHead className="w-28 font-black uppercase text-[10px] text-slate-400 text-center">Final Out</TableHead>
                     <TableHead className="w-24 font-black uppercase text-[10px] text-slate-400 text-center">Hours</TableHead>
-                    <TableHead className="w-36 font-black uppercase text-[10px] text-slate-400">Status</TableHead>
-                    <TableHead className="w-48 font-black uppercase text-[10px] text-slate-400">Notes / Reason</TableHead>
+                    <TableHead className="w-80 font-black uppercase text-[10px] text-slate-400">Status</TableHead>
+                    <TableHead className="w-32 font-black uppercase text-[10px] text-slate-400">Notes / Reason</TableHead>
                     <TableHead className="w-36 font-black uppercase text-[10px] text-slate-400 pr-8 text-right">WhatsApp</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1595,51 +1610,48 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                             )}
                           </TableCell>
 
-                          {/* Status Pills: Student-Style 1-Click Action (P | Lt | A | L) with Auto Timestamping */}
+                          {/* Status Pills: Full Form Action (Present | Late | Absent | Leave) with Auto Timestamping */}
                           <TableCell className="py-3.5">
-                            <div className="flex items-center gap-1.5">
-                              <div className="inline-flex p-0.5 bg-slate-100 rounded-xl border border-slate-200 gap-0.5">
-                                {[
-                                  { id: 'Present', label: 'P', title: 'Present (Green)' },
-                                  { id: 'Late', label: 'Lt', title: 'Late (Amber)' },
-                                  { id: 'Absent', label: 'A', title: 'Absent (Red)' },
-                                  { id: 'Personal Leave', label: 'L', title: 'Leave (Blue)' },
-                                ].map((item) => {
-                                  const isActive = status === item.id;
-                                  return (
-                                    <button
-                                      key={item.id}
-                                      type="button"
-                                      onClick={() => handlePillClick(staff.id, item.id)}
-                                      className={cn(
-                                        'px-2 py-1 text-[11px] font-bold rounded-lg transition-all tracking-tight cursor-pointer',
-                                        isActive
-                                          ? item.id === 'Present'
-                                            ? 'bg-emerald-600 text-white shadow-xs font-black ring-1 ring-emerald-600/30'
-                                            : item.id === 'Late'
-                                            ? 'bg-amber-500 text-white shadow-xs font-black ring-1 ring-amber-500/30'
-                                            : item.id === 'Absent'
-                                            ? 'bg-rose-600 text-white shadow-xs font-black ring-1 ring-rose-600/30'
-                                            : 'bg-blue-600 text-white shadow-xs font-black ring-1 ring-blue-600/30'
-                                          : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                      )}
-                                      title={item.title}
-                                    >
-                                      {item.label}
-                                    </button>
-                                  );
-                                })}
-                              </div>
+                            <div className="inline-flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 gap-1 shadow-2xs">
+                              {[
+                                { id: 'Present', label: 'Present' },
+                                { id: 'Late', label: 'Late' },
+                                { id: 'Absent', label: 'Absent' },
+                                { id: 'Personal Leave', label: 'Leave' },
+                              ].map((item) => {
+                                const isActive = status === item.id;
+                                return (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => handlePillClick(staff.id, item.id)}
+                                    className={cn(
+                                      'px-2.5 py-1 text-xs font-black rounded-lg transition-all tracking-tight cursor-pointer whitespace-nowrap',
+                                      isActive
+                                        ? item.id === 'Present'
+                                          ? 'bg-emerald-600 text-white shadow-xs ring-1 ring-emerald-600/30'
+                                          : item.id === 'Late'
+                                          ? 'bg-amber-500 text-white shadow-xs ring-1 ring-amber-500/30'
+                                          : item.id === 'Absent'
+                                          ? 'bg-rose-600 text-white shadow-xs ring-1 ring-rose-600/30'
+                                          : 'bg-blue-600 text-white shadow-xs ring-1 ring-blue-600/30'
+                                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                                    )}
+                                  >
+                                    {item.label}
+                                  </button>
+                                );
+                              })}
 
                               <Select
                                 value={['Present', 'Late', 'Absent', 'Personal Leave'].includes(status) ? '' : status}
                                 onValueChange={(val) => handleStatusChange(staff.id, val)}
                               >
-                                <SelectTrigger className="w-7 h-7 p-0 rounded-lg border-slate-200 text-slate-400 hover:text-slate-700 justify-center cursor-pointer shadow-2xs" title="More status options (Half Day, Holidays, Reset)">
-                                  <span className="text-[9px]">▼</span>
+                                <SelectTrigger className="h-7 w-7 p-0 rounded-lg border-0 bg-transparent text-slate-400 hover:text-slate-700 hover:bg-white justify-center cursor-pointer shadow-none" title="More options (Half Day, Holiday, Reset)">
+                                  <ChevronDown size={14} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="Pending">Unmarked / Pending</SelectItem>
+                                  <SelectItem value="Pending">Unmarked / Reset</SelectItem>
                                   <SelectItem value="Half Day">Half Day</SelectItem>
                                   <SelectItem value="College Holiday">College Holiday</SelectItem>
                                   <SelectItem value="Public Holiday">Public Holiday</SelectItem>
@@ -1648,13 +1660,13 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                             </div>
                           </TableCell>
 
-                          {/* Notes / Reason Column (Clean text, NEVER raw JSON!) */}
+                          {/* Notes / Reason Column (Clean text, narrower input to give space to status pills) */}
                           <TableCell className="py-3.5">
                             <Input
-                              placeholder="Reason / notes..."
+                              placeholder="Reason..."
                               defaultValue={operatorNotes}
                               onBlur={(e) => handleNotesChange(staff.id, e.target.value)}
-                              className="h-9 rounded-xl text-xs border-slate-200"
+                              className="h-9 rounded-xl text-xs border-slate-200 max-w-[130px]"
                             />
                           </TableCell>
 
@@ -1873,14 +1885,14 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
 
                               const statBadge =
                                 rec.status === 'Present'
-                                  ? { label: 'P', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' }
+                                  ? { label: 'Present', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' }
                                   : rec.status === 'Late'
-                                  ? { label: 'Lt', cls: 'bg-amber-100 text-amber-800 border-amber-300' }
+                                  ? { label: 'Late', cls: 'bg-amber-100 text-amber-800 border-amber-300' }
                                   : rec.status === 'Absent'
-                                  ? { label: 'A', cls: 'bg-rose-100 text-rose-800 border-rose-300' }
+                                  ? { label: 'Absent', cls: 'bg-rose-100 text-rose-800 border-rose-300' }
                                   : rec.status === 'Personal Leave'
-                                  ? { label: 'L', cls: 'bg-blue-100 text-blue-800 border-blue-300' }
-                                  : { label: (rec.status || 'P').slice(0, 2), cls: 'bg-slate-100 text-slate-700 border-slate-300' };
+                                  ? { label: 'Leave', cls: 'bg-blue-100 text-blue-800 border-blue-300' }
+                                  : { label: rec.status || 'Present', cls: 'bg-slate-100 text-slate-700 border-slate-300' };
 
                               return (
                                 <TableCell
@@ -1891,15 +1903,35 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
                                     <span className={cn('px-2 py-0.5 rounded-md text-[10px] font-black border shadow-2xs', statBadge.cls)}>
                                       {statBadge.label}
                                     </span>
-                                    {parsed.checkIn && (
-                                      <div className="font-mono text-[9px] text-slate-600 font-semibold leading-tight">
-                                        <div>{parsed.checkIn}</div>
-                                        {parsed.checkOut && <div className="text-slate-400">{parsed.checkOut}</div>}
+                                    {(parsed.checkIn || parsed.checkOut) && (
+                                      <div className="font-mono text-[9px] font-bold text-slate-700 leading-tight space-y-0.5 text-left w-full max-w-[105px] mx-auto bg-slate-50 p-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                                        {parsed.checkIn ? (
+                                          <div className="flex items-center justify-between text-emerald-800">
+                                            <span className="font-extrabold text-[8px] uppercase tracking-wider text-emerald-600">In:</span>
+                                            <span>{parsed.checkIn}</span>
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center justify-between text-slate-300 text-[8px]">
+                                            <span>In:</span>
+                                            <span>—</span>
+                                          </div>
+                                        )}
+                                        {parsed.checkOut ? (
+                                          <div className="flex items-center justify-between text-blue-800">
+                                            <span className="font-extrabold text-[8px] uppercase tracking-wider text-blue-600">Out:</span>
+                                            <span>{parsed.checkOut}</span>
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center justify-between text-slate-300 text-[8px]">
+                                            <span>Out:</span>
+                                            <span>—</span>
+                                          </div>
+                                        )}
                                       </div>
                                     )}
                                     {hrs > 0 && (
-                                      <span className="text-[8px] font-mono text-slate-400 font-bold">
-                                        {hrs}h
+                                      <span className="text-[8px] font-mono text-slate-500 font-bold bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
+                                        {hrs} hrs
                                       </span>
                                     )}
                                   </div>

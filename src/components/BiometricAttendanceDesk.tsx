@@ -826,7 +826,12 @@ export default function BiometricAttendanceDesk({
           if (punchMode !== 'auto') {
             actionType = punchMode;
           } else if (!existingCheckIn) {
-            actionType = 'checkin';
+            // After 1:00 PM (13:00), first punch of the day is Final Out (Chutti time), NOT morning check-in
+            if (now.getHours() >= 13) {
+              actionType = 'checkout';
+            } else {
+              actionType = 'checkin';
+            }
           } else {
             let minsSinceLastPunch = 999;
             let lastIso = existingRec?.check_in_time || existingRec?.checkInTime || existingRec?.created_at;
