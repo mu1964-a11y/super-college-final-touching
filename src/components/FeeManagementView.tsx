@@ -375,7 +375,7 @@ export default function FeeManagementView({
     }
 
     const currentDate = new Date();
-    const [year, month, day] = paymentDate.split("-");
+    const [year, month, day] = (paymentDate || new Date().toISOString().split('T')[0]).split("-");
     const payDate = new Date(
       Number(year),
       Number(month) - 1,
@@ -1306,8 +1306,9 @@ export default function FeeManagementView({
       }
       const matchesSection =
         sectionFilter === "all" ||
-        (s.section || "").trim().toLowerCase() ===
-          sectionFilter.trim().toLowerCase();
+        (s.section || "").trim().toLowerCase() === sectionFilter.trim().toLowerCase() ||
+        (s.feeLedger?.sectionId || "").trim().toLowerCase() === sectionFilter.trim().toLowerCase() ||
+        (s.feeLedger?.exactSectionName || "").trim().toLowerCase() === sectionFilter.trim().toLowerCase();
 
       // Academic Stage / Part / Semester filter
       let matchesStage = true;
@@ -2801,7 +2802,7 @@ _Accounts & Finance Department, SGC Jahanian_`;
                     onClick={() => setAncillaryForm(prev => ({ ...prev, title: preset.title, amount: preset.amount }))}
                     className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-superior-teal/10 hover:border-superior-teal/30 hover:text-superior-teal text-slate-700 dark:text-slate-300 transition-all cursor-pointer"
                   >
-                    {preset.title.split(" ")[0]} (Rs. {preset.amount})
+                    {(preset.title || '').split(" ")[0]} (Rs. {preset.amount})
                   </button>
                 ))}
               </div>

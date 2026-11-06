@@ -1311,7 +1311,7 @@ _Automated Realtime College Security & LMS_`;
               await processAttendanceForPerson(matchedPersonObj, "face_recognition");
             } else {
               setBiometricFeedback({
-                text: `Verifying ${matchedPersonObj.fullName.split(" ")[0]}... (${consecutiveMatchRef.current.count}/3)`,
+                text: `Verifying ${(matchedPersonObj.fullName || '').split(" ")[0] || 'Person'}... (${consecutiveMatchRef.current.count}/3)`,
                 type: "verifying",
               });
             }

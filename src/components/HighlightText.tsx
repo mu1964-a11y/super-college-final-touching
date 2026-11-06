@@ -2,17 +2,18 @@
 import React from 'react';
 
 interface HighlightTextProps {
-  text: string;
-  search: string;
+  text?: string | null;
+  search?: string | null;
 }
 
 export function HighlightText({ text, search }: HighlightTextProps) {
+  if (!text) return null;
   if (!search || !search.trim()) return <>{text}</>;
   
   // Escape special characters and create a case-insensitive regex
   const escapedSearch = search.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
   const regex = new RegExp(`(${escapedSearch})`, 'gi');
-  const parts = text.split(regex);
+  const parts = String(text).split(regex);
   
   return (
     <>

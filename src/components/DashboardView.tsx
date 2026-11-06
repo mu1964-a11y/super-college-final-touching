@@ -1221,13 +1221,17 @@ export default function DashboardView({
     const sectionMap: Record<string, { name: string; count: number; totalPkg: number; received: number; program: string; boys: number; girls: number }> = {};
 
     (data.students || []).forEach((s: any) => {
-      const sec = s.section ? `Sec ${s.section}` : (s.group ? s.group : "Class A");
-      const prog = s.category || "FSc";
-      const key = `${prog} ${sec}`;
+      const secName = s.section || s.feeLedger?.exactSectionName || (s.feeLedger?.sectionId ? `Sec ${s.feeLedger.sectionId}` : "Unassigned");
+      const secId = s.feeLedger?.sectionId || '';
+      const campus = s.feeLedger?.campus || '';
+      const prog = s.category || s.feeLedger?.program || "General";
+      const isAspire = campus && campus.includes('Aspire');
+      const displayName = isAspire ? `${secName} (Aspire)` : secName;
+      const key = secId ? `${secId} - ${displayName}` : displayName;
 
       if (!sectionMap[key]) {
         sectionMap[key] = {
-          name: key,
+          name: displayName,
           count: 0,
           totalPkg: 0,
           received: 0,

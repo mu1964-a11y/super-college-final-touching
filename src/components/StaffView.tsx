@@ -2413,9 +2413,9 @@ function EditStaffDialog({ member, data, onClose, onDelete }: { member: Staff, d
     let initRoles: string[] = [];
     if (Array.isArray(m?.additionalRoles) && m.additionalRoles.length > 0) {
       initRoles = [...m.additionalRoles];
-    } else if (m?.secondaryRole && m.secondaryRole !== 'None') {
+    } else if (typeof m?.secondaryRole === 'string' && m.secondaryRole !== 'None') {
       initRoles = m.secondaryRole.split('&').map(r => r.trim()).filter(Boolean);
-    } else if (m?.designation && m.designation.includes('&')) {
+    } else if (typeof m?.designation === 'string' && m.designation.includes('&')) {
       const parts = m.designation.split('&').map(r => r.trim()).filter(Boolean);
       initRoles = parts.slice(1);
     }

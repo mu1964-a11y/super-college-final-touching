@@ -1619,7 +1619,7 @@ User's basic idea: "${imageGenPrompt}"`,
                           : "bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-tl-none shadow-xs hover:shadow-md hover:border-slate-300 dark:hover:border-slate-750"
                       }`}>
                         <div className="space-y-3">
-                          {msg.content.split("\n\n").map((para, pIdx) => {
+                          {(msg.content || '').split("\n\n").map((para, pIdx) => {
                             return renderParagraphBlock(para, pIdx, msg.role === "user");
                           })}
                         </div>
@@ -2012,7 +2012,7 @@ User's basic idea: "${imageGenPrompt}"`,
                       <div className="grid grid-cols-2 gap-2 text-[9px] font-mono uppercase font-black text-slate-400 w-full border-t border-slate-800/40 pt-4 relative z-10">
                         <div className="bg-slate-950/50 p-2 rounded-lg border border-slate-900 flex justify-between">
                           <span className="text-slate-500">Model:</span>
-                          <span className="text-slate-300">{imageGenModel.split("-")[0]}</span>
+                          <span className="text-slate-300">{(imageGenModel || '').split("-")[0]}</span>
                         </div>
                         <div className="bg-slate-950/50 p-2 rounded-lg border border-slate-900 flex justify-between">
                           <span className="text-slate-500">Quality:</span>

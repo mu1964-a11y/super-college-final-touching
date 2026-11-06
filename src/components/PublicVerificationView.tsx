@@ -1130,7 +1130,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
                 <div className="text-right">
                   <span className="text-[10px] doc-label block" style={{ color: '#334155' }}>Issue / Print Date:</span>
                   <span className="font-mono font-bold text-[11px]" style={{ color: '#0f172a' }}>
-                    {data.verifiedAt.split(',')[0]}
+                    {(data.verifiedAt || '').split(',')[0]}
                   </span>
                 </div>
               </div>
@@ -1294,7 +1294,7 @@ export default function PublicVerificationView({ onGoToAdmin }: { onGoToAdmin?: 
                       SUPERIOR COLLEGE JAHANIAN
                     </span>
                     <span className="text-[8.5px] font-bold block mt-0.5 font-mono" style={{ color: '#475569' }}>
-                      ACCOUNTS DESK • {data.verifiedAt.split(',')[0]}
+                      ACCOUNTS DESK • {(data.verifiedAt || '').split(',')[0]}
                     </span>
                   </div>
 

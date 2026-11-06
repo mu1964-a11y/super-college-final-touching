@@ -2360,7 +2360,7 @@ export default function StaffAttendance({ staffList, attendanceRecords = [], onS
       {/* 30-Day Biometric Staff Attendance Dossier Modal */}
       {selectedDossierStaff && (() => {
         const stats = getMonthlyStats(selectedDossierStaff.id);
-        const [yearStr, monthStr] = reportMonth.split('-');
+        const [yearStr, monthStr] = (reportMonth || new Date().toISOString().slice(0, 7)).split('-');
         const year = parseInt(yearStr) || new Date().getFullYear();
         const month = parseInt(monthStr) || new Date().getMonth() + 1;
         const daysInMonth = new Date(year, month, 0).getDate();

@@ -200,20 +200,21 @@ export default function AttendanceView({ data }: { data: any }) {
     }
   }
 
-  function isPunchLate(isoString?: string | null, collegeStartTime = '07:54'): boolean {
+  function isPunchLate(isoString?: string | null, collegeStartTime: string | null = '07:54'): boolean {
     if (!isoString) return false;
     try {
+      const safeStart = collegeStartTime || '07:54';
       const d = new Date(isoString);
       if (!isNaN(d.getTime())) {
         const punchMinutes = d.getHours() * 60 + d.getMinutes();
-        const [h, m] = collegeStartTime.split(':').map(Number);
+        const [h, m] = safeStart.split(':').map(Number);
         const startMinutes = (h || 7) * 60 + (m || 54);
         return punchMinutes > startMinutes;
       }
       if (typeof isoString === 'string' && isoString.includes(':')) {
         const [ph, pm] = isoString.split(':').map(Number);
         const punchMinutes = (ph || 0) * 60 + (pm || 0);
-        const [h, m] = collegeStartTime.split(':').map(Number);
+        const [h, m] = safeStart.split(':').map(Number);
         const startMinutes = (h || 7) * 60 + (m || 54);
         return punchMinutes > startMinutes;
       }
@@ -850,7 +851,7 @@ export default function AttendanceView({ data }: { data: any }) {
     doc.setFontSize(9.5);
     doc.text(`Student: ${student.fullName}   |   ID: ${student.studentId || student.collegeNo || '-'}   |   Section: ${student.section || '-'}   |   Group: ${student.groupName || student.currentClass || '-'}`, 14, 28);
     
-    const [year, month] = reportMonth.split('-').map(Number);
+    const [year, month] = (reportMonth || new Date().toISOString().slice(0, 7)).split('-').map(Number);
     const daysInMonth = new Date(year, month, 0).getDate();
     const dossierRows = [];
     
@@ -2055,7 +2056,7 @@ export default function AttendanceView({ data }: { data: any }) {
             {/* Quick Month Metrics Bar */}
             {(() => {
               const stats = getMonthlyStats(selectedDossierStudent.id);
-              const [year, month] = reportMonth.split('-').map(Number);
+              const [year, month] = (reportMonth || new Date().toISOString().slice(0, 7)).split('-').map(Number);
               const daysInMonth = new Date(year, month, 0).getDate();
               let biometricCount = 0;
               for (let d = 1; d <= daysInMonth; d++) {
@@ -2106,7 +2107,7 @@ export default function AttendanceView({ data }: { data: any }) {
                 </TableHeader>
                 <TableBody>
                   {(() => {
-                    const [year, month] = reportMonth.split('-').map(Number);
+                    const [year, month] = (reportMonth || new Date().toISOString().slice(0, 7)).split('-').map(Number);
                     const daysInMonth = new Date(year, month, 0).getDate();
                     const rows = [];
 

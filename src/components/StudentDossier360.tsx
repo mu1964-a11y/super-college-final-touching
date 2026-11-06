@@ -738,6 +738,142 @@ _Office of the Principal, Superior College Jahanian_`;
                   </div>
                 )}
 
+                {/* 2-YEAR / MULTI-YEAR VERIFIED BREAKDOWN (P1 vs P2 vs OTHER) */}
+                {Boolean(student.feeLedger?.p1_1stYear_Package || student.feeLedger?.p2_2ndYear_Package) && (
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 via-teal-950 to-slate-900 text-white border border-teal-800/60 shadow-lg space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <Award size={18} className="text-teal-400" />
+                        <h4 className="text-xs font-black uppercase tracking-wider text-teal-200">
+                          Academic Phase & Year-Wise Fee Structure
+                        </h4>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px]">
+                        <span className="bg-teal-500/20 text-teal-300 font-bold px-2.5 py-0.5 rounded-full border border-teal-400/30">
+                          Section: {student.section || student.feeLedger?.exactSectionName || '-'} ({student.feeLedger?.sectionId || ''})
+                        </span>
+                        {student.feeLedger?.campus && (
+                          <span className="bg-slate-700 text-slate-300 font-semibold px-2 py-0.5 rounded-full">
+                            {student.feeLedger.campus}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-center">
+                      {/* P1 (1st Year) */}
+                      <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                        <span className="text-[10px] uppercase font-bold text-teal-300">1st Year (Part 1 / Phase 1)</span>
+                        <div className="mt-1 space-y-0.5">
+                          <p className="text-xs text-slate-300 font-medium">Package: <span className="font-bold text-white">Rs. {(student.feeLedger?.p1_1stYear_Package || 0).toLocaleString()}</span></p>
+                          <p className="text-xs text-emerald-400 font-medium">Paid: <span className="font-bold">Rs. {(student.feeLedger?.p1_1stYear_Paid || 0).toLocaleString()}</span></p>
+                          <p className="text-xs text-amber-300 font-medium">Remaining: <span className="font-bold">Rs. {(student.feeLedger?.p1_1stYear_Remaining || 0).toLocaleString()}</span></p>
+                        </div>
+                      </div>
+
+                      {/* P2 (2nd Year) */}
+                      <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                        <span className="text-[10px] uppercase font-bold text-teal-300">2nd Year (Part 2 / Phase 2)</span>
+                        <div className="mt-1 space-y-0.5">
+                          <p className="text-xs text-slate-300 font-medium">Package: <span className="font-bold text-white">Rs. {(student.feeLedger?.p2_2ndYear_Package || 0).toLocaleString()}</span></p>
+                          <p className="text-xs text-emerald-400 font-medium">Paid: <span className="font-bold">Rs. {(student.feeLedger?.p2_2ndYear_Paid || 0).toLocaleString()}</span></p>
+                          <p className="text-xs text-rose-300 font-medium">Remaining: <span className="font-bold">Rs. {(student.feeLedger?.p2_2ndYear_Remaining || 0).toLocaleString()}</span></p>
+                        </div>
+                      </div>
+
+                      {/* Combined Total */}
+                      <div className="p-3 rounded-xl bg-teal-500/10 border border-teal-500/30">
+                        <span className="text-[10px] uppercase font-bold text-emerald-300">Combined Total Ledger</span>
+                        <div className="mt-1 space-y-0.5">
+                          <p className="text-xs text-slate-300 font-medium">Total Package: <span className="font-bold text-white">Rs. {(student.feeLedger?.combined_Total_Package || student.totalPackage || 0).toLocaleString()}</span></p>
+                          <p className="text-xs text-emerald-400 font-medium">Tuition Paid: <span className="font-bold">Rs. {(student.feeLedger?.combined_Tuition_Paid || student.feeReceived || 0).toLocaleString()}</span></p>
+                          <p className="text-xs text-rose-400 font-medium">Combined Balance: <span className="font-bold">Rs. {(student.feeLedger?.combined_Remaining_Balance ?? remainingBalance).toLocaleString()}</span></p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {Boolean(student.feeLedger?.otherFeesPaid) && (
+                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs">
+                        <span className="text-amber-200 font-medium">
+                          Other / Ancillary Fees Paid: <strong className="text-amber-100">Rs. {Number(student.feeLedger.otherFeesPaid).toLocaleString()}</strong>
+                        </span>
+                        {student.feeLedger.otherFeesReceiptsDates && (
+                          <span className="text-[10px] text-amber-300/80 font-mono truncate max-w-[60%]">
+                            Receipts/Dates: {student.feeLedger.otherFeesReceiptsDates}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* 2-YEAR / MULTI-YEAR VERIFIED BREAKDOWN (P1 vs P2 vs OTHER) */}
+                {Boolean(student.feeLedger?.p1_1stYear_Package || student.feeLedger?.p2_2ndYear_Package) && (
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 via-teal-950 to-slate-900 text-white border border-teal-800/60 shadow-lg space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <Award size={18} className="text-teal-400" />
+                        <h4 className="text-xs font-black uppercase tracking-wider text-teal-200">
+                          Academic Phase & Year-Wise Fee Structure
+                        </h4>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px]">
+                        <span className="bg-teal-500/20 text-teal-300 font-bold px-2.5 py-0.5 rounded-full border border-teal-400/30">
+                          Section: {student.section || student.feeLedger?.exactSectionName || '-'} ({student.feeLedger?.sectionId || ''})
+                        </span>
+                        {student.feeLedger?.campus && (
+                          <span className="bg-slate-700 text-slate-300 font-semibold px-2 py-0.5 rounded-full">
+                            {student.feeLedger.campus}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-center">
+                      {/* P1 (1st Year) */}
+                      <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                        <span className="text-[10px] uppercase font-bold text-teal-300">1st Year (Part 1 / Phase 1)</span>
+                        <div className="mt-1 space-y-0.5">
+                          <p className="text-xs text-slate-300 font-medium">Package: <span className="font-bold text-white">Rs. {(student.feeLedger?.p1_1stYear_Package || 0).toLocaleString()}</span></p>
+                          <p className="text-xs text-emerald-400 font-medium">Paid: <span className="font-bold">Rs. {(student.feeLedger?.p1_1stYear_Paid || 0).toLocaleString()}</span></p>
+                          <p className="text-xs text-amber-300 font-medium">Remaining: <span className="font-bold">Rs. {(student.feeLedger?.p1_1stYear_Remaining || 0).toLocaleString()}</span></p>
+                        </div>
+                      </div>
+
+                      {/* P2 (2nd Year) */}
+                      <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                        <span className="text-[10px] uppercase font-bold text-teal-300">2nd Year (Part 2 / Phase 2)</span>
+                        <div className="mt-1 space-y-0.5">
+                          <p className="text-xs text-slate-300 font-medium">Package: <span className="font-bold text-white">Rs. {(student.feeLedger?.p2_2ndYear_Package || 0).toLocaleString()}</span></p>
+                          <p className="text-xs text-emerald-400 font-medium">Paid: <span className="font-bold">Rs. {(student.feeLedger?.p2_2ndYear_Paid || 0).toLocaleString()}</span></p>
+                          <p className="text-xs text-rose-300 font-medium">Remaining: <span className="font-bold">Rs. {(student.feeLedger?.p2_2ndYear_Remaining || 0).toLocaleString()}</span></p>
+                        </div>
+                      </div>
+
+                      {/* Combined Total */}
+                      <div className="p-3 rounded-xl bg-teal-500/10 border border-teal-500/30">
+                        <span className="text-[10px] uppercase font-bold text-emerald-300">Combined Total Ledger</span>
+                        <div className="mt-1 space-y-0.5">
+                          <p className="text-xs text-slate-300 font-medium">Total Package: <span className="font-bold text-white">Rs. {(student.feeLedger?.combined_Total_Package || student.totalPackage || 0).toLocaleString()}</span></p>
+                          <p className="text-xs text-emerald-400 font-medium">Tuition Paid: <span className="font-bold">Rs. {(student.feeLedger?.combined_Tuition_Paid || student.feeReceived || 0).toLocaleString()}</span></p>
+                          <p className="text-xs text-rose-400 font-medium">Combined Balance: <span className="font-bold">Rs. {(student.feeLedger?.combined_Remaining_Balance ?? remainingBalance).toLocaleString()}</span></p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {Boolean(student.feeLedger?.otherFeesPaid) && (
+                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs">
+                        <span className="text-amber-200 font-medium">
+                          Other / Ancillary Fees Paid: <strong className="text-amber-100">Rs. {Number(student.feeLedger.otherFeesPaid).toLocaleString()}</strong>
+                        </span>
+                        {student.feeLedger.otherFeesReceiptsDates && (
+                          <span className="text-[10px] text-amber-300/80 font-mono truncate max-w-[60%]">
+                            Receipts/Dates: {student.feeLedger.otherFeesReceiptsDates}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {/* INTER PART-2 CLEARANCE & PROMOTION BANNER */}
                 {isPart2Student && (
                   <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between flex-wrap gap-2 text-xs">
@@ -827,6 +963,7 @@ _Office of the Principal, Superior College Jahanian_`;
                         <TableRow>
                           <TableHead className="text-[10px] font-black uppercase">Receipt / Month</TableHead>
                           <TableHead className="text-[10px] font-black uppercase text-right">Amount Paid</TableHead>
+                          <TableHead className="text-[10px] font-black uppercase text-right">Running Balance</TableHead>
                           <TableHead className="text-[10px] font-black uppercase">Payment Date & Time</TableHead>
                           <TableHead className="text-[10px] font-black uppercase">Payment Mode</TableHead>
                         </TableRow>
@@ -840,6 +977,9 @@ _Office of the Principal, Superior College Jahanian_`;
                               </TableCell>
                               <TableCell className="text-right font-black text-emerald-600 text-xs">
                                 Rs. {(tx.amount || 0).toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-right font-bold text-slate-700 dark:text-slate-300 text-xs font-mono">
+                                {tx.runningBalance !== undefined ? `Rs. ${Number(tx.runningBalance).toLocaleString()}` : '-'}
                               </TableCell>
                               <TableCell className="text-xs font-mono text-slate-500">
                                 <div className="font-semibold text-slate-800 dark:text-slate-200">

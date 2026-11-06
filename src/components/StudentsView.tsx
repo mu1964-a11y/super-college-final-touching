@@ -439,7 +439,10 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
 
       const matchesSubject = subjectFilter === 'all' || (s.subjects || []).includes(subjectFilter);
 
-      const matchesSection = sectionFilter === 'all' || (s.section || '').trim().toLowerCase() === sectionFilter.trim().toLowerCase();
+      const matchesSection = sectionFilter === 'all' || 
+        (s.section || '').trim().toLowerCase() === sectionFilter.trim().toLowerCase() ||
+        (s.feeLedger?.sectionId || '').trim().toLowerCase() === sectionFilter.trim().toLowerCase() ||
+        (s.feeLedger?.exactSectionName || '').trim().toLowerCase() === sectionFilter.trim().toLowerCase();
 
       // Photo presence filter
       const matchesPhoto = 
@@ -2149,7 +2152,7 @@ export default function StudentsView({ data, gender, program }: { data: any, gen
                             </div>
                             <div className="flex items-center gap-1.5 min-w-0">
                                <User size={10} className="text-slate-400 shrink-0" />
-                               <span className="text-[9px] font-bold text-slate-400 uppercase truncate max-w-[120px]" title={`Father / Guardian: ${student.fatherName}`}>{student.fatherName.split(' ')[0]}</span>
+                               <span className="text-[9px] font-bold text-slate-400 uppercase truncate max-w-[120px]" title={`Father / Guardian: ${student.fatherName || 'N/A'}`}>{(student.fatherName || '').split(' ')[0] || 'N/A'}</span>
                             </div>
                             {student.email && (
                              <div className="flex items-center gap-1.5 min-w-0">

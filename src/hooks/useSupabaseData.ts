@@ -145,13 +145,13 @@ export function useSupabaseData(user: any) {
         safeQuery(fetchAllRecords('students', 'created_at'), []),
         safeQuery(fetchAllRecords('expenses', 'date'), []),
         safeQuery(fetchAllRecords('income', 'date'), []),
-        safeQuery(supabase.from('staff').select('*').order('created_at', { ascending: false }).limit(1000), { data: [], error: null }),
-        safeQuery(supabase.from('staff_attendance').select('*').order('date', { ascending: false }).limit(2000), { data: [], error: null }),
-        safeQuery(supabase.from('staff_timetable').select('*').limit(1000), { data: [], error: null }),
-        safeQuery(supabase.from('staff_advances').select('*').order('date_issued', { ascending: false }).limit(500), { data: [], error: null }),
+        safeQuery(supabase.from('staff').select('*').order('created_at', { ascending: false }).range(0, 10000), { data: [], error: null }),
+        safeQuery(supabase.from('staff_attendance').select('*').order('date', { ascending: false }).range(0, 10000), { data: [], error: null }),
+        safeQuery(supabase.from('staff_timetable').select('*').range(0, 10000), { data: [], error: null }),
+        safeQuery(supabase.from('staff_advances').select('*').order('date_issued', { ascending: false }).range(0, 10000), { data: [], error: null }),
         safeQuery(supabase.from('settings').select('*').order('updated_at', { ascending: false }).limit(1).maybeSingle(), { data: null, error: null }),
         safeQuery(fetch('/api/permissions').then(res => res.json()).catch(() => []), []),
-        safeQuery(supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(1000), { data: [], error: null }),
+        safeQuery(supabase.from('notifications').select('*').order('created_at', { ascending: false }).range(0, 10000), { data: [], error: null }),
         safeQuery(fetchAllRecords('academic_records', 'date'), []),
         safeQuery(fetchAllRecords('salary_payments', 'date'), []),
         safeQuery(fetchAllRecords('student_attendance', 'date'), [])
@@ -320,7 +320,7 @@ export function useSupabaseData(user: any) {
             ...(s.fee_ledger || {}),
             totalPackage: Number(s.total_package ?? linkedAdmission?.total_package ?? 0),
             totalReceived: Number(s.fee_received ?? linkedAdmission?.fee_received ?? 0),
-            remainingBalance: Math.max(0, Number(s.total_package ?? linkedAdmission?.total_package ?? 0) - Number(s.fee_received ?? linkedAdmission?.fee_received ?? 0)),
+            remainingBalance: s.fee_ledger?.combined_Remaining_Balance !== undefined ? Number(s.fee_ledger.combined_Remaining_Balance) : (s.fee_ledger?.remainingBalance !== undefined ? Number(s.fee_ledger.remainingBalance) : Math.max(0, Number(s.total_package ?? linkedAdmission?.total_package ?? 0) - Number(s.fee_received ?? linkedAdmission?.fee_received ?? 0))),
             installments: s.fee_ledger?.installments || [],
             transactions: s.fee_ledger?.transactions || []
           },
@@ -355,7 +355,7 @@ export function useSupabaseData(user: any) {
 
             const rawTpl = s.fingerprint_template || linkedAdmission?.fingerprint_template || (s as any).fingerprintTemplate || undefined;
             const rawFgr = s.fingerprint_finger || linkedAdmission?.fingerprint_finger || (s as any).fingerprintFinger || undefined;
-            const cleanFgr = rawFgr
+            const cleanFgr = (typeof rawFgr === 'string' && rawFgr.trim())
               ? rawFgr.split(/\s*(?:\|\|\||\+)\s*/).map((f: string) => secugenService.cleanFingerLabel(f)).join(' + ')
               : undefined;
 
@@ -530,7 +530,7 @@ export function useSupabaseData(user: any) {
           fatherName: st.father_name,
           joinDate: st.join_date,
           designation: st.designation || undefined,
-          secondaryRole: (st as any).secondary_role || (st.designation && st.designation.includes('&') ? st.designation.split('&')[1].trim() : undefined),
+          secondaryRole: (st as any).secondary_role || (typeof st.designation === 'string' && st.designation.includes('&') ? st.designation.split('&')[1].trim() : undefined),
           baseSalary: st.base_salary,
           salary: st.salary,
           photo: st.photo_url || st.photo,
@@ -811,10 +811,7 @@ export function useSupabaseData(user: any) {
     if (!isSupabaseConfigured || isBulkOperatingRef.current) return;
     try {
       const { data: studentAttendanceData } = await supabase
-        .from('student_attendance')
-        .select('*')
-        .order('date', { ascending: false })
-        .limit(3000);
+        .from('student_attendance').select('*').order('date', { ascending: false }).range(0, 10000);
       if (studentAttendanceData) {
         setStudentAttendance(studentAttendanceData.map(a => {
           let parsedNotes: any = null;
@@ -857,10 +854,7 @@ export function useSupabaseData(user: any) {
     if (!isSupabaseConfigured || isBulkOperatingRef.current) return;
     try {
       const { data: staffAttendanceData } = await supabase
-        .from('staff_attendance')
-        .select('*')
-        .order('date', { ascending: false })
-        .limit(2000);
+        .from('staff_attendance').select('*').order('date', { ascending: false }).range(0, 10000);
       if (staffAttendanceData) {
         setStaffAttendance(staffAttendanceData.map(a => {
           let parsedNotes: any = null;

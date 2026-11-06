@@ -531,6 +531,7 @@ _Canal Road, Jahanian | Superior College Jahanian_`;
 
   // Basic Month Name formatting
   const getMonthName = (yyyyMM: string) => {
+    if (!yyyyMM) return '';
     const m = yyyyMM.split('-');
     if(m.length !== 2) return yyyyMM;
     const date = new Date(Number(m[0]), Number(m[1])-1, 1);
@@ -538,6 +539,7 @@ _Canal Road, Jahanian | Superior College Jahanian_`;
   };
   
   const getSmallMonth = (yyyyMM: string) => {
+    if (!yyyyMM) return '';
     const m = yyyyMM.split('-');
     if(m.length !== 2) return yyyyMM;
     const date = new Date(Number(m[0]), Number(m[1])-1, 1);
