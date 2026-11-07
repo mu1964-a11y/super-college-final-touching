@@ -2520,7 +2520,7 @@ export default function App() {
         <GlobalCommandPalette
           isOpen={isCommandPaletteOpen}
           onClose={() => setIsCommandPaletteOpen(false)}
-          data={filteredData}
+          data={data}
           onSelectStudent={(student, tab) => {
             setDossierInitialTab(tab || 'profile');
             setDossierStudent(student);
@@ -2533,7 +2533,7 @@ export default function App() {
           student={dossierStudent}
           isOpen={Boolean(dossierStudent)}
           onClose={() => setDossierStudent(null)}
-          data={filteredData}
+          data={data}
           initialTab={dossierInitialTab}
           onOpenWhatsApp={(phone) => {
             handleNavClick("whatsapp-center");

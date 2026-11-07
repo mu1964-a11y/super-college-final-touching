@@ -472,6 +472,11 @@ export default function GlobalCommandPalette({
                                 <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400 bg-teal-100/60 dark:bg-teal-900/40 px-2 py-0.5 rounded-md">
                                   {student.group || student.category || 'F.Sc'} {student.section ? `(Sec ${student.section})` : ''}
                                 </span>
+                                {student.session && (
+                                  <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
+                                    {student.session}
+                                  </span>
+                                )}
                               </div>
 
                               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
